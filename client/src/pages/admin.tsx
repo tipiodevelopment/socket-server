@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
+import { Checkbox } from '@/components/ui/checkbox';
 import type { WebSocketEvent } from '@shared/schema';
 
 interface ProductForm {
@@ -18,6 +19,7 @@ interface ProductForm {
   description: string;
   price: string;
   imageUrl: string;
+  selected?: boolean;
 }
 
 interface PollForm {
@@ -46,35 +48,75 @@ export default function AdminPage() {
     }
   });
 
-  // Product forms state (array)
+  // Product forms state (array) - 3 examples ready to send
   const [productForms, setProductForms] = useState<ProductForm[]>([
     {
       id: Date.now(),
       name: 'iPhone 15 Pro Max',
-      description: 'El último modelo con titanio y cámara de 48MP',
+      description: 'El último modelo con titanio y cámara de 48MP. Disponible en colores titanio natural, azul, blanco y negro.',
       price: '$1,199',
-      imageUrl: 'https://images.unsplash.com/photo-1592286927505-b7e00a46f74f'
-    }
-  ]);
-
-  // Poll forms state (array)
-  const [pollForms, setPollForms] = useState<PollForm[]>([
+      imageUrl: 'https://images.unsplash.com/photo-1592286927505-b7e00a46f74f?w=800&q=80'
+    },
     {
       id: Date.now() + 1,
-      question: '¿Cuál es tu smartphone favorito?',
-      options: 'iPhone, Samsung, Google Pixel, Otro',
-      duration: '60'
+      name: 'MacBook Air M3',
+      description: 'El portátil más delgado de Apple con chip M3, hasta 18 horas de batería y pantalla Liquid Retina de 13"',
+      price: '$1,099',
+      imageUrl: 'https://images.unsplash.com/photo-1517336714731-489689fd1ca8?w=800&q=80'
+    },
+    {
+      id: Date.now() + 2,
+      name: 'AirPods Pro (2da Gen)',
+      description: 'Cancelación activa de ruido, audio espacial personalizado y hasta 6 horas de reproducción',
+      price: '$249',
+      imageUrl: 'https://images.unsplash.com/photo-1606841837239-c5a1a4a07af7?w=800&q=80'
     }
   ]);
 
-  // Contest forms state (array)
+  // Poll forms state (array) - 3 examples ready to send
+  const [pollForms, setPollForms] = useState<PollForm[]>([
+    {
+      id: Date.now() + 3,
+      question: '¿Cuál es tu smartphone favorito?',
+      options: 'iPhone, Samsung Galaxy, Google Pixel, Xiaomi, Otro',
+      duration: '60'
+    },
+    {
+      id: Date.now() + 4,
+      question: '¿Qué función nueva te gustaría ver en la próxima actualización?',
+      options: 'Modo oscuro mejorado, Widgets personalizables, Mejor batería, IA integrada',
+      duration: '90'
+    },
+    {
+      id: Date.now() + 5,
+      question: '¿Cuánto pagarías por un streaming sin anuncios?',
+      options: '$5/mes, $10/mes, $15/mes, No pagaría',
+      duration: '120'
+    }
+  ]);
+
+  // Contest forms state (array) - 3 examples ready to send
   const [contestForms, setContestForms] = useState<ContestForm[]>([
     {
-      id: Date.now() + 2,
+      id: Date.now() + 6,
       name: 'Gran Sorteo Tech 2024',
-      prize: 'Gana un MacBook Pro M3, AirPods Pro y más',
+      prize: 'Gana un MacBook Pro M3, AirPods Pro, Apple Watch Ultra y suscripción anual Apple One',
       deadline: '2024-12-31',
       maxParticipants: '1000'
+    },
+    {
+      id: Date.now() + 7,
+      name: 'Concurso Gaming Ultimate',
+      prize: 'PlayStation 5 Pro, 3 juegos AAA, suscripción PS Plus de 1 año y auriculares Sony Pulse 3D',
+      deadline: '2024-11-30',
+      maxParticipants: '500'
+    },
+    {
+      id: Date.now() + 8,
+      name: 'Sorteo Viaje Tech Conference',
+      prize: 'Vuelo + Hotel para asistir a Apple WWDC 2025 en California (todo incluido)',
+      deadline: '2025-03-15',
+      maxParticipants: '250'
     }
   ]);
 
@@ -146,6 +188,49 @@ export default function AdminPage() {
     setContestForms(prev => prev.map(form => 
       form.id === id ? { ...form, [field]: value } : form
     ));
+  };
+
+  // Toggle product selection
+  const toggleProductSelection = (id: number) => {
+    setProductForms(prev => prev.map(form => 
+      form.id === id ? { ...form, selected: !form.selected } : form
+    ));
+  };
+
+  // Send selected products
+  const sendSelectedProducts = async () => {
+    const selectedProducts = productForms.filter(form => form.selected);
+    if (selectedProducts.length === 0) {
+      toast({
+        title: "Sin Selección",
+        description: "Por favor selecciona al menos un producto",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    for (let i = 0; i < selectedProducts.length; i++) {
+      const product = selectedProducts[i];
+      try {
+        await productMutation.mutateAsync({
+          name: product.name,
+          description: product.description,
+          price: product.price,
+          imageUrl: product.imageUrl
+        });
+        // Small delay between products so they appear sequentially
+        if (i < selectedProducts.length - 1) {
+          await new Promise(resolve => setTimeout(resolve, 300));
+        }
+      } catch (error) {
+        console.error('Error sending product:', error);
+      }
+    }
+    
+    toast({
+      title: "Productos Enviados",
+      description: `Se enviaron ${selectedProducts.length} producto(s) correctamente`,
+    });
   };
 
   // Fetch server status
@@ -301,24 +386,51 @@ export default function AdminPage() {
                     </div>
                     <h3 className="text-lg font-semibold text-primary">Productos</h3>
                   </div>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={addProductForm}
-                    data-testid="button-add-product"
-                    className="gap-1"
-                  >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4"></path>
-                    </svg>
-                    Añadir
-                  </Button>
+                  <div className="flex gap-2">
+                    {productForms.some(f => f.selected) && (
+                      <Button
+                        size="sm"
+                        variant="default"
+                        onClick={sendSelectedProducts}
+                        data-testid="button-send-selected-products"
+                        className="gap-1 bg-primary"
+                        disabled={productMutation.isPending}
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 9l3 3m0 0l-3 3m3-3H8m13 0a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                        </svg>
+                        Enviar Seleccionados ({productForms.filter(f => f.selected).length})
+                      </Button>
+                    )}
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={addProductForm}
+                      data-testid="button-add-product"
+                      className="gap-1"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4"></path>
+                      </svg>
+                      Añadir
+                    </Button>
+                  </div>
                 </div>
                 {productForms.map((form, index) => (
                   <div key={form.id} className="bg-card border border-border rounded-lg p-4 mb-3 relative">
                     <div className="space-y-3">
                       <div className="flex justify-between items-start">
-                        <span className="text-xs text-muted-foreground">Producto #{index + 1}</span>
+                        <div className="flex items-center gap-2">
+                          <Checkbox
+                            id={`select-product-${form.id}`}
+                            checked={form.selected || false}
+                            onCheckedChange={() => toggleProductSelection(form.id)}
+                            data-testid={`checkbox-product-${form.id}`}
+                          />
+                          <Label htmlFor={`select-product-${form.id}`} className="text-xs text-muted-foreground cursor-pointer">
+                            Producto #{index + 1}
+                          </Label>
+                        </div>
                         {productForms.length > 1 && (
                           <Button
                             size="sm"
