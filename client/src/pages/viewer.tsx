@@ -17,7 +17,7 @@ export default function ViewerPage() {
       
       // Show notification
       if (Notification.permission === 'granted') {
-        new Notification(`Nuevo evento: ${event.type}`, {
+        new Notification(`Ny hendelse: ${event.type}`, {
           body: getEventDescription(event),
           icon: '/favicon.ico'
         });
@@ -41,7 +41,7 @@ export default function ViewerPage() {
       case 'contest':
         return `${event.data.name} - ${event.data.prize}`;
       default:
-        return 'Evento desconocido';
+        return 'Ukjent hendelse';
     }
   };
 
@@ -89,8 +89,8 @@ export default function ViewerPage() {
                 </svg>
               </div>
               <div>
-                <h1 className="text-xl font-bold text-foreground">Visor de Eventos</h1>
-                <p className="text-sm text-muted-foreground">Eventos en Tiempo Real</p>
+                <h1 className="text-xl font-bold text-foreground">Hendelsesvisning</h1>
+                <p className="text-sm text-muted-foreground">Hendelser i sanntid</p>
               </div>
             </div>
             
@@ -125,9 +125,9 @@ export default function ViewerPage() {
                 <CardTitle className="flex items-center space-x-3">
                   {getEventIcon(lastEvent.type)}
                   <div>
-                    <div className="text-2xl font-bold">Último Evento</div>
+                    <div className="text-2xl font-bold">Siste hendelse</div>
                     <div className="text-sm text-muted-foreground">
-                      {new Date(lastEvent.timestamp).toLocaleString('es-ES')}
+                      {new Date(lastEvent.timestamp).toLocaleString('nb-NO')}
                     </div>
                   </div>
                 </CardTitle>
@@ -168,7 +168,7 @@ export default function ViewerPage() {
                       ))}
                     </div>
                     <div className="mt-4 text-sm text-muted-foreground">
-                      Duración: {lastEvent.data.duration} segundos
+                      Varighet: {lastEvent.data.duration} sekunder
                     </div>
                   </div>
                 )}
@@ -179,11 +179,11 @@ export default function ViewerPage() {
                     <p className="text-muted-foreground mb-4">{lastEvent.data.prize}</p>
                     <div className="grid grid-cols-2 gap-4 text-sm">
                       <div>
-                        <span className="text-muted-foreground">Fecha límite:</span>
+                        <span className="text-muted-foreground">Frist:</span>
                         <div className="font-medium">{lastEvent.data.deadline}</div>
                       </div>
                       <div>
-                        <span className="text-muted-foreground">Max participantes:</span>
+                        <span className="text-muted-foreground">Maks deltakere:</span>
                         <div className="font-medium">{lastEvent.data.maxParticipants}</div>
                       </div>
                     </div>
@@ -196,7 +196,7 @@ export default function ViewerPage() {
 
         {/* Event History */}
         <div>
-          <h2 className="text-2xl font-bold mb-6">Historial de Eventos</h2>
+          <h2 className="text-2xl font-bold mb-6">Hendelseshistorikk</h2>
           
           {events.length === 0 ? (
             <Card>
@@ -204,10 +204,10 @@ export default function ViewerPage() {
                 <svg className="w-16 h-16 text-muted-foreground mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"></path>
                 </svg>
-                <h3 className="text-lg font-semibold mb-2">No hay eventos</h3>
+                <h3 className="text-lg font-semibold mb-2">Ingen hendelser</h3>
                 <p className="text-muted-foreground text-center">
-                  Conecta al WebSocket para ver eventos en tiempo real.<br />
-                  Ve al panel de administración para enviar eventos de prueba.
+                  Koble til WebSocket for å se hendelser i sanntid.<br />
+                  Gå til administrasjonspanelet for å sende testhendelser.
                 </p>
               </CardContent>
             </Card>
@@ -221,11 +221,11 @@ export default function ViewerPage() {
                       <div className="flex-1 min-w-0">
                         <div className="font-semibold truncate">
                           {event.type === 'product' && event.data.name}
-                          {event.type === 'poll' && 'Encuesta'}
+                          {event.type === 'poll' && 'Avstemning'}
                           {event.type === 'contest' && event.data.name}
                         </div>
                         <div className="text-xs text-muted-foreground">
-                          {new Date(event.timestamp).toLocaleTimeString('es-ES')}
+                          {new Date(event.timestamp).toLocaleTimeString('nb-NO')}
                         </div>
                       </div>
                     </CardTitle>
@@ -244,7 +244,7 @@ export default function ViewerPage() {
                       <div>
                         <p className="text-sm font-medium mb-2">{event.data.question}</p>
                         <div className="text-xs text-muted-foreground">
-                          {event.data.options.length} opciones • {event.data.duration}s
+                          {event.data.options.length} alternativer • {event.data.duration}s
                         </div>
                       </div>
                     )}
@@ -255,7 +255,7 @@ export default function ViewerPage() {
                           {event.data.prize}
                         </p>
                         <div className="text-xs text-muted-foreground">
-                          Hasta {event.data.deadline}
+                          Fram til {event.data.deadline}
                         </div>
                       </div>
                     )}
