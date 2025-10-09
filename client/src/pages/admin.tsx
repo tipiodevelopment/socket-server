@@ -12,6 +12,29 @@ import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import type { WebSocketEvent } from '@shared/schema';
 
+interface ProductForm {
+  id: number;
+  name: string;
+  description: string;
+  price: string;
+  imageUrl: string;
+}
+
+interface PollForm {
+  id: number;
+  question: string;
+  options: string;
+  duration: string;
+}
+
+interface ContestForm {
+  id: number;
+  name: string;
+  prize: string;
+  deadline: string;
+  maxParticipants: string;
+}
+
 export default function AdminPage() {
   const { toast } = useToast();
   const [eventHistory, setEventHistory] = useState<WebSocketEvent[]>([]);
@@ -23,28 +46,107 @@ export default function AdminPage() {
     }
   });
 
-  // Product form state
-  const [productForm, setProductForm] = useState({
-    name: 'iPhone 15 Pro Max',
-    description: 'El último modelo con titanio y cámara de 48MP',
-    price: '$1,199',
-    imageUrl: 'https://images.unsplash.com/photo-1592286927505-b7e00a46f74f'
-  });
+  // Product forms state (array)
+  const [productForms, setProductForms] = useState<ProductForm[]>([
+    {
+      id: Date.now(),
+      name: 'iPhone 15 Pro Max',
+      description: 'El último modelo con titanio y cámara de 48MP',
+      price: '$1,199',
+      imageUrl: 'https://images.unsplash.com/photo-1592286927505-b7e00a46f74f'
+    }
+  ]);
 
-  // Poll form state
-  const [pollForm, setPollForm] = useState({
-    question: '¿Cuál es tu smartphone favorito?',
-    options: 'iPhone, Samsung, Google Pixel, Otro',
-    duration: '60'
-  });
+  // Poll forms state (array)
+  const [pollForms, setPollForms] = useState<PollForm[]>([
+    {
+      id: Date.now() + 1,
+      question: '¿Cuál es tu smartphone favorito?',
+      options: 'iPhone, Samsung, Google Pixel, Otro',
+      duration: '60'
+    }
+  ]);
 
-  // Contest form state
-  const [contestForm, setContestForm] = useState({
-    name: 'Gran Sorteo Tech 2024',
-    prize: 'Gana un MacBook Pro M3, AirPods Pro y más',
-    deadline: '2024-12-31',
-    maxParticipants: '1000'
-  });
+  // Contest forms state (array)
+  const [contestForms, setContestForms] = useState<ContestForm[]>([
+    {
+      id: Date.now() + 2,
+      name: 'Gran Sorteo Tech 2024',
+      prize: 'Gana un MacBook Pro M3, AirPods Pro y más',
+      deadline: '2024-12-31',
+      maxParticipants: '1000'
+    }
+  ]);
+
+  // Add new product form
+  const addProductForm = () => {
+    setProductForms(prev => [...prev, {
+      id: Date.now(),
+      name: '',
+      description: '',
+      price: '',
+      imageUrl: ''
+    }]);
+  };
+
+  // Add new poll form
+  const addPollForm = () => {
+    setPollForms(prev => [...prev, {
+      id: Date.now(),
+      question: '',
+      options: '',
+      duration: '60'
+    }]);
+  };
+
+  // Add new contest form
+  const addContestForm = () => {
+    setContestForms(prev => [...prev, {
+      id: Date.now(),
+      name: '',
+      prize: '',
+      deadline: '',
+      maxParticipants: '100'
+    }]);
+  };
+
+  // Remove forms
+  const removeProductForm = (id: number) => {
+    if (productForms.length > 1) {
+      setProductForms(prev => prev.filter(form => form.id !== id));
+    }
+  };
+
+  const removePollForm = (id: number) => {
+    if (pollForms.length > 1) {
+      setPollForms(prev => prev.filter(form => form.id !== id));
+    }
+  };
+
+  const removeContestForm = (id: number) => {
+    if (contestForms.length > 1) {
+      setContestForms(prev => prev.filter(form => form.id !== id));
+    }
+  };
+
+  // Update forms
+  const updateProductForm = (id: number, field: keyof Omit<ProductForm, 'id'>, value: string) => {
+    setProductForms(prev => prev.map(form => 
+      form.id === id ? { ...form, [field]: value } : form
+    ));
+  };
+
+  const updatePollForm = (id: number, field: keyof Omit<PollForm, 'id'>, value: string) => {
+    setPollForms(prev => prev.map(form => 
+      form.id === id ? { ...form, [field]: value } : form
+    ));
+  };
+
+  const updateContestForm = (id: number, field: keyof Omit<ContestForm, 'id'>, value: string) => {
+    setContestForms(prev => prev.map(form => 
+      form.id === id ? { ...form, [field]: value } : form
+    ));
+  };
 
   // Fetch server status
   const { data: serverStatus } = useQuery<{
@@ -59,7 +161,7 @@ export default function AdminPage() {
 
   // Mutations for sending events
   const productMutation = useMutation({
-    mutationFn: (data: typeof productForm) => 
+    mutationFn: (data: Omit<ProductForm, 'id'>) => 
       apiRequest('POST', '/api/events/product', data),
     onSuccess: () => {
       toast({
@@ -78,9 +180,9 @@ export default function AdminPage() {
   });
 
   const pollMutation = useMutation({
-    mutationFn: (data: any) => 
+    mutationFn: (data: Omit<PollForm, 'id'>) => 
       apiRequest('POST', '/api/events/poll', {
-        ...data,
+        question: data.question,
         options: data.options.split(',').map((opt: string) => opt.trim()),
         duration: parseInt(data.duration)
       }),
@@ -101,9 +203,11 @@ export default function AdminPage() {
   });
 
   const contestMutation = useMutation({
-    mutationFn: (data: any) => 
+    mutationFn: (data: Omit<ContestForm, 'id'>) => 
       apiRequest('POST', '/api/events/contest', {
-        ...data,
+        name: data.name,
+        prize: data.prize,
+        deadline: data.deadline,
         maxParticipants: parseInt(data.maxParticipants)
       }),
     onSuccess: () => {
@@ -184,210 +288,307 @@ export default function AdminPage() {
           <div className="lg:col-span-2 space-y-6">
             <div>
               <h2 className="text-2xl font-bold mb-4">Disparar Eventos</h2>
-              <p className="text-muted-foreground mb-6">Selecciona un tipo de evento para enviar a todos los clientes conectados</p>
+              <p className="text-muted-foreground mb-6">Usa el botón + para añadir más eventos y tenerlos listos</p>
               
-              {/* Product Event Card */}
-              <div className="bg-card border border-border rounded-lg p-6 mb-4 event-card">
-                <div className="flex items-start justify-between mb-4">
-                  <div className="flex items-center space-x-3">
-                    <div className="w-12 h-12 bg-primary/10 rounded-lg flex items-center justify-center">
-                      <svg className="w-6 h-6 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              {/* Product Events Section */}
+              <div className="mb-6">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center space-x-2">
+                    <div className="w-8 h-8 bg-primary/10 rounded-lg flex items-center justify-center">
+                      <svg className="w-5 h-5 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"></path>
                       </svg>
                     </div>
-                    <div>
-                      <h3 className="text-lg font-semibold text-foreground">Mostrar Producto</h3>
-                      <p className="text-sm text-muted-foreground">Envía información de producto destacado</p>
-                    </div>
+                    <h3 className="text-lg font-semibold text-primary">Productos</h3>
                   </div>
-                  <span className="px-3 py-1 bg-primary/20 text-primary text-xs font-medium rounded-full">PRODUCTO</span>
-                </div>
-                
-                <div className="space-y-4">
-                  <div>
-                    <Label htmlFor="product-name">Nombre del Producto</Label>
-                    <Input
-                      id="product-name"
-                      value={productForm.name}
-                      onChange={(e) => setProductForm(prev => ({ ...prev, name: e.target.value }))}
-                      data-testid="input-product-name"
-                    />
-                  </div>
-                  
-                  <div>
-                    <Label htmlFor="product-description">Descripción</Label>
-                    <Textarea
-                      id="product-description"
-                      rows={3}
-                      value={productForm.description}
-                      onChange={(e) => setProductForm(prev => ({ ...prev, description: e.target.value }))}
-                      data-testid="input-product-description"
-                    />
-                  </div>
-                  
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <Label htmlFor="product-price">Precio</Label>
-                      <Input
-                        id="product-price"
-                        value={productForm.price}
-                        onChange={(e) => setProductForm(prev => ({ ...prev, price: e.target.value }))}
-                        data-testid="input-product-price"
-                      />
-                    </div>
-                    <div>
-                      <Label htmlFor="product-image">URL Imagen</Label>
-                      <Input
-                        id="product-image"
-                        value={productForm.imageUrl}
-                        onChange={(e) => setProductForm(prev => ({ ...prev, imageUrl: e.target.value }))}
-                        data-testid="input-product-image"
-                      />
-                    </div>
-                  </div>
-                  
-                  <Button 
-                    className="w-full bg-primary hover:bg-primary/90 text-primary-foreground"
-                    onClick={() => productMutation.mutate(productForm)}
-                    disabled={productMutation.isPending}
-                    data-testid="button-send-product"
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={addProductForm}
+                    data-testid="button-add-product"
+                    className="gap-1"
                   >
-                    {productMutation.isPending ? 'Enviando...' : 'Enviar Evento de Producto'}
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4"></path>
+                    </svg>
+                    Añadir
                   </Button>
                 </div>
+                {productForms.map((form, index) => (
+                  <div key={form.id} className="bg-card border border-border rounded-lg p-4 mb-3 relative">
+                    <div className="space-y-3">
+                      <div className="flex justify-between items-start">
+                        <span className="text-xs text-muted-foreground">Producto #{index + 1}</span>
+                        {productForms.length > 1 && (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => removeProductForm(form.id)}
+                            data-testid={`button-remove-product-${form.id}`}
+                            className="h-6 w-6 p-0"
+                          >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path>
+                            </svg>
+                          </Button>
+                        )}
+                      </div>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <Label htmlFor={`product-name-${form.id}`} className="text-xs">Nombre</Label>
+                          <Input
+                            id={`product-name-${form.id}`}
+                            value={form.name}
+                            onChange={(e) => updateProductForm(form.id, 'name', e.target.value)}
+                            data-testid={`input-product-name-${form.id}`}
+                            className="h-9"
+                          />
+                        </div>
+                        <div>
+                          <Label htmlFor={`product-price-${form.id}`} className="text-xs">Precio</Label>
+                          <Input
+                            id={`product-price-${form.id}`}
+                            value={form.price}
+                            onChange={(e) => updateProductForm(form.id, 'price', e.target.value)}
+                            data-testid={`input-product-price-${form.id}`}
+                            className="h-9"
+                          />
+                        </div>
+                      </div>
+                      <div>
+                        <Label htmlFor={`product-description-${form.id}`} className="text-xs">Descripción</Label>
+                        <Textarea
+                          id={`product-description-${form.id}`}
+                          rows={2}
+                          value={form.description}
+                          onChange={(e) => updateProductForm(form.id, 'description', e.target.value)}
+                          data-testid={`input-product-description-${form.id}`}
+                          className="resize-none"
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor={`product-image-${form.id}`} className="text-xs">URL Imagen</Label>
+                        <Input
+                          id={`product-image-${form.id}`}
+                          value={form.imageUrl}
+                          onChange={(e) => updateProductForm(form.id, 'imageUrl', e.target.value)}
+                          data-testid={`input-product-image-${form.id}`}
+                          className="h-9"
+                        />
+                      </div>
+                      <Button 
+                        className="w-full bg-primary hover:bg-primary/90 text-primary-foreground h-9"
+                        onClick={() => productMutation.mutate({
+                          name: form.name,
+                          description: form.description,
+                          price: form.price,
+                          imageUrl: form.imageUrl
+                        })}
+                        disabled={productMutation.isPending}
+                        data-testid={`button-send-product-${form.id}`}
+                      >
+                        {productMutation.isPending ? 'Enviando...' : 'Disparar Evento'}
+                      </Button>
+                    </div>
+                  </div>
+                ))}
               </div>
 
-              {/* Poll Event Card */}
-              <div className="bg-card border border-border rounded-lg p-6 mb-4 event-card">
-                <div className="flex items-start justify-between mb-4">
-                  <div className="flex items-center space-x-3">
-                    <div className="w-12 h-12 bg-secondary/10 rounded-lg flex items-center justify-center">
-                      <svg className="w-6 h-6 text-secondary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              {/* Poll Events Section */}
+              <div className="mb-6">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center space-x-2">
+                    <div className="w-8 h-8 bg-secondary/10 rounded-lg flex items-center justify-center">
+                      <svg className="w-5 h-5 text-secondary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"></path>
                       </svg>
                     </div>
-                    <div>
-                      <h3 className="text-lg font-semibold text-foreground">Iniciar Encuesta</h3>
-                      <p className="text-sm text-muted-foreground">Crea una encuesta interactiva para usuarios</p>
-                    </div>
+                    <h3 className="text-lg font-semibold text-secondary">Encuestas</h3>
                   </div>
-                  <span className="px-3 py-1 bg-secondary/20 text-secondary text-xs font-medium rounded-full">ENCUESTA</span>
-                </div>
-                
-                <div className="space-y-4">
-                  <div>
-                    <Label htmlFor="poll-question">Pregunta</Label>
-                    <Input
-                      id="poll-question"
-                      value={pollForm.question}
-                      onChange={(e) => setPollForm(prev => ({ ...prev, question: e.target.value }))}
-                      data-testid="input-poll-question"
-                    />
-                  </div>
-                  
-                  <div>
-                    <Label htmlFor="poll-options">Opciones (separadas por coma)</Label>
-                    <Input
-                      id="poll-options"
-                      value={pollForm.options}
-                      onChange={(e) => setPollForm(prev => ({ ...prev, options: e.target.value }))}
-                      data-testid="input-poll-options"
-                    />
-                  </div>
-                  
-                  <div>
-                    <Label htmlFor="poll-duration">Duración (segundos)</Label>
-                    <Input
-                      id="poll-duration"
-                      type="number"
-                      value={pollForm.duration}
-                      onChange={(e) => setPollForm(prev => ({ ...prev, duration: e.target.value }))}
-                      data-testid="input-poll-duration"
-                    />
-                  </div>
-                  
-                  <Button 
-                    className="w-full bg-secondary hover:bg-secondary/90 text-secondary-foreground"
-                    onClick={() => pollMutation.mutate(pollForm)}
-                    disabled={pollMutation.isPending}
-                    data-testid="button-send-poll"
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={addPollForm}
+                    data-testid="button-add-poll"
+                    className="gap-1"
                   >
-                    {pollMutation.isPending ? 'Enviando...' : 'Iniciar Encuesta'}
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4"></path>
+                    </svg>
+                    Añadir
                   </Button>
                 </div>
+                {pollForms.map((form, index) => (
+                  <div key={form.id} className="bg-card border border-border rounded-lg p-4 mb-3 relative">
+                    <div className="space-y-3">
+                      <div className="flex justify-between items-start">
+                        <span className="text-xs text-muted-foreground">Encuesta #{index + 1}</span>
+                        {pollForms.length > 1 && (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => removePollForm(form.id)}
+                            data-testid={`button-remove-poll-${form.id}`}
+                            className="h-6 w-6 p-0"
+                          >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path>
+                            </svg>
+                          </Button>
+                        )}
+                      </div>
+                      <div>
+                        <Label htmlFor={`poll-question-${form.id}`} className="text-xs">Pregunta</Label>
+                        <Input
+                          id={`poll-question-${form.id}`}
+                          value={form.question}
+                          onChange={(e) => updatePollForm(form.id, 'question', e.target.value)}
+                          data-testid={`input-poll-question-${form.id}`}
+                          className="h-9"
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor={`poll-options-${form.id}`} className="text-xs">Opciones (separadas por coma)</Label>
+                        <Input
+                          id={`poll-options-${form.id}`}
+                          value={form.options}
+                          onChange={(e) => updatePollForm(form.id, 'options', e.target.value)}
+                          data-testid={`input-poll-options-${form.id}`}
+                          className="h-9"
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor={`poll-duration-${form.id}`} className="text-xs">Duración (segundos)</Label>
+                        <Input
+                          id={`poll-duration-${form.id}`}
+                          type="number"
+                          value={form.duration}
+                          onChange={(e) => updatePollForm(form.id, 'duration', e.target.value)}
+                          data-testid={`input-poll-duration-${form.id}`}
+                          className="h-9"
+                        />
+                      </div>
+                      <Button 
+                        className="w-full bg-secondary hover:bg-secondary/90 text-secondary-foreground h-9"
+                        onClick={() => pollMutation.mutate({
+                          question: form.question,
+                          options: form.options,
+                          duration: form.duration
+                        })}
+                        disabled={pollMutation.isPending}
+                        data-testid={`button-send-poll-${form.id}`}
+                      >
+                        {pollMutation.isPending ? 'Enviando...' : 'Disparar Encuesta'}
+                      </Button>
+                    </div>
+                  </div>
+                ))}
               </div>
 
-              {/* Contest Event Card */}
-              <div className="bg-card border border-border rounded-lg p-6 event-card">
-                <div className="flex items-start justify-between mb-4">
-                  <div className="flex items-center space-x-3">
-                    <div className="w-12 h-12 bg-amber-500/10 rounded-lg flex items-center justify-center">
-                      <svg className="w-6 h-6 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              {/* Contest Events Section */}
+              <div className="mb-6">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center space-x-2">
+                    <div className="w-8 h-8 bg-amber-500/10 rounded-lg flex items-center justify-center">
+                      <svg className="w-5 h-5 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v13m0-13V6a2 2 0 112 2h-2zm0 0V5.5A2.5 2.5 0 109.5 8H12zm-7 4h14M5 12a2 2 0 110-4h14a2 2 0 110 4M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7"></path>
                       </svg>
                     </div>
-                    <div>
-                      <h3 className="text-lg font-semibold text-foreground">Lanzar Concurso</h3>
-                      <p className="text-sm text-muted-foreground">Anuncia un nuevo concurso con premios</p>
-                    </div>
+                    <h3 className="text-lg font-semibold text-amber-500">Concursos</h3>
                   </div>
-                  <span className="px-3 py-1 bg-amber-500/20 text-amber-500 text-xs font-medium rounded-full">CONCURSO</span>
-                </div>
-                
-                <div className="space-y-4">
-                  <div>
-                    <Label htmlFor="contest-name">Nombre del Concurso</Label>
-                    <Input
-                      id="contest-name"
-                      value={contestForm.name}
-                      onChange={(e) => setContestForm(prev => ({ ...prev, name: e.target.value }))}
-                      data-testid="input-contest-name"
-                    />
-                  </div>
-                  
-                  <div>
-                    <Label htmlFor="contest-prize">Descripción del Premio</Label>
-                    <Textarea
-                      id="contest-prize"
-                      rows={3}
-                      value={contestForm.prize}
-                      onChange={(e) => setContestForm(prev => ({ ...prev, prize: e.target.value }))}
-                      data-testid="input-contest-prize"
-                    />
-                  </div>
-                  
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <Label htmlFor="contest-deadline">Fecha Límite</Label>
-                      <Input
-                        id="contest-deadline"
-                        type="date"
-                        value={contestForm.deadline}
-                        onChange={(e) => setContestForm(prev => ({ ...prev, deadline: e.target.value }))}
-                        data-testid="input-contest-deadline"
-                      />
-                    </div>
-                    <div>
-                      <Label htmlFor="contest-participants">Participantes Max</Label>
-                      <Input
-                        id="contest-participants"
-                        type="number"
-                        value={contestForm.maxParticipants}
-                        onChange={(e) => setContestForm(prev => ({ ...prev, maxParticipants: e.target.value }))}
-                        data-testid="input-contest-participants"
-                      />
-                    </div>
-                  </div>
-                  
-                  <Button 
-                    className="w-full bg-amber-500 hover:bg-amber-600 text-white"
-                    onClick={() => contestMutation.mutate(contestForm)}
-                    disabled={contestMutation.isPending}
-                    data-testid="button-send-contest"
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={addContestForm}
+                    data-testid="button-add-contest"
+                    className="gap-1"
                   >
-                    {contestMutation.isPending ? 'Enviando...' : 'Lanzar Concurso'}
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4"></path>
+                    </svg>
+                    Añadir
                   </Button>
                 </div>
+                {contestForms.map((form, index) => (
+                  <div key={form.id} className="bg-card border border-border rounded-lg p-4 mb-3 relative">
+                    <div className="space-y-3">
+                      <div className="flex justify-between items-start">
+                        <span className="text-xs text-muted-foreground">Concurso #{index + 1}</span>
+                        {contestForms.length > 1 && (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => removeContestForm(form.id)}
+                            data-testid={`button-remove-contest-${form.id}`}
+                            className="h-6 w-6 p-0"
+                          >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path>
+                            </svg>
+                          </Button>
+                        )}
+                      </div>
+                      <div>
+                        <Label htmlFor={`contest-name-${form.id}`} className="text-xs">Nombre del Concurso</Label>
+                        <Input
+                          id={`contest-name-${form.id}`}
+                          value={form.name}
+                          onChange={(e) => updateContestForm(form.id, 'name', e.target.value)}
+                          data-testid={`input-contest-name-${form.id}`}
+                          className="h-9"
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor={`contest-prize-${form.id}`} className="text-xs">Premio</Label>
+                        <Textarea
+                          id={`contest-prize-${form.id}`}
+                          rows={2}
+                          value={form.prize}
+                          onChange={(e) => updateContestForm(form.id, 'prize', e.target.value)}
+                          data-testid={`input-contest-prize-${form.id}`}
+                          className="resize-none"
+                        />
+                      </div>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <Label htmlFor={`contest-deadline-${form.id}`} className="text-xs">Fecha Límite</Label>
+                          <Input
+                            id={`contest-deadline-${form.id}`}
+                            type="date"
+                            value={form.deadline}
+                            onChange={(e) => updateContestForm(form.id, 'deadline', e.target.value)}
+                            data-testid={`input-contest-deadline-${form.id}`}
+                            className="h-9"
+                          />
+                        </div>
+                        <div>
+                          <Label htmlFor={`contest-participants-${form.id}`} className="text-xs">Max Participantes</Label>
+                          <Input
+                            id={`contest-participants-${form.id}`}
+                            type="number"
+                            value={form.maxParticipants}
+                            onChange={(e) => updateContestForm(form.id, 'maxParticipants', e.target.value)}
+                            data-testid={`input-contest-participants-${form.id}`}
+                            className="h-9"
+                          />
+                        </div>
+                      </div>
+                      <Button 
+                        className="w-full bg-amber-500 hover:bg-amber-600 text-white h-9"
+                        onClick={() => contestMutation.mutate({
+                          name: form.name,
+                          prize: form.prize,
+                          deadline: form.deadline,
+                          maxParticipants: form.maxParticipants
+                        })}
+                        disabled={contestMutation.isPending}
+                        data-testid={`button-send-contest-${form.id}`}
+                      >
+                        {contestMutation.isPending ? 'Enviando...' : 'Disparar Concurso'}
+                      </Button>
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
           </div>
