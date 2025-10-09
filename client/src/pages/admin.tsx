@@ -40,6 +40,7 @@ interface ContestForm {
 export default function AdminPage() {
   const { toast } = useToast();
   const [eventHistory, setEventHistory] = useState<WebSocketEvent[]>([]);
+  const [isSendingSelected, setIsSendingSelected] = useState(false);
   
   // WebSocket connection
   const { connectionStatus, clientCount } = useWebSocket({
@@ -209,28 +210,50 @@ export default function AdminPage() {
       return;
     }
 
-    for (let i = 0; i < selectedProducts.length; i++) {
-      const product = selectedProducts[i];
-      try {
-        await productMutation.mutateAsync({
-          name: product.name,
-          description: product.description,
-          price: product.price,
-          imageUrl: product.imageUrl
-        });
-        // Small delay between products so they appear sequentially
-        if (i < selectedProducts.length - 1) {
-          await new Promise(resolve => setTimeout(resolve, 300));
+    setIsSendingSelected(true);
+    let successCount = 0;
+    let failedProducts: string[] = [];
+
+    try {
+      for (let i = 0; i < selectedProducts.length; i++) {
+        const product = selectedProducts[i];
+        try {
+          await productMutation.mutateAsync({
+            name: product.name,
+            description: product.description,
+            price: product.price,
+            imageUrl: product.imageUrl
+          });
+          successCount++;
+          // Small delay between products so they appear sequentially
+          if (i < selectedProducts.length - 1) {
+            await new Promise(resolve => setTimeout(resolve, 300));
+          }
+        } catch (error) {
+          console.error('Error sending product:', error);
+          failedProducts.push(product.name);
+          // Abort on first error
+          break;
         }
-      } catch (error) {
-        console.error('Error sending product:', error);
       }
+    } finally {
+      setIsSendingSelected(false);
     }
     
-    toast({
-      title: "Productos Enviados",
-      description: `Se enviaron ${selectedProducts.length} producto(s) correctamente`,
-    });
+    if (failedProducts.length > 0) {
+      toast({
+        title: "Error al Enviar",
+        description: `Se enviaron ${successCount} de ${selectedProducts.length} productos. Falló: ${failedProducts[0]}`,
+        variant: "destructive",
+      });
+    } else {
+      toast({
+        title: "Productos Enviados",
+        description: `Se enviaron ${successCount} producto(s) correctamente`,
+      });
+      // Clear selection after successful send
+      setProductForms(prev => prev.map(form => ({ ...form, selected: false })));
+    }
   };
 
   // Fetch server status
@@ -394,12 +417,12 @@ export default function AdminPage() {
                         onClick={sendSelectedProducts}
                         data-testid="button-send-selected-products"
                         className="gap-1 bg-primary"
-                        disabled={productMutation.isPending}
+                        disabled={isSendingSelected}
                       >
                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 9l3 3m0 0l-3 3m3-3H8m13 0a9 9 0 11-18 0 9 9 0 0118 0z"></path>
                         </svg>
-                        Enviar Seleccionados ({productForms.filter(f => f.selected).length})
+                        {isSendingSelected ? 'Enviando...' : `Enviar Seleccionados (${productForms.filter(f => f.selected).length})`}
                       </Button>
                     )}
                     <Button
