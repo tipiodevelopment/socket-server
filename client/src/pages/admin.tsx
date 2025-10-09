@@ -10,7 +10,6 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
-import { Checkbox } from '@/components/ui/checkbox';
 import type { WebSocketEvent } from '@shared/schema';
 
 interface ProductForm {
@@ -19,7 +18,6 @@ interface ProductForm {
   description: string;
   price: string;
   imageUrl: string;
-  selected?: boolean;
 }
 
 interface PollForm {
@@ -40,7 +38,6 @@ interface ContestForm {
 export default function AdminPage() {
   const { toast } = useToast();
   const [eventHistory, setEventHistory] = useState<WebSocketEvent[]>([]);
-  const [isSendingSelected, setIsSendingSelected] = useState(false);
   
   // WebSocket connection
   const { connectionStatus, clientCount } = useWebSocket({
@@ -54,22 +51,22 @@ export default function AdminPage() {
     {
       id: Date.now(),
       name: 'iPhone 15 Pro Max',
-      description: 'El último modelo con titanio y cámara de 48MP. Disponible en colores titanio natural, azul, blanco y negro.',
-      price: '$1,199',
+      description: 'Siste modell med titan og 48MP kamera. Tilgjengelig i fargene naturlig titan, blå, hvit og svart.',
+      price: '12 999 kr',
       imageUrl: 'https://images.unsplash.com/photo-1592286927505-b7e00a46f74f?w=800&q=80'
     },
     {
       id: Date.now() + 1,
       name: 'MacBook Air M3',
-      description: 'El portátil más delgado de Apple con chip M3, hasta 18 horas de batería y pantalla Liquid Retina de 13"',
-      price: '$1,099',
+      description: 'Apples tynneste bærbare med M3-brikke, opptil 18 timers batteritid og 13" Liquid Retina-skjerm',
+      price: '11 490 kr',
       imageUrl: 'https://images.unsplash.com/photo-1517336714731-489689fd1ca8?w=800&q=80'
     },
     {
       id: Date.now() + 2,
-      name: 'AirPods Pro (2da Gen)',
-      description: 'Cancelación activa de ruido, audio espacial personalizado y hasta 6 horas de reproducción',
-      price: '$249',
+      name: 'AirPods Pro (2. gen)',
+      description: 'Aktiv støyreduksjon, personlig romlig lyd og opptil 6 timers avspilling',
+      price: '2 799 kr',
       imageUrl: 'https://images.unsplash.com/photo-1606841837239-c5a1a4a07af7?w=800&q=80'
     }
   ]);
@@ -78,20 +75,20 @@ export default function AdminPage() {
   const [pollForms, setPollForms] = useState<PollForm[]>([
     {
       id: Date.now() + 3,
-      question: '¿Cuál es tu smartphone favorito?',
-      options: 'iPhone, Samsung Galaxy, Google Pixel, Xiaomi, Otro',
+      question: 'Hva er din favoritt smarttelefon?',
+      options: 'iPhone, Samsung Galaxy, Google Pixel, Xiaomi, Annet',
       duration: '60'
     },
     {
       id: Date.now() + 4,
-      question: '¿Qué función nueva te gustaría ver en la próxima actualización?',
-      options: 'Modo oscuro mejorado, Widgets personalizables, Mejor batería, IA integrada',
+      question: 'Hvilken ny funksjon vil du se i neste oppdatering?',
+      options: 'Forbedret mørk modus, Tilpassbare widgets, Bedre batteritid, Integrert AI',
       duration: '90'
     },
     {
       id: Date.now() + 5,
-      question: '¿Cuánto pagarías por un streaming sin anuncios?',
-      options: '$5/mes, $10/mes, $15/mes, No pagaría',
+      question: 'Hvor mye vil du betale for streaming uten reklame?',
+      options: '50 kr/mnd, 100 kr/mnd, 150 kr/mnd, Ville ikke betalt',
       duration: '120'
     }
   ]);
@@ -100,22 +97,22 @@ export default function AdminPage() {
   const [contestForms, setContestForms] = useState<ContestForm[]>([
     {
       id: Date.now() + 6,
-      name: 'Gran Sorteo Tech 2024',
-      prize: 'Gana un MacBook Pro M3, AirPods Pro, Apple Watch Ultra y suscripción anual Apple One',
+      name: 'Stor Tech-konkurranse 2024',
+      prize: 'Vinn MacBook Pro M3, AirPods Pro, Apple Watch Ultra og årlig Apple One-abonnement',
       deadline: '2024-12-31',
       maxParticipants: '1000'
     },
     {
       id: Date.now() + 7,
-      name: 'Concurso Gaming Ultimate',
-      prize: 'PlayStation 5 Pro, 3 juegos AAA, suscripción PS Plus de 1 año y auriculares Sony Pulse 3D',
+      name: 'Ultimate Gaming-konkurranse',
+      prize: 'PlayStation 5 Pro, 3 AAA-spill, 1 års PS Plus-abonnement og Sony Pulse 3D-hodetelefoner',
       deadline: '2024-11-30',
       maxParticipants: '500'
     },
     {
       id: Date.now() + 8,
-      name: 'Sorteo Viaje Tech Conference',
-      prize: 'Vuelo + Hotel para asistir a Apple WWDC 2025 en California (todo incluido)',
+      name: 'Trekning Tech-konferanse reise',
+      prize: 'Fly + hotell for å delta på Apple WWDC 2025 i California (alt inkludert)',
       deadline: '2025-03-15',
       maxParticipants: '250'
     }
@@ -191,71 +188,6 @@ export default function AdminPage() {
     ));
   };
 
-  // Toggle product selection
-  const toggleProductSelection = (id: number) => {
-    setProductForms(prev => prev.map(form => 
-      form.id === id ? { ...form, selected: !form.selected } : form
-    ));
-  };
-
-  // Send selected products
-  const sendSelectedProducts = async () => {
-    const selectedProducts = productForms.filter(form => form.selected);
-    if (selectedProducts.length === 0) {
-      toast({
-        title: "Sin Selección",
-        description: "Por favor selecciona al menos un producto",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    setIsSendingSelected(true);
-    let successCount = 0;
-    let failedProducts: string[] = [];
-
-    try {
-      for (let i = 0; i < selectedProducts.length; i++) {
-        const product = selectedProducts[i];
-        try {
-          await productMutation.mutateAsync({
-            name: product.name,
-            description: product.description,
-            price: product.price,
-            imageUrl: product.imageUrl
-          });
-          successCount++;
-          // Small delay between products so they appear sequentially
-          if (i < selectedProducts.length - 1) {
-            await new Promise(resolve => setTimeout(resolve, 300));
-          }
-        } catch (error) {
-          console.error('Error sending product:', error);
-          failedProducts.push(product.name);
-          // Abort on first error
-          break;
-        }
-      }
-    } finally {
-      setIsSendingSelected(false);
-    }
-    
-    if (failedProducts.length > 0) {
-      toast({
-        title: "Error al Enviar",
-        description: `Se enviaron ${successCount} de ${selectedProducts.length} productos. Falló: ${failedProducts[0]}`,
-        variant: "destructive",
-      });
-    } else {
-      toast({
-        title: "Productos Enviados",
-        description: `Se enviaron ${successCount} producto(s) correctamente`,
-      });
-      // Clear selection after successful send
-      setProductForms(prev => prev.map(form => ({ ...form, selected: false })));
-    }
-  };
-
   // Fetch server status
   const { data: serverStatus } = useQuery<{
     server: string;
@@ -273,15 +205,15 @@ export default function AdminPage() {
       apiRequest('POST', '/api/events/product', data),
     onSuccess: () => {
       toast({
-        title: "Evento de Producto Enviado",
-        description: "El evento ha sido enviado a todos los clientes conectados",
+        title: "Produkthendelse sendt",
+        description: "Hendelsen er sendt til alle tilkoblede klienter",
       });
       queryClient.invalidateQueries({ queryKey: ['/api/events'] });
     },
     onError: () => {
       toast({
-        title: "Error",
-        description: "No se pudo enviar el evento de producto",
+        title: "Feil",
+        description: "Kunne ikke sende produkthendelse",
         variant: "destructive",
       });
     }
@@ -296,15 +228,15 @@ export default function AdminPage() {
       }),
     onSuccess: () => {
       toast({
-        title: "Encuesta Iniciada",
-        description: "La encuesta ha sido enviada a todos los clientes conectados",
+        title: "Avstemning startet",
+        description: "Avstemningen er sendt til alle tilkoblede klienter",
       });
       queryClient.invalidateQueries({ queryKey: ['/api/events'] });
     },
     onError: () => {
       toast({
-        title: "Error",
-        description: "No se pudo iniciar la encuesta",
+        title: "Feil",
+        description: "Kunne ikke starte avstemningen",
         variant: "destructive",
       });
     }
@@ -320,19 +252,67 @@ export default function AdminPage() {
       }),
     onSuccess: () => {
       toast({
-        title: "Concurso Lanzado",
-        description: "El concurso ha sido enviado a todos los clientes conectados",
+        title: "Konkurranse lansert",
+        description: "Konkurransen er sendt til alle tilkoblede klienter",
       });
       queryClient.invalidateQueries({ queryKey: ['/api/events'] });
     },
     onError: () => {
       toast({
-        title: "Error",
-        description: "No se pudo lanzar el concurso",
+        title: "Feil",
+        description: "Kunne ikke lansere konkurransen",
         variant: "destructive",
       });
     }
   });
+
+  // Send first two products simultaneously
+  const [isSendingDouble, setIsSendingDouble] = useState(false);
+  const sendTwoProducts = async () => {
+    if (productForms.length < 2) {
+      toast({
+        title: "Ikke nok produkter",
+        description: "Du trenger minst 2 produkter for å sende to samtidig",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsSendingDouble(true);
+    try {
+      const product1 = productForms[0];
+      const product2 = productForms[1];
+
+      await productMutation.mutateAsync({
+        name: product1.name,
+        description: product1.description,
+        price: product1.price,
+        imageUrl: product1.imageUrl
+      });
+
+      await new Promise(resolve => setTimeout(resolve, 300));
+
+      await productMutation.mutateAsync({
+        name: product2.name,
+        description: product2.description,
+        price: product2.price,
+        imageUrl: product2.imageUrl
+      });
+
+      toast({
+        title: "To produkter sendt",
+        description: "De første to produktene er sendt samtidig",
+      });
+    } catch (error) {
+      toast({
+        title: "Feil",
+        description: "Kunne ikke sende begge produkter",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSendingDouble(false);
+    }
+  };
 
   const handleClearLog = () => {
     setEventHistory([]);
@@ -342,8 +322,8 @@ export default function AdminPage() {
     try {
       await navigator.clipboard.writeText(text);
       toast({
-        title: "Copiado",
-        description: "Texto copiado al portapapeles",
+        title: "Kopiert",
+        description: "Tekst kopiert til utklippstavle",
       });
     } catch (err) {
       console.error('Failed to copy: ', err);
@@ -363,8 +343,8 @@ export default function AdminPage() {
                 </svg>
               </div>
               <div>
-                <h1 className="text-xl font-bold text-foreground">WebSocket Event Server</h1>
-                <p className="text-sm text-muted-foreground">Panel de Administración - Demo</p>
+                <h1 className="text-xl font-bold text-foreground">WebSocket Hendelsesserver</h1>
+                <p className="text-sm text-muted-foreground">Administrasjonspanel - Demo</p>
               </div>
             </div>
             
@@ -376,7 +356,7 @@ export default function AdminPage() {
               <div className="flex space-x-2">
                 <Link href="/viewer">
                   <Button variant="outline" size="sm" data-testid="link-viewer">
-                    Visor
+                    Viser
                   </Button>
                 </Link>
                 <Link href="/docs">
@@ -395,8 +375,8 @@ export default function AdminPage() {
           {/* Left Column: Event Triggers */}
           <div className="lg:col-span-2 space-y-6">
             <div>
-              <h2 className="text-2xl font-bold mb-4">Disparar Eventos</h2>
-              <p className="text-muted-foreground mb-6">Usa el botón + para añadir más eventos y tenerlos listos</p>
+              <h2 className="text-2xl font-bold mb-4">Utløse hendelser</h2>
+              <p className="text-muted-foreground mb-6">Bruk + knappen for å legge til flere hendelser</p>
               
               {/* Product Events Section */}
               <div className="mb-6">
@@ -407,22 +387,22 @@ export default function AdminPage() {
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"></path>
                       </svg>
                     </div>
-                    <h3 className="text-lg font-semibold text-primary">Productos</h3>
+                    <h3 className="text-lg font-semibold text-primary">Produkter</h3>
                   </div>
                   <div className="flex gap-2">
-                    {productForms.some(f => f.selected) && (
+                    {productForms.length >= 2 && (
                       <Button
                         size="sm"
                         variant="default"
-                        onClick={sendSelectedProducts}
-                        data-testid="button-send-selected-products"
+                        onClick={sendTwoProducts}
+                        data-testid="button-send-two-products"
                         className="gap-1 bg-primary"
-                        disabled={isSendingSelected}
+                        disabled={isSendingDouble}
                       >
                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 9l3 3m0 0l-3 3m3-3H8m13 0a9 9 0 11-18 0 9 9 0 0118 0z"></path>
                         </svg>
-                        {isSendingSelected ? 'Enviando...' : `Enviar Seleccionados (${productForms.filter(f => f.selected).length})`}
+                        {isSendingDouble ? 'Sender...' : 'Send to første'}
                       </Button>
                     )}
                     <Button
@@ -435,7 +415,7 @@ export default function AdminPage() {
                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4"></path>
                       </svg>
-                      Añadir
+                      Legg til
                     </Button>
                   </div>
                 </div>
@@ -443,17 +423,7 @@ export default function AdminPage() {
                   <div key={form.id} className="bg-card border border-border rounded-lg p-4 mb-3 relative">
                     <div className="space-y-3">
                       <div className="flex justify-between items-start">
-                        <div className="flex items-center gap-2">
-                          <Checkbox
-                            id={`select-product-${form.id}`}
-                            checked={form.selected || false}
-                            onCheckedChange={() => toggleProductSelection(form.id)}
-                            data-testid={`checkbox-product-${form.id}`}
-                          />
-                          <Label htmlFor={`select-product-${form.id}`} className="text-xs text-muted-foreground cursor-pointer">
-                            Producto #{index + 1}
-                          </Label>
-                        </div>
+                        <span className="text-xs text-muted-foreground">Produkt #{index + 1}</span>
                         {productForms.length > 1 && (
                           <Button
                             size="sm"
@@ -470,7 +440,7 @@ export default function AdminPage() {
                       </div>
                       <div className="grid grid-cols-2 gap-3">
                         <div>
-                          <Label htmlFor={`product-name-${form.id}`} className="text-xs">Nombre</Label>
+                          <Label htmlFor={`product-name-${form.id}`} className="text-xs">Navn</Label>
                           <Input
                             id={`product-name-${form.id}`}
                             value={form.name}
@@ -480,7 +450,7 @@ export default function AdminPage() {
                           />
                         </div>
                         <div>
-                          <Label htmlFor={`product-price-${form.id}`} className="text-xs">Precio</Label>
+                          <Label htmlFor={`product-price-${form.id}`} className="text-xs">Pris</Label>
                           <Input
                             id={`product-price-${form.id}`}
                             value={form.price}
@@ -491,7 +461,7 @@ export default function AdminPage() {
                         </div>
                       </div>
                       <div>
-                        <Label htmlFor={`product-description-${form.id}`} className="text-xs">Descripción</Label>
+                        <Label htmlFor={`product-description-${form.id}`} className="text-xs">Beskrivelse</Label>
                         <Textarea
                           id={`product-description-${form.id}`}
                           rows={2}
@@ -502,7 +472,7 @@ export default function AdminPage() {
                         />
                       </div>
                       <div>
-                        <Label htmlFor={`product-image-${form.id}`} className="text-xs">URL Imagen</Label>
+                        <Label htmlFor={`product-image-${form.id}`} className="text-xs">Bilde-URL</Label>
                         <Input
                           id={`product-image-${form.id}`}
                           value={form.imageUrl}
@@ -522,7 +492,7 @@ export default function AdminPage() {
                         disabled={productMutation.isPending}
                         data-testid={`button-send-product-${form.id}`}
                       >
-                        {productMutation.isPending ? 'Enviando...' : 'Disparar Evento'}
+                        {productMutation.isPending ? 'Sender...' : 'Send hendelse'}
                       </Button>
                     </div>
                   </div>
@@ -538,7 +508,7 @@ export default function AdminPage() {
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"></path>
                       </svg>
                     </div>
-                    <h3 className="text-lg font-semibold text-secondary">Encuestas</h3>
+                    <h3 className="text-lg font-semibold text-secondary">Avstemninger</h3>
                   </div>
                   <Button
                     size="sm"
@@ -550,14 +520,14 @@ export default function AdminPage() {
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4"></path>
                     </svg>
-                    Añadir
+                    Legg til
                   </Button>
                 </div>
                 {pollForms.map((form, index) => (
                   <div key={form.id} className="bg-card border border-border rounded-lg p-4 mb-3 relative">
                     <div className="space-y-3">
                       <div className="flex justify-between items-start">
-                        <span className="text-xs text-muted-foreground">Encuesta #{index + 1}</span>
+                        <span className="text-xs text-muted-foreground">Avstemning #{index + 1}</span>
                         {pollForms.length > 1 && (
                           <Button
                             size="sm"
@@ -573,7 +543,7 @@ export default function AdminPage() {
                         )}
                       </div>
                       <div>
-                        <Label htmlFor={`poll-question-${form.id}`} className="text-xs">Pregunta</Label>
+                        <Label htmlFor={`poll-question-${form.id}`} className="text-xs">Spørsmål</Label>
                         <Input
                           id={`poll-question-${form.id}`}
                           value={form.question}
@@ -583,7 +553,7 @@ export default function AdminPage() {
                         />
                       </div>
                       <div>
-                        <Label htmlFor={`poll-options-${form.id}`} className="text-xs">Opciones (separadas por coma)</Label>
+                        <Label htmlFor={`poll-options-${form.id}`} className="text-xs">Alternativer (kommaseparert)</Label>
                         <Input
                           id={`poll-options-${form.id}`}
                           value={form.options}
@@ -593,7 +563,7 @@ export default function AdminPage() {
                         />
                       </div>
                       <div>
-                        <Label htmlFor={`poll-duration-${form.id}`} className="text-xs">Duración (segundos)</Label>
+                        <Label htmlFor={`poll-duration-${form.id}`} className="text-xs">Varighet (sekunder)</Label>
                         <Input
                           id={`poll-duration-${form.id}`}
                           type="number"
@@ -613,7 +583,7 @@ export default function AdminPage() {
                         disabled={pollMutation.isPending}
                         data-testid={`button-send-poll-${form.id}`}
                       >
-                        {pollMutation.isPending ? 'Enviando...' : 'Disparar Encuesta'}
+                        {pollMutation.isPending ? 'Sender...' : 'Start avstemning'}
                       </Button>
                     </div>
                   </div>
@@ -629,7 +599,7 @@ export default function AdminPage() {
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v13m0-13V6a2 2 0 112 2h-2zm0 0V5.5A2.5 2.5 0 109.5 8H12zm-7 4h14M5 12a2 2 0 110-4h14a2 2 0 110 4M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7"></path>
                       </svg>
                     </div>
-                    <h3 className="text-lg font-semibold text-amber-500">Concursos</h3>
+                    <h3 className="text-lg font-semibold text-amber-500">Konkurranser</h3>
                   </div>
                   <Button
                     size="sm"
@@ -641,14 +611,14 @@ export default function AdminPage() {
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4"></path>
                     </svg>
-                    Añadir
+                    Legg til
                   </Button>
                 </div>
                 {contestForms.map((form, index) => (
                   <div key={form.id} className="bg-card border border-border rounded-lg p-4 mb-3 relative">
                     <div className="space-y-3">
                       <div className="flex justify-between items-start">
-                        <span className="text-xs text-muted-foreground">Concurso #{index + 1}</span>
+                        <span className="text-xs text-muted-foreground">Konkurranse #{index + 1}</span>
                         {contestForms.length > 1 && (
                           <Button
                             size="sm"
@@ -664,7 +634,7 @@ export default function AdminPage() {
                         )}
                       </div>
                       <div>
-                        <Label htmlFor={`contest-name-${form.id}`} className="text-xs">Nombre del Concurso</Label>
+                        <Label htmlFor={`contest-name-${form.id}`} className="text-xs">Konkurransenavn</Label>
                         <Input
                           id={`contest-name-${form.id}`}
                           value={form.name}
@@ -674,7 +644,7 @@ export default function AdminPage() {
                         />
                       </div>
                       <div>
-                        <Label htmlFor={`contest-prize-${form.id}`} className="text-xs">Premio</Label>
+                        <Label htmlFor={`contest-prize-${form.id}`} className="text-xs">Premie</Label>
                         <Textarea
                           id={`contest-prize-${form.id}`}
                           rows={2}
@@ -686,7 +656,7 @@ export default function AdminPage() {
                       </div>
                       <div className="grid grid-cols-2 gap-3">
                         <div>
-                          <Label htmlFor={`contest-deadline-${form.id}`} className="text-xs">Fecha Límite</Label>
+                          <Label htmlFor={`contest-deadline-${form.id}`} className="text-xs">Frist</Label>
                           <Input
                             id={`contest-deadline-${form.id}`}
                             type="date"
@@ -697,7 +667,7 @@ export default function AdminPage() {
                           />
                         </div>
                         <div>
-                          <Label htmlFor={`contest-participants-${form.id}`} className="text-xs">Max Participantes</Label>
+                          <Label htmlFor={`contest-participants-${form.id}`} className="text-xs">Maks deltakere</Label>
                           <Input
                             id={`contest-participants-${form.id}`}
                             type="number"
@@ -719,7 +689,7 @@ export default function AdminPage() {
                         disabled={contestMutation.isPending}
                         data-testid={`button-send-contest-${form.id}`}
                       >
-                        {contestMutation.isPending ? 'Enviando...' : 'Disparar Concurso'}
+                        {contestMutation.isPending ? 'Sender...' : 'Lanser konkurranse'}
                       </Button>
                     </div>
                   </div>
@@ -737,7 +707,7 @@ export default function AdminPage() {
 
             {/* Connection Info */}
             <div className="bg-card border border-border rounded-lg p-6">
-              <h3 className="text-lg font-semibold mb-4">Información de Conexión</h3>
+              <h3 className="text-lg font-semibold mb-4">Tilkoblingsinformasjon</h3>
               
               <div className="space-y-4">
                 <div>
@@ -752,27 +722,27 @@ export default function AdminPage() {
                       onClick={() => copyToClipboard(`${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/ws`)}
                       data-testid="button-copy-ws-url"
                     >
-                      Copiar
+                      Kopier
                     </Button>
                   </div>
                 </div>
                 
                 <div>
-                  <Label className="text-muted-foreground">Puerto HTTP</Label>
+                  <Label className="text-muted-foreground">HTTP Port</Label>
                   <code className="block px-3 py-2 bg-background border border-border rounded text-sm font-mono">
                     {serverStatus?.httpPort || window.location.port || '5000'}
                   </code>
                 </div>
                 
                 <div className="pt-4 border-t border-border">
-                  <p className="text-sm text-muted-foreground mb-3">Estado del Servidor</p>
+                  <p className="text-sm text-muted-foreground mb-3">Serverstatus</p>
                   <div className="flex items-center justify-between text-sm">
                     <span>WebSocket Server</span>
-                    <span className="text-green-500 font-medium">✓ Activo</span>
+                    <span className="text-green-500 font-medium">✓ Aktiv</span>
                   </div>
                   <div className="flex items-center justify-between text-sm mt-2">
                     <span>HTTP Server</span>
-                    <span className="text-green-500 font-medium">✓ Activo</span>
+                    <span className="text-green-500 font-medium">✓ Aktiv</span>
                   </div>
                 </div>
               </div>

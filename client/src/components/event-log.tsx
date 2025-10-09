@@ -31,11 +31,11 @@ export function EventLog({ events, onClear }: EventLogProps) {
   const getEventTypeLabel = (type: string) => {
     switch (type) {
       case 'product':
-        return 'PRODUCTO';
+        return 'PRODUKT';
       case 'poll':
-        return 'ENCUESTA';
+        return 'AVSTEMNING';
       case 'contest':
-        return 'CONCURSO';
+        return 'KONKURRANSE';
       default:
         return type.toUpperCase();
     }
@@ -50,33 +50,33 @@ export function EventLog({ events, onClear }: EventLogProps) {
       case 'contest':
         return event.data.name;
       default:
-        return 'Unknown event';
+        return 'Ukjent hendelse';
     }
   };
 
   const getEventAction = (type: string) => {
     switch (type) {
       case 'product':
-        return 'Enviado';
+        return 'Sendt';
       case 'poll':
-        return 'Iniciada';
+        return 'Startet';
       case 'contest':
-        return 'Lanzado';
+        return 'Lansert';
       default:
-        return 'Enviado';
+        return 'Sendt';
     }
   };
 
   return (
     <div className="bg-card border border-border rounded-lg p-6">
       <div className="flex items-center justify-between mb-4">
-        <h3 className="text-lg font-semibold">Registro de Eventos</h3>
+        <h3 className="text-lg font-semibold">Hendelseslogg</h3>
         <button 
           className="text-sm text-muted-foreground hover:text-foreground transition-colors"
           onClick={onClear}
           data-testid="button-clear-log"
         >
-          Limpiar
+          Tøm
         </button>
       </div>
       
@@ -87,7 +87,7 @@ export function EventLog({ events, onClear }: EventLogProps) {
       >
         {events.length === 0 ? (
           <div className="text-center py-8 text-muted-foreground">
-            No hay eventos registrados
+            Ingen hendelser registrert
           </div>
         ) : (
           events.map((event) => (
@@ -101,7 +101,7 @@ export function EventLog({ events, onClear }: EventLogProps) {
                   {getEventTypeLabel(event.type)}
                 </span>
                 <span className="text-xs text-muted-foreground">
-                  {new Date(event.timestamp).toLocaleTimeString('es-ES')}
+                  {new Date(event.timestamp).toLocaleTimeString('nb-NO')}
                 </span>
               </div>
               <div className="text-muted-foreground text-xs font-mono">
