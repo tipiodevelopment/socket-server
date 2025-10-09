@@ -68,7 +68,9 @@ The application supports three event types with strict schemas:
 
 **Admin Page (`/admin`):**
 - Dashboard for creating and broadcasting events
-- Three tabbed forms for product, poll, and contest creation
+- Multiple event forms: Add multiple products, polls, and contests with the "+" button
+- Each event has its own "Send" button for independent broadcasting
+- Remove events with the "X" button (maintains at least 1 form per type)
 - Real-time event log showing broadcast history
 - Connection status and client count display
 
