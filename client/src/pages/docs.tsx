@@ -64,59 +64,65 @@ class WebSocketManager: NSObject, URLSessionWebSocketDelegate {
 }`;
 
   const messageHandlingCode = `private func handleMessage(_ text: String) {
-    guard let data = text.data(using: .utf8),
-          let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+    guard let data = text.data(using: .utf8) else { return }
+    
+    // Primero, obtener el tipo de evento
+    guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
           let eventType = json["type"] as? String
     else { return }
     
-    switch eventType {
-    case "product":
-        handleProductEvent(json)
-    case "poll":
-        handlePollEvent(json)
-    case "contest":
-        handleContestEvent(json)
-    default:
-        break
+    // Decodificar según el tipo
+    do {
+        switch eventType {
+        case "product":
+            let event = try JSONDecoder().decode(ProductEvent.self, from: data)
+            handleProductEvent(event)
+        case "poll":
+            let event = try JSONDecoder().decode(PollEvent.self, from: data)
+            handlePollEvent(event)
+        case "contest":
+            let event = try JSONDecoder().decode(ContestEvent.self, from: data)
+            handleContestEvent(event)
+        default:
+            print("Tipo de evento desconocido: \\(eventType)")
+        }
+    } catch {
+        print("Error decodificando evento: \\(error)")
     }
 }
 
-private func handleProductEvent(_ json: [String: Any]) {
-    guard let data = json["data"] as? [String: Any],
-          let name = data["name"] as? String,
-          let price = data["price"] as? String,
-          let description = data["description"] as? String
-    else { return }
-    
+private func handleProductEvent(_ event: ProductEvent) {
     DispatchQueue.main.async {
         // Mostrar producto en la UI
-        self.showProduct(name: name, price: price, description: description)
+        self.showProduct(
+            name: event.data.name,
+            price: event.data.price,
+            description: event.data.description,
+            imageUrl: event.data.imageUrl
+        )
     }
 }
 
-private func handlePollEvent(_ json: [String: Any]) {
-    guard let data = json["data"] as? [String: Any],
-          let question = data["question"] as? String,
-          let options = data["options"] as? [String],
-          let duration = data["duration"] as? Int
-    else { return }
-    
+private func handlePollEvent(_ event: PollEvent) {
     DispatchQueue.main.async {
         // Mostrar encuesta en la UI
-        self.showPoll(question: question, options: options, duration: duration)
+        self.showPoll(
+            question: event.data.question,
+            options: event.data.options,
+            duration: event.data.duration
+        )
     }
 }
 
-private func handleContestEvent(_ json: [String: Any]) {
-    guard let data = json["data"] as? [String: Any],
-          let name = data["name"] as? String,
-          let prize = data["prize"] as? String,
-          let deadline = data["deadline"] as? String
-    else { return }
-    
+private func handleContestEvent(_ event: ContestEvent) {
     DispatchQueue.main.async {
         // Mostrar concurso en la UI
-        self.showContest(name: name, prize: prize, deadline: deadline)
+        self.showContest(
+            name: event.data.name,
+            prize: event.data.prize,
+            deadline: event.data.deadline,
+            maxParticipants: event.data.maxParticipants
+        )
     }
 }`;
 
@@ -161,60 +167,59 @@ private func handleContestEvent(_ json: [String: Any]) {
   "timestamp": 1703520000000
 }`;
 
-  const modelStructCode = `struct WebSocketEvent: Codable {
+  const modelStructCode = `// Modelo base para eventos WebSocket
+struct WebSocketEvent: Codable {
     let type: String
     let timestamp: Int64
-    let data: EventData
-}
-
-enum EventData: Codable {
-    case product(ProductData)
-    case poll(PollData)
-    case contest(ContestData)
     
-    enum CodingKeys: String, CodingKey {
-        case type
-    }
-    
-    init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        let type = try container.decode(String.self, forKey: .type)
-        
-        switch type {
-        case "product":
-            self = .product(try ProductData(from: decoder))
-        case "poll":
-            self = .poll(try PollData(from: decoder))
-        case "contest":
-            self = .contest(try ContestData(from: decoder))
-        default:
-            throw DecodingError.dataCorrupted(.init(codingPath: [], debugDescription: "Unknown event type"))
-        }
+    private enum CodingKeys: String, CodingKey {
+        case type, timestamp, data
     }
 }
 
-struct ProductData: Codable {
-    let id: String
-    let name: String
-    let description: String
-    let price: String
-    let currency: String
-    let imageUrl: String
+// Evento de Producto
+struct ProductEvent: Codable {
+    let type: String
+    let timestamp: Int64
+    let data: ProductData
+    
+    struct ProductData: Codable {
+        let id: String
+        let name: String
+        let description: String
+        let price: String
+        let currency: String
+        let imageUrl: String
+    }
 }
 
-struct PollData: Codable {
-    let id: String
-    let question: String
-    let options: [String]
-    let duration: Int
+// Evento de Encuesta
+struct PollEvent: Codable {
+    let type: String
+    let timestamp: Int64
+    let data: PollData
+    
+    struct PollData: Codable {
+        let id: String
+        let question: String
+        let options: [String]
+        let duration: Int
+    }
 }
 
-struct ContestData: Codable {
-    let id: String
-    let name: String
-    let prize: String
-    let deadline: String
-    let maxParticipants: Int
+// Evento de Concurso
+struct ContestEvent: Codable {
+    let type: String
+    let timestamp: Int64
+    let data: ContestData
+    
+    struct ContestData: Codable {
+        let id: String
+        let name: String
+        let prize: String
+        let deadline: String
+        let maxParticipants: Int
+    }
 }`;
 
   return (
