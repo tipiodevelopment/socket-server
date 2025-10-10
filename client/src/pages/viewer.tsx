@@ -122,14 +122,26 @@ export default function ViewerPage() {
           <div className="mb-8">
             <Card className="border-2 border-primary/20 bg-gradient-to-r from-primary/5 to-transparent">
               <CardHeader>
-                <CardTitle className="flex items-center space-x-3">
-                  {getEventIcon(lastEvent.type)}
-                  <div>
-                    <div className="text-2xl font-bold">Siste hendelse</div>
-                    <div className="text-sm text-muted-foreground">
-                      {new Date(lastEvent.timestamp).toLocaleString('nb-NO')}
+                <CardTitle className="flex items-center justify-between">
+                  <div className="flex items-center space-x-3">
+                    {getEventIcon(lastEvent.type)}
+                    <div>
+                      <div className="text-2xl font-bold">Siste hendelse</div>
+                      <div className="text-sm text-muted-foreground">
+                        {new Date(lastEvent.timestamp).toLocaleString('nb-NO')}
+                      </div>
                     </div>
                   </div>
+                  {lastEvent.campaignLogo && (
+                    <div className="flex-shrink-0">
+                      <img 
+                        src={lastEvent.campaignLogo} 
+                        alt="Campaign logo" 
+                        className="h-16 w-16 object-contain"
+                        data-testid="campaign-logo-latest"
+                      />
+                    </div>
+                  )}
                 </CardTitle>
               </CardHeader>
               <CardContent>
@@ -216,18 +228,30 @@ export default function ViewerPage() {
               {events.map((event, index) => (
                 <Card key={`${event.type}-${event.timestamp}-${index}`} className="event-card" data-testid={`event-card-${event.type}`}>
                   <CardHeader className="pb-3">
-                    <CardTitle className="flex items-center space-x-3 text-base">
-                      {getEventIcon(event.type)}
-                      <div className="flex-1 min-w-0">
-                        <div className="font-semibold truncate">
-                          {event.type === 'product' && event.data.name}
-                          {event.type === 'poll' && 'Avstemning'}
-                          {event.type === 'contest' && event.data.name}
-                        </div>
-                        <div className="text-xs text-muted-foreground">
-                          {new Date(event.timestamp).toLocaleTimeString('nb-NO')}
+                    <CardTitle className="flex items-center justify-between gap-3 text-base">
+                      <div className="flex items-center space-x-3 min-w-0">
+                        {getEventIcon(event.type)}
+                        <div className="flex-1 min-w-0">
+                          <div className="font-semibold truncate">
+                            {event.type === 'product' && event.data.name}
+                            {event.type === 'poll' && 'Avstemning'}
+                            {event.type === 'contest' && event.data.name}
+                          </div>
+                          <div className="text-xs text-muted-foreground">
+                            {new Date(event.timestamp).toLocaleTimeString('nb-NO')}
+                          </div>
                         </div>
                       </div>
+                      {event.campaignLogo && (
+                        <div className="flex-shrink-0">
+                          <img 
+                            src={event.campaignLogo} 
+                            alt="Campaign logo" 
+                            className="h-10 w-10 object-contain"
+                            data-testid={`campaign-logo-${index}`}
+                          />
+                        </div>
+                      )}
                     </CardTitle>
                   </CardHeader>
                   <CardContent className="pt-0">
