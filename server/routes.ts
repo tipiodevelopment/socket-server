@@ -95,6 +95,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           currency: req.body.currency || 'USD',
           imageUrl: req.body.imageUrl
         },
+        campaignLogo: req.body.campaignLogo,
         timestamp: Date.now()
       };
 
@@ -125,6 +126,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           options: req.body.options,
           duration: req.body.duration
         },
+        campaignLogo: req.body.campaignLogo,
         timestamp: Date.now()
       };
 
@@ -156,6 +158,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           deadline: req.body.deadline,
           maxParticipants: req.body.maxParticipants
         },
+        campaignLogo: req.body.campaignLogo,
         timestamp: Date.now()
       };
 
