@@ -1,12 +1,12 @@
 // ObjectUploader component - based on blueprint:javascript_object_storage
-import { useEffect, useRef } from "react";
+import { useState, useEffect, useRef } from "react";
 import Uppy from "@uppy/core";
 import AwsS3 from "@uppy/aws-s3";
 import { Dashboard } from "@uppy/react";
 import { apiRequest } from "@/lib/queryClient";
 
-import "@uppy/core/dist/style.min.css";
-import "@uppy/dashboard/dist/style.min.css";
+import "@uppy/core/css/style.min.css";
+import "@uppy/dashboard/css/style.min.css";
 
 interface ObjectUploaderProps {
   onUploadComplete?: (objectPath: string) => void;
@@ -21,19 +21,30 @@ export function ObjectUploader({
   maxFileSize = 10 * 1024 * 1024, // 10MB default
   allowedFileTypes = ["image/*"],
 }: ObjectUploaderProps) {
-  const uppyRef = useRef<Uppy | null>(null);
+  // Use refs to store latest callback versions without triggering re-renders
+  const onUploadCompleteRef = useRef(onUploadComplete);
+  const onUploadErrorRef = useRef(onUploadError);
 
   useEffect(() => {
-    const uppy = new Uppy({
+    onUploadCompleteRef.current = onUploadComplete;
+    onUploadErrorRef.current = onUploadError;
+  }, [onUploadComplete, onUploadError]);
+
+  // Create Uppy instance during render so Dashboard always has a valid instance
+  const [uppy] = useState(() =>
+    new Uppy({
       restrictions: {
         maxFileSize,
         maxNumberOfFiles: 1,
         allowedFileTypes,
       },
       autoProceed: false,
-    });
+    })
+  );
 
+  useEffect(() => {
     uppy.use(AwsS3, {
+      id: "AwsS3", // Add ID to make it removable
       shouldUseMultipart: false,
       async getUploadParameters(file) {
         const response = await apiRequest(
@@ -54,10 +65,10 @@ export function ObjectUploader({
       },
     });
 
-    uppy.on("upload-success", async (file, response) => {
+    const handleUploadSuccess = async (file: any, response: any) => {
       if (!file) return;
 
-      const uploadURL = (response as any).uploadURL;
+      const uploadURL = response?.uploadURL;
       if (!uploadURL) return;
 
       try {
@@ -68,35 +79,42 @@ export function ObjectUploader({
         );
 
         const data = await normalizeResponse.json() as { objectPath: string };
-        onUploadComplete?.(data.objectPath);
+        onUploadCompleteRef.current?.(data.objectPath);
       } catch (error) {
         console.error("Error normalizing object path:", error);
-        onUploadError?.(
+        onUploadErrorRef.current?.(
           error instanceof Error
             ? error
             : new Error("Failed to normalize object path")
         );
       }
-    });
+    };
 
-    uppy.on("upload-error", (file, error) => {
+    const handleUploadError = (file: any, error: any) => {
       console.error("Upload error:", error);
-      onUploadError?.(
+      onUploadErrorRef.current?.(
         error instanceof Error ? error : new Error("Upload failed")
       );
-    });
+    };
 
-    uppyRef.current = uppy;
+    uppy.on("upload-success", handleUploadSuccess);
+    uppy.on("upload-error", handleUploadError);
 
     return () => {
+      uppy.off("upload-success", handleUploadSuccess);
+      uppy.off("upload-error", handleUploadError);
       uppy.cancelAll();
-      uppyRef.current = null;
+      // Remove the AwsS3 plugin to prevent leaks
+      const plugin = uppy.getPlugin("AwsS3");
+      if (plugin) {
+        uppy.removePlugin(plugin);
+      }
     };
-  }, [maxFileSize, allowedFileTypes, onUploadComplete, onUploadError]);
+  }, [uppy]);
 
   return (
     <Dashboard
-      uppy={uppyRef.current!}
+      uppy={uppy}
       proudlyDisplayPoweredByUppy={false}
       height={300}
       locale={{
