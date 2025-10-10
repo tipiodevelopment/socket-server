@@ -39,6 +39,9 @@ export default function AdminPage() {
   const { toast } = useToast();
   const [eventHistory, setEventHistory] = useState<WebSocketEvent[]>([]);
   
+  // Campaign logo state
+  const [campaignLogo, setCampaignLogo] = useState<string>('https://images.unsplash.com/photo-1611162617474-5b21e879e113?w=200&q=80');
+  
   // WebSocket connection
   const { connectionStatus, clientCount } = useWebSocket({
     onMessage: (event) => {
@@ -202,7 +205,10 @@ export default function AdminPage() {
   // Mutations for sending events
   const productMutation = useMutation({
     mutationFn: (data: Omit<ProductForm, 'id'>) => 
-      apiRequest('POST', '/api/events/product', data),
+      apiRequest('POST', '/api/events/product', {
+        ...data,
+        campaignLogo: campaignLogo || undefined
+      }),
     onSuccess: () => {
       toast({
         title: "Produkthendelse sendt",
@@ -224,7 +230,8 @@ export default function AdminPage() {
       apiRequest('POST', '/api/events/poll', {
         question: data.question,
         options: data.options.split(',').map((opt: string) => opt.trim()),
-        duration: parseInt(data.duration)
+        duration: parseInt(data.duration),
+        campaignLogo: campaignLogo || undefined
       }),
     onSuccess: () => {
       toast({
@@ -248,7 +255,8 @@ export default function AdminPage() {
         name: data.name,
         prize: data.prize,
         deadline: data.deadline,
-        maxParticipants: parseInt(data.maxParticipants)
+        maxParticipants: parseInt(data.maxParticipants),
+        campaignLogo: campaignLogo || undefined
       }),
     onSuccess: () => {
       toast({
@@ -377,6 +385,49 @@ export default function AdminPage() {
             <div>
               <h2 className="text-2xl font-bold mb-4">Utløse hendelser</h2>
               <p className="text-muted-foreground mb-6">Bruk + knappen for å legge til flere hendelser</p>
+              
+              {/* Campaign Logo Configuration */}
+              <div className="bg-gradient-to-r from-purple-500/10 to-pink-500/10 border-2 border-purple-500/20 rounded-lg p-4 mb-6">
+                <div className="flex items-center space-x-3 mb-3">
+                  <div className="w-10 h-10 bg-purple-500/20 rounded-lg flex items-center justify-center">
+                    <svg className="w-6 h-6 text-purple-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
+                    </svg>
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-semibold text-purple-500">Kampanjelogo</h3>
+                    <p className="text-xs text-muted-foreground">Dette logoet vises på alle hendelser</p>
+                  </div>
+                </div>
+                <div className="flex items-center space-x-3">
+                  <div className="flex-1">
+                    <Label htmlFor="campaign-logo" className="text-xs text-muted-foreground">Logo URL</Label>
+                    <Input
+                      id="campaign-logo"
+                      value={campaignLogo}
+                      onChange={(e) => setCampaignLogo(e.target.value)}
+                      placeholder="https://example.com/logo.png"
+                      data-testid="input-campaign-logo"
+                      className="h-9"
+                    />
+                  </div>
+                  {campaignLogo && (
+                    <div className="flex-shrink-0">
+                      <Label className="text-xs text-muted-foreground">Forhåndsvisning</Label>
+                      <div className="w-16 h-16 bg-background border border-border rounded-lg flex items-center justify-center overflow-hidden">
+                        <img 
+                          src={campaignLogo} 
+                          alt="Campaign logo preview" 
+                          className="w-full h-full object-contain"
+                          onError={(e) => {
+                            e.currentTarget.style.display = 'none';
+                          }}
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
               
               {/* Product Events Section */}
               <div className="mb-6">
