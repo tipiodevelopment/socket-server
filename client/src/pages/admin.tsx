@@ -10,7 +10,9 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import type { WebSocketEvent } from '@shared/schema';
+import { ObjectUploader } from '@/components/ObjectUploader';
 
 interface ProductForm {
   id: number;
@@ -394,26 +396,12 @@ export default function AdminPage() {
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
                     </svg>
                   </div>
-                  <div>
+                  <div className="flex-1">
                     <h3 className="text-lg font-semibold text-purple-500">Kampanjelogo</h3>
                     <p className="text-xs text-muted-foreground">Dette logoet vises på alle hendelser</p>
                   </div>
-                </div>
-                <div className="flex items-center space-x-3">
-                  <div className="flex-1">
-                    <Label htmlFor="campaign-logo" className="text-xs text-muted-foreground">Logo URL</Label>
-                    <Input
-                      id="campaign-logo"
-                      value={campaignLogo}
-                      onChange={(e) => setCampaignLogo(e.target.value)}
-                      placeholder="https://example.com/logo.png"
-                      data-testid="input-campaign-logo"
-                      className="h-9"
-                    />
-                  </div>
                   {campaignLogo && (
                     <div className="flex-shrink-0">
-                      <Label className="text-xs text-muted-foreground">Forhåndsvisning</Label>
                       <div className="w-16 h-16 bg-background border border-border rounded-lg flex items-center justify-center overflow-hidden">
                         <img 
                           src={campaignLogo} 
@@ -427,6 +415,46 @@ export default function AdminPage() {
                     </div>
                   )}
                 </div>
+                
+                <Tabs defaultValue="url" className="w-full">
+                  <TabsList className="grid w-full grid-cols-2">
+                    <TabsTrigger value="url" data-testid="tab-url">URL</TabsTrigger>
+                    <TabsTrigger value="upload" data-testid="tab-upload">Last opp fil</TabsTrigger>
+                  </TabsList>
+                  
+                  <TabsContent value="url" className="mt-3">
+                    <Label htmlFor="campaign-logo" className="text-xs text-muted-foreground">Logo URL</Label>
+                    <Input
+                      id="campaign-logo"
+                      value={campaignLogo}
+                      onChange={(e) => setCampaignLogo(e.target.value)}
+                      placeholder="https://example.com/logo.png"
+                      data-testid="input-campaign-logo"
+                      className="h-9"
+                    />
+                  </TabsContent>
+                  
+                  <TabsContent value="upload" className="mt-3">
+                    <ObjectUploader
+                      onUploadComplete={(objectPath) => {
+                        setCampaignLogo(objectPath);
+                        toast({
+                          title: "Logo lastet opp",
+                          description: "Kampanjelogoen er nå oppdatert",
+                        });
+                      }}
+                      onUploadError={(error) => {
+                        toast({
+                          title: "Opplasting mislyktes",
+                          description: error.message,
+                          variant: "destructive",
+                        });
+                      }}
+                      maxFileSize={5 * 1024 * 1024}
+                      allowedFileTypes={['image/*']}
+                    />
+                  </TabsContent>
+                </Tabs>
               </div>
               
               {/* Product Events Section */}
