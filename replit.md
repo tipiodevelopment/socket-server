@@ -71,6 +71,10 @@ The application supports three event types with strict schemas:
 - Multiple event forms: Add multiple products, polls, and contests with the "+" button
 - Each event has its own "Send" button for independent broadcasting
 - Remove events with the "X" button (maintains at least 1 form per type)
+- Campaign logo configuration with dual input methods:
+  - URL input for existing logos
+  - Direct file upload using Replit Object Storage
+  - Real-time logo preview
 - Real-time event log showing broadcast history
 - Connection status and client count display
 
@@ -102,6 +106,23 @@ The application supports three event types with strict schemas:
 ### Real-time Communication
 - **ws (WebSocket):** WebSocket server implementation
 - **Custom WebSocket Hook:** Client-side WebSocket connection management with auto-reconnect
+
+### File Upload & Object Storage
+- **Uppy:** Modern file uploader with dashboard UI
+  - **@uppy/core:** Core upload functionality with progress tracking
+  - **@uppy/react:** React integration components
+  - **@uppy/dashboard:** Drag-and-drop upload interface with Norwegian translations
+  - **@uppy/aws-s3:** Direct upload to cloud storage via presigned URLs
+- **Replit Object Storage:** Built-in cloud storage for uploaded files
+  - **@google-cloud/storage:** GCS client for Replit's object storage backend
+  - **ObjectStorageService:** Custom service layer for upload URL generation and file serving
+  - **ObjectAcl:** Access control layer for public/private file permissions
+- **Upload Flow:**
+  1. Client requests presigned upload URL from `/api/objects/upload`
+  2. File uploaded directly to object storage via PUT request
+  3. Server normalizes object path via `/api/campaign-logo`
+  4. Logo URL updated in application state
+  5. Uploaded logos served via `/objects/:objectPath` endpoint
 
 ### Development Tools
 - **Vite:** Development server with HMR and optimized builds
