@@ -98,7 +98,8 @@ private func handleProductEvent(_ event: ProductEvent) {
             name: event.data.name,
             price: event.data.price,
             description: event.data.description,
-            imageUrl: event.data.imageUrl
+            imageUrl: event.data.imageUrl,
+            campaignLogo: event.campaignLogo
         )
     }
 }
@@ -109,7 +110,8 @@ private func handlePollEvent(_ event: PollEvent) {
         self.showPoll(
             question: event.data.question,
             options: event.data.options,
-            duration: event.data.duration
+            duration: event.data.duration,
+            campaignLogo: event.campaignLogo
         )
     }
 }
@@ -121,7 +123,8 @@ private func handleContestEvent(_ event: ContestEvent) {
             name: event.data.name,
             prize: event.data.prize,
             deadline: event.data.deadline,
-            maxParticipants: event.data.maxParticipants
+            maxParticipants: event.data.maxParticipants,
+            campaignLogo: event.campaignLogo
         )
     }
 }`;
@@ -136,6 +139,7 @@ private func handleContestEvent(_ event: ContestEvent) {
     "currency": "NOK",
     "imageUrl": "https://images.unsplash.com/photo-1592286927505-b7e00a46f74f"
   },
+  "campaignLogo": "https://images.unsplash.com/photo-1611162617474-5b21e879e113",
   "timestamp": 1703520000000
 }`;
 
@@ -152,6 +156,7 @@ private func handleContestEvent(_ event: ContestEvent) {
     ],
     "duration": 60
   },
+  "campaignLogo": "https://images.unsplash.com/photo-1611162617474-5b21e879e113",
   "timestamp": 1703520000000
 }`;
 
@@ -164,6 +169,7 @@ private func handleContestEvent(_ event: ContestEvent) {
     "deadline": "2024-12-31",
     "maxParticipants": 1000
   },
+  "campaignLogo": "https://images.unsplash.com/photo-1611162617474-5b21e879e113",
   "timestamp": 1703520000000
 }`;
 
@@ -171,9 +177,10 @@ private func handleContestEvent(_ event: ContestEvent) {
 struct WebSocketEvent: Codable {
     let type: String
     let timestamp: Int64
+    let campaignLogo: String?
     
     private enum CodingKeys: String, CodingKey {
-        case type, timestamp, data
+        case type, timestamp, data, campaignLogo
     }
 }
 
@@ -181,6 +188,7 @@ struct WebSocketEvent: Codable {
 struct ProductEvent: Codable {
     let type: String
     let timestamp: Int64
+    let campaignLogo: String?
     let data: ProductData
     
     struct ProductData: Codable {
@@ -197,6 +205,7 @@ struct ProductEvent: Codable {
 struct PollEvent: Codable {
     let type: String
     let timestamp: Int64
+    let campaignLogo: String?
     let data: PollData
     
     struct PollData: Codable {
@@ -211,6 +220,7 @@ struct PollEvent: Codable {
 struct ContestEvent: Codable {
     let type: String
     let timestamp: Int64
+    let campaignLogo: String?
     let data: ContestData
     
     struct ContestData: Codable {
