@@ -46,11 +46,6 @@ app.use((req, res, next) => {
   next();
 });
 
-// Health check endpoint for deployment - must be before all other routes
-app.get('/', (_req, res) => {
-  res.status(200).json({ status: 'ok', server: 'running' });
-});
-
 (async () => {
   const server = await registerRoutes(app);
 
