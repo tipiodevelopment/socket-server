@@ -1,4 +1,54 @@
 import { z } from "zod";
+import { pgTable, serial, varchar, text, timestamp, json, integer } from "drizzle-orm/pg-core";
+import { relations } from "drizzle-orm";
+import { createInsertSchema } from "drizzle-zod";
+
+// Database Tables
+export const campaigns = pgTable("campaigns", {
+  id: serial("id").primaryKey(),
+  name: varchar("name", { length: 255 }).notNull(),
+  logo: text("logo"),
+  description: text("description"),
+  createdAt: timestamp("created_at").defaultNow().notNull()
+});
+
+export const events = pgTable("events", {
+  id: serial("id").primaryKey(),
+  campaignId: integer("campaign_id").notNull().references(() => campaigns.id, { onDelete: 'cascade' }),
+  type: varchar("type", { length: 50 }).notNull(),
+  data: json("data").notNull(),
+  campaignLogo: text("campaign_logo"),
+  timestamp: timestamp("timestamp").defaultNow().notNull()
+});
+
+// Relations
+export const campaignsRelations = relations(campaigns, ({ many }) => ({
+  events: many(events)
+}));
+
+export const eventsRelations = relations(events, ({ one }) => ({
+  campaign: one(campaigns, {
+    fields: [events.campaignId],
+    references: [campaigns.id]
+  })
+}));
+
+// Insert Schemas
+export const insertCampaignSchema = createInsertSchema(campaigns).omit({ 
+  id: true,
+  createdAt: true 
+});
+
+export const insertEventSchema = createInsertSchema(events).omit({ 
+  id: true,
+  timestamp: true 
+});
+
+// Types
+export type Campaign = typeof campaigns.$inferSelect;
+export type InsertCampaign = z.infer<typeof insertCampaignSchema>;
+export type Event = typeof events.$inferSelect;
+export type InsertEvent = z.infer<typeof insertEventSchema>;
 
 // Event schemas
 export const productEventSchema = z.object({
