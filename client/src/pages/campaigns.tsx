@@ -28,10 +28,12 @@ export default function CampaignsPage() {
   });
 
   // Create campaign mutation
-  const createMutation = useMutation({
-    mutationFn: (data: typeof formData) => 
-      apiRequest('POST', '/api/campaigns', data),
-    onSuccess: (newCampaign: Campaign) => {
+  const createMutation = useMutation<Campaign, Error, typeof formData>({
+    mutationFn: async (data) => {
+      const response = await apiRequest('POST', '/api/campaigns', data);
+      return response.json();
+    },
+    onSuccess: (newCampaign) => {
       toast({
         title: "Kampanje opprettet",
         description: "Den nye kampanjen er klar til bruk",

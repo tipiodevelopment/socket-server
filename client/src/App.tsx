@@ -13,16 +13,17 @@ import NotFound from "@/pages/not-found";
 function Router() {
   return (
     <Switch>
-      {/* Main pages - event broadcasting */}
-      <Route path="/" component={AdminPage} />
-      <Route path="/viewer" component={ViewerPage} />
-      <Route path="/docs" component={DocsPage} />
+      {/* Main page - campaign management */}
+      <Route path="/" component={CampaignsPage} />
       
-      {/* Campaign management */}
-      <Route path="/campaigns" component={CampaignsPage} />
-      {/* More specific routes first to prevent matching issues */}
+      {/* Campaign-specific routes - more specific routes first */}
       <Route path="/campaign/:id/admin" component={AdminPage} />
       <Route path="/campaign/:name/:id" component={CampaignViewerPage} />
+      
+      {/* Legacy routes for backward compatibility */}
+      <Route path="/admin" component={AdminPage} />
+      <Route path="/viewer" component={ViewerPage} />
+      <Route path="/docs" component={DocsPage} />
       
       <Route component={NotFound} />
     </Switch>
