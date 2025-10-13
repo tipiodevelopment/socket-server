@@ -95,11 +95,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
           id: `prod_${randomUUID()}`,
           name: req.body.name,
           description: req.body.description,
-          price: req.body.price,
+          price: String(req.body.price),
           currency: req.body.currency || 'USD',
           imageUrl: req.body.imageUrl
         },
-        campaignLogo: req.body.campaignLogo,
+        campaignLogo: req.body.campaignLogo || undefined,
         timestamp: Date.now()
       };
 
@@ -112,10 +112,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Broadcast to all connected clients
       broadcast(JSON.stringify(productEvent));
 
-      res.json({ success: true, event: productEvent });
+      res.json({ success: true, event: productEvent});
     } catch (error) {
       console.error('Error sending product event:', error);
-      res.status(400).json({ message: 'Error sending product event' });
+      res.status(400).json({ 
+        message: 'Error sending product event',
+        error: error instanceof Error ? error.message : String(error)
+      });
     }
   });
 
