@@ -12,56 +12,111 @@ import {
 export async function registerRoutes(app: Express): Promise<Server> {
   const httpServer = createServer(app);
   
-  // Create WebSocket server on /ws path
-  const wss = new WebSocketServer({ 
-    server: httpServer, 
-    path: '/ws' 
+  // Create WebSocket server with noServer mode for custom path handling
+  const wss = new WebSocketServer({ noServer: true });
+
+  // Store connected clients organized by campaign ID
+  const campaignClients = new Map<number, Set<WebSocket>>();
+  
+  // Store campaign ID for each WebSocket
+  const clientCampaigns = new WeakMap<WebSocket, number>();
+
+  // Handle WebSocket upgrade requests
+  httpServer.on('upgrade', (request, socket, head) => {
+    const url = new URL(request.url || '', `http://${request.headers.host}`);
+    
+    // Extract campaign ID from path like /ws/123
+    const pathMatch = url.pathname.match(/^\/ws\/(\d+)$/);
+    
+    if (pathMatch) {
+      const campaignId = parseInt(pathMatch[1], 10);
+      
+      wss.handleUpgrade(request, socket, head, (ws) => {
+        clientCampaigns.set(ws, campaignId);
+        wss.emit('connection', ws, request, campaignId);
+      });
+    } else {
+      socket.destroy();
+    }
   });
 
-  // Store connected clients
-  const clients = new Set<WebSocket>();
-
   // WebSocket connection handling
-  wss.on('connection', (ws: WebSocket) => {
-    clients.add(ws);
+  wss.on('connection', (ws: WebSocket, request: any, campaignId: number) => {
+    // Add client to campaign room
+    if (!campaignClients.has(campaignId)) {
+      campaignClients.set(campaignId, new Set());
+    }
+    campaignClients.get(campaignId)!.add(ws);
     storage.incrementClientsCount();
     
-    console.log(`Client connected. Total clients: ${storage.getConnectedClientsCount()}`);
+    console.log(`Client connected to campaign ${campaignId}. Total clients: ${storage.getConnectedClientsCount()}`);
 
-    // Send current client count to all clients
-    broadcastClientCount();
+    // Send current client count to all clients in this campaign
+    broadcastClientCountToCampaign(campaignId);
 
     ws.on('close', () => {
-      clients.delete(ws);
+      const clients = campaignClients.get(campaignId);
+      if (clients) {
+        clients.delete(ws);
+        if (clients.size === 0) {
+          campaignClients.delete(campaignId);
+        }
+      }
       storage.decrementClientsCount();
-      console.log(`Client disconnected. Total clients: ${storage.getConnectedClientsCount()}`);
-      broadcastClientCount();
+      console.log(`Client disconnected from campaign ${campaignId}. Total clients: ${storage.getConnectedClientsCount()}`);
+      broadcastClientCountToCampaign(campaignId);
     });
 
     ws.on('error', (error) => {
       console.error('WebSocket error:', error);
-      clients.delete(ws);
+      const clients = campaignClients.get(campaignId);
+      if (clients) {
+        clients.delete(ws);
+      }
       storage.decrementClientsCount();
     });
   });
 
-  // Function to broadcast to all connected clients
+  // Function to broadcast to clients in a specific campaign
+  function broadcastToCampaign(campaignId: number, message: string) {
+    const clients = campaignClients.get(campaignId);
+    if (clients) {
+      clients.forEach((client) => {
+        if (client.readyState === WebSocket.OPEN) {
+          client.send(message);
+        }
+      });
+    }
+  }
+
+  // Function to broadcast client count to a specific campaign
+  function broadcastClientCountToCampaign(campaignId: number) {
+    const clients = campaignClients.get(campaignId);
+    const count = clients ? clients.size : 0;
+    const countMessage = JSON.stringify({
+      type: 'client_count',
+      data: { count },
+      timestamp: Date.now()
+    });
+    broadcastToCampaign(campaignId, countMessage);
+  }
+  
+  // Legacy broadcast function (broadcasts to all campaigns)
   function broadcast(message: string) {
-    clients.forEach((client) => {
-      if (client.readyState === WebSocket.OPEN) {
-        client.send(message);
-      }
+    campaignClients.forEach((clients) => {
+      clients.forEach((client) => {
+        if (client.readyState === WebSocket.OPEN) {
+          client.send(message);
+        }
+      });
     });
   }
 
-  // Function to broadcast client count
+  // Function to broadcast client count to all campaigns
   function broadcastClientCount() {
-    const countMessage = JSON.stringify({
-      type: 'client_count',
-      data: { count: storage.getConnectedClientsCount() },
-      timestamp: Date.now()
+    campaignClients.forEach((clients, campaignId) => {
+      broadcastClientCountToCampaign(campaignId);
     });
-    broadcast(countMessage);
   }
 
   // HTTP API endpoints
