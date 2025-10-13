@@ -27,6 +27,7 @@ interface PollForm {
   question: string;
   options: string;
   duration: string;
+  imageUrl?: string;
 }
 
 interface ContestForm {
@@ -80,21 +81,24 @@ export default function AdminPage() {
   const [pollForms, setPollForms] = useState<PollForm[]>([
     {
       id: Date.now() + 3,
-      question: 'Hva er din favoritt smarttelefon?',
-      options: 'iPhone, Samsung Galaxy, Google Pixel, Xiaomi, Annet',
-      duration: '60'
+      question: 'Hvem vinner denne kampen?',
+      options: 'Barcelona, PSG',
+      duration: '60',
+      imageUrl: ''
     },
     {
       id: Date.now() + 4,
-      question: 'Hvilken ny funksjon vil du se i neste oppdatering?',
-      options: 'Forbedret mørk modus, Tilpassbare widgets, Bedre batteritid, Integrert AI',
-      duration: '90'
+      question: 'Hvem scorer i denne andre omgangen?',
+      options: 'Lamine Yamal, Raphina, Dembélé, Vitinha',
+      duration: '90',
+      imageUrl: ''
     },
     {
       id: Date.now() + 5,
-      question: 'Hvor mye vil du betale for streaming uten reklame?',
-      options: '50 kr/mnd, 100 kr/mnd, 150 kr/mnd, Ville ikke betalt',
-      duration: '120'
+      question: 'Kommer PSG til å score i sluttminuttene?',
+      options: 'Ja, Nei',
+      duration: '120',
+      imageUrl: ''
     }
   ]);
 
@@ -140,7 +144,8 @@ export default function AdminPage() {
       id: Date.now(),
       question: '',
       options: '',
-      duration: '60'
+      duration: '60',
+      imageUrl: ''
     }]);
   };
 
@@ -233,6 +238,7 @@ export default function AdminPage() {
         question: data.question,
         options: data.options.split(',').map((opt: string) => opt.trim()),
         duration: parseInt(data.duration),
+        imageUrl: data.imageUrl || undefined,
         campaignLogo: campaignLogo || undefined
       }),
     onSuccess: () => {
@@ -652,12 +658,24 @@ export default function AdminPage() {
                           className="h-9"
                         />
                       </div>
+                      <div>
+                        <Label htmlFor={`poll-imageUrl-${form.id}`} className="text-xs">Bilde-URL (valgfritt - f.eks. lagskjold)</Label>
+                        <Input
+                          id={`poll-imageUrl-${form.id}`}
+                          value={form.imageUrl || ''}
+                          onChange={(e) => updatePollForm(form.id, 'imageUrl', e.target.value)}
+                          placeholder="https://example.com/team-badge.png"
+                          data-testid={`input-poll-image-${form.id}`}
+                          className="h-9"
+                        />
+                      </div>
                       <Button 
                         className="w-full bg-secondary hover:bg-secondary/90 text-secondary-foreground h-9"
                         onClick={() => pollMutation.mutate({
                           question: form.question,
                           options: form.options,
-                          duration: form.duration
+                          duration: form.duration,
+                          imageUrl: form.imageUrl
                         })}
                         disabled={pollMutation.isPending}
                         data-testid={`button-send-poll-${form.id}`}

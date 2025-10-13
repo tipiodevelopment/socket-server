@@ -165,23 +165,35 @@ export default function ViewerPage() {
                 )}
                 
                 {lastEvent.type === 'poll' && (
-                  <div>
-                    <h3 className="text-xl font-semibold mb-4">{lastEvent.data.question}</h3>
-                    <div className="grid grid-cols-2 gap-2">
-                      {lastEvent.data.options.map((option, index) => (
-                        <Button 
-                          key={index} 
-                          variant="outline" 
-                          className="justify-start"
-                          data-testid={`poll-option-${index}`}
-                        >
-                          {option}
-                        </Button>
-                      ))}
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className={lastEvent.data.imageUrl ? "md:col-span-2" : "md:col-span-3"}>
+                      <h3 className="text-xl font-semibold mb-4">{lastEvent.data.question}</h3>
+                      <div className="grid grid-cols-2 gap-2">
+                        {lastEvent.data.options.map((option, index) => (
+                          <Button 
+                            key={index} 
+                            variant="outline" 
+                            className="justify-start"
+                            data-testid={`poll-option-${index}`}
+                          >
+                            {option}
+                          </Button>
+                        ))}
+                      </div>
+                      <div className="mt-4 text-sm text-muted-foreground">
+                        Varighet: {lastEvent.data.duration} sekunder
+                      </div>
                     </div>
-                    <div className="mt-4 text-sm text-muted-foreground">
-                      Varighet: {lastEvent.data.duration} sekunder
-                    </div>
+                    {lastEvent.data.imageUrl && (
+                      <div className="flex justify-center items-center">
+                        <img 
+                          src={lastEvent.data.imageUrl} 
+                          alt="Poll image"
+                          className="w-32 h-32 object-contain rounded-lg"
+                          data-testid="poll-image"
+                        />
+                      </div>
+                    )}
                   </div>
                 )}
                 
@@ -265,8 +277,18 @@ export default function ViewerPage() {
                     )}
                     
                     {event.type === 'poll' && (
-                      <div>
+                      <div className="space-y-2">
                         <p className="text-sm font-medium mb-2">{event.data.question}</p>
+                        {event.data.imageUrl && (
+                          <div className="flex justify-center">
+                            <img 
+                              src={event.data.imageUrl} 
+                              alt="Poll image"
+                              className="w-20 h-20 object-contain rounded-lg"
+                              data-testid={`poll-image-${index}`}
+                            />
+                          </div>
+                        )}
                         <div className="text-xs text-muted-foreground">
                           {event.data.options.length} alternativer • {event.data.duration}s
                         </div>

@@ -131,9 +131,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
           id: `poll_${randomUUID()}`,
           question: req.body.question,
           options: req.body.options,
-          duration: req.body.duration
+          duration: req.body.duration,
+          imageUrl: req.body.imageUrl || undefined
         },
-        campaignLogo: req.body.campaignLogo,
+        campaignLogo: req.body.campaignLogo || undefined,
         timestamp: Date.now()
       };
 

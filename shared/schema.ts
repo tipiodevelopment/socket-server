@@ -21,7 +21,8 @@ export const pollEventSchema = z.object({
     id: z.string(),
     question: z.string(),
     options: z.array(z.string()),
-    duration: z.number()
+    duration: z.number(),
+    imageUrl: z.string().url().optional()
   }),
   campaignLogo: z.string().url().optional(),
   timestamp: z.number()
