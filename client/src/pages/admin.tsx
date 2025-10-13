@@ -862,16 +862,25 @@ export default function AdminPage() {
               <h3 className="text-lg font-semibold mb-4">Tilkoblingsinformasjon</h3>
               
               <div className="space-y-4">
+                {campaignId && (
+                  <div>
+                    <Label className="text-muted-foreground">Kampanje ID</Label>
+                    <code className="block px-3 py-2 bg-background border border-border rounded text-sm font-mono">
+                      {campaignId}
+                    </code>
+                  </div>
+                )}
+                
                 <div>
-                  <Label className="text-muted-foreground">WebSocket URL</Label>
+                  <Label className="text-muted-foreground">WebSocket URL {campaignId ? 'for denne kampanjen' : '(Legacy)'}</Label>
                   <div className="flex items-center space-x-2">
-                    <code className="flex-1 px-3 py-2 bg-background border border-border rounded text-sm font-mono">
-                      {`${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/ws`}
+                    <code className="flex-1 px-3 py-2 bg-background border border-border rounded text-sm font-mono break-all">
+                      {`${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/ws${campaignId ? `/${campaignId}` : ''}`}
                     </code>
                     <Button
                       size="sm"
                       variant="outline"
-                      onClick={() => copyToClipboard(`${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/ws`)}
+                      onClick={() => copyToClipboard(`${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/ws${campaignId ? `/${campaignId}` : ''}`)}
                       data-testid="button-copy-ws-url"
                     >
                       Kopier
