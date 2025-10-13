@@ -7,6 +7,7 @@ import AdminPage from "@/pages/admin";
 import ViewerPage from "@/pages/viewer";
 import DocsPage from "@/pages/docs";
 import CampaignsPage from "@/pages/campaigns";
+import CampaignViewerPage from "@/pages/campaign-viewer";
 import NotFound from "@/pages/not-found";
 
 function Router() {
@@ -14,6 +15,7 @@ function Router() {
     <Switch>
       <Route path="/" component={CampaignsPage} />
       <Route path="/campaigns" component={CampaignsPage} />
+      <Route path="/campaign/:name/:id" component={CampaignViewerPage} />
       <Route path="/campaign/:id/admin" component={AdminPage} />
       <Route path="/admin" component={AdminPage} />
       <Route path="/viewer" component={ViewerPage} />

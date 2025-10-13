@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link } from 'wouter';
+import { Link, useParams } from 'wouter';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { useWebSocket } from '@/hooks/use-websocket';
 import { ConnectionStatusComponent } from '@/components/connection-status';
@@ -11,10 +11,11 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
-import type { WebSocketEvent } from '@shared/schema';
+import type { WebSocketEvent, Campaign } from '@shared/schema';
 import { ObjectUploader } from '@/components/ObjectUploader';
 import barcelonaLogo from '@assets/barcelona_1760348072481.png';
 import psgLogo from '@assets/download_1760348072483.png';
+import { ArrowLeft } from 'lucide-react';
 
 interface ProductForm {
   id: number;
@@ -43,13 +44,23 @@ interface ContestForm {
 
 export default function AdminPage() {
   const { toast } = useToast();
+  const params = useParams<{ id: string }>();
+  const campaignId = params.id ? parseInt(params.id) : undefined;
+  
   const [eventHistory, setEventHistory] = useState<WebSocketEvent[]>([]);
   
   // Campaign logo state
   const [campaignLogo, setCampaignLogo] = useState<string>('https://images.unsplash.com/photo-1611162617474-5b21e879e113?w=200&q=80');
   
-  // WebSocket connection
+  // Fetch campaign info if campaignId exists
+  const { data: campaign } = useQuery<Campaign>({
+    queryKey: ['/api/campaigns', campaignId],
+    enabled: !!campaignId,
+  });
+  
+  // WebSocket connection - now with campaignId
   const { connectionStatus, clientCount } = useWebSocket({
+    campaignId,
     onMessage: (event) => {
       setEventHistory(prev => [event, ...prev.slice(0, 49)]);
     }
@@ -221,6 +232,7 @@ export default function AdminPage() {
     mutationFn: (data: Omit<ProductForm, 'id'>) => 
       apiRequest('POST', '/api/events/product', {
         ...data,
+        campaignId,
         campaignLogo: campaignLogo || undefined
       }),
     onSuccess: () => {
@@ -246,6 +258,7 @@ export default function AdminPage() {
         options: data.options.split(',').map((opt: string) => opt.trim()),
         duration: parseInt(data.duration),
         imageUrl: data.imageUrl || undefined,
+        campaignId,
         campaignLogo: campaignLogo || undefined
       }),
     onSuccess: () => {
@@ -271,6 +284,7 @@ export default function AdminPage() {
         prize: data.prize,
         deadline: data.deadline,
         maxParticipants: parseInt(data.maxParticipants),
+        campaignId,
         campaignLogo: campaignLogo || undefined
       }),
     onSuccess: () => {

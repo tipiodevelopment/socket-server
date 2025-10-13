@@ -3,6 +3,7 @@ import type { WebSocketEvent, ConnectionStatus } from '@shared/schema';
 import { webSocketEventSchema } from '@shared/schema';
 
 interface UseWebSocketOptions {
+  campaignId?: number;
   onMessage?: (event: WebSocketEvent) => void;
   onClientCountUpdate?: (count: number) => void;
 }
@@ -22,7 +23,8 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
     setConnectionStatus('connecting');
     
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-    const wsUrl = `${protocol}//${window.location.host}/ws`;
+    const wsPath = options.campaignId ? `/ws/${options.campaignId}` : '/ws';
+    const wsUrl = `${protocol}//${window.location.host}${wsPath}`;
     
     const ws = new WebSocket(wsUrl);
     wsRef.current = ws;

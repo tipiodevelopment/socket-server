@@ -29,11 +29,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
     const pathMatch = url.pathname.match(/^\/ws\/(\d+)$/);
     
     if (pathMatch) {
+      // Campaign-specific WebSocket
       const campaignId = parseInt(pathMatch[1], 10);
       
       wss.handleUpgrade(request, socket, head, (ws) => {
         clientCampaigns.set(ws, campaignId);
         wss.emit('connection', ws, request, campaignId);
+      });
+    } else if (url.pathname === '/ws') {
+      // Legacy WebSocket (no campaign ID) - use campaign ID 0 for backwards compatibility
+      wss.handleUpgrade(request, socket, head, (ws) => {
+        clientCampaigns.set(ws, 0);
+        wss.emit('connection', ws, request, 0);
       });
     } else {
       socket.destroy();
@@ -144,6 +151,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Trigger product event
   app.post('/api/events/product', async (req, res) => {
     try {
+      const campaignId = req.body.campaignId;
+      
+      // Validate campaignId if provided
+      if (campaignId) {
+        const campaign = await storage.getCampaign(campaignId);
+        if (!campaign) {
+          return res.status(404).json({ message: 'Campaign not found' });
+        }
+      }
+      
       const productEvent: WebSocketEvent = {
         type: 'product',
         data: {
@@ -162,11 +179,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Validate the event
       webSocketEventSchema.parse(productEvent);
 
-      // Store the event
+      // Store the event in memory (for backwards compatibility)
       await storage.addEvent(productEvent);
 
-      // Broadcast to all connected clients
-      broadcast(JSON.stringify(productEvent));
+      // Store in database if campaignId provided
+      if (campaignId) {
+        await storage.addCampaignEvent({
+          campaignId,
+          type: 'product',
+          data: productEvent.data,
+          campaignLogo: productEvent.campaignLogo || null
+        });
+        
+        // Broadcast to specific campaign
+        broadcastToCampaign(campaignId, JSON.stringify(productEvent));
+      } else {
+        // Legacy: Broadcast to all connected clients
+        broadcast(JSON.stringify(productEvent));
+      }
 
       res.json({ success: true, event: productEvent});
     } catch (error) {
@@ -181,6 +211,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Trigger poll event
   app.post('/api/events/poll', async (req, res) => {
     try {
+      const campaignId = req.body.campaignId;
+      
+      // Validate campaignId if provided
+      if (campaignId) {
+        const campaign = await storage.getCampaign(campaignId);
+        if (!campaign) {
+          return res.status(404).json({ message: 'Campaign not found' });
+        }
+      }
+      
       // Process options: convert comma-separated string to array
       const options = typeof req.body.options === 'string' 
         ? req.body.options.split(',').map((opt: string) => opt.trim()).filter(Boolean)
@@ -223,11 +263,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Validate the event
       webSocketEventSchema.parse(pollEvent);
 
-      // Store the event
+      // Store the event in memory
       await storage.addEvent(pollEvent);
 
-      // Broadcast to all connected clients
-      broadcast(JSON.stringify(pollEvent));
+      // Store in database if campaignId provided
+      if (campaignId) {
+        await storage.addCampaignEvent({
+          campaignId,
+          type: 'poll',
+          data: pollEvent.data,
+          campaignLogo: pollEvent.campaignLogo || null
+        });
+        
+        // Broadcast to specific campaign
+        broadcastToCampaign(campaignId, JSON.stringify(pollEvent));
+      } else {
+        // Legacy: Broadcast to all connected clients
+        broadcast(JSON.stringify(pollEvent));
+      }
 
       res.json({ success: true, event: pollEvent });
     } catch (error) {
@@ -239,6 +292,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Trigger contest event
   app.post('/api/events/contest', async (req, res) => {
     try {
+      const campaignId = req.body.campaignId;
+      
+      // Validate campaignId if provided
+      if (campaignId) {
+        const campaign = await storage.getCampaign(campaignId);
+        if (!campaign) {
+          return res.status(404).json({ message: 'Campaign not found' });
+        }
+      }
+      
       const contestEvent: WebSocketEvent = {
         type: 'contest',
         data: {
@@ -255,11 +318,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Validate the event
       webSocketEventSchema.parse(contestEvent);
 
-      // Store the event
+      // Store the event in memory
       await storage.addEvent(contestEvent);
 
-      // Broadcast to all connected clients
-      broadcast(JSON.stringify(contestEvent));
+      // Store in database if campaignId provided
+      if (campaignId) {
+        await storage.addCampaignEvent({
+          campaignId,
+          type: 'contest',
+          data: contestEvent.data,
+          campaignLogo: contestEvent.campaignLogo || null
+        });
+        
+        // Broadcast to specific campaign
+        broadcastToCampaign(campaignId, JSON.stringify(contestEvent));
+      } else {
+        // Legacy: Broadcast to all connected clients
+        broadcast(JSON.stringify(contestEvent));
+      }
 
       res.json({ success: true, event: contestEvent });
     } catch (error) {
