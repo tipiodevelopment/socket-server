@@ -15,8 +15,9 @@ function Router() {
     <Switch>
       <Route path="/" component={CampaignsPage} />
       <Route path="/campaigns" component={CampaignsPage} />
-      <Route path="/campaign/:name/:id" component={CampaignViewerPage} />
+      {/* More specific routes first to prevent matching issues */}
       <Route path="/campaign/:id/admin" component={AdminPage} />
+      <Route path="/campaign/:name/:id" component={CampaignViewerPage} />
       <Route path="/admin" component={AdminPage} />
       <Route path="/viewer" component={ViewerPage} />
       <Route path="/docs" component={DocsPage} />
