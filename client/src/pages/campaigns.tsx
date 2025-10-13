@@ -55,9 +55,8 @@ export default function CampaignsPage() {
   };
 
   const navigateToCampaign = (campaign: Campaign) => {
-    // Create URL-friendly slug from campaign name
-    const slug = campaign.name.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
-    setLocation(`/campaign/${slug}/${campaign.id}`);
+    // Navigate to campaign admin page
+    setLocation(`/campaign/${campaign.id}/admin`);
   };
 
   return (
