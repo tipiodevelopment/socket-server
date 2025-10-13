@@ -18,6 +18,7 @@ import psgLogo from '@assets/download_1760348072483.png';
 
 interface ProductForm {
   id: number;
+  productId: string;
   name: string;
   description: string;
   price: string;
@@ -58,6 +59,7 @@ export default function AdminPage() {
   const [productForms, setProductForms] = useState<ProductForm[]>([
     {
       id: Date.now(),
+      productId: '101',
       name: 'iPhone 15 Pro Max',
       description: 'Siste modell med titan og 48MP kamera. Tilgjengelig i fargene naturlig titan, blå, hvit og svart.',
       price: '12 999 kr',
@@ -65,6 +67,7 @@ export default function AdminPage() {
     },
     {
       id: Date.now() + 1,
+      productId: '102',
       name: 'MacBook Air M3',
       description: 'Apples tynneste bærbare med M3-brikke, opptil 18 timers batteritid og 13" Liquid Retina-skjerm',
       price: '11 490 kr',
@@ -72,6 +75,7 @@ export default function AdminPage() {
     },
     {
       id: Date.now() + 2,
+      productId: '103',
       name: 'AirPods Pro (2. gen)',
       description: 'Aktiv støyreduksjon, personlig romlig lyd og opptil 6 timers avspilling',
       price: '2 799 kr',
@@ -133,6 +137,7 @@ export default function AdminPage() {
   const addProductForm = () => {
     setProductForms(prev => [...prev, {
       id: Date.now(),
+      productId: '',
       name: '',
       description: '',
       price: '',
@@ -302,6 +307,7 @@ export default function AdminPage() {
       const product2 = productForms[1];
 
       await productMutation.mutateAsync({
+        productId: product1.productId,
         name: product1.name,
         description: product1.description,
         price: product1.price,
@@ -311,6 +317,7 @@ export default function AdminPage() {
       await new Promise(resolve => setTimeout(resolve, 300));
 
       await productMutation.mutateAsync({
+        productId: product2.productId,
         name: product2.name,
         description: product2.description,
         price: product2.price,
@@ -525,6 +532,17 @@ export default function AdminPage() {
                           </Button>
                         )}
                       </div>
+                      <div>
+                        <Label htmlFor={`product-id-${form.id}`} className="text-xs">Produkt ID</Label>
+                        <Input
+                          id={`product-id-${form.id}`}
+                          value={form.productId}
+                          onChange={(e) => updateProductForm(form.id, 'productId', e.target.value)}
+                          data-testid={`input-product-id-${form.id}`}
+                          className="h-9"
+                          placeholder="ID fra eksternt system"
+                        />
+                      </div>
                       <div className="grid grid-cols-2 gap-3">
                         <div>
                           <Label htmlFor={`product-name-${form.id}`} className="text-xs">Navn</Label>
@@ -571,6 +589,7 @@ export default function AdminPage() {
                       <Button 
                         className="w-full bg-primary hover:bg-primary/90 text-primary-foreground h-9"
                         onClick={() => productMutation.mutate({
+                          productId: form.productId,
                           name: form.name,
                           description: form.description,
                           price: form.price,

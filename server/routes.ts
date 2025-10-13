@@ -93,6 +93,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         type: 'product',
         data: {
           id: `prod_${randomUUID()}`,
+          productId: req.body.productId,
           name: req.body.name,
           description: req.body.description,
           price: String(req.body.price),

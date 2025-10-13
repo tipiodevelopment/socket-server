@@ -5,6 +5,7 @@ export const productEventSchema = z.object({
   type: z.literal("product"),
   data: z.object({
     id: z.string(),
+    productId: z.string(),
     name: z.string(),
     description: z.string(),
     price: z.string(),
