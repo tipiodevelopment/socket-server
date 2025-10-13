@@ -200,7 +200,7 @@ export default function AdminPage() {
     ));
   };
 
-  // Fetch server status
+  // Fetch server status (polling disabled)
   const { data: serverStatus } = useQuery<{
     server: string;
     connectedClients: number;
@@ -208,7 +208,7 @@ export default function AdminPage() {
     httpPort: number | string;
   }>({
     queryKey: ['/api/status'],
-    refetchInterval: 5000
+    // refetchInterval: 5000 // Disabled to reduce server requests
   });
 
   // Mutations for sending events
