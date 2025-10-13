@@ -31,7 +31,7 @@ export default function CampaignsPage() {
   const createMutation = useMutation({
     mutationFn: (data: typeof formData) => 
       apiRequest('POST', '/api/campaigns', data),
-    onSuccess: () => {
+    onSuccess: (newCampaign: Campaign) => {
       toast({
         title: "Kampanje opprettet",
         description: "Den nye kampanjen er klar til bruk",
@@ -39,6 +39,9 @@ export default function CampaignsPage() {
       queryClient.invalidateQueries({ queryKey: ['/api/campaigns'] });
       setIsDialogOpen(false);
       setFormData({ name: '', logo: '', description: '' });
+      
+      // Navigate to the new campaign's admin page
+      setLocation(`/campaign/${newCampaign.id}/admin`);
     },
     onError: () => {
       toast({
