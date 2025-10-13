@@ -125,16 +125,42 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Trigger poll event
   app.post('/api/events/poll', async (req, res) => {
     try {
+      // Process options: convert comma-separated string to array
+      const options = typeof req.body.options === 'string' 
+        ? req.body.options.split(',').map((opt: string) => opt.trim()).filter(Boolean)
+        : req.body.options;
+
+      // Process duration: convert to number
+      const duration = typeof req.body.duration === 'string' 
+        ? parseInt(req.body.duration, 10) 
+        : req.body.duration;
+
+      // Process imageUrl: convert relative path to absolute URL if needed
+      let imageUrl = req.body.imageUrl || undefined;
+      if (imageUrl && !imageUrl.startsWith('http')) {
+        const protocol = req.protocol;
+        const host = req.get('host');
+        imageUrl = `${protocol}://${host}${imageUrl}`;
+      }
+
+      // Process campaignLogo: convert relative path to absolute URL if needed
+      let campaignLogo = req.body.campaignLogo || undefined;
+      if (campaignLogo && !campaignLogo.startsWith('http')) {
+        const protocol = req.protocol;
+        const host = req.get('host');
+        campaignLogo = `${protocol}://${host}${campaignLogo}`;
+      }
+
       const pollEvent: WebSocketEvent = {
         type: 'poll',
         data: {
           id: `poll_${randomUUID()}`,
           question: req.body.question,
-          options: req.body.options,
-          duration: req.body.duration,
-          imageUrl: req.body.imageUrl || undefined
+          options,
+          duration,
+          imageUrl
         },
-        campaignLogo: req.body.campaignLogo || undefined,
+        campaignLogo,
         timestamp: Date.now()
       };
 
