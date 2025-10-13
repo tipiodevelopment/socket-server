@@ -315,5 +315,88 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Campaign CRUD endpoints
+  
+  // Create campaign
+  app.post('/api/campaigns', async (req, res) => {
+    try {
+      const campaign = await storage.createCampaign(req.body);
+      res.status(201).json(campaign);
+    } catch (error) {
+      console.error('Error creating campaign:', error);
+      res.status(400).json({ 
+        message: 'Error creating campaign',
+        error: error instanceof Error ? error.message : String(error)
+      });
+    }
+  });
+
+  // Get all campaigns
+  app.get('/api/campaigns', async (req, res) => {
+    try {
+      const campaigns = await storage.getAllCampaigns();
+      res.json(campaigns);
+    } catch (error) {
+      console.error('Error fetching campaigns:', error);
+      res.status(500).json({ message: 'Error fetching campaigns' });
+    }
+  });
+
+  // Get single campaign
+  app.get('/api/campaigns/:id', async (req, res) => {
+    try {
+      const campaign = await storage.getCampaign(parseInt(req.params.id));
+      if (!campaign) {
+        return res.status(404).json({ message: 'Campaign not found' });
+      }
+      res.json(campaign);
+    } catch (error) {
+      console.error('Error fetching campaign:', error);
+      res.status(500).json({ message: 'Error fetching campaign' });
+    }
+  });
+
+  // Update campaign
+  app.put('/api/campaigns/:id', async (req, res) => {
+    try {
+      const campaign = await storage.updateCampaign(parseInt(req.params.id), req.body);
+      if (!campaign) {
+        return res.status(404).json({ message: 'Campaign not found' });
+      }
+      res.json(campaign);
+    } catch (error) {
+      console.error('Error updating campaign:', error);
+      res.status(400).json({ 
+        message: 'Error updating campaign',
+        error: error instanceof Error ? error.message : String(error)
+      });
+    }
+  });
+
+  // Delete campaign
+  app.delete('/api/campaigns/:id', async (req, res) => {
+    try {
+      await storage.deleteCampaign(parseInt(req.params.id));
+      res.status(204).send();
+    } catch (error) {
+      console.error('Error deleting campaign:', error);
+      res.status(500).json({ message: 'Error deleting campaign' });
+    }
+  });
+
+  // Get campaign events
+  app.get('/api/campaigns/:id/events', async (req, res) => {
+    try {
+      const events = await storage.getCampaignEvents(
+        parseInt(req.params.id),
+        req.query.limit ? parseInt(req.query.limit as string) : 50
+      );
+      res.json(events);
+    } catch (error) {
+      console.error('Error fetching campaign events:', error);
+      res.status(500).json({ message: 'Error fetching campaign events' });
+    }
+  });
+
   return httpServer;
 }
