@@ -13,6 +13,8 @@ import { Label } from '@/components/ui/label';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import type { WebSocketEvent } from '@shared/schema';
 import { ObjectUploader } from '@/components/ObjectUploader';
+import barcelonaLogo from '@assets/barcelona_1760348072481.png';
+import psgLogo from '@assets/download_1760348072483.png';
 
 interface ProductForm {
   id: number;
@@ -84,21 +86,21 @@ export default function AdminPage() {
       question: 'Hvem vinner denne kampen?',
       options: 'Barcelona, PSG',
       duration: '60',
-      imageUrl: ''
+      imageUrl: barcelonaLogo
     },
     {
       id: Date.now() + 4,
       question: 'Hvem scorer i denne andre omgangen?',
       options: 'Lamine Yamal, Raphina, Dembélé, Vitinha',
       duration: '90',
-      imageUrl: ''
+      imageUrl: barcelonaLogo
     },
     {
       id: Date.now() + 5,
       question: 'Kommer PSG til å score i sluttminuttene?',
       options: 'Ja, Nei',
       duration: '120',
-      imageUrl: ''
+      imageUrl: psgLogo
     }
   ]);
 
