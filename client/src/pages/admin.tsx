@@ -661,15 +661,35 @@ export default function AdminPage() {
                         />
                       </div>
                       <div>
-                        <Label htmlFor={`poll-imageUrl-${form.id}`} className="text-xs">Bilde-URL (valgfritt - f.eks. lagskjold)</Label>
-                        <Input
-                          id={`poll-imageUrl-${form.id}`}
-                          value={form.imageUrl || ''}
-                          onChange={(e) => updatePollForm(form.id, 'imageUrl', e.target.value)}
-                          placeholder="https://example.com/team-badge.png"
-                          data-testid={`input-poll-image-${form.id}`}
-                          className="h-9"
-                        />
+                        <Label className="text-xs mb-2 block">Bilde (valgfritt - f.eks. lagskjold)</Label>
+                        <Tabs defaultValue="url" className="w-full">
+                          <TabsList className="grid w-full grid-cols-2">
+                            <TabsTrigger value="url" data-testid={`tab-url-poll-${form.id}`}>URL</TabsTrigger>
+                            <TabsTrigger value="upload" data-testid={`tab-upload-poll-${form.id}`}>Last opp fil</TabsTrigger>
+                          </TabsList>
+                          <TabsContent value="url" className="mt-2">
+                            <Input
+                              id={`poll-imageUrl-${form.id}`}
+                              value={form.imageUrl || ''}
+                              onChange={(e) => updatePollForm(form.id, 'imageUrl', e.target.value)}
+                              placeholder="https://example.com/team-badge.png"
+                              data-testid={`input-poll-image-${form.id}`}
+                              className="h-9"
+                            />
+                          </TabsContent>
+                          <TabsContent value="upload" className="mt-2">
+                            <ObjectUploader
+                              onUploadComplete={(url: string) => updatePollForm(form.id, 'imageUrl', url)}
+                              onUploadError={(error: Error) => {
+                                toast({
+                                  title: "Feil ved opplasting",
+                                  description: error.message,
+                                  variant: "destructive",
+                                });
+                              }}
+                            />
+                          </TabsContent>
+                        </Tabs>
                       </div>
                       <Button 
                         className="w-full bg-secondary hover:bg-secondary/90 text-secondary-foreground h-9"
