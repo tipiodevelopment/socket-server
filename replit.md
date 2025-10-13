@@ -2,9 +2,9 @@
 
 ## Overview
 
-This is a real-time event broadcasting application built with React, Express, and WebSockets. The system allows administrators to create and broadcast various types of events (products, polls, contests) to connected viewers in real-time. It features a split architecture with an admin dashboard for creating events and a viewer page for displaying them as they happen.
+This is a real-time event broadcasting application built with React, Express, and WebSockets. The system supports multi-campaign management where each campaign has its own isolated WebSocket channel, events, and configuration stored in PostgreSQL. Administrators can create multiple campaigns and broadcast various types of events (products, polls, contests) to connected viewers in real-time.
 
-The application demonstrates a modern full-stack TypeScript setup with a Vite-powered React frontend, Express backend, WebSocket communication, and a comprehensive UI component library based on shadcn/ui.
+The application demonstrates a modern full-stack TypeScript setup with a Vite-powered React frontend, Express backend, WebSocket room-based communication, PostgreSQL persistence, and a comprehensive UI component library based on shadcn/ui.
 
 ## User Preferences
 
@@ -38,17 +38,18 @@ Preferred communication style: Simple, everyday language.
 - **Build:** esbuild for fast server-side bundling
 
 **Design Decisions:**
-- **Memory Storage:** Uses in-memory storage (`MemStorage` class) for events and client tracking. This is suitable for development and demos but not for production with multiple instances. The architecture supports swapping to persistent storage by implementing the `IStorage` interface.
-- **WebSocket Path:** WebSocket server mounted on `/ws` path, separate from HTTP routes for clear separation of concerns.
-- **Event Broadcasting:** Centralized broadcast function sends messages to all connected clients, with automatic cleanup of disconnected clients.
-- **Client Tracking:** Maintains active client count and broadcasts updates to all viewers, providing real-time connection status.
+- **PostgreSQL Storage:** Uses PostgreSQL database with Drizzle ORM for persistent storage of campaigns and events. Events are linked to campaigns via `campaignId` foreign key.
+- **WebSocket Rooms:** Campaign-specific WebSocket channels at `/ws/:campaignId` isolate event streams. Legacy `/ws` path (campaign ID 0) maintained for backward compatibility.
+- **Event Broadcasting:** Events broadcast only to clients in the same campaign room, preventing cross-campaign message pollution.
+- **Client Tracking:** Per-campaign client count tracking with real-time updates to all viewers in that campaign.
 - **Request Logging:** Custom middleware logs API requests with duration and truncated response data for debugging.
+- **Campaign Validation:** Server-side validation ensures campaignId exists before broadcasting events, preventing accidental cross-campaign broadcasts.
 
 ### Data Flow & Event System
 
 **Event Types:**
 The application supports three event types with strict schemas:
-- **Product Events:** E-commerce product announcements with pricing and images
+- **Product Events:** E-commerce product announcements with productId (from external system), name, pricing and images
 - **Poll Events:** Interactive polls with multiple choice options and duration
 - **Contest Events:** Contest announcements with prizes and participation limits
 
@@ -66,23 +67,39 @@ The application supports three event types with strict schemas:
 
 ### Page Structure
 
-**Admin Page (`/admin`):**
-- Dashboard for creating and broadcasting events
+**Campaigns Page (`/` or `/campaigns`):**
+- Campaign management dashboard
+- List of all created campaigns with cards showing name, description, and creation date
+- Campaign creation form for new campaigns
+- Click on campaign to navigate to viewer page
+
+**Campaign Admin Page (`/campaign/:id/admin`):**
+- Campaign-specific dashboard for creating and broadcasting events
 - Multiple event forms: Add multiple products, polls, and contests with the "+" button
-- Each event has its own "Send" button for independent broadcasting
+- Each event has its own "Send" button for independent broadcasting to that campaign's viewers
 - Remove events with the "X" button (maintains at least 1 form per type)
 - Campaign logo configuration with dual input methods:
   - URL input for existing logos
   - Direct file upload using Replit Object Storage
   - Real-time logo preview
-- Real-time event log showing broadcast history
-- Connection status and client count display
+- Real-time event log showing broadcast history for this campaign
+- Connection status and client count display for this campaign
 
-**Viewer Page (`/viewer`):**
-- Consumer-facing display for receiving events
+**Campaign Viewer Page (`/campaign/:name/:id`):**
+- Campaign-specific viewer page showing events for selected campaign
 - Real-time event notifications (with browser Notification API)
 - Event history with visual event cards
 - Connection status monitoring
+- WebSocket connects to `/ws/:campaignId` for isolated event stream
+
+**Legacy Admin Page (`/admin`):**
+- Backward-compatible admin page (uses campaign ID 0)
+- WebSocket connects to `/ws` for legacy broadcasts
+- Maintained for existing integrations
+
+**Legacy Viewer Page (`/viewer`):**
+- Backward-compatible viewer page (uses campaign ID 0)
+- Receives events from legacy admin
 
 **Docs Page (`/docs`):**
 - Integration documentation with code examples
@@ -134,7 +151,7 @@ The application supports three event types with strict schemas:
 - **Neon Serverless PostgreSQL:** Configured via `@neondatabase/serverless`
 - **Drizzle Kit:** Database migrations and schema management
 - **Connection:** PostgreSQL via `DATABASE_URL` environment variable
-- **Note:** Current implementation uses in-memory storage; database infrastructure ready for future persistent storage needs
+- **Note:** Current implementation uses PostgreSQL for campaigns and events storage; database infrastructure fully integrated with campaign system
 
 ### Build & Deployment Configuration
 - **Development:** `tsx` runs TypeScript directly with hot reload
