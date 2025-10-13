@@ -58,6 +58,11 @@ export default function AdminPage() {
     enabled: !!campaignId,
   });
   
+  // Load campaign logo when campaign data is fetched
+  if (campaign?.logo && campaignLogo !== campaign.logo) {
+    setCampaignLogo(campaign.logo);
+  }
+  
   // WebSocket connection - now with campaignId
   const { connectionStatus, clientCount } = useWebSocket({
     campaignId,
@@ -302,6 +307,15 @@ export default function AdminPage() {
       });
     }
   });
+  
+  // Update campaign logo mutation
+  const updateLogoMutation = useMutation({
+    mutationFn: (logo: string) => 
+      apiRequest('PUT', `/api/campaigns/${campaignId}`, { logo }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/campaigns', campaignId] });
+    },
+  });
 
   // Send first two products simultaneously
   const [isSendingDouble, setIsSendingDouble] = useState(false);
@@ -453,23 +467,38 @@ export default function AdminPage() {
                   
                   <TabsContent value="url" className="mt-3">
                     <Label htmlFor="campaign-logo" className="text-xs text-muted-foreground">Logo URL</Label>
-                    <Input
-                      id="campaign-logo"
-                      value={campaignLogo}
-                      onChange={(e) => setCampaignLogo(e.target.value)}
-                      placeholder="https://example.com/logo.png"
-                      data-testid="input-campaign-logo"
-                      className="h-9"
-                    />
+                    <div className="flex gap-2">
+                      <Input
+                        id="campaign-logo"
+                        value={campaignLogo}
+                        onChange={(e) => setCampaignLogo(e.target.value)}
+                        placeholder="https://example.com/logo.png"
+                        data-testid="input-campaign-logo"
+                        className="h-9"
+                      />
+                      {campaignId && (
+                        <Button
+                          size="sm"
+                          onClick={() => updateLogoMutation.mutate(campaignLogo)}
+                          disabled={updateLogoMutation.isPending}
+                          data-testid="button-save-logo"
+                        >
+                          {updateLogoMutation.isPending ? 'Lagrer...' : 'Lagre'}
+                        </Button>
+                      )}
+                    </div>
                   </TabsContent>
                   
                   <TabsContent value="upload" className="mt-3">
                     <ObjectUploader
                       onUploadComplete={(objectPath) => {
                         setCampaignLogo(objectPath);
+                        if (campaignId) {
+                          updateLogoMutation.mutate(objectPath);
+                        }
                         toast({
                           title: "Logo lastet opp",
-                          description: "Kampanjelogoen er nå oppdatert",
+                          description: "Kampanjelogoen er nå oppdatert og lagret",
                         });
                       }}
                       onUploadError={(error) => {
