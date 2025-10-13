@@ -62,7 +62,7 @@ export const productEventSchema = z.object({
     currency: z.string().default("USD"),
     imageUrl: z.string().url()
   }),
-  campaignLogo: z.string().url().optional(),
+  campaignLogo: z.string().optional(),
   timestamp: z.number()
 });
 
@@ -75,7 +75,7 @@ export const pollEventSchema = z.object({
     duration: z.number(),
     imageUrl: z.string().url().optional()
   }),
-  campaignLogo: z.string().url().optional(),
+  campaignLogo: z.string().optional(),
   timestamp: z.number()
 });
 
@@ -88,7 +88,7 @@ export const contestEventSchema = z.object({
     deadline: z.string(),
     maxParticipants: z.number()
   }),
-  campaignLogo: z.string().url().optional(),
+  campaignLogo: z.string().optional(),
   timestamp: z.number()
 });
 
