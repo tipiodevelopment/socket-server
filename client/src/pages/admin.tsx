@@ -182,7 +182,28 @@ export default function AdminPage() {
           if (state.formType === 'products') {
             setProductForms(state.formData);
           } else if (state.formType === 'polls') {
-            setPollForms(state.formData);
+            // Migrate old poll format (options as string) to new format (options as array of objects)
+            const migratedPolls = state.formData.map((poll: any) => {
+              if (typeof poll.options === 'string') {
+                // Convert comma-separated string to array of objects
+                return {
+                  ...poll,
+                  options: poll.options.split(',').map((text: string) => ({
+                    text: text.trim(),
+                    imageUrl: ''
+                  })).filter((opt: any) => opt.text)
+                };
+              }
+              // Ensure options is an array of objects
+              if (!Array.isArray(poll.options)) {
+                return {
+                  ...poll,
+                  options: [{ text: '', imageUrl: '' }]
+                };
+              }
+              return poll;
+            });
+            setPollForms(migratedPolls);
           } else if (state.formType === 'contests') {
             setContestForms(state.formData);
           }
