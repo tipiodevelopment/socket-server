@@ -21,14 +21,30 @@ export const events = pgTable("events", {
   timestamp: timestamp("timestamp").defaultNow().notNull()
 });
 
+export const campaignFormState = pgTable("campaign_form_state", {
+  id: serial("id").primaryKey(),
+  campaignId: integer("campaign_id").notNull().references(() => campaigns.id, { onDelete: 'cascade' }),
+  formType: varchar("form_type", { length: 50 }).notNull(),
+  formData: json("form_data").notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull()
+});
+
 // Relations
 export const campaignsRelations = relations(campaigns, ({ many }) => ({
-  events: many(events)
+  events: many(events),
+  formStates: many(campaignFormState)
 }));
 
 export const eventsRelations = relations(events, ({ one }) => ({
   campaign: one(campaigns, {
     fields: [events.campaignId],
+    references: [campaigns.id]
+  })
+}));
+
+export const campaignFormStateRelations = relations(campaignFormState, ({ one }) => ({
+  campaign: one(campaigns, {
+    fields: [campaignFormState.campaignId],
     references: [campaigns.id]
   })
 }));
@@ -44,11 +60,18 @@ export const insertEventSchema = createInsertSchema(events).omit({
   timestamp: true 
 });
 
+export const insertFormStateSchema = createInsertSchema(campaignFormState).omit({ 
+  id: true,
+  updatedAt: true 
+});
+
 // Types
 export type Campaign = typeof campaigns.$inferSelect;
 export type InsertCampaign = z.infer<typeof insertCampaignSchema>;
 export type Event = typeof events.$inferSelect;
 export type InsertEvent = z.infer<typeof insertEventSchema>;
+export type CampaignFormState = typeof campaignFormState.$inferSelect;
+export type InsertFormState = z.infer<typeof insertFormStateSchema>;
 
 // Event schemas
 export const productEventSchema = z.object({
