@@ -50,7 +50,7 @@ Preferred communication style: Simple, everyday language.
 **Event Types:**
 The application supports three event types with strict schemas:
 - **Product Events:** E-commerce product announcements with productId (from external system), name, pricing and images
-- **Poll Events:** Interactive polls with multiple choice options and duration
+- **Poll Events:** Interactive polls with multiple choice options (each option can have optional image/logo) and duration
 - **Contest Events:** Contest announcements with prizes and participation limits
 
 **Schema Validation:**
@@ -61,9 +61,16 @@ The application supports three event types with strict schemas:
 **Event Lifecycle:**
 1. Admin creates event via form submission
 2. Server validates event data against schema
-3. Event stored in memory (up to 100 recent events)
-4. Event broadcast to all connected WebSocket clients
+3. Event stored in PostgreSQL database (campaign-specific)
+4. Event broadcast to all connected WebSocket clients in campaign channel
 5. Viewers receive and display events in real-time
+
+**Historical Events:**
+- GET /api/events?campaignId=X retrieves persisted events from database
+- Admin and viewer pages load historical events on mount via React Query
+- Real-time events from WebSocket merged with historical events
+- Duplicate prevention: Events checked by type, timestamp, and data before adding
+- Event persistence enables viewers to see past events even if they missed the live broadcast
 
 ### Page Structure
 
@@ -79,6 +86,13 @@ The application supports three event types with strict schemas:
 - Each event has its own "Send" button for independent broadcasting to that campaign's viewers
 - Remove events with the "X" button (maintains at least 1 form per type)
 - **Form State Persistence:** Form values automatically save to database and restore on page refresh (auto-save with 1-second debounce)
+- **Poll Options with Images:** Poll system supports individual images for each option
+  - Each option is an object with text and optional imageUrl
+  - Add/remove poll options dynamically with "Legg til" button
+  - Each option can have a logo (e.g., team logos for sports polls)
+  - Option images can be provided via URL or file upload
+  - Backend automatically converts relative URLs to absolute URLs
+  - Backwards compatible: old comma-separated options auto-migrate to new format
 - Campaign logo configuration with dual input methods:
   - URL input for existing logos
   - Direct file upload using Replit Object Storage
