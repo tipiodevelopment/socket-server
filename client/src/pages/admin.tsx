@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Link, useParams } from 'wouter';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { useWebSocket } from '@/hooks/use-websocket';
@@ -148,6 +148,100 @@ export default function AdminPage() {
       maxParticipants: '250'
     }
   ]);
+
+  // Track if forms have been loaded from database
+  const [formsLoaded, setFormsLoaded] = useState(false);
+
+  // Load saved form states
+  const { data: savedFormStates } = useQuery<any[]>({
+    queryKey: ['/api/form-state', campaignId],
+    enabled: !!campaignId && !formsLoaded,
+  });
+
+  // Load saved forms into state when data arrives
+  useEffect(() => {
+    if (savedFormStates && savedFormStates.length > 0 && !formsLoaded) {
+      savedFormStates.forEach(state => {
+        if (state.formType === 'products') {
+          setProductForms(state.formData);
+        } else if (state.formType === 'polls') {
+          setPollForms(state.formData);
+        } else if (state.formType === 'contests') {
+          setContestForms(state.formData);
+        }
+      });
+      setFormsLoaded(true);
+    }
+  }, [savedFormStates, formsLoaded]);
+
+  // Mutation to save form state
+  const saveFormStateMutation = useMutation({
+    mutationFn: async ({ formType, formData }: { formType: string; formData: any }) => {
+      if (!campaignId) return;
+      return await apiRequest('POST', '/api/form-state', {
+        campaignId,
+        formType,
+        formData
+      });
+    }
+  });
+
+  // Auto-save with debounce
+  const saveTimeoutRef = useRef<NodeJS.Timeout>();
+  
+  useEffect(() => {
+    if (!campaignId || !formsLoaded) return;
+    
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current);
+    }
+
+    saveTimeoutRef.current = setTimeout(() => {
+      saveFormStateMutation.mutate({ formType: 'products', formData: productForms });
+    }, 1000);
+
+    return () => {
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
+      }
+    };
+  }, [productForms, campaignId, formsLoaded]);
+
+  useEffect(() => {
+    if (!campaignId || !formsLoaded) return;
+    
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current);
+    }
+
+    saveTimeoutRef.current = setTimeout(() => {
+      saveFormStateMutation.mutate({ formType: 'polls', formData: pollForms });
+    }, 1000);
+
+    return () => {
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
+      }
+    };
+  }, [pollForms, campaignId, formsLoaded]);
+
+  useEffect(() => {
+    if (!campaignId || !formsLoaded) return;
+    
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current);
+    }
+
+    saveTimeoutRef.current = setTimeout(() => {
+      saveFormStateMutation.mutate({ formType: 'contests', formData: contestForms });
+    }, 1000);
+
+    return () => {
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
+      }
+    };
+  }, [contestForms, campaignId, formsLoaded]);
 
   // Add new product form
   const addProductForm = () => {
