@@ -160,16 +160,18 @@ export default function AdminPage() {
 
   // Load saved forms into state when data arrives
   useEffect(() => {
-    if (savedFormStates && savedFormStates.length > 0 && !formsLoaded) {
-      savedFormStates.forEach(state => {
-        if (state.formType === 'products') {
-          setProductForms(state.formData);
-        } else if (state.formType === 'polls') {
-          setPollForms(state.formData);
-        } else if (state.formType === 'contests') {
-          setContestForms(state.formData);
-        }
-      });
+    if (savedFormStates !== undefined && !formsLoaded) {
+      if (savedFormStates.length > 0) {
+        savedFormStates.forEach(state => {
+          if (state.formType === 'products') {
+            setProductForms(state.formData);
+          } else if (state.formType === 'polls') {
+            setPollForms(state.formData);
+          } else if (state.formType === 'contests') {
+            setContestForms(state.formData);
+          }
+        });
+      }
       setFormsLoaded(true);
     }
   }, [savedFormStates, formsLoaded]);
@@ -186,23 +188,25 @@ export default function AdminPage() {
     }
   });
 
-  // Auto-save with debounce
-  const saveTimeoutRef = useRef<NodeJS.Timeout>();
+  // Auto-save with debounce - separate timers for each form type
+  const productsSaveTimeoutRef = useRef<NodeJS.Timeout>();
+  const pollsSaveTimeoutRef = useRef<NodeJS.Timeout>();
+  const contestsSaveTimeoutRef = useRef<NodeJS.Timeout>();
   
   useEffect(() => {
     if (!campaignId || !formsLoaded) return;
     
-    if (saveTimeoutRef.current) {
-      clearTimeout(saveTimeoutRef.current);
+    if (productsSaveTimeoutRef.current) {
+      clearTimeout(productsSaveTimeoutRef.current);
     }
 
-    saveTimeoutRef.current = setTimeout(() => {
+    productsSaveTimeoutRef.current = setTimeout(() => {
       saveFormStateMutation.mutate({ formType: 'products', formData: productForms });
     }, 1000);
 
     return () => {
-      if (saveTimeoutRef.current) {
-        clearTimeout(saveTimeoutRef.current);
+      if (productsSaveTimeoutRef.current) {
+        clearTimeout(productsSaveTimeoutRef.current);
       }
     };
   }, [productForms, campaignId, formsLoaded]);
@@ -210,17 +214,17 @@ export default function AdminPage() {
   useEffect(() => {
     if (!campaignId || !formsLoaded) return;
     
-    if (saveTimeoutRef.current) {
-      clearTimeout(saveTimeoutRef.current);
+    if (pollsSaveTimeoutRef.current) {
+      clearTimeout(pollsSaveTimeoutRef.current);
     }
 
-    saveTimeoutRef.current = setTimeout(() => {
+    pollsSaveTimeoutRef.current = setTimeout(() => {
       saveFormStateMutation.mutate({ formType: 'polls', formData: pollForms });
     }, 1000);
 
     return () => {
-      if (saveTimeoutRef.current) {
-        clearTimeout(saveTimeoutRef.current);
+      if (pollsSaveTimeoutRef.current) {
+        clearTimeout(pollsSaveTimeoutRef.current);
       }
     };
   }, [pollForms, campaignId, formsLoaded]);
@@ -228,17 +232,17 @@ export default function AdminPage() {
   useEffect(() => {
     if (!campaignId || !formsLoaded) return;
     
-    if (saveTimeoutRef.current) {
-      clearTimeout(saveTimeoutRef.current);
+    if (contestsSaveTimeoutRef.current) {
+      clearTimeout(contestsSaveTimeoutRef.current);
     }
 
-    saveTimeoutRef.current = setTimeout(() => {
+    contestsSaveTimeoutRef.current = setTimeout(() => {
       saveFormStateMutation.mutate({ formType: 'contests', formData: contestForms });
     }, 1000);
 
     return () => {
-      if (saveTimeoutRef.current) {
-        clearTimeout(saveTimeoutRef.current);
+      if (contestsSaveTimeoutRef.current) {
+        clearTimeout(contestsSaveTimeoutRef.current);
       }
     };
   }, [contestForms, campaignId, formsLoaded]);

@@ -78,6 +78,7 @@ The application supports three event types with strict schemas:
 - Multiple event forms: Add multiple products, polls, and contests with the "+" button
 - Each event has its own "Send" button for independent broadcasting to that campaign's viewers
 - Remove events with the "X" button (maintains at least 1 form per type)
+- **Form State Persistence:** Form values automatically save to database and restore on page refresh (auto-save with 1-second debounce)
 - Campaign logo configuration with dual input methods:
   - URL input for existing logos
   - Direct file upload using Replit Object Storage
