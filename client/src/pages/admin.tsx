@@ -26,10 +26,15 @@ interface ProductForm {
   imageUrl: string;
 }
 
+interface PollOption {
+  text: string;
+  imageUrl?: string;
+}
+
 interface PollForm {
   id: number;
   question: string;
-  options: string;
+  options: PollOption[];
   duration: string;
   imageUrl?: string;
 }
@@ -104,21 +109,32 @@ export default function AdminPage() {
     {
       id: Date.now() + 3,
       question: 'Hvem vinner denne kampen?',
-      options: 'Barcelona, PSG',
+      options: [
+        { text: 'Barcelona', imageUrl: barcelonaLogo },
+        { text: 'PSG', imageUrl: psgLogo }
+      ],
       duration: '60',
       imageUrl: barcelonaLogo
     },
     {
       id: Date.now() + 4,
       question: 'Hvem scorer i denne andre omgangen?',
-      options: 'Lamine Yamal, Raphina, Dembélé, Vitinha',
+      options: [
+        { text: 'Lamine Yamal', imageUrl: barcelonaLogo },
+        { text: 'Raphina', imageUrl: barcelonaLogo },
+        { text: 'Dembélé', imageUrl: psgLogo },
+        { text: 'Vitinha', imageUrl: psgLogo }
+      ],
       duration: '90',
       imageUrl: barcelonaLogo
     },
     {
       id: Date.now() + 5,
       question: 'Kommer PSG til å score i sluttminuttene?',
-      options: 'Ja, Nei',
+      options: [
+        { text: 'Ja' },
+        { text: 'Nei' }
+      ],
       duration: '120',
       imageUrl: psgLogo
     }
@@ -264,7 +280,7 @@ export default function AdminPage() {
     setPollForms(prev => [...prev, {
       id: Date.now(),
       question: '',
-      options: '',
+      options: [{ text: '', imageUrl: '' }],
       duration: '60',
       imageUrl: ''
     }]);
@@ -307,9 +323,39 @@ export default function AdminPage() {
     ));
   };
 
-  const updatePollForm = (id: number, field: keyof Omit<PollForm, 'id'>, value: string) => {
+  const updatePollForm = (id: number, field: keyof Omit<PollForm, 'id'>, value: any) => {
     setPollForms(prev => prev.map(form => 
       form.id === id ? { ...form, [field]: value } : form
+    ));
+  };
+
+  // Poll options management
+  const addPollOption = (pollId: number) => {
+    setPollForms(prev => prev.map(form => 
+      form.id === pollId 
+        ? { ...form, options: [...form.options, { text: '', imageUrl: '' }] }
+        : form
+    ));
+  };
+
+  const updatePollOption = (pollId: number, optionIndex: number, field: 'text' | 'imageUrl', value: string) => {
+    setPollForms(prev => prev.map(form => 
+      form.id === pollId 
+        ? {
+            ...form,
+            options: form.options.map((opt, idx) => 
+              idx === optionIndex ? { ...opt, [field]: value } : opt
+            )
+          }
+        : form
+    ));
+  };
+
+  const removePollOption = (pollId: number, optionIndex: number) => {
+    setPollForms(prev => prev.map(form => 
+      form.id === pollId && form.options.length > 1
+        ? { ...form, options: form.options.filter((_, idx) => idx !== optionIndex) }
+        : form
     ));
   };
 
@@ -358,7 +404,7 @@ export default function AdminPage() {
     mutationFn: (data: Omit<PollForm, 'id'>) => 
       apiRequest('POST', '/api/events/poll', {
         question: data.question,
-        options: data.options.split(',').map((opt: string) => opt.trim()),
+        options: data.options,
         duration: parseInt(data.duration),
         imageUrl: data.imageUrl || undefined,
         campaignId,
@@ -800,14 +846,91 @@ export default function AdminPage() {
                         />
                       </div>
                       <div>
-                        <Label htmlFor={`poll-options-${form.id}`} className="text-xs">Alternativer (kommaseparert)</Label>
-                        <Input
-                          id={`poll-options-${form.id}`}
-                          value={form.options}
-                          onChange={(e) => updatePollForm(form.id, 'options', e.target.value)}
-                          data-testid={`input-poll-options-${form.id}`}
-                          className="h-9"
-                        />
+                        <div className="flex items-center justify-between mb-2">
+                          <Label className="text-xs">Alternativer</Label>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => addPollOption(form.id)}
+                            data-testid={`button-add-poll-option-${form.id}`}
+                            className="h-6 px-2 gap-1"
+                          >
+                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4"></path>
+                            </svg>
+                            <span className="text-xs">Legg til</span>
+                          </Button>
+                        </div>
+                        <div className="space-y-2">
+                          {form.options.map((option, optionIndex) => (
+                            <div key={optionIndex} className="border border-border/50 rounded-md p-2 space-y-2">
+                              <div className="flex items-center gap-2">
+                                <Input
+                                  value={option.text}
+                                  onChange={(e) => updatePollOption(form.id, optionIndex, 'text', e.target.value)}
+                                  placeholder={`Alternativ ${optionIndex + 1} (f.eks. Barcelona)`}
+                                  data-testid={`input-poll-option-text-${form.id}-${optionIndex}`}
+                                  className="h-8 flex-1"
+                                />
+                                {form.options.length > 1 && (
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    onClick={() => removePollOption(form.id, optionIndex)}
+                                    data-testid={`button-remove-poll-option-${form.id}-${optionIndex}`}
+                                    className="h-8 w-8 p-0"
+                                  >
+                                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path>
+                                    </svg>
+                                  </Button>
+                                )}
+                              </div>
+                              <div>
+                                <Label className="text-xs text-muted-foreground">Logo (valgfritt)</Label>
+                                <Tabs defaultValue="url" className="w-full mt-1">
+                                  <TabsList className="grid w-full grid-cols-2 h-7">
+                                    <TabsTrigger value="url" className="text-xs py-0">URL</TabsTrigger>
+                                    <TabsTrigger value="upload" className="text-xs py-0">Last opp</TabsTrigger>
+                                  </TabsList>
+                                  <TabsContent value="url" className="mt-1">
+                                    <Input
+                                      value={option.imageUrl || ''}
+                                      onChange={(e) => updatePollOption(form.id, optionIndex, 'imageUrl', e.target.value)}
+                                      placeholder="https://example.com/logo.png"
+                                      data-testid={`input-poll-option-image-${form.id}-${optionIndex}`}
+                                      className="h-8"
+                                    />
+                                  </TabsContent>
+                                  <TabsContent value="upload" className="mt-1">
+                                    <ObjectUploader
+                                      onUploadComplete={(url: string) => updatePollOption(form.id, optionIndex, 'imageUrl', url)}
+                                      onUploadError={(error: Error) => {
+                                        toast({
+                                          title: "Feil ved opplasting",
+                                          description: error.message,
+                                          variant: "destructive",
+                                        });
+                                      }}
+                                    />
+                                  </TabsContent>
+                                </Tabs>
+                                {option.imageUrl && (
+                                  <div className="mt-1">
+                                    <img 
+                                      src={option.imageUrl} 
+                                      alt={option.text}
+                                      className="h-8 w-8 object-contain rounded"
+                                      onError={(e) => {
+                                        e.currentTarget.style.display = 'none';
+                                      }}
+                                    />
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
                       </div>
                       <div>
                         <Label htmlFor={`poll-duration-${form.id}`} className="text-xs">Varighet (sekunder)</Label>

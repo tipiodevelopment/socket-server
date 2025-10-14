@@ -236,10 +236,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
       
-      // Process options: convert comma-separated string to array
-      const options = typeof req.body.options === 'string' 
-        ? req.body.options.split(',').map((opt: string) => opt.trim()).filter(Boolean)
-        : req.body.options;
+      // Process options: convert comma-separated string to array or process objects
+      let options;
+      if (typeof req.body.options === 'string') {
+        // Legacy format: comma-separated string
+        options = req.body.options.split(',').map((opt: string) => ({
+          text: opt.trim(),
+          imageUrl: undefined
+        })).filter((opt: any) => opt.text);
+      } else if (Array.isArray(req.body.options)) {
+        // New format: array of objects with optional imageUrl
+        options = req.body.options.map((opt: any) => ({
+          text: opt.text,
+          imageUrl: toAbsoluteUrl(opt.imageUrl, req)
+        }));
+      } else {
+        options = [];
+      }
 
       // Process duration: convert to number
       const duration = typeof req.body.duration === 'string' 
