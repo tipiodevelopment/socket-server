@@ -1,4 +1,4 @@
-import type { Express } from "express";
+import type { Express, Request } from "express";
 import { createServer, type Server } from "http";
 import { WebSocketServer, WebSocket } from "ws";
 import { storage } from "./storage";
@@ -8,6 +8,21 @@ import {
   ObjectStorageService,
   ObjectNotFoundError,
 } from "./objectStorage";
+
+// Helper function to convert relative paths to absolute URLs
+function toAbsoluteUrl(pathOrUrl: string | undefined, req: Request): string | undefined {
+  if (!pathOrUrl) return undefined;
+  
+  // If already a full URL, return as is
+  if (pathOrUrl.startsWith('http://') || pathOrUrl.startsWith('https://')) {
+    return pathOrUrl;
+  }
+  
+  // Convert relative path to absolute URL
+  const protocol = req.protocol || 'https';
+  const host = req.get('host') || 'localhost:5000';
+  return `${protocol}://${host}${pathOrUrl.startsWith('/') ? pathOrUrl : '/' + pathOrUrl}`;
+}
 
 export async function registerRoutes(app: Express): Promise<Server> {
   const httpServer = createServer(app);
@@ -172,7 +187,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           currency: req.body.currency || 'USD',
           imageUrl: req.body.imageUrl
         },
-        campaignLogo: req.body.campaignLogo || undefined,
+        campaignLogo: toAbsoluteUrl(req.body.campaignLogo, req),
         timestamp: Date.now()
       };
 
@@ -231,22 +246,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
         ? parseInt(req.body.duration, 10) 
         : req.body.duration;
 
-      // Process imageUrl: convert relative path to absolute URL if needed
-      let imageUrl = req.body.imageUrl || undefined;
-      if (imageUrl && !imageUrl.startsWith('http')) {
-        const protocol = req.protocol;
-        const host = req.get('host');
-        imageUrl = `${protocol}://${host}${imageUrl}`;
-      }
-
-      // Process campaignLogo: convert relative path to absolute URL if needed
-      let campaignLogo = req.body.campaignLogo || undefined;
-      if (campaignLogo && !campaignLogo.startsWith('http')) {
-        const protocol = req.protocol;
-        const host = req.get('host');
-        campaignLogo = `${protocol}://${host}${campaignLogo}`;
-      }
-
       const pollEvent: WebSocketEvent = {
         type: 'poll',
         data: {
@@ -254,9 +253,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
           question: req.body.question,
           options,
           duration,
-          imageUrl
+          imageUrl: toAbsoluteUrl(req.body.imageUrl, req)
         },
-        campaignLogo,
+        campaignLogo: toAbsoluteUrl(req.body.campaignLogo, req),
         timestamp: Date.now()
       };
 
@@ -311,7 +310,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           deadline: req.body.deadline,
           maxParticipants: req.body.maxParticipants
         },
-        campaignLogo: req.body.campaignLogo,
+        campaignLogo: toAbsoluteUrl(req.body.campaignLogo, req),
         timestamp: Date.now()
       };
 
