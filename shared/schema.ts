@@ -89,12 +89,17 @@ export const productEventSchema = z.object({
   timestamp: z.number()
 });
 
+export const pollOptionSchema = z.object({
+  text: z.string(),
+  imageUrl: z.string().optional()
+});
+
 export const pollEventSchema = z.object({
   type: z.literal("poll"),
   data: z.object({
     id: z.string(),
     question: z.string(),
-    options: z.array(z.string()),
+    options: z.array(pollOptionSchema),
     duration: z.number(),
     imageUrl: z.string().url().optional()
   }),
@@ -122,6 +127,7 @@ export const webSocketEventSchema = z.union([
 ]);
 
 // Types
+export type PollOption = z.infer<typeof pollOptionSchema>;
 export type ProductEvent = z.infer<typeof productEventSchema>;
 export type PollEvent = z.infer<typeof pollEventSchema>;
 export type ContestEvent = z.infer<typeof contestEventSchema>;
