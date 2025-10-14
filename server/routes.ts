@@ -473,5 +473,59 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Form state routes
+  
+  // Save form state
+  app.post('/api/form-state', async (req, res) => {
+    try {
+      const { campaignId, formType, formData } = req.body;
+      
+      if (!campaignId || !formType || !formData) {
+        return res.status(400).json({ message: 'Missing required fields' });
+      }
+
+      const state = await storage.saveFormState({
+        campaignId: parseInt(campaignId),
+        formType,
+        formData
+      });
+      
+      res.json(state);
+    } catch (error) {
+      console.error('Error saving form state:', error);
+      res.status(500).json({ message: 'Error saving form state' });
+    }
+  });
+
+  // Get specific form state
+  app.get('/api/form-state/:campaignId/:formType', async (req, res) => {
+    try {
+      const state = await storage.getFormState(
+        parseInt(req.params.campaignId),
+        req.params.formType
+      );
+      
+      if (!state) {
+        return res.status(404).json({ message: 'Form state not found' });
+      }
+      
+      res.json(state);
+    } catch (error) {
+      console.error('Error fetching form state:', error);
+      res.status(500).json({ message: 'Error fetching form state' });
+    }
+  });
+
+  // Get all form states for a campaign
+  app.get('/api/form-state/:campaignId', async (req, res) => {
+    try {
+      const states = await storage.getAllFormStates(parseInt(req.params.campaignId));
+      res.json(states);
+    } catch (error) {
+      console.error('Error fetching form states:', error);
+      res.status(500).json({ message: 'Error fetching form states' });
+    }
+  });
+
   return httpServer;
 }

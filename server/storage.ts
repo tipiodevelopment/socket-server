@@ -1,7 +1,7 @@
-import { WebSocketEvent, Campaign, InsertCampaign, Event, InsertEvent } from "@shared/schema";
+import { WebSocketEvent, Campaign, InsertCampaign, Event, InsertEvent, CampaignFormState, InsertFormState } from "@shared/schema";
 import { db } from "./db";
-import { campaigns, events } from "@shared/schema";
-import { eq, desc } from "drizzle-orm";
+import { campaigns, events, campaignFormState } from "@shared/schema";
+import { eq, desc, and } from "drizzle-orm";
 
 export interface IStorage {
   addEvent(event: WebSocketEvent): Promise<void>;
@@ -20,6 +20,11 @@ export interface IStorage {
   // Campaign events methods
   addCampaignEvent(event: InsertEvent): Promise<Event>;
   getCampaignEvents(campaignId: number, limit?: number): Promise<Event[]>;
+  
+  // Form state methods
+  saveFormState(state: InsertFormState): Promise<CampaignFormState>;
+  getFormState(campaignId: number, formType: string): Promise<CampaignFormState | undefined>;
+  getAllFormStates(campaignId: number): Promise<CampaignFormState[]>;
 }
 
 export class MemStorage implements IStorage {
@@ -89,6 +94,55 @@ export class MemStorage implements IStorage {
       .where(eq(events.campaignId, campaignId))
       .orderBy(desc(events.timestamp))
       .limit(limit);
+  }
+
+  // Form state methods (database-backed)
+  async saveFormState(state: InsertFormState): Promise<CampaignFormState> {
+    // Check if form state already exists
+    const [existing] = await db.select()
+      .from(campaignFormState)
+      .where(
+        and(
+          eq(campaignFormState.campaignId, state.campaignId),
+          eq(campaignFormState.formType, state.formType)
+        )
+      );
+
+    if (existing) {
+      // Update existing
+      const [updated] = await db.update(campaignFormState)
+        .set({ formData: state.formData, updatedAt: new Date() })
+        .where(
+          and(
+            eq(campaignFormState.campaignId, state.campaignId),
+            eq(campaignFormState.formType, state.formType)
+          )
+        )
+        .returning();
+      return updated;
+    } else {
+      // Create new
+      const [newState] = await db.insert(campaignFormState).values(state).returning();
+      return newState;
+    }
+  }
+
+  async getFormState(campaignId: number, formType: string): Promise<CampaignFormState | undefined> {
+    const [state] = await db.select()
+      .from(campaignFormState)
+      .where(
+        and(
+          eq(campaignFormState.campaignId, campaignId),
+          eq(campaignFormState.formType, formType)
+        )
+      );
+    return state || undefined;
+  }
+
+  async getAllFormStates(campaignId: number): Promise<CampaignFormState[]> {
+    return await db.select()
+      .from(campaignFormState)
+      .where(eq(campaignFormState.campaignId, campaignId));
   }
 }
 
