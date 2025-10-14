@@ -67,12 +67,34 @@ export default function AdminPage() {
   if (campaign?.logo && campaignLogo !== campaign.logo) {
     setCampaignLogo(campaign.logo);
   }
+
+  // Fetch historical events from API
+  const { data: historicalEvents } = useQuery<WebSocketEvent[]>({
+    queryKey: ['/api/events', campaignId],
+    enabled: !!campaignId,
+  });
+
+  // Load historical events into state when data arrives
+  useEffect(() => {
+    if (historicalEvents && historicalEvents.length > 0) {
+      setEventHistory(historicalEvents.slice(0, 50));
+    }
+  }, [historicalEvents]);
   
   // WebSocket connection - now with campaignId
   const { connectionStatus, clientCount } = useWebSocket({
     campaignId,
     onMessage: (event) => {
-      setEventHistory(prev => [event, ...prev.slice(0, 49)]);
+      setEventHistory(prev => {
+        // Check if event already exists in history (prevent duplicates)
+        const exists = prev.some(e => 
+          e.type === event.type && 
+          e.timestamp === event.timestamp &&
+          JSON.stringify(e.data) === JSON.stringify(event.data)
+        );
+        if (exists) return prev;
+        return [event, ...prev.slice(0, 49)];
+      });
     }
   });
 

@@ -19,11 +19,33 @@ export default function CampaignViewerPage() {
     enabled: !!campaignId,
   });
 
+  // Fetch historical events from API
+  const { data: historicalEvents } = useQuery<WebSocketEvent[]>({
+    queryKey: ['/api/events', campaignId],
+    enabled: !!campaignId,
+  });
+
+  // Load historical events into state when data arrives
+  useEffect(() => {
+    if (historicalEvents && historicalEvents.length > 0) {
+      setEvents(historicalEvents);
+    }
+  }, [historicalEvents]);
+
   // WebSocket connection
   const { connectionStatus, clientCount } = useWebSocket({
     campaignId,
     onMessage: (event) => {
-      setEvents((prev) => [event, ...prev]);
+      setEvents((prev) => {
+        // Check if event already exists in history (prevent duplicates)
+        const exists = prev.some(e => 
+          e.type === event.type && 
+          e.timestamp === event.timestamp &&
+          JSON.stringify(e.data) === JSON.stringify(event.data)
+        );
+        if (exists) return prev;
+        return [event, ...prev];
+      });
       
       // Show browser notification for new events
       if (notificationPermission === 'granted') {

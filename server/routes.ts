@@ -146,9 +146,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Get recent events
   app.get('/api/events', async (req, res) => {
     try {
-      const events = await storage.getRecentEvents();
-      res.json(events);
+      const campaignId = req.query.campaignId ? parseInt(req.query.campaignId as string) : undefined;
+      
+      if (campaignId) {
+        // Get events for specific campaign from database
+        const dbEvents = await storage.getCampaignEvents(campaignId);
+        // Convert DB events to WebSocket events format
+        const events = dbEvents.map(dbEvent => ({
+          type: dbEvent.type,
+          data: dbEvent.data,
+          campaignLogo: dbEvent.campaignLogo || undefined,
+          timestamp: new Date(dbEvent.createdAt).getTime()
+        }));
+        res.json(events);
+      } else {
+        // Get all recent events from memory (legacy)
+        const events = await storage.getRecentEvents();
+        res.json(events);
+      }
     } catch (error) {
+      console.error('Error fetching events:', error);
       res.status(500).json({ message: 'Error fetching events' });
     }
   });
