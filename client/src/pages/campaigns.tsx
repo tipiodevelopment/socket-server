@@ -80,7 +80,7 @@ export default function CampaignsPage() {
             {campaigns.map((campaign) => (
               <Card 
                 key={campaign.id} 
-                className="border-0 hover:bg-gray-800/50 transition-colors"
+                className="border border-white/10 hover:border-white/20 transition-all"
                 data-testid={`card-campaign-${campaign.id}`}
               >
                 <CardHeader>
