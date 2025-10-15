@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link, useLocation } from 'wouter';
-import { useMutation } from '@tanstack/react-query';
+import { useMutation, useQuery } from '@tanstack/react-query';
 import { apiRequest, queryClient } from '@/lib/queryClient';
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
@@ -8,8 +8,10 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import type { Campaign } from '@shared/schema';
-import { ArrowLeft, Rocket } from 'lucide-react';
+import { Switch } from '@/components/ui/switch';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import type { Campaign, ReachuChannel, TipioLivestream } from '@shared/schema';
+import { ArrowLeft, Rocket, ShoppingBag, Radio } from 'lucide-react';
 
 export default function NewCampaignPage() {
   const { toast } = useToast();
@@ -18,6 +20,34 @@ export default function NewCampaignPage() {
     name: '',
     logo: '',
     description: ''
+  });
+
+  // Integration states
+  const [enableReachu, setEnableReachu] = useState(false);
+  const [enableTipio, setEnableTipio] = useState(false);
+  
+  // Reachu states
+  const [reachuApiKey, setReachuApiKey] = useState('');
+  const [selectedChannelId, setSelectedChannelId] = useState<string>('');
+  
+  // Tipio livestream states
+  const [tipioLivestream, setTipioLivestream] = useState<Partial<TipioLivestream>>({
+    title: '',
+    liveStreamId: '',
+    hls: null,
+    player: '',
+    thumbnail: '',
+    broadcasting: false,
+    date: '',
+    end_date: '',
+    streamDone: null,
+    videoId: ''
+  });
+
+  // Fetch Reachu channels when enabled
+  const { data: reachuChannels, isLoading: loadingChannels } = useQuery<ReachuChannel[]>({
+    queryKey: ['/api/reachu/channels'],
+    enabled: enableReachu
   });
 
   const createMutation = useMutation<Campaign, Error, typeof formData>({
