@@ -24,7 +24,10 @@ Preferred communication style: Simple, everyday language.
 
 **Design Decisions:**
 - **Component Library:** Uses shadcn/ui components built on Radix UI primitives, providing accessible, unstyled components that can be customized. This offers better flexibility than pre-styled libraries while maintaining accessibility standards.
-- **Dark Theme:** Application enforces dark mode with a custom color scheme defined in CSS variables, creating a consistent visual experience.
+- **Premium Gradient Design:** Application features a striking linear gradient background from deep purple (#1a0f2e) to dark blue (#0f1729), creating a premium, modern aesthetic.
+- **Glass Morphism:** Cards and components use semi-transparent backgrounds (rgba(30, 30, 50, 0.6)) with backdrop-blur effects for a sophisticated glass morphism design.
+- **Vibrant Blue Accent:** Primary actions and highlights use a vibrant blue (#0066FF) for maximum visual impact and clarity.
+- **Typography:** Inter font family throughout for clean, modern, highly legible text rendering.
 - **Borderless Design:** All UI components use `border-0` class for a modern, clean aesthetic without visible borders.
 - **Language:** Complete English translation across all pages, components, and messages (previously Norwegian).
 - **Navigation:** Back buttons added to all sub-pages (admin, viewer, advanced, docs) linking to campaigns homepage.
