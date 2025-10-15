@@ -1,7 +1,7 @@
-import { WebSocketEvent, Campaign, InsertCampaign, Event, InsertEvent, CampaignFormState, InsertFormState } from "@shared/schema";
+import { WebSocketEvent, Campaign, InsertCampaign, Event, InsertEvent, CampaignFormState, InsertFormState, ScheduledComponent, InsertScheduledComponent } from "@shared/schema";
 import { db } from "./db";
-import { campaigns, events, campaignFormState } from "@shared/schema";
-import { eq, desc, and } from "drizzle-orm";
+import { campaigns, events, campaignFormState, scheduledComponents } from "@shared/schema";
+import { eq, desc, and, gte } from "drizzle-orm";
 
 export interface IStorage {
   addEvent(event: WebSocketEvent): Promise<void>;
@@ -25,6 +25,14 @@ export interface IStorage {
   saveFormState(state: InsertFormState): Promise<CampaignFormState>;
   getFormState(campaignId: number, formType: string): Promise<CampaignFormState | undefined>;
   getAllFormStates(campaignId: number): Promise<CampaignFormState[]>;
+  
+  // Scheduled component methods
+  createScheduledComponent(component: InsertScheduledComponent): Promise<ScheduledComponent>;
+  getScheduledComponent(id: number): Promise<ScheduledComponent | undefined>;
+  getCampaignScheduledComponents(campaignId: number): Promise<ScheduledComponent[]>;
+  getPendingScheduledComponents(campaignId: number): Promise<ScheduledComponent[]>;
+  updateScheduledComponent(id: number, component: Partial<InsertScheduledComponent>): Promise<ScheduledComponent | undefined>;
+  deleteScheduledComponent(id: number): Promise<void>;
 }
 
 export class MemStorage implements IStorage {
@@ -143,6 +151,50 @@ export class MemStorage implements IStorage {
     return await db.select()
       .from(campaignFormState)
       .where(eq(campaignFormState.campaignId, campaignId));
+  }
+
+  // Scheduled component methods (database-backed)
+  async createScheduledComponent(component: InsertScheduledComponent): Promise<ScheduledComponent> {
+    const [newComponent] = await db.insert(scheduledComponents).values(component).returning();
+    return newComponent;
+  }
+
+  async getScheduledComponent(id: number): Promise<ScheduledComponent | undefined> {
+    const [component] = await db.select().from(scheduledComponents).where(eq(scheduledComponents.id, id));
+    return component || undefined;
+  }
+
+  async getCampaignScheduledComponents(campaignId: number): Promise<ScheduledComponent[]> {
+    return await db.select()
+      .from(scheduledComponents)
+      .where(eq(scheduledComponents.campaignId, campaignId))
+      .orderBy(scheduledComponents.scheduledTime);
+  }
+
+  async getPendingScheduledComponents(campaignId: number): Promise<ScheduledComponent[]> {
+    const now = new Date();
+    return await db.select()
+      .from(scheduledComponents)
+      .where(
+        and(
+          eq(scheduledComponents.campaignId, campaignId),
+          eq(scheduledComponents.status, 'pending'),
+          gte(scheduledComponents.scheduledTime, now)
+        )
+      )
+      .orderBy(scheduledComponents.scheduledTime);
+  }
+
+  async updateScheduledComponent(id: number, component: Partial<InsertScheduledComponent>): Promise<ScheduledComponent | undefined> {
+    const [updated] = await db.update(scheduledComponents)
+      .set(component)
+      .where(eq(scheduledComponents.id, id))
+      .returning();
+    return updated || undefined;
+  }
+
+  async deleteScheduledComponent(id: number): Promise<void> {
+    await db.delete(scheduledComponents).where(eq(scheduledComponents.id, id));
   }
 }
 
