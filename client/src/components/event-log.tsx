@@ -31,11 +31,11 @@ export function EventLog({ events, onClear }: EventLogProps) {
   const getEventTypeLabel = (type: string) => {
     switch (type) {
       case 'product':
-        return 'PRODUKT';
+        return 'PRODUCT';
       case 'poll':
-        return 'AVSTEMNING';
+        return 'POLL';
       case 'contest':
-        return 'KONKURRANSE';
+        return 'CONTEST';
       default:
         return type.toUpperCase();
     }
@@ -50,33 +50,33 @@ export function EventLog({ events, onClear }: EventLogProps) {
       case 'contest':
         return event.data.name;
       default:
-        return 'Ukjent hendelse';
+        return 'Unknown event';
     }
   };
 
   const getEventAction = (type: string) => {
     switch (type) {
       case 'product':
-        return 'Sendt';
+        return 'Sent';
       case 'poll':
-        return 'Startet';
+        return 'Started';
       case 'contest':
-        return 'Lansert';
+        return 'Launched';
       default:
-        return 'Sendt';
+        return 'Sent';
     }
   };
 
   return (
-    <div className="bg-card border border-border rounded-lg p-6">
+    <div className="bg-card border-0 rounded-lg p-6">
       <div className="flex items-center justify-between mb-4">
-        <h3 className="text-lg font-semibold">Hendelseslogg</h3>
+        <h3 className="text-lg font-semibold">Event Log</h3>
         <button 
           className="text-sm text-muted-foreground hover:text-foreground transition-colors"
           onClick={onClear}
           data-testid="button-clear-log"
         >
-          Tøm
+          Clear
         </button>
       </div>
       
@@ -87,13 +87,13 @@ export function EventLog({ events, onClear }: EventLogProps) {
       >
         {events.length === 0 ? (
           <div className="text-center py-8 text-muted-foreground">
-            Ingen hendelser registrert
+            No events registered
           </div>
         ) : (
           events.map((event) => (
             <div 
               key={`${event.type}-${event.timestamp}`} 
-              className="bg-background border border-border rounded p-3 text-sm log-entry"
+              className="bg-background border-0 rounded p-3 text-sm log-entry"
               data-testid={`log-entry-${event.type}`}
             >
               <div className="flex items-center justify-between mb-1">
@@ -101,7 +101,7 @@ export function EventLog({ events, onClear }: EventLogProps) {
                   {getEventTypeLabel(event.type)}
                 </span>
                 <span className="text-xs text-muted-foreground">
-                  {new Date(event.timestamp).toLocaleTimeString('nb-NO')}
+                  {new Date(event.timestamp).toLocaleTimeString('en-US')}
                 </span>
               </div>
               <div className="text-muted-foreground text-xs font-mono">

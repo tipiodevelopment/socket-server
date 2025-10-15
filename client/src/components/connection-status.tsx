@@ -22,13 +22,13 @@ export function ConnectionStatusComponent({ status, clientCount }: ConnectionSta
   const getStatusText = () => {
     switch (status) {
       case 'connected':
-        return 'Server kjører';
+        return 'Server Running';
       case 'connecting':
-        return 'Kobler til...';
+        return 'Connecting...';
       case 'disconnected':
-        return 'Frakoblet';
+        return 'Disconnected';
       default:
-        return 'Ukjent';
+        return 'Unknown';
     }
   };
 
@@ -46,7 +46,7 @@ export function ConnectionStatusComponent({ status, clientCount }: ConnectionSta
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"></path>
         </svg>
         <span className="text-sm" data-testid="client-count">
-          {clientCount} tilkoblede klienter
+          {clientCount} connected clients
         </span>
       </div>
     </div>
