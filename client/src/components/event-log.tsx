@@ -68,7 +68,7 @@ export function EventLog({ events, onClear }: EventLogProps) {
   };
 
   return (
-    <div className="bg-card border-0 rounded-lg p-6">
+    <div className="bg-card/60 backdrop-blur-xl border-0 rounded-2xl p-6 shadow-lg">
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-lg font-semibold">Event Log</h3>
         <button 
@@ -93,7 +93,7 @@ export function EventLog({ events, onClear }: EventLogProps) {
           events.map((event) => (
             <div 
               key={`${event.type}-${event.timestamp}`} 
-              className="bg-background border-0 rounded p-3 text-sm log-entry"
+              className="bg-white/5 backdrop-blur-sm border-0 rounded-lg p-3 text-sm log-entry hover:bg-white/10 transition-colors"
               data-testid={`log-entry-${event.type}`}
             >
               <div className="flex items-center justify-between mb-1">
