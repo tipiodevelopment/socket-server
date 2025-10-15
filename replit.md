@@ -45,6 +45,28 @@ Preferred communication style: Simple, everyday language.
 - **Request Logging:** Custom middleware logs API requests with duration and truncated response data for debugging.
 - **Campaign Validation:** Server-side validation ensures campaignId exists before broadcasting events, preventing accidental cross-campaign broadcasts.
 
+### Database Schema (Extended)
+
+**Campaigns Table:**
+- Basic fields: id, name, logo, description, createdAt
+- **Scheduling fields:** startDate, endDate (nullable timestamps for campaign scheduling)
+- **Reachu.io integration:** reachuChannelId, reachuApiKey (connects to Reachu channel for product fetching)
+- **Tipio.no integration:** tipioLiveshowId (connects campaign to Tipio liveshow)
+
+**Scheduled Components Table:**
+- Links to campaign via campaignId (foreign key with cascade delete)
+- Component type: carousel, store_view, product_spotlight, liveshow_trigger
+- scheduledTime: When component should be automatically displayed
+- data: JSON configuration specific to component type
+- status: pending, sent, cancelled (tracks component lifecycle)
+- Ordered by scheduledTime for chronological component execution
+
+**Component Type Schemas:**
+- **Carousel:** productIds array, autoRotate flag, intervalSeconds
+- **Store View:** categoryId (optional), layout (grid/list), maxItems
+- **Product Spotlight:** productId, highlightText (optional), durationSeconds
+- **Liveshow Trigger:** liveshowId, autoStart flag
+
 ### Data Flow & Event System
 
 **Event Types:**
@@ -115,6 +137,21 @@ The application supports three event types with strict schemas:
 **Legacy Viewer Page (`/viewer`):**
 - Backward-compatible viewer page (uses campaign ID 0)
 - Receives events from legacy admin
+
+**Advanced Campaign Page (`/campaign/:id/advanced`):**
+- Extended campaign management for Reachu.io and Tipio.no integration
+- Three-tab interface:
+  - **Overview Tab:** Campaign details with start/end dates for scheduling
+  - **Integrations Tab:** Reachu channel configuration (API key, channel ID) and Tipio liveshow connection
+  - **Components Tab:** Scheduled components management with timeline view
+- Four types of scheduled components:
+  - **Carousel:** Auto-rotating product showcase from Reachu
+  - **Store View:** Grid/list of products from a category
+  - **Product Spotlight:** Time-limited highlight of specific product
+  - **Liveshow Trigger:** Automatic Tipio liveshow initiation
+- Visual component status tracking (pending, sent, cancelled)
+- Component scheduling with specific date/time triggers
+- Accessed via "Avanzado" button on campaign cards
 
 **Docs Page (`/docs`):**
 - Integration documentation with code examples
