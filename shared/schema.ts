@@ -9,6 +9,11 @@ export const campaigns = pgTable("campaigns", {
   name: varchar("name", { length: 255 }).notNull(),
   logo: text("logo"),
   description: text("description"),
+  startDate: timestamp("start_date"),
+  endDate: timestamp("end_date"),
+  reachuChannelId: varchar("reachu_channel_id", { length: 255 }),
+  reachuApiKey: text("reachu_api_key"),
+  tipioLiveshowId: varchar("tipio_liveshow_id", { length: 255 }),
   createdAt: timestamp("created_at").defaultNow().notNull()
 });
 
@@ -29,10 +34,21 @@ export const campaignFormState = pgTable("campaign_form_state", {
   updatedAt: timestamp("updated_at").defaultNow().notNull()
 });
 
+export const scheduledComponents = pgTable("scheduled_components", {
+  id: serial("id").primaryKey(),
+  campaignId: integer("campaign_id").notNull().references(() => campaigns.id, { onDelete: 'cascade' }),
+  type: varchar("type", { length: 50 }).notNull(), // carousel, store_view, product_spotlight, liveshow_trigger
+  scheduledTime: timestamp("scheduled_time").notNull(),
+  data: json("data").notNull(),
+  status: varchar("status", { length: 20 }).notNull().default('pending'), // pending, sent, cancelled
+  createdAt: timestamp("created_at").defaultNow().notNull()
+});
+
 // Relations
 export const campaignsRelations = relations(campaigns, ({ many }) => ({
   events: many(events),
-  formStates: many(campaignFormState)
+  formStates: many(campaignFormState),
+  scheduledComponents: many(scheduledComponents)
 }));
 
 export const eventsRelations = relations(events, ({ one }) => ({
@@ -45,6 +61,13 @@ export const eventsRelations = relations(events, ({ one }) => ({
 export const campaignFormStateRelations = relations(campaignFormState, ({ one }) => ({
   campaign: one(campaigns, {
     fields: [campaignFormState.campaignId],
+    references: [campaigns.id]
+  })
+}));
+
+export const scheduledComponentsRelations = relations(scheduledComponents, ({ one }) => ({
+  campaign: one(campaigns, {
+    fields: [scheduledComponents.campaignId],
     references: [campaigns.id]
   })
 }));
@@ -65,6 +88,11 @@ export const insertFormStateSchema = createInsertSchema(campaignFormState).omit(
   updatedAt: true 
 });
 
+export const insertScheduledComponentSchema = createInsertSchema(scheduledComponents).omit({ 
+  id: true,
+  createdAt: true 
+});
+
 // Types
 export type Campaign = typeof campaigns.$inferSelect;
 export type InsertCampaign = z.infer<typeof insertCampaignSchema>;
@@ -72,6 +100,8 @@ export type Event = typeof events.$inferSelect;
 export type InsertEvent = z.infer<typeof insertEventSchema>;
 export type CampaignFormState = typeof campaignFormState.$inferSelect;
 export type InsertFormState = z.infer<typeof insertFormStateSchema>;
+export type ScheduledComponent = typeof scheduledComponents.$inferSelect;
+export type InsertScheduledComponent = z.infer<typeof insertScheduledComponentSchema>;
 
 // Event schemas
 export const productEventSchema = z.object({
@@ -135,3 +165,45 @@ export type WebSocketEvent = z.infer<typeof webSocketEventSchema>;
 
 // Connection status type
 export type ConnectionStatus = 'connected' | 'disconnected' | 'connecting';
+
+// Scheduled Component Schemas
+export const carouselComponentSchema = z.object({
+  type: z.literal("carousel"),
+  productIds: z.array(z.string()), // IDs de productos de Reachu
+  autoRotate: z.boolean().default(true),
+  intervalSeconds: z.number().default(5)
+});
+
+export const storeViewComponentSchema = z.object({
+  type: z.literal("store_view"),
+  categoryId: z.string().optional(),
+  layout: z.enum(["grid", "list"]).default("grid"),
+  maxItems: z.number().default(20)
+});
+
+export const productSpotlightComponentSchema = z.object({
+  type: z.literal("product_spotlight"),
+  productId: z.string(),
+  highlightText: z.string().optional(),
+  durationSeconds: z.number().default(30)
+});
+
+export const liveshowTriggerComponentSchema = z.object({
+  type: z.literal("liveshow_trigger"),
+  liveshowId: z.string(),
+  autoStart: z.boolean().default(true)
+});
+
+export const scheduledComponentDataSchema = z.union([
+  carouselComponentSchema,
+  storeViewComponentSchema,
+  productSpotlightComponentSchema,
+  liveshowTriggerComponentSchema
+]);
+
+// Scheduled Component Types
+export type CarouselComponent = z.infer<typeof carouselComponentSchema>;
+export type StoreViewComponent = z.infer<typeof storeViewComponentSchema>;
+export type ProductSpotlightComponent = z.infer<typeof productSpotlightComponentSchema>;
+export type LiveshowTriggerComponent = z.infer<typeof liveshowTriggerComponentSchema>;
+export type ScheduledComponentData = z.infer<typeof scheduledComponentDataSchema>;
