@@ -14,6 +14,7 @@ export const campaigns = pgTable("campaigns", {
   reachuChannelId: varchar("reachu_channel_id", { length: 255 }),
   reachuApiKey: text("reachu_api_key"),
   tipioLiveshowId: varchar("tipio_liveshow_id", { length: 255 }),
+  tipioLivestreamData: json("tipio_livestream_data"),
   createdAt: timestamp("created_at").defaultNow().notNull()
 });
 
@@ -207,3 +208,29 @@ export type StoreViewComponent = z.infer<typeof storeViewComponentSchema>;
 export type ProductSpotlightComponent = z.infer<typeof productSpotlightComponentSchema>;
 export type LiveshowTriggerComponent = z.infer<typeof liveshowTriggerComponentSchema>;
 export type ScheduledComponentData = z.infer<typeof scheduledComponentDataSchema>;
+
+// Tipio Livestream Schema
+export const tipioLivestreamSchema = z.object({
+  id: z.number().optional(),
+  title: z.string(),
+  liveStreamId: z.string(),
+  hls: z.string().nullable(),
+  player: z.string(),
+  thumbnail: z.string(),
+  broadcasting: z.boolean(),
+  date: z.string(),
+  end_date: z.string(),
+  streamDone: z.boolean().nullable(),
+  videoId: z.string()
+});
+
+export type TipioLivestream = z.infer<typeof tipioLivestreamSchema>;
+
+// Reachu Channel Schema (for API responses)
+export const reachuChannelSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  productCount: z.number()
+});
+
+export type ReachuChannel = z.infer<typeof reachuChannelSchema>;

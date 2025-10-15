@@ -557,5 +557,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Mock endpoint for Reachu channels
+  app.get('/api/reachu/channels', async (req, res) => {
+    try {
+      // Mock data - in production this would fetch from Reachu API
+      const mockChannels = [
+        { id: 'ch_1', name: 'Electronics Store', productCount: 245 },
+        { id: 'ch_2', name: 'Fashion & Apparel', productCount: 389 },
+        { id: 'ch_3', name: 'Home & Garden', productCount: 156 },
+        { id: 'ch_4', name: 'Sports Equipment', productCount: 92 },
+        { id: 'ch_5', name: 'Beauty & Health', productCount: 178 }
+      ];
+      
+      res.json(mockChannels);
+    } catch (error) {
+      console.error('Error fetching Reachu channels:', error);
+      res.status(500).json({ message: 'Error fetching channels' });
+    }
+  });
+
   return httpServer;
 }
