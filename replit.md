@@ -105,8 +105,15 @@ The application supports three event types with strict schemas:
 **Campaigns Page (`/` or `/campaigns`):**
 - Campaign management dashboard
 - List of all created campaigns with cards showing name, description, and creation date
-- Campaign creation form for new campaigns
-- Click on campaign to navigate to viewer page
+- "New Campaign" button navigates to dedicated creation page
+- Admin and Advanced buttons on each campaign card for quick access
+
+**New Campaign Page (`/campaigns/new`):**
+- Dedicated page for creating new campaigns (not a modal)
+- Clean form with gradient background and glass morphism card
+- Fields: Campaign name (required), logo URL (optional), description (optional)
+- Designed to accommodate additional configuration options in the future
+- Creates campaign and redirects to admin page
 
 **Campaign Admin Page (`/campaign/:id/admin`):**
 - Campaign-specific dashboard for creating and broadcasting events
