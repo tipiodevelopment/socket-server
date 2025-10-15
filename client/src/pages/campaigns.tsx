@@ -1,63 +1,15 @@
-import { useState } from 'react';
-import { Link, useLocation } from 'wouter';
-import { useQuery, useMutation } from '@tanstack/react-query';
-import { apiRequest, queryClient } from '@/lib/queryClient';
-import { useToast } from '@/hooks/use-toast';
+import { Link } from 'wouter';
+import { useQuery } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
-import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import type { Campaign } from '@shared/schema';
 import { Plus, Rocket, Calendar, Settings } from 'lucide-react';
 
 export default function CampaignsPage() {
-  const { toast } = useToast();
-  const [, setLocation] = useLocation();
-  const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [formData, setFormData] = useState({
-    name: '',
-    logo: '',
-    description: ''
-  });
-
   // Fetch campaigns
   const { data: campaigns = [], isLoading } = useQuery<Campaign[]>({
     queryKey: ['/api/campaigns'],
   });
-
-  // Create campaign mutation
-  const createMutation = useMutation<Campaign, Error, typeof formData>({
-    mutationFn: async (data) => {
-      const response = await apiRequest('POST', '/api/campaigns', data);
-      return response.json();
-    },
-    onSuccess: (newCampaign) => {
-      toast({
-        title: "Campaign Created",
-        description: "Your new campaign is ready to use",
-      });
-      queryClient.invalidateQueries({ queryKey: ['/api/campaigns'] });
-      setIsDialogOpen(false);
-      setFormData({ name: '', logo: '', description: '' });
-      
-      // Navigate to the new campaign's admin page
-      setLocation(`/campaign/${newCampaign.id}/admin`);
-    },
-    onError: () => {
-      toast({
-        title: "Error",
-        description: "Could not create campaign",
-        variant: "destructive",
-      });
-    }
-  });
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    createMutation.mutate(formData);
-  };
 
   return (
     <div className="min-h-screen bg-background text-foreground">
@@ -94,77 +46,12 @@ export default function CampaignsPage() {
             </p>
           </div>
           
-          <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-            <DialogTrigger asChild>
-              <Button data-testid="button-create-campaign" className="gap-2">
-                <Plus className="w-4 h-4" />
-                New Campaign
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="border-0">
-              <DialogHeader>
-                <DialogTitle>Create New Campaign</DialogTitle>
-                <DialogDescription>
-                  Fill in the information for your new event campaign
-                </DialogDescription>
-              </DialogHeader>
-              <form onSubmit={handleSubmit} className="space-y-4">
-                <div>
-                  <Label htmlFor="name">Name *</Label>
-                  <Input
-                    id="name"
-                    value={formData.name}
-                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                    placeholder="e.g. Champions League 2024"
-                    required
-                    data-testid="input-campaign-name"
-                    className="border-0"
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="logo">Logo URL</Label>
-                  <Input
-                    id="logo"
-                    value={formData.logo}
-                    onChange={(e) => setFormData({ ...formData, logo: e.target.value })}
-                    placeholder="https://example.com/logo.png"
-                    data-testid="input-campaign-logo"
-                    className="border-0"
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="description">Description</Label>
-                  <Textarea
-                    id="description"
-                    value={formData.description}
-                    onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                    placeholder="Brief description of the campaign"
-                    rows={3}
-                    data-testid="input-campaign-description"
-                    className="border-0"
-                  />
-                </div>
-                <div className="flex justify-end gap-2">
-                  <Button 
-                    type="button" 
-                    variant="outline" 
-                    onClick={() => setIsDialogOpen(false)}
-                    data-testid="button-cancel"
-                    className="border-0"
-                  >
-                    Cancel
-                  </Button>
-                  <Button 
-                    type="submit" 
-                    disabled={createMutation.isPending}
-                    data-testid="button-submit-campaign"
-                  >
-                    {createMutation.isPending ? 'Creating...' : 'Create Campaign'}
-                  </Button>
-                </div>
-              </form>
-            </DialogContent>
-          </Dialog>
+          <Link href="/campaigns/new">
+            <Button data-testid="button-create-campaign" className="gap-2">
+              <Plus className="w-4 h-4" />
+              New Campaign
+            </Button>
+          </Link>
         </div>
 
         {/* Campaigns Grid */}
@@ -180,13 +67,12 @@ export default function CampaignsPage() {
               <p className="text-muted-foreground mb-4">
                 Get started by creating your first campaign
               </p>
-              <Button 
-                onClick={() => setIsDialogOpen(true)}
-                data-testid="button-create-first-campaign"
-              >
-                <Plus className="w-4 h-4 mr-2" />
-                Create Campaign
-              </Button>
+              <Link href="/campaigns/new">
+                <Button data-testid="button-create-first-campaign">
+                  <Plus className="w-4 h-4 mr-2" />
+                  Create Campaign
+                </Button>
+              </Link>
             </CardContent>
           </Card>
         ) : (
@@ -228,25 +114,27 @@ export default function CampaignsPage() {
                     </div>
                   </div>
                   <div className="flex gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="flex-1 border-0"
-                      onClick={() => setLocation(`/campaign/${campaign.id}/admin`)}
-                      data-testid={`button-admin-${campaign.id}`}
-                    >
-                      Admin
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="flex-1 border-0"
-                      onClick={() => setLocation(`/campaign/${campaign.id}/advanced`)}
-                      data-testid={`button-advanced-${campaign.id}`}
-                    >
-                      <Settings className="w-4 h-4 mr-1" />
-                      Advanced
-                    </Button>
+                    <Link href={`/campaign/${campaign.id}/admin`} className="flex-1">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="w-full border-0"
+                        data-testid={`button-admin-${campaign.id}`}
+                      >
+                        Admin
+                      </Button>
+                    </Link>
+                    <Link href={`/campaign/${campaign.id}/advanced`} className="flex-1">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="w-full border-0"
+                        data-testid={`button-advanced-${campaign.id}`}
+                      >
+                        <Settings className="w-4 h-4 mr-1" />
+                        Advanced
+                      </Button>
+                    </Link>
                   </div>
                 </CardContent>
               </Card>

@@ -7,6 +7,7 @@ import AdminPage from "@/pages/admin";
 import ViewerPage from "@/pages/viewer";
 import DocsPage from "@/pages/docs";
 import CampaignsPage from "@/pages/campaigns";
+import NewCampaignPage from "@/pages/new-campaign";
 import CampaignViewerPage from "@/pages/campaign-viewer";
 import AdvancedCampaignPage from "@/pages/advanced-campaign";
 import NotFound from "@/pages/not-found";
@@ -16,6 +17,7 @@ function Router() {
     <Switch>
       {/* Main page - campaign management */}
       <Route path="/" component={CampaignsPage} />
+      <Route path="/campaigns/new" component={NewCampaignPage} />
       
       {/* Campaign-specific routes - more specific routes first */}
       <Route path="/campaign/:id/advanced" component={AdvancedCampaignPage} />
