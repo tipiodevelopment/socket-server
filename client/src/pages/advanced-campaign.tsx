@@ -45,10 +45,10 @@ export default function AdvancedCampaign() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 p-8">
+    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 p-4 sm:p-8">
       <div className="max-w-6xl mx-auto">
-        <Link href="/">
-          <Button variant="ghost" className="mb-6 text-white hover:text-white/80" data-testid="button-back">
+        <Link href="/" className="w-full sm:w-auto">
+          <Button variant="ghost" className="mb-6 text-white hover:text-white/80 w-full sm:w-auto" data-testid="button-back">
             <ArrowLeft className="w-4 h-4 mr-2" />
             Back to campaigns
           </Button>
@@ -58,13 +58,13 @@ export default function AdvancedCampaign() {
           {/* Header */}
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-4xl font-bold text-white mb-2" data-testid="text-campaign-name">{campaign.name}</h1>
-              <p className="text-gray-400">{campaign.description}</p>
+              <h1 className="text-2xl sm:text-4xl font-bold text-white mb-2" data-testid="text-campaign-name">{campaign.name}</h1>
+              <p className="text-sm sm:text-base text-gray-400">{campaign.description}</p>
             </div>
           </div>
 
           <Tabs defaultValue="overview" className="w-full">
-            <TabsList className="grid w-full grid-cols-3 bg-gray-800 border-0">
+            <TabsList className="grid w-full grid-cols-1 sm:grid-cols-3 bg-gray-800 border-0">
               <TabsTrigger value="overview" data-testid="tab-overview">Overview</TabsTrigger>
               <TabsTrigger value="integration" data-testid="tab-integration">Integrations</TabsTrigger>
               <TabsTrigger value="components" data-testid="tab-components">Scheduled Components</TabsTrigger>
@@ -78,7 +78,7 @@ export default function AdvancedCampaign() {
                   <CardDescription className="text-gray-400">Basic details and scheduling</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                       <Label className="text-gray-300">Name</Label>
                       <Input 
@@ -110,7 +110,7 @@ export default function AdvancedCampaign() {
                     />
                   </div>
 
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                       <Label className="text-gray-300 flex items-center gap-2">
                         <Calendar className="w-4 h-4" />
@@ -155,7 +155,7 @@ export default function AdvancedCampaign() {
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                       <Label className="text-gray-300">Channel ID</Label>
                       <Input 
@@ -315,19 +315,19 @@ function ComponentCard({ component }: { component: ScheduledComponent }) {
 
   return (
     <div 
-      className="flex items-center justify-between p-4 bg-gray-700 rounded-lg border-0"
+      className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 p-4 bg-gray-700 rounded-lg border-0"
       data-testid={`component-${component.id}`}
     >
-      <div className="flex-1">
+      <div className="flex-1 w-full">
         <div className="flex items-center gap-3 mb-2">
           <Badge className={`${getStatusColor(component.status)} border-0`} data-testid={`status-${component.id}`}>
             {component.status}
           </Badge>
-          <span className="text-white font-medium" data-testid={`type-${component.id}`}>
+          <span className="text-white font-medium text-sm sm:text-base" data-testid={`type-${component.id}`}>
             {getTypeLabel(component.type)}
           </span>
         </div>
-        <div className="flex items-center gap-2 text-sm text-gray-400">
+        <div className="flex items-center gap-2 text-xs sm:text-sm text-gray-400">
           <Clock className="w-4 h-4" />
           <span data-testid={`time-${component.id}`}>
             {new Date(component.scheduledTime).toLocaleString('en-US')}
@@ -337,7 +337,7 @@ function ComponentCard({ component }: { component: ScheduledComponent }) {
       <Button 
         variant="ghost" 
         size="sm" 
-        className="text-red-400 hover:text-red-300 hover:bg-red-950"
+        className="text-red-400 hover:text-red-300 hover:bg-red-950 w-full sm:w-auto"
         data-testid={`button-delete-${component.id}`}
       >
         <Trash2 className="w-4 h-4" />

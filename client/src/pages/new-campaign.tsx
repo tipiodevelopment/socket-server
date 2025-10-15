@@ -96,13 +96,13 @@ export default function NewCampaignPage() {
       <header className="bg-card/60 backdrop-blur-xl border-0">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
           <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-3">
-              <div className="w-10 h-10 bg-primary rounded-lg flex items-center justify-center">
-                <Rocket className="w-6 h-6 text-primary-foreground" />
+            <div className="flex items-center space-x-2 sm:space-x-3">
+              <div className="w-8 h-8 sm:w-10 sm:h-10 bg-primary rounded-lg flex items-center justify-center">
+                <Rocket className="w-5 h-5 sm:w-6 sm:h-6 text-primary-foreground" />
               </div>
               <div>
-                <h1 className="text-xl font-bold text-foreground">Campaign Manager</h1>
-                <p className="text-sm text-muted-foreground">Create a new event campaign</p>
+                <h1 className="text-base sm:text-xl font-bold text-foreground">Campaign Manager</h1>
+                <p className="text-xs sm:text-sm text-muted-foreground hidden sm:block">Create a new event campaign</p>
               </div>
             </div>
           </div>
@@ -199,7 +199,7 @@ export default function NewCampaignPage() {
                 </div>
 
                 {enableReachu && (
-                  <div className="space-y-4 pl-8">
+                  <div className="space-y-4 pl-4 sm:pl-8">
                     <div>
                       <Label htmlFor="reachu-api-key">API Key *</Label>
                       <Input
@@ -271,7 +271,7 @@ export default function NewCampaignPage() {
                 </div>
 
                 {enableTipio && (
-                  <div className="space-y-4 pl-8">
+                  <div className="space-y-4 pl-4 sm:pl-8">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div>
                         <Label htmlFor="tipio-title">Title *</Label>
@@ -383,13 +383,13 @@ export default function NewCampaignPage() {
               </div>
 
               {/* Action Buttons */}
-              <div className="flex justify-end gap-3 pt-4 border-t border-white/10">
-                <Link href="/">
+              <div className="flex flex-col sm:flex-row justify-end gap-3 pt-4 border-t border-white/10">
+                <Link href="/" className="w-full sm:w-auto">
                   <Button 
                     type="button" 
                     variant="outline" 
                     data-testid="button-cancel"
-                    className="border-0"
+                    className="border-0 w-full sm:w-auto"
                   >
                     Cancel
                   </Button>
@@ -398,7 +398,7 @@ export default function NewCampaignPage() {
                   type="submit" 
                   disabled={createMutation.isPending}
                   data-testid="button-submit-campaign"
-                  className="gap-2"
+                  className="gap-2 w-full sm:w-auto"
                 >
                   {createMutation.isPending ? 'Creating...' : 'Create Campaign'}
                 </Button>

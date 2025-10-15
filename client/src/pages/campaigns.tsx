@@ -16,20 +16,20 @@ export default function CampaignsPage() {
       {/* Header */}
       <header className="bg-card">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-3">
-              <div className="w-10 h-10 bg-primary rounded-lg flex items-center justify-center">
-                <Rocket className="w-6 h-6 text-primary-foreground" />
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center space-x-2 sm:space-x-3">
+              <div className="w-8 h-8 sm:w-10 sm:h-10 bg-primary rounded-lg flex items-center justify-center">
+                <Rocket className="w-5 h-5 sm:w-6 sm:h-6 text-primary-foreground" />
               </div>
               <div>
-                <h1 className="text-xl font-bold text-foreground">Campaign Manager</h1>
-                <p className="text-sm text-muted-foreground">Manage your event campaigns</p>
+                <h1 className="text-base sm:text-xl font-bold text-foreground">Campaign Manager</h1>
+                <p className="text-xs sm:text-sm text-muted-foreground hidden sm:block">Manage your event campaigns</p>
               </div>
             </div>
             
             <Link href="/docs">
-              <Button variant="ghost" size="sm" data-testid="link-docs">
-                Documentation
+              <Button variant="ghost" size="sm" data-testid="link-docs" className="text-xs sm:text-sm">
+                Docs
               </Button>
             </Link>
           </div>
@@ -38,16 +38,16 @@ export default function CampaignsPage() {
 
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="flex justify-between items-center mb-6">
+        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 mb-6">
           <div>
-            <h2 className="text-2xl font-bold">My Campaigns</h2>
-            <p className="text-muted-foreground mt-1">
+            <h2 className="text-xl sm:text-2xl font-bold">My Campaigns</h2>
+            <p className="text-sm sm:text-base text-muted-foreground mt-1">
               Select a campaign to send events, or create a new one
             </p>
           </div>
           
-          <Link href="/campaigns/new">
-            <Button data-testid="button-create-campaign" className="gap-2">
+          <Link href="/campaigns/new" className="w-full sm:w-auto">
+            <Button data-testid="button-create-campaign" className="gap-2 w-full sm:w-auto">
               <Plus className="w-4 h-4" />
               New Campaign
             </Button>
@@ -113,7 +113,7 @@ export default function CampaignsPage() {
                       </span>
                     </div>
                   </div>
-                  <div className="flex gap-2">
+                  <div className="flex flex-col sm:flex-row gap-2">
                     <Link href={`/campaign/${campaign.id}/admin`} className="flex-1">
                       <Button
                         variant="outline"
@@ -131,7 +131,7 @@ export default function CampaignsPage() {
                         className="w-full border-0"
                         data-testid={`button-advanced-${campaign.id}`}
                       >
-                        <Settings className="w-4 h-4 mr-1" />
+                        <Settings className="w-3 h-3 sm:w-4 sm:h-4 mr-1" />
                         Advanced
                       </Button>
                     </Link>

@@ -575,32 +575,32 @@ export default function AdminPage() {
       {/* Header */}
       <header className="border-0 bg-card">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-3">
-              <div className="w-10 h-10 bg-primary rounded-lg flex items-center justify-center">
-                <svg className="w-6 h-6 text-primary-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+            <div className="flex items-center space-x-2 sm:space-x-3">
+              <div className="w-8 h-8 sm:w-10 sm:h-10 bg-primary rounded-lg flex items-center justify-center">
+                <svg className="w-5 h-5 sm:w-6 sm:h-6 text-primary-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path>
                 </svg>
               </div>
               <div>
-                <h1 className="text-xl font-bold text-foreground">WebSocket Event Server</h1>
-                <p className="text-sm text-muted-foreground">Admin Panel - Demo</p>
+                <h1 className="text-base sm:text-xl font-bold text-foreground">WebSocket Event Server</h1>
+                <p className="text-xs sm:text-sm text-muted-foreground">Admin Panel - Demo</p>
               </div>
             </div>
             
-            <div className="flex items-center space-x-4">
+            <div className="flex items-center gap-2 sm:gap-4 w-full sm:w-auto">
               <ConnectionStatusComponent 
                 status={connectionStatus} 
                 clientCount={clientCount} 
               />
-              <div className="flex space-x-2">
+              <div className="flex gap-2">
                 <Link href="/viewer">
-                  <Button variant="outline" size="sm" data-testid="link-viewer" className="border-0">
+                  <Button variant="outline" size="sm" data-testid="link-viewer" className="border-0 text-xs sm:text-sm">
                     Viewer
                   </Button>
                 </Link>
                 <Link href="/docs">
-                  <Button variant="outline" size="sm" data-testid="link-docs" className="border-0">
+                  <Button variant="outline" size="sm" data-testid="link-docs" className="border-0 text-xs sm:text-sm">
                     Docs
                   </Button>
                 </Link>
@@ -621,12 +621,12 @@ export default function AdminPage() {
           </Link>
         </div>
         
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 lg:gap-6">
           {/* Left Column: Event Triggers */}
           <div className="lg:col-span-2 space-y-6">
             <div>
-              <h2 className="text-2xl font-bold mb-4">Trigger Events</h2>
-              <p className="text-muted-foreground mb-6">Use the + button to add more events</p>
+              <h2 className="text-xl sm:text-2xl font-bold mb-4">Trigger Events</h2>
+              <p className="text-sm sm:text-base text-muted-foreground mb-6">Use the + button to add more events</p>
               
               {/* Campaign Logo Configuration */}
               <div className="bg-gradient-to-r from-purple-500/10 to-pink-500/10 border-0 rounded-lg p-4 mb-6">
@@ -784,7 +784,7 @@ export default function AdminPage() {
                           placeholder="ID from external system"
                         />
                       </div>
-                      <div className="grid grid-cols-2 gap-3">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         <div>
                           <Label htmlFor={`product-name-${form.id}`} className="text-xs">Name</Label>
                           <Input
@@ -1110,7 +1110,7 @@ export default function AdminPage() {
                           className="resize-none"
                         />
                       </div>
-                      <div className="grid grid-cols-2 gap-3">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         <div>
                           <Label htmlFor={`contest-deadline-${form.id}`} className="text-xs">Deadline</Label>
                           <Input

@@ -22,6 +22,7 @@ Preferred communication style: Simple, everyday language.
 
 **Design Decisions:**
 - **Aesthetic:** Premium gradient background, glass morphism for components, vibrant blue accents, Inter font family, and borderless design.
+- **Responsive Design:** Full mobile responsiveness (320px - 768px) with Tailwind breakpoints (sm:, md:, lg:). Headers, grids, buttons, and typography adapt to screen size. Flex layouts stack on mobile, grids collapse to single columns, and interactive elements expand to full width for better touch targets.
 - **Real-time:** Custom `useWebSocket` hook for connection management and reconnection logic.
 - **Type Safety:** Shared Zod schemas for type-safe event structures.
 - **Localization:** Complete English translation.
