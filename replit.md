@@ -25,6 +25,9 @@ Preferred communication style: Simple, everyday language.
 **Design Decisions:**
 - **Component Library:** Uses shadcn/ui components built on Radix UI primitives, providing accessible, unstyled components that can be customized. This offers better flexibility than pre-styled libraries while maintaining accessibility standards.
 - **Dark Theme:** Application enforces dark mode with a custom color scheme defined in CSS variables, creating a consistent visual experience.
+- **Borderless Design:** All UI components use `border-0` class for a modern, clean aesthetic without visible borders.
+- **Language:** Complete English translation across all pages, components, and messages (previously Norwegian).
+- **Navigation:** Back buttons added to all sub-pages (admin, viewer, advanced, docs) linking to campaigns homepage.
 - **Real-time Communication:** Custom `useWebSocket` hook manages WebSocket connections, handling reconnection logic and message processing in a reusable way.
 - **Type Safety:** Shared schema definitions between client and server using Zod ensures type-safe event structures across the stack.
 
