@@ -104,24 +104,24 @@ export default function AdminPage() {
       id: Date.now(),
       productId: '101',
       name: 'iPhone 15 Pro Max',
-      description: 'Siste modell med titan og 48MP kamera. Tilgjengelig i fargene naturlig titan, blå, hvit og svart.',
-      price: '12 999 kr',
+      description: 'Latest model with titanium and 48MP camera. Available in natural titanium, blue, white and black.',
+      price: '$1,199',
       imageUrl: 'https://images.unsplash.com/photo-1592286927505-b7e00a46f74f?w=800&q=80'
     },
     {
       id: Date.now() + 1,
       productId: '102',
       name: 'MacBook Air M3',
-      description: 'Apples tynneste bærbare med M3-brikke, opptil 18 timers batteritid og 13" Liquid Retina-skjerm',
-      price: '11 490 kr',
+      description: 'Apple\'s thinnest laptop with M3 chip, up to 18 hours battery life and 13" Liquid Retina display',
+      price: '$1,099',
       imageUrl: 'https://images.unsplash.com/photo-1517336714731-489689fd1ca8?w=800&q=80'
     },
     {
       id: Date.now() + 2,
       productId: '103',
       name: 'AirPods Pro (2. gen)',
-      description: 'Aktiv støyreduksjon, personlig romlig lyd og opptil 6 timers avspilling',
-      price: '2 799 kr',
+      description: 'Active noise cancellation, personalized spatial audio and up to 6 hours of playback',
+      price: '$249',
       imageUrl: 'https://images.unsplash.com/photo-1606841837239-c5a1a4a07af7?w=800&q=80'
     }
   ]);
@@ -130,7 +130,7 @@ export default function AdminPage() {
   const [pollForms, setPollForms] = useState<PollForm[]>([
     {
       id: Date.now() + 3,
-      question: 'Hvem vinner denne kampen?',
+      question: 'Who will win this match?',
       options: [
         { text: 'Barcelona', imageUrl: barcelonaLogo },
         { text: 'PSG', imageUrl: psgLogo }
@@ -140,7 +140,7 @@ export default function AdminPage() {
     },
     {
       id: Date.now() + 4,
-      question: 'Hvem scorer i denne andre omgangen?',
+      question: 'Who will score in the second half?',
       options: [
         { text: 'Lamine Yamal', imageUrl: barcelonaLogo },
         { text: 'Raphina', imageUrl: barcelonaLogo },
@@ -152,10 +152,10 @@ export default function AdminPage() {
     },
     {
       id: Date.now() + 5,
-      question: 'Kommer PSG til å score i sluttminuttene?',
+      question: 'Will PSG score in the final minutes?',
       options: [
-        { text: 'Ja' },
-        { text: 'Nei' }
+        { text: 'Yes' },
+        { text: 'No' }
       ],
       duration: '120',
       imageUrl: psgLogo
@@ -166,22 +166,22 @@ export default function AdminPage() {
   const [contestForms, setContestForms] = useState<ContestForm[]>([
     {
       id: Date.now() + 6,
-      name: 'Stor Tech-konkurranse 2024',
-      prize: 'Vinn MacBook Pro M3, AirPods Pro, Apple Watch Ultra og årlig Apple One-abonnement',
+      name: 'Big Tech Contest 2024',
+      prize: 'Win MacBook Pro M3, AirPods Pro, Apple Watch Ultra and annual Apple One subscription',
       deadline: '2024-12-31',
       maxParticipants: '1000'
     },
     {
       id: Date.now() + 7,
-      name: 'Ultimate Gaming-konkurranse',
-      prize: 'PlayStation 5 Pro, 3 AAA-spill, 1 års PS Plus-abonnement og Sony Pulse 3D-hodetelefoner',
+      name: 'Ultimate Gaming Contest',
+      prize: 'PlayStation 5 Pro, 3 AAA games, 1 year PS Plus subscription and Sony Pulse 3D headphones',
       deadline: '2024-11-30',
       maxParticipants: '500'
     },
     {
       id: Date.now() + 8,
-      name: 'Trekning Tech-konferanse reise',
-      prize: 'Fly + hotell for å delta på Apple WWDC 2025 i California (alt inkludert)',
+      name: 'Tech Conference Trip Raffle',
+      prize: 'Flight + hotel to attend Apple WWDC 2025 in California (all inclusive)',
       deadline: '2025-03-15',
       maxParticipants: '250'
     }
@@ -429,15 +429,15 @@ export default function AdminPage() {
       }),
     onSuccess: () => {
       toast({
-        title: "Produkthendelse sendt",
-        description: "Hendelsen er sendt til alle tilkoblede klienter",
+        title: "Product Event Sent",
+        description: "The event has been sent to all connected clients",
       });
       queryClient.invalidateQueries({ queryKey: ['/api/events'] });
     },
     onError: () => {
       toast({
-        title: "Feil",
-        description: "Kunne ikke sende produkthendelse",
+        title: "Error",
+        description: "Could not send product event",
         variant: "destructive",
       });
     }
@@ -455,15 +455,15 @@ export default function AdminPage() {
       }),
     onSuccess: () => {
       toast({
-        title: "Avstemning startet",
-        description: "Avstemningen er sendt til alle tilkoblede klienter",
+        title: "Poll Started",
+        description: "The poll has been sent to all connected clients",
       });
       queryClient.invalidateQueries({ queryKey: ['/api/events'] });
     },
     onError: () => {
       toast({
-        title: "Feil",
-        description: "Kunne ikke starte avstemningen",
+        title: "Error",
+        description: "Could not start the poll",
         variant: "destructive",
       });
     }
@@ -481,15 +481,15 @@ export default function AdminPage() {
       }),
     onSuccess: () => {
       toast({
-        title: "Konkurranse lansert",
-        description: "Konkurransen er sendt til alle tilkoblede klienter",
+        title: "Contest Launched",
+        description: "The contest has been sent to all connected clients",
       });
       queryClient.invalidateQueries({ queryKey: ['/api/events'] });
     },
     onError: () => {
       toast({
-        title: "Feil",
-        description: "Kunne ikke lansere konkurransen",
+        title: "Error",
+        description: "Could not launch the contest",
         variant: "destructive",
       });
     }
@@ -509,8 +509,8 @@ export default function AdminPage() {
   const sendTwoProducts = async () => {
     if (productForms.length < 2) {
       toast({
-        title: "Ikke nok produkter",
-        description: "Du trenger minst 2 produkter for å sende to samtidig",
+        title: "Not Enough Products",
+        description: "You need at least 2 products to send two simultaneously",
         variant: "destructive",
       });
       return;
@@ -540,13 +540,13 @@ export default function AdminPage() {
       });
 
       toast({
-        title: "To produkter sendt",
-        description: "De første to produktene er sendt samtidig",
+        title: "Two Products Sent",
+        description: "The first two products have been sent simultaneously",
       });
     } catch (error) {
       toast({
-        title: "Feil",
-        description: "Kunne ikke sende begge produkter",
+        title: "Error",
+        description: "Could not send both products",
         variant: "destructive",
       });
     } finally {
@@ -562,8 +562,8 @@ export default function AdminPage() {
     try {
       await navigator.clipboard.writeText(text);
       toast({
-        title: "Kopiert",
-        description: "Tekst kopiert til utklippstavle",
+        title: "Copied",
+        description: "Text copied to clipboard",
       });
     } catch (err) {
       console.error('Failed to copy: ', err);
@@ -573,7 +573,7 @@ export default function AdminPage() {
   return (
     <div className="min-h-screen bg-background text-foreground">
       {/* Header */}
-      <header className="border-b border-border bg-card">
+      <header className="border-0 bg-card">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-3">
@@ -583,8 +583,8 @@ export default function AdminPage() {
                 </svg>
               </div>
               <div>
-                <h1 className="text-xl font-bold text-foreground">WebSocket Hendelsesserver</h1>
-                <p className="text-sm text-muted-foreground">Administrasjonspanel - Demo</p>
+                <h1 className="text-xl font-bold text-foreground">WebSocket Event Server</h1>
+                <p className="text-sm text-muted-foreground">Admin Panel - Demo</p>
               </div>
             </div>
             
@@ -595,12 +595,12 @@ export default function AdminPage() {
               />
               <div className="flex space-x-2">
                 <Link href="/viewer">
-                  <Button variant="outline" size="sm" data-testid="link-viewer">
-                    Viser
+                  <Button variant="outline" size="sm" data-testid="link-viewer" className="border-0">
+                    Viewer
                   </Button>
                 </Link>
                 <Link href="/docs">
-                  <Button variant="outline" size="sm" data-testid="link-docs">
+                  <Button variant="outline" size="sm" data-testid="link-docs" className="border-0">
                     Docs
                   </Button>
                 </Link>
@@ -611,15 +611,25 @@ export default function AdminPage() {
       </header>
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* Back Button */}
+        <div className="mb-6">
+          <Link href="/">
+            <Button variant="outline" size="sm" data-testid="button-back-to-campaigns" className="gap-2 border-0">
+              <ArrowLeft className="w-4 h-4" />
+              Back to campaigns
+            </Button>
+          </Link>
+        </div>
+        
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Left Column: Event Triggers */}
           <div className="lg:col-span-2 space-y-6">
             <div>
-              <h2 className="text-2xl font-bold mb-4">Utløse hendelser</h2>
-              <p className="text-muted-foreground mb-6">Bruk + knappen for å legge til flere hendelser</p>
+              <h2 className="text-2xl font-bold mb-4">Trigger Events</h2>
+              <p className="text-muted-foreground mb-6">Use the + button to add more events</p>
               
               {/* Campaign Logo Configuration */}
-              <div className="bg-gradient-to-r from-purple-500/10 to-pink-500/10 border-2 border-purple-500/20 rounded-lg p-4 mb-6">
+              <div className="bg-gradient-to-r from-purple-500/10 to-pink-500/10 border-0 rounded-lg p-4 mb-6">
                 <div className="flex items-center space-x-3 mb-3">
                   <div className="w-10 h-10 bg-purple-500/20 rounded-lg flex items-center justify-center">
                     <svg className="w-6 h-6 text-purple-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -627,12 +637,12 @@ export default function AdminPage() {
                     </svg>
                   </div>
                   <div className="flex-1">
-                    <h3 className="text-lg font-semibold text-purple-500">Kampanjelogo</h3>
-                    <p className="text-xs text-muted-foreground">Dette logoet vises på alle hendelser</p>
+                    <h3 className="text-lg font-semibold text-purple-500">Campaign Logo</h3>
+                    <p className="text-xs text-muted-foreground">This logo appears on all events</p>
                   </div>
                   {campaignLogo && (
                     <div className="flex-shrink-0">
-                      <div className="w-16 h-16 bg-background border border-border rounded-lg flex items-center justify-center overflow-hidden">
+                      <div className="w-16 h-16 bg-background border-0 rounded-lg flex items-center justify-center overflow-hidden">
                         <img 
                           src={campaignLogo} 
                           alt="Campaign logo preview" 
@@ -649,7 +659,7 @@ export default function AdminPage() {
                 <Tabs defaultValue="url" className="w-full">
                   <TabsList className="grid w-full grid-cols-2">
                     <TabsTrigger value="url" data-testid="tab-url">URL</TabsTrigger>
-                    <TabsTrigger value="upload" data-testid="tab-upload">Last opp fil</TabsTrigger>
+                    <TabsTrigger value="upload" data-testid="tab-upload">Upload File</TabsTrigger>
                   </TabsList>
                   
                   <TabsContent value="url" className="mt-3">
@@ -669,8 +679,9 @@ export default function AdminPage() {
                           onClick={() => updateLogoMutation.mutate(campaignLogo)}
                           disabled={updateLogoMutation.isPending}
                           data-testid="button-save-logo"
+                          className="border-0"
                         >
-                          {updateLogoMutation.isPending ? 'Lagrer...' : 'Lagre'}
+                          {updateLogoMutation.isPending ? 'Saving...' : 'Save'}
                         </Button>
                       )}
                     </div>
@@ -684,13 +695,13 @@ export default function AdminPage() {
                           updateLogoMutation.mutate(objectPath);
                         }
                         toast({
-                          title: "Logo lastet opp",
-                          description: "Kampanjelogoen er nå oppdatert og lagret",
+                          title: "Logo Uploaded",
+                          description: "Campaign logo has been updated and saved",
                         });
                       }}
                       onUploadError={(error) => {
                         toast({
-                          title: "Opplasting mislyktes",
+                          title: "Upload Failed",
                           description: error.message,
                           variant: "destructive",
                         });
@@ -711,7 +722,7 @@ export default function AdminPage() {
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"></path>
                       </svg>
                     </div>
-                    <h3 className="text-lg font-semibold text-primary">Produkter</h3>
+                    <h3 className="text-lg font-semibold text-primary">Products</h3>
                   </div>
                   <div className="flex gap-2">
                     {productForms.length >= 2 && (
@@ -720,13 +731,13 @@ export default function AdminPage() {
                         variant="default"
                         onClick={sendTwoProducts}
                         data-testid="button-send-two-products"
-                        className="gap-1 bg-primary"
+                        className="gap-1 bg-primary border-0"
                         disabled={isSendingDouble}
                       >
                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 9l3 3m0 0l-3 3m3-3H8m13 0a9 9 0 11-18 0 9 9 0 0118 0z"></path>
                         </svg>
-                        {isSendingDouble ? 'Sender...' : 'Send to første'}
+                        {isSendingDouble ? 'Sending...' : 'Send First Two'}
                       </Button>
                     )}
                     <Button
@@ -734,20 +745,20 @@ export default function AdminPage() {
                       variant="outline"
                       onClick={addProductForm}
                       data-testid="button-add-product"
-                      className="gap-1"
+                      className="gap-1 border-0"
                     >
                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4"></path>
                       </svg>
-                      Legg til
+                      Add
                     </Button>
                   </div>
                 </div>
                 {productForms.map((form, index) => (
-                  <div key={form.id} className="bg-card border border-border rounded-lg p-4 mb-3 relative">
+                  <div key={form.id} className="bg-card border-0 rounded-lg p-4 mb-3 relative">
                     <div className="space-y-3">
                       <div className="flex justify-between items-start">
-                        <span className="text-xs text-muted-foreground">Produkt #{index + 1}</span>
+                        <span className="text-xs text-muted-foreground">Product #{index + 1}</span>
                         {productForms.length > 1 && (
                           <Button
                             size="sm"
@@ -763,19 +774,19 @@ export default function AdminPage() {
                         )}
                       </div>
                       <div>
-                        <Label htmlFor={`product-id-${form.id}`} className="text-xs">Produkt ID</Label>
+                        <Label htmlFor={`product-id-${form.id}`} className="text-xs">Product ID</Label>
                         <Input
                           id={`product-id-${form.id}`}
                           value={form.productId}
                           onChange={(e) => updateProductForm(form.id, 'productId', e.target.value)}
                           data-testid={`input-product-id-${form.id}`}
                           className="h-9"
-                          placeholder="ID fra eksternt system"
+                          placeholder="ID from external system"
                         />
                       </div>
                       <div className="grid grid-cols-2 gap-3">
                         <div>
-                          <Label htmlFor={`product-name-${form.id}`} className="text-xs">Navn</Label>
+                          <Label htmlFor={`product-name-${form.id}`} className="text-xs">Name</Label>
                           <Input
                             id={`product-name-${form.id}`}
                             value={form.name}
@@ -785,7 +796,7 @@ export default function AdminPage() {
                           />
                         </div>
                         <div>
-                          <Label htmlFor={`product-price-${form.id}`} className="text-xs">Pris</Label>
+                          <Label htmlFor={`product-price-${form.id}`} className="text-xs">Price</Label>
                           <Input
                             id={`product-price-${form.id}`}
                             value={form.price}
@@ -796,7 +807,7 @@ export default function AdminPage() {
                         </div>
                       </div>
                       <div>
-                        <Label htmlFor={`product-description-${form.id}`} className="text-xs">Beskrivelse</Label>
+                        <Label htmlFor={`product-description-${form.id}`} className="text-xs">Description</Label>
                         <Textarea
                           id={`product-description-${form.id}`}
                           rows={2}
@@ -807,7 +818,7 @@ export default function AdminPage() {
                         />
                       </div>
                       <div>
-                        <Label htmlFor={`product-image-${form.id}`} className="text-xs">Bilde-URL</Label>
+                        <Label htmlFor={`product-image-${form.id}`} className="text-xs">Image URL</Label>
                         <Input
                           id={`product-image-${form.id}`}
                           value={form.imageUrl}
@@ -817,7 +828,7 @@ export default function AdminPage() {
                         />
                       </div>
                       <Button 
-                        className="w-full bg-primary hover:bg-primary/90 text-primary-foreground h-9"
+                        className="w-full bg-primary hover:bg-primary/90 text-primary-foreground h-9 border-0"
                         onClick={() => productMutation.mutate({
                           productId: form.productId,
                           name: form.name,
@@ -828,7 +839,7 @@ export default function AdminPage() {
                         disabled={productMutation.isPending}
                         data-testid={`button-send-product-${form.id}`}
                       >
-                        {productMutation.isPending ? 'Sender...' : 'Send hendelse'}
+                        {productMutation.isPending ? 'Sending...' : 'Send Event'}
                       </Button>
                     </div>
                   </div>
@@ -844,26 +855,26 @@ export default function AdminPage() {
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"></path>
                       </svg>
                     </div>
-                    <h3 className="text-lg font-semibold text-secondary">Avstemninger</h3>
+                    <h3 className="text-lg font-semibold text-secondary">Polls</h3>
                   </div>
                   <Button
                     size="sm"
                     variant="outline"
                     onClick={addPollForm}
                     data-testid="button-add-poll"
-                    className="gap-1"
+                    className="gap-1 border-0"
                   >
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4"></path>
                     </svg>
-                    Legg til
+                    Add
                   </Button>
                 </div>
                 {pollForms.map((form, index) => (
-                  <div key={form.id} className="bg-card border border-border rounded-lg p-4 mb-3 relative">
+                  <div key={form.id} className="bg-card border-0 rounded-lg p-4 mb-3 relative">
                     <div className="space-y-3">
                       <div className="flex justify-between items-start">
-                        <span className="text-xs text-muted-foreground">Avstemning #{index + 1}</span>
+                        <span className="text-xs text-muted-foreground">Poll #{index + 1}</span>
                         {pollForms.length > 1 && (
                           <Button
                             size="sm"
@@ -879,7 +890,7 @@ export default function AdminPage() {
                         )}
                       </div>
                       <div>
-                        <Label htmlFor={`poll-question-${form.id}`} className="text-xs">Spørsmål</Label>
+                        <Label htmlFor={`poll-question-${form.id}`} className="text-xs">Question</Label>
                         <Input
                           id={`poll-question-${form.id}`}
                           value={form.question}
@@ -890,7 +901,7 @@ export default function AdminPage() {
                       </div>
                       <div>
                         <div className="flex items-center justify-between mb-2">
-                          <Label className="text-xs">Alternativer</Label>
+                          <Label className="text-xs">Options</Label>
                           <Button
                             size="sm"
                             variant="ghost"
@@ -901,17 +912,17 @@ export default function AdminPage() {
                             <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4"></path>
                             </svg>
-                            <span className="text-xs">Legg til</span>
+                            <span className="text-xs">Add</span>
                           </Button>
                         </div>
                         <div className="space-y-2">
                           {form.options.map((option, optionIndex) => (
-                            <div key={optionIndex} className="border border-border/50 rounded-md p-2 space-y-2">
+                            <div key={optionIndex} className="border-0 rounded-md p-2 space-y-2">
                               <div className="flex items-center gap-2">
                                 <Input
                                   value={option.text}
                                   onChange={(e) => updatePollOption(form.id, optionIndex, 'text', e.target.value)}
-                                  placeholder={`Alternativ ${optionIndex + 1} (f.eks. Barcelona)`}
+                                  placeholder={`Option ${optionIndex + 1} (e.g. Barcelona)`}
                                   data-testid={`input-poll-option-text-${form.id}-${optionIndex}`}
                                   className="h-8 flex-1"
                                 />
@@ -930,11 +941,11 @@ export default function AdminPage() {
                                 )}
                               </div>
                               <div>
-                                <Label className="text-xs text-muted-foreground">Logo (valgfritt)</Label>
+                                <Label className="text-xs text-muted-foreground">Logo (optional)</Label>
                                 <Tabs defaultValue="url" className="w-full mt-1">
                                   <TabsList className="grid w-full grid-cols-2 h-7">
                                     <TabsTrigger value="url" className="text-xs py-0">URL</TabsTrigger>
-                                    <TabsTrigger value="upload" className="text-xs py-0">Last opp</TabsTrigger>
+                                    <TabsTrigger value="upload" className="text-xs py-0">Upload</TabsTrigger>
                                   </TabsList>
                                   <TabsContent value="url" className="mt-1">
                                     <Input
@@ -976,7 +987,7 @@ export default function AdminPage() {
                         </div>
                       </div>
                       <div>
-                        <Label htmlFor={`poll-duration-${form.id}`} className="text-xs">Varighet (sekunder)</Label>
+                        <Label htmlFor={`poll-duration-${form.id}`} className="text-xs">Duration (seconds)</Label>
                         <Input
                           id={`poll-duration-${form.id}`}
                           type="number"
@@ -987,11 +998,11 @@ export default function AdminPage() {
                         />
                       </div>
                       <div>
-                        <Label className="text-xs mb-2 block">Bilde (valgfritt - f.eks. lagskjold)</Label>
+                        <Label className="text-xs mb-2 block">Image (optional - e.g. team badge)</Label>
                         <Tabs defaultValue="url" className="w-full">
                           <TabsList className="grid w-full grid-cols-2">
                             <TabsTrigger value="url" data-testid={`tab-url-poll-${form.id}`}>URL</TabsTrigger>
-                            <TabsTrigger value="upload" data-testid={`tab-upload-poll-${form.id}`}>Last opp fil</TabsTrigger>
+                            <TabsTrigger value="upload" data-testid={`tab-upload-poll-${form.id}`}>Upload File</TabsTrigger>
                           </TabsList>
                           <TabsContent value="url" className="mt-2">
                             <Input
@@ -1008,7 +1019,7 @@ export default function AdminPage() {
                               onUploadComplete={(url: string) => updatePollForm(form.id, 'imageUrl', url)}
                               onUploadError={(error: Error) => {
                                 toast({
-                                  title: "Feil ved opplasting",
+                                  title: "Upload Error",
                                   description: error.message,
                                   variant: "destructive",
                                 });
@@ -1018,7 +1029,7 @@ export default function AdminPage() {
                         </Tabs>
                       </div>
                       <Button 
-                        className="w-full bg-secondary hover:bg-secondary/90 text-secondary-foreground h-9"
+                        className="w-full bg-secondary hover:bg-secondary/90 text-secondary-foreground h-9 border-0"
                         onClick={() => pollMutation.mutate({
                           question: form.question,
                           options: form.options,
@@ -1028,7 +1039,7 @@ export default function AdminPage() {
                         disabled={pollMutation.isPending}
                         data-testid={`button-send-poll-${form.id}`}
                       >
-                        {pollMutation.isPending ? 'Sender...' : 'Start avstemning'}
+                        {pollMutation.isPending ? 'Sending...' : 'Start Poll'}
                       </Button>
                     </div>
                   </div>
@@ -1044,26 +1055,26 @@ export default function AdminPage() {
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v13m0-13V6a2 2 0 112 2h-2zm0 0V5.5A2.5 2.5 0 109.5 8H12zm-7 4h14M5 12a2 2 0 110-4h14a2 2 0 110 4M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7"></path>
                       </svg>
                     </div>
-                    <h3 className="text-lg font-semibold text-amber-500">Konkurranser</h3>
+                    <h3 className="text-lg font-semibold text-amber-500">Contests</h3>
                   </div>
                   <Button
                     size="sm"
                     variant="outline"
                     onClick={addContestForm}
                     data-testid="button-add-contest"
-                    className="gap-1"
+                    className="gap-1 border-0"
                   >
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4"></path>
                     </svg>
-                    Legg til
+                    Add
                   </Button>
                 </div>
                 {contestForms.map((form, index) => (
-                  <div key={form.id} className="bg-card border border-border rounded-lg p-4 mb-3 relative">
+                  <div key={form.id} className="bg-card border-0 rounded-lg p-4 mb-3 relative">
                     <div className="space-y-3">
                       <div className="flex justify-between items-start">
-                        <span className="text-xs text-muted-foreground">Konkurranse #{index + 1}</span>
+                        <span className="text-xs text-muted-foreground">Contest #{index + 1}</span>
                         {contestForms.length > 1 && (
                           <Button
                             size="sm"
@@ -1079,7 +1090,7 @@ export default function AdminPage() {
                         )}
                       </div>
                       <div>
-                        <Label htmlFor={`contest-name-${form.id}`} className="text-xs">Konkurransenavn</Label>
+                        <Label htmlFor={`contest-name-${form.id}`} className="text-xs">Contest Name</Label>
                         <Input
                           id={`contest-name-${form.id}`}
                           value={form.name}
@@ -1089,7 +1100,7 @@ export default function AdminPage() {
                         />
                       </div>
                       <div>
-                        <Label htmlFor={`contest-prize-${form.id}`} className="text-xs">Premie</Label>
+                        <Label htmlFor={`contest-prize-${form.id}`} className="text-xs">Prize</Label>
                         <Textarea
                           id={`contest-prize-${form.id}`}
                           rows={2}
@@ -1101,7 +1112,7 @@ export default function AdminPage() {
                       </div>
                       <div className="grid grid-cols-2 gap-3">
                         <div>
-                          <Label htmlFor={`contest-deadline-${form.id}`} className="text-xs">Frist</Label>
+                          <Label htmlFor={`contest-deadline-${form.id}`} className="text-xs">Deadline</Label>
                           <Input
                             id={`contest-deadline-${form.id}`}
                             type="date"
@@ -1112,7 +1123,7 @@ export default function AdminPage() {
                           />
                         </div>
                         <div>
-                          <Label htmlFor={`contest-participants-${form.id}`} className="text-xs">Maks deltakere</Label>
+                          <Label htmlFor={`contest-participants-${form.id}`} className="text-xs">Max Participants</Label>
                           <Input
                             id={`contest-participants-${form.id}`}
                             type="number"
@@ -1124,7 +1135,7 @@ export default function AdminPage() {
                         </div>
                       </div>
                       <Button 
-                        className="w-full bg-amber-500 hover:bg-amber-600 text-white h-9"
+                        className="w-full bg-amber-500 hover:bg-amber-600 text-white h-9 border-0"
                         onClick={() => contestMutation.mutate({
                           name: form.name,
                           prize: form.prize,
@@ -1134,7 +1145,7 @@ export default function AdminPage() {
                         disabled={contestMutation.isPending}
                         data-testid={`button-send-contest-${form.id}`}
                       >
-                        {contestMutation.isPending ? 'Sender...' : 'Lanser konkurranse'}
+                        {contestMutation.isPending ? 'Sending...' : 'Launch Contest'}
                       </Button>
                     </div>
                   </div>
@@ -1151,23 +1162,23 @@ export default function AdminPage() {
             />
 
             {/* Connection Info */}
-            <div className="bg-card border border-border rounded-lg p-6">
-              <h3 className="text-lg font-semibold mb-4">Tilkoblingsinformasjon</h3>
+            <div className="bg-card border-0 rounded-lg p-6">
+              <h3 className="text-lg font-semibold mb-4">Connection Information</h3>
               
               <div className="space-y-4">
                 {campaignId && (
                   <div>
-                    <Label className="text-muted-foreground">Kampanje ID</Label>
-                    <code className="block px-3 py-2 bg-background border border-border rounded text-sm font-mono">
+                    <Label className="text-muted-foreground">Campaign ID</Label>
+                    <code className="block px-3 py-2 bg-background border-0 rounded text-sm font-mono">
                       {campaignId}
                     </code>
                   </div>
                 )}
                 
                 <div>
-                  <Label className="text-muted-foreground">WebSocket URL {campaignId ? 'for denne kampanjen' : '(Legacy)'}</Label>
+                  <Label className="text-muted-foreground">WebSocket URL {campaignId ? 'for this campaign' : '(Legacy)'}</Label>
                   <div className="flex items-center space-x-2">
-                    <code className="flex-1 px-3 py-2 bg-background border border-border rounded text-sm font-mono break-all">
+                    <code className="flex-1 px-3 py-2 bg-background border-0 rounded text-sm font-mono break-all">
                       {`${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/ws${campaignId ? `/${campaignId}` : ''}`}
                     </code>
                     <Button
@@ -1175,28 +1186,29 @@ export default function AdminPage() {
                       variant="outline"
                       onClick={() => copyToClipboard(`${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/ws${campaignId ? `/${campaignId}` : ''}`)}
                       data-testid="button-copy-ws-url"
+                      className="border-0"
                     >
-                      Kopier
+                      Copy
                     </Button>
                   </div>
                 </div>
                 
                 <div>
                   <Label className="text-muted-foreground">HTTP Port</Label>
-                  <code className="block px-3 py-2 bg-background border border-border rounded text-sm font-mono">
+                  <code className="block px-3 py-2 bg-background border-0 rounded text-sm font-mono">
                     {serverStatus?.httpPort || window.location.port || '5000'}
                   </code>
                 </div>
                 
-                <div className="pt-4 border-t border-border">
-                  <p className="text-sm text-muted-foreground mb-3">Serverstatus</p>
+                <div className="pt-4 border-0">
+                  <p className="text-sm text-muted-foreground mb-3">Server Status</p>
                   <div className="flex items-center justify-between text-sm">
                     <span>WebSocket Server</span>
-                    <span className="text-green-500 font-medium">✓ Aktiv</span>
+                    <span className="text-green-500 font-medium">✓ Active</span>
                   </div>
                   <div className="flex items-center justify-between text-sm mt-2">
                     <span>HTTP Server</span>
-                    <span className="text-green-500 font-medium">✓ Aktiv</span>
+                    <span className="text-green-500 font-medium">✓ Active</span>
                   </div>
                 </div>
               </div>

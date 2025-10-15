@@ -50,10 +50,10 @@ export default function CampaignViewerPage() {
       // Show browser notification for new events
       if (notificationPermission === 'granted') {
         const title = event.type === 'product' 
-          ? `Nytt produkt: ${event.data.name}`
+          ? `New product: ${event.data.name}`
           : event.type === 'poll'
-          ? `Ny avstemning: ${event.data.question}`
-          : `Ny konkurranse: ${event.data.name}`;
+          ? `New poll: ${event.data.question}`
+          : `New contest: ${event.data.name}`;
           
         new Notification(title, {
           icon: event.campaignLogo || '/icon.png',
@@ -80,9 +80,9 @@ export default function CampaignViewerPage() {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background text-foreground">
         <div className="text-center">
-          <h1 className="text-2xl font-bold mb-4">Ingen kampanje valgt</h1>
-          <Link href="/campaigns">
-            <Button>Tilbake til kampanjer</Button>
+          <h1 className="text-2xl font-bold mb-4">No campaign selected</h1>
+          <Link href="/">
+            <Button>Back to campaigns</Button>
           </Link>
         </div>
       </div>
@@ -92,19 +92,19 @@ export default function CampaignViewerPage() {
   return (
     <div className="min-h-screen bg-background text-foreground">
       {/* Header */}
-      <header className="border-b border-border bg-card sticky top-0 z-10">
+      <header className="border-0 bg-card sticky top-0 z-10">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
-              <Link href="/campaigns">
+              <Link href="/">
                 <Button variant="ghost" size="sm" data-testid="link-back">
                   <ArrowLeft className="w-4 h-4 mr-2" />
-                  Tilbake
+                  Back to campaigns
                 </Button>
               </Link>
               <div>
-                <h1 className="text-xl font-bold">{campaign?.name || 'Laster...'}</h1>
-                <p className="text-sm text-muted-foreground">Live hendelser</p>
+                <h1 className="text-xl font-bold">{campaign?.name || 'Loading...'}</h1>
+                <p className="text-sm text-muted-foreground">Live events</p>
               </div>
             </div>
             
@@ -117,7 +117,7 @@ export default function CampaignViewerPage() {
                   size="sm"
                   data-testid="button-enable-notifications"
                 >
-                  Aktiver varsler
+                  Enable notifications
                 </Button>
               )}
             </div>
@@ -134,9 +134,9 @@ export default function CampaignViewerPage() {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
               </svg>
             </div>
-            <h3 className="text-lg font-semibold mb-2">Venter på hendelser</h3>
+            <h3 className="text-lg font-semibold mb-2">Waiting for events</h3>
             <p className="text-muted-foreground">
-              Nye hendelser vil vises her når de blir sendt
+              New events will appear here when they are sent
             </p>
           </div>
         ) : (
@@ -144,7 +144,7 @@ export default function CampaignViewerPage() {
             {events.map((event, index) => (
               <div
                 key={index}
-                className="bg-card border border-border rounded-lg p-6 animate-in slide-in-from-top"
+                className="bg-card border-0 rounded-lg p-6 animate-in slide-in-from-top"
                 data-testid={`event-${event.type}-${index}`}
               >
                 <div className="flex items-start justify-between mb-4">
@@ -155,7 +155,7 @@ export default function CampaignViewerPage() {
                         event.type === 'poll' ? 'bg-secondary/20 text-secondary' :
                         'bg-accent/20 text-accent'
                       }`}>
-                        {event.type === 'product' ? 'PRODUKT' : event.type === 'poll' ? 'AVSTEMNING' : 'KONKURRANSE'}
+                        {event.type === 'product' ? 'PRODUCT' : event.type === 'poll' ? 'POLL' : 'CONTEST'}
                       </span>
                       <span className="text-xs text-muted-foreground">
                         {new Date(event.timestamp).toLocaleTimeString('nb-NO')}
@@ -184,14 +184,21 @@ export default function CampaignViewerPage() {
                           {event.data.options.map((option, i) => (
                             <div
                               key={i}
-                              className="bg-secondary/10 border border-secondary/20 rounded-lg p-3 hover:bg-secondary/20 transition-colors cursor-pointer"
+                              className="bg-secondary/10 border-0 rounded-lg p-3 hover:bg-secondary/20 transition-colors cursor-pointer flex items-center gap-3"
                             >
-                              {option}
+                              {typeof option === 'string' ? option : (
+                                <>
+                                  {option.imageUrl && (
+                                    <img src={option.imageUrl} alt={option.text} className="w-8 h-8 object-contain rounded" />
+                                  )}
+                                  <span>{option.text}</span>
+                                </>
+                              )}
                             </div>
                           ))}
                         </div>
                         <p className="text-sm text-muted-foreground mt-4">
-                          Varighet: {event.data.duration} sekunder
+                          Duration: {event.data.duration} seconds
                         </p>
                       </>
                     )}
@@ -199,13 +206,13 @@ export default function CampaignViewerPage() {
                     {event.type === 'contest' && (
                       <>
                         <h3 className="text-xl font-bold mb-2">{event.data.name}</h3>
-                        <div className="bg-accent/10 border border-accent/20 rounded-lg p-4 mb-2">
-                          <p className="font-semibold text-accent">Premie:</p>
+                        <div className="bg-accent/10 border-0 rounded-lg p-4 mb-2">
+                          <p className="font-semibold text-accent">Prize:</p>
                           <p>{event.data.prize}</p>
                         </div>
                         <p className="text-sm text-muted-foreground">
-                          Frist: {new Date(event.data.deadline).toLocaleDateString('nb-NO')} | 
-                          Max deltakere: {event.data.maxParticipants}
+                          Deadline: {new Date(event.data.deadline).toLocaleDateString('en-US')} | 
+                          Max participants: {event.data.maxParticipants}
                         </p>
                       </>
                     )}
@@ -214,7 +221,7 @@ export default function CampaignViewerPage() {
                   {event.campaignLogo && (
                     <img 
                       src={event.campaignLogo} 
-                      alt="Kampanjelogo"
+                      alt="Campaign logo"
                       className="w-16 h-16 object-contain rounded ml-4"
                     />
                   )}

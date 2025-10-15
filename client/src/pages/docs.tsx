@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Link } from 'wouter';
+import { ArrowLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
@@ -13,15 +14,15 @@ export default function DocsPage() {
       await navigator.clipboard.writeText(text);
       setCopiedCode(label);
       toast({
-        title: "Kopiert",
-        description: `Kode ${label} kopiert til utklippstavle`,
+        title: "Copied",
+        description: `Code ${label} copied to clipboard`,
       });
       setTimeout(() => setCopiedCode(null), 2000);
     } catch (err) {
       console.error('Failed to copy: ', err);
       toast({
-        title: "Feil",
-        description: "Kunne ikke kopiere koden",
+        title: "Error",
+        description: "Could not copy code",
         variant: "destructive",
       });
     }
@@ -66,12 +67,12 @@ class WebSocketManager: NSObject, URLSessionWebSocketDelegate {
   const messageHandlingCode = `private func handleMessage(_ text: String) {
     guard let data = text.data(using: .utf8) else { return }
     
-    // Først, hent hendelsestype
+    // First, get event type
     guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
           let eventType = json["type"] as? String
     else { return }
     
-    // Dekode basert på type
+    // Decode based on type
     do {
         switch eventType {
         case "product":
@@ -84,16 +85,16 @@ class WebSocketManager: NSObject, URLSessionWebSocketDelegate {
             let event = try JSONDecoder().decode(ContestEvent.self, from: data)
             handleContestEvent(event)
         default:
-            print("Ukjent hendelsestype: \\(eventType)")
+            print("Unknown event type: \\(eventType)")
         }
     } catch {
-        print("Feil ved dekoding av hendelse: \\(error)")
+        print("Error decoding event: \\(error)")
     }
 }
 
 private func handleProductEvent(_ event: ProductEvent) {
     DispatchQueue.main.async {
-        // Vis produkt i UI
+        // Show product in UI
         self.showProduct(
             name: event.data.name,
             price: event.data.price,
@@ -106,7 +107,7 @@ private func handleProductEvent(_ event: ProductEvent) {
 
 private func handlePollEvent(_ event: PollEvent) {
     DispatchQueue.main.async {
-        // Vis avstemning i UI
+        // Show poll in UI
         self.showPoll(
             question: event.data.question,
             options: event.data.options,
@@ -118,7 +119,7 @@ private func handlePollEvent(_ event: PollEvent) {
 
 private func handleContestEvent(_ event: ContestEvent) {
     DispatchQueue.main.async {
-        // Vis konkurranse i UI
+        // Show contest in UI
         self.showContest(
             name: event.data.name,
             prize: event.data.prize,
@@ -134,7 +135,7 @@ private func handleContestEvent(_ event: ContestEvent) {
   "data": {
     "id": "prod_123",
     "name": "iPhone 15 Pro Max",
-    "description": "Siste modell med titan og 48MP kamera",
+    "description": "Latest model with titanium and 48MP camera",
     "price": "12 999 kr",
     "currency": "NOK",
     "imageUrl": "https://images.unsplash.com/photo-1592286927505-b7e00a46f74f"
@@ -147,12 +148,12 @@ private func handleContestEvent(_ event: ContestEvent) {
   "type": "poll",
   "data": {
     "id": "poll_456",
-    "question": "Hva er din favoritt smarttelefon?",
+    "question": "What is your favorite smartphone?",
     "options": [
       "iPhone",
       "Samsung",
       "Google Pixel",
-      "Annet"
+      "Other"
     ],
     "duration": 60
   },
@@ -164,8 +165,8 @@ private func handleContestEvent(_ event: ContestEvent) {
   "type": "contest",
   "data": {
     "id": "contest_789",
-    "name": "Stor Tech-konkurranse 2024",
-    "prize": "Vinn MacBook Pro M3, AirPods Pro og mer",
+    "name": "Big Tech Contest 2024",
+    "prize": "Win MacBook Pro M3, AirPods Pro and more",
     "deadline": "2024-12-31",
     "maxParticipants": 1000
   },
@@ -173,7 +174,7 @@ private func handleContestEvent(_ event: ContestEvent) {
   "timestamp": 1703520000000
 }`;
 
-  const modelStructCode = `// Basismodell for WebSocket-hendelser
+  const modelStructCode = `// Base model for WebSocket events
 struct WebSocketEvent: Codable {
     let type: String
     let timestamp: Int64
@@ -184,7 +185,7 @@ struct WebSocketEvent: Codable {
     }
 }
 
-// Produkthendelse
+// Product event
 struct ProductEvent: Codable {
     let type: String
     let timestamp: Int64
@@ -201,7 +202,7 @@ struct ProductEvent: Codable {
     }
 }
 
-// Avstemningshendelse
+// Poll event
 struct PollEvent: Codable {
     let type: String
     let timestamp: Int64
@@ -216,7 +217,7 @@ struct PollEvent: Codable {
     }
 }
 
-// Konkurransehendelse
+// Contest event
 struct ContestEvent: Codable {
     let type: String
     let timestamp: Int64
@@ -235,7 +236,7 @@ struct ContestEvent: Codable {
   return (
     <div className="min-h-screen bg-background text-foreground">
       {/* Header */}
-      <header className="border-b border-border bg-card">
+      <header className="border-0 bg-card">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-3">
@@ -245,8 +246,8 @@ struct ContestEvent: Codable {
                 </svg>
               </div>
               <div>
-                <h1 className="text-xl font-bold text-foreground">Swift-dokumentasjon</h1>
-                <p className="text-sm text-muted-foreground">WebSocket-integrasjon for iOS</p>
+                <h1 className="text-xl font-bold text-foreground">Swift Documentation</h1>
+                <p className="text-sm text-muted-foreground">WebSocket Integration for iOS</p>
               </div>
             </div>
             
@@ -258,7 +259,7 @@ struct ContestEvent: Codable {
               </Link>
               <Link href="/viewer">
                 <Button variant="outline" size="sm" data-testid="link-viewer">
-                  Viser
+                  Viewer
                 </Button>
               </Link>
             </div>
@@ -267,24 +268,32 @@ struct ContestEvent: Codable {
       </header>
 
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
+        {/* Back Button */}
+        <Link href="/">
+          <Button variant="outline" size="sm" className="mb-4" data-testid="button-back-campaigns">
+            <ArrowLeft className="w-4 h-4 mr-2" />
+            Back to campaigns
+          </Button>
+        </Link>
+
         {/* Introduction */}
-        <Card>
+        <Card className="border-0">
           <CardHeader>
             <CardTitle className="flex items-center space-x-2">
               <svg className="w-6 h-6 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
               </svg>
-              <span>Introduksjon</span>
+              <span>Introduction</span>
             </CardTitle>
           </CardHeader>
           <CardContent>
             <p className="text-muted-foreground mb-4">
-              Denne dokumentasjonen vil guide deg til å integrere WebSocket-serveren med Swift/iOS-applikasjonen din. 
-              Serveren sender sanntidshendelser for produkter, avstemninger og konkurranser.
+              This documentation will guide you to integrate the WebSocket server with your Swift/iOS application. 
+              The server sends real-time events for products, polls, and contests.
             </p>
             
-            <div className="bg-primary/10 border border-primary/20 rounded-lg p-4">
-              <h4 className="font-semibold mb-2 text-primary">Tilkoblingsinformasjon</h4>
+            <div className="bg-primary/10 border-0 rounded-lg p-4">
+              <h4 className="font-semibold mb-2 text-primary">Connection Information</h4>
               <div className="space-y-2 text-sm">
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">WebSocket URL:</span>
@@ -293,7 +302,7 @@ struct ContestEvent: Codable {
                   </code>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-muted-foreground">Protokoll:</span>
+                  <span className="text-muted-foreground">Protocol:</span>
                   <code className="font-mono bg-background px-2 py-1 rounded">WebSocket</code>
                 </div>
                 <div className="flex justify-between">
@@ -306,16 +315,16 @@ struct ContestEvent: Codable {
         </Card>
 
         {/* Step 1: Connection */}
-        <Card>
+        <Card className="border-0">
           <CardHeader>
             <CardTitle className="flex items-center space-x-2">
               <div className="w-8 h-8 bg-primary rounded-full flex items-center justify-center text-white font-bold text-sm">1</div>
-              <span>Koble til WebSocket</span>
+              <span>Connect to WebSocket</span>
             </CardTitle>
           </CardHeader>
           <CardContent>
             <p className="text-muted-foreground mb-4">
-              Først, opprett en klasse for å håndtere WebSocket-tilkoblingen:
+              First, create a class to handle the WebSocket connection:
             </p>
             
             <div className="relative">
@@ -323,12 +332,12 @@ struct ContestEvent: Codable {
                 size="sm"
                 variant="outline"
                 className="absolute right-2 top-2 z-10"
-                onClick={() => copyToClipboard(swiftConnectionCode, 'Swift-tilkobling')}
+                onClick={() => copyToClipboard(swiftConnectionCode, 'Swift connection')}
                 data-testid="button-copy-connection"
               >
-                {copiedCode === 'Swift-tilkobling' ? '✓ Kopiert' : 'Kopier'}
+                {copiedCode === 'Swift connection' ? '✓ Copied' : 'Copy'}
               </Button>
-              <pre className="bg-background border border-border rounded-lg p-4 overflow-x-auto code-block text-sm">
+              <pre className="bg-background border-0 rounded-lg p-4 overflow-x-auto code-block text-sm">
                 <code className="text-green-400">{swiftConnectionCode}</code>
               </pre>
             </div>
@@ -336,16 +345,16 @@ struct ContestEvent: Codable {
         </Card>
 
         {/* Step 2: Message Handling */}
-        <Card>
+        <Card className="border-0">
           <CardHeader>
             <CardTitle className="flex items-center space-x-2">
               <div className="w-8 h-8 bg-secondary rounded-full flex items-center justify-center text-white font-bold text-sm">2</div>
-              <span>Håndter meldinger</span>
+              <span>Handle Messages</span>
             </CardTitle>
           </CardHeader>
           <CardContent>
             <p className="text-muted-foreground mb-4">
-              Implementer håndtering av de forskjellige hendelsestypene:
+              Implement handling of the different event types:
             </p>
             
             <div className="relative">
@@ -353,12 +362,12 @@ struct ContestEvent: Codable {
                 size="sm"
                 variant="outline"
                 className="absolute right-2 top-2 z-10"
-                onClick={() => copyToClipboard(messageHandlingCode, 'meldingshåndtering')}
+                onClick={() => copyToClipboard(messageHandlingCode, 'message handling')}
                 data-testid="button-copy-handling"
               >
-                {copiedCode === 'meldingshåndtering' ? '✓ Kopiert' : 'Kopier'}
+                {copiedCode === 'message handling' ? '✓ Copied' : 'Copy'}
               </Button>
-              <pre className="bg-background border border-border rounded-lg p-4 overflow-x-auto code-block text-sm max-h-96">
+              <pre className="bg-background border-0 rounded-lg p-4 overflow-x-auto code-block text-sm max-h-96">
                 <code className="text-green-400">{messageHandlingCode}</code>
               </pre>
             </div>
@@ -366,16 +375,16 @@ struct ContestEvent: Codable {
         </Card>
 
         {/* Step 3: Data Models */}
-        <Card>
+        <Card className="border-0">
           <CardHeader>
             <CardTitle className="flex items-center space-x-2">
               <div className="w-8 h-8 bg-amber-500 rounded-full flex items-center justify-center text-white font-bold text-sm">3</div>
-              <span>Datamodeller</span>
+              <span>Data Models</span>
             </CardTitle>
           </CardHeader>
           <CardContent>
             <p className="text-muted-foreground mb-4">
-              Definer datastrukturene for å håndtere hendelsene:
+              Define the data structures to handle the events:
             </p>
             
             <div className="relative">
@@ -383,12 +392,12 @@ struct ContestEvent: Codable {
                 size="sm"
                 variant="outline"
                 className="absolute right-2 top-2 z-10"
-                onClick={() => copyToClipboard(modelStructCode, 'Swift-modeller')}
+                onClick={() => copyToClipboard(modelStructCode, 'Swift models')}
                 data-testid="button-copy-models"
               >
-                {copiedCode === 'Swift-modeller' ? '✓ Kopiert' : 'Kopier'}
+                {copiedCode === 'Swift models' ? '✓ Copied' : 'Copy'}
               </Button>
-              <pre className="bg-background border border-border rounded-lg p-4 overflow-x-auto code-block text-sm max-h-96">
+              <pre className="bg-background border-0 rounded-lg p-4 overflow-x-auto code-block text-sm max-h-96">
                 <code className="text-green-400">{modelStructCode}</code>
               </pre>
             </div>
@@ -396,13 +405,13 @@ struct ContestEvent: Codable {
         </Card>
 
         {/* JSON Examples */}
-        <Card>
+        <Card className="border-0">
           <CardHeader>
             <CardTitle className="flex items-center space-x-2">
               <svg className="w-6 h-6 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
               </svg>
-              <span>Eksempler på JSON-payloads</span>
+              <span>JSON Payload Examples</span>
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -410,17 +419,17 @@ struct ContestEvent: Codable {
               {/* Product JSON */}
               <div>
                 <div className="flex items-center justify-between mb-2">
-                  <span className="text-sm font-medium text-primary">Produkt</span>
+                  <span className="text-sm font-medium text-primary">Product</span>
                   <Button
                     size="sm"
                     variant="ghost"
-                    onClick={() => copyToClipboard(productJSON, 'JSON produkt')}
+                    onClick={() => copyToClipboard(productJSON, 'Product JSON')}
                     data-testid="button-copy-product-json"
                   >
-                    {copiedCode === 'JSON produkt' ? '✓' : 'Kopier'}
+                    {copiedCode === 'Product JSON' ? '✓' : 'Copy'}
                   </Button>
                 </div>
-                <pre className="bg-background border border-border rounded-lg p-3 overflow-x-auto code-block text-xs">
+                <pre className="bg-background border-0 rounded-lg p-3 overflow-x-auto code-block text-xs">
                   <code className="text-green-400">{productJSON}</code>
                 </pre>
               </div>
@@ -428,17 +437,17 @@ struct ContestEvent: Codable {
               {/* Poll JSON */}
               <div>
                 <div className="flex items-center justify-between mb-2">
-                  <span className="text-sm font-medium text-secondary">Avstemning</span>
+                  <span className="text-sm font-medium text-secondary">Poll</span>
                   <Button
                     size="sm"
                     variant="ghost"
-                    onClick={() => copyToClipboard(pollJSON, 'JSON avstemning')}
+                    onClick={() => copyToClipboard(pollJSON, 'Poll JSON')}
                     data-testid="button-copy-poll-json"
                   >
-                    {copiedCode === 'JSON avstemning' ? '✓' : 'Kopier'}
+                    {copiedCode === 'Poll JSON' ? '✓' : 'Copy'}
                   </Button>
                 </div>
-                <pre className="bg-background border border-border rounded-lg p-3 overflow-x-auto code-block text-xs">
+                <pre className="bg-background border-0 rounded-lg p-3 overflow-x-auto code-block text-xs">
                   <code className="text-green-400">{pollJSON}</code>
                 </pre>
               </div>
@@ -446,17 +455,17 @@ struct ContestEvent: Codable {
               {/* Contest JSON */}
               <div>
                 <div className="flex items-center justify-between mb-2">
-                  <span className="text-sm font-medium text-amber-500">Konkurranse</span>
+                  <span className="text-sm font-medium text-amber-500">Contest</span>
                   <Button
                     size="sm"
                     variant="ghost"
-                    onClick={() => copyToClipboard(contestJSON, 'JSON konkurranse')}
+                    onClick={() => copyToClipboard(contestJSON, 'Contest JSON')}
                     data-testid="button-copy-contest-json"
                   >
-                    {copiedCode === 'JSON konkurranse' ? '✓' : 'Kopier'}
+                    {copiedCode === 'Contest JSON' ? '✓' : 'Copy'}
                   </Button>
                 </div>
-                <pre className="bg-background border border-border rounded-lg p-3 overflow-x-auto code-block text-xs">
+                <pre className="bg-background border-0 rounded-lg p-3 overflow-x-auto code-block text-xs">
                   <code className="text-green-400">{contestJSON}</code>
                 </pre>
               </div>
@@ -465,75 +474,75 @@ struct ContestEvent: Codable {
         </Card>
 
         {/* Implementation Tips */}
-        <Card>
+        <Card className="border-0">
           <CardHeader>
             <CardTitle className="flex items-center space-x-2">
               <svg className="w-6 h-6 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
               </svg>
-              <span>Implementeringstips</span>
+              <span>Implementation Tips</span>
             </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
-              <div className="bg-primary/10 border border-primary/20 rounded-lg p-4">
-                <h4 className="font-semibold mb-2 text-primary">Beste praksis</h4>
+              <div className="bg-primary/10 border-0 rounded-lg p-4">
+                <h4 className="font-semibold mb-2 text-primary">Best Practices</h4>
                 <ul className="text-sm space-y-2 text-muted-foreground">
                   <li className="flex items-start space-x-2">
                     <span className="text-green-500 mt-1">•</span>
-                    <span>Implementer automatisk gjenoppretting ved tilkoblingstap</span>
+                    <span>Implement automatic reconnection on connection loss</span>
                   </li>
                   <li className="flex items-start space-x-2">
                     <span className="text-green-500 mt-1">•</span>
-                    <span>Valider alltid mottatte JSON-data før behandling</span>
+                    <span>Always validate received JSON data before processing</span>
                   </li>
                   <li className="flex items-start space-x-2">
                     <span className="text-green-500 mt-1">•</span>
-                    <span>Oppdater UI i hovedtråden med DispatchQueue.main.async</span>
+                    <span>Update UI on the main thread with DispatchQueue.main.async</span>
                   </li>
                   <li className="flex items-start space-x-2">
                     <span className="text-green-500 mt-1">•</span>
-                    <span>Vurder å bruke Combine for reaktiv hendelseshåndtering</span>
+                    <span>Consider using Combine for reactive event handling</span>
                   </li>
                   <li className="flex items-start space-x-2">
                     <span className="text-green-500 mt-1">•</span>
-                    <span>Implementer lokal cache for kritiske hendelser</span>
+                    <span>Implement local cache for critical events</span>
                   </li>
                 </ul>
               </div>
               
-              <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg p-4">
-                <h4 className="font-semibold mb-2 text-amber-500">Ytelseshensyn</h4>
+              <div className="bg-amber-500/10 border-0 rounded-lg p-4">
+                <h4 className="font-semibold mb-2 text-amber-500">Performance Considerations</h4>
                 <ul className="text-sm space-y-2 text-muted-foreground">
                   <li className="flex items-start space-x-2">
                     <span className="text-amber-500 mt-1">•</span>
-                    <span>Behandle meldinger i bakgrunnstråd for å ikke blokkere UI</span>
+                    <span>Process messages in background thread to avoid blocking UI</span>
                   </li>
                   <li className="flex items-start space-x-2">
                     <span className="text-amber-500 mt-1">•</span>
-                    <span>Implementer debouncing for svært hyppige hendelser</span>
+                    <span>Implement debouncing for very frequent events</span>
                   </li>
                   <li className="flex items-start space-x-2">
                     <span className="text-amber-500 mt-1">•</span>
-                    <span>Begrens antall hendelser i minnet for å unngå overforbruk</span>
+                    <span>Limit number of events in memory to avoid overconsumption</span>
                   </li>
                 </ul>
               </div>
               
-              <div className="bg-secondary/10 border border-secondary/20 rounded-lg p-4">
-                <h4 className="font-semibold mb-2 text-secondary">Feilhåndtering</h4>
+              <div className="bg-secondary/10 border-0 rounded-lg p-4">
+                <h4 className="font-semibold mb-2 text-secondary">Error Handling</h4>
                 <ul className="text-sm space-y-2 text-muted-foreground">
                   <li className="flex items-start space-x-2">
                     <span className="text-secondary mt-1">•</span>
-                    <span>Fang og logg tilkoblings- og JSON-parsing-feil</span>
+                    <span>Catch and log connection and JSON parsing errors</span>
                   </li>
                   <li className="flex items-start space-x-2">
                     <span className="text-secondary mt-1">•</span>
-                    <span>Implementer fallbacks for kritiske forretningshendelser</span>
+                    <span>Implement fallbacks for critical business events</span>
                   </li>
                   <li className="flex items-start space-x-2">
                     <span className="text-secondary mt-1">•</span>
-                    <span>Varsle brukeren ved tilkoblingsproblemer</span>
+                    <span>Notify user of connection issues</span>
                   </li>
                 </ul>
               </div>
@@ -542,43 +551,43 @@ struct ContestEvent: Codable {
         </Card>
 
         {/* Quick Start */}
-        <Card className="border-2 border-primary/20">
+        <Card className="border-0">
           <CardHeader>
             <CardTitle className="flex items-center space-x-2 text-primary">
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path>
               </svg>
-              <span>Hurtigstart</span>
+              <span>Quick Start</span>
             </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
               <p className="text-muted-foreground">
-                For å teste integrasjonen raskt:
+                To quickly test the integration:
               </p>
               
-              <div className="bg-background border border-border rounded-lg p-4">
-                <h4 className="font-semibold mb-2">Trinn:</h4>
+              <div className="bg-background border-0 rounded-lg p-4">
+                <h4 className="font-semibold mb-2">Steps:</h4>
                 <ol className="text-sm space-y-2 text-muted-foreground">
                   <li className="flex items-start space-x-2">
                     <span className="font-bold text-primary">1.</span>
-                    <span>Kopier WebSocket-tilkoblingskoden til ditt Swift-prosjekt</span>
+                    <span>Copy the WebSocket connection code to your Swift project</span>
                   </li>
                   <li className="flex items-start space-x-2">
                     <span className="font-bold text-primary">2.</span>
-                    <span>Implementer Codable-datamodellene</span>
+                    <span>Implement the Codable data models</span>
                   </li>
                   <li className="flex items-start space-x-2">
                     <span className="font-bold text-primary">3.</span>
-                    <span>Koble til serveren med oppgitt URL</span>
+                    <span>Connect to the server with the provided URL</span>
                   </li>
                   <li className="flex items-start space-x-2">
                     <span className="font-bold text-primary">4.</span>
-                    <span>Gå til <Link href="/"><Button variant="link" className="p-0 h-auto" data-testid="link-admin-inline">administrasjonspanelet</Button></Link> og send testhendelser</span>
+                    <span>Go to <Link href="/"><Button variant="link" className="p-0 h-auto" data-testid="link-admin-inline">admin panel</Button></Link> and send test events</span>
                   </li>
                   <li className="flex items-start space-x-2">
                     <span className="font-bold text-primary">5.</span>
-                    <span>Bekreft at appen din mottar og behandler hendelser korrekt</span>
+                    <span>Confirm that your app receives and processes events correctly</span>
                   </li>
                 </ol>
               </div>
@@ -587,8 +596,8 @@ struct ContestEvent: Codable {
         </Card>
 
         {/* Footer Note */}
-        <div className="text-center text-sm text-muted-foreground pt-8 border-t border-border">
-          <p>Trenger du hjelp? Sjekk <Link href="/"><Button variant="link" className="p-0 h-auto" data-testid="link-admin-footer">administrasjonspanelet</Button></Link> for å teste hendelser i sanntid.</p>
+        <div className="text-center text-sm text-muted-foreground pt-8 border-0">
+          <p>Need help? Check the <Link href="/"><Button variant="link" className="p-0 h-auto" data-testid="link-admin-footer">admin panel</Button></Link> to test events in real-time.</p>
         </div>
       </div>
     </div>

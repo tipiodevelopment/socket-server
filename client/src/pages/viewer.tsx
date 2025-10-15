@@ -5,6 +5,7 @@ import { ConnectionStatusComponent } from '@/components/connection-status';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import type { WebSocketEvent } from '@shared/schema';
+import { ArrowLeft } from 'lucide-react';
 
 export default function ViewerPage() {
   const [events, setEvents] = useState<WebSocketEvent[]>([]);
@@ -17,7 +18,7 @@ export default function ViewerPage() {
       
       // Show notification
       if (Notification.permission === 'granted') {
-        new Notification(`Ny hendelse: ${event.type}`, {
+        new Notification(`New event: ${event.type}`, {
           body: getEventDescription(event),
           icon: '/favicon.ico'
         });
@@ -41,7 +42,7 @@ export default function ViewerPage() {
       case 'contest':
         return `${event.data.name} - ${event.data.prize}`;
       default:
-        return 'Ukjent hendelse';
+        return 'Unknown event';
     }
   };
 
@@ -79,18 +80,24 @@ export default function ViewerPage() {
   return (
     <div className="min-h-screen bg-background text-foreground">
       {/* Header */}
-      <header className="border-b border-border bg-card">
+      <header className="border-0 bg-card">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-3">
+              <Link href="/">
+                <Button variant="ghost" size="sm" data-testid="link-back">
+                  <ArrowLeft className="w-4 h-4 mr-2" />
+                  Back to campaigns
+                </Button>
+              </Link>
               <div className="w-10 h-10 bg-primary rounded-lg flex items-center justify-center">
                 <svg className="w-6 h-6 text-primary-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"></path>
                 </svg>
               </div>
               <div>
-                <h1 className="text-xl font-bold text-foreground">Hendelsesvisning</h1>
-                <p className="text-sm text-muted-foreground">Hendelser i sanntid</p>
+                <h1 className="text-xl font-bold text-foreground">Event Display</h1>
+                <p className="text-sm text-muted-foreground">Real-time events</p>
               </div>
             </div>
             
@@ -120,13 +127,13 @@ export default function ViewerPage() {
         {/* Current Event Display */}
         {lastEvent && (
           <div className="mb-8">
-            <Card className="border-2 border-primary/20 bg-gradient-to-r from-primary/5 to-transparent">
+            <Card className="border-0 bg-gradient-to-r from-primary/5 to-transparent">
               <CardHeader>
                 <CardTitle className="flex items-center justify-between">
                   <div className="flex items-center space-x-3">
                     {getEventIcon(lastEvent.type)}
                     <div>
-                      <div className="text-2xl font-bold">Siste hendelse</div>
+                      <div className="text-2xl font-bold">Latest event</div>
                       <div className="text-sm text-muted-foreground">
                         {new Date(lastEvent.timestamp).toLocaleString('nb-NO')}
                       </div>
@@ -173,15 +180,22 @@ export default function ViewerPage() {
                           <Button 
                             key={index} 
                             variant="outline" 
-                            className="justify-start"
+                            className="justify-start gap-2"
                             data-testid={`poll-option-${index}`}
                           >
-                            {option}
+                            {typeof option === 'string' ? option : (
+                              <>
+                                {option.imageUrl && (
+                                  <img src={option.imageUrl} alt={option.text} className="w-6 h-6 object-contain rounded" />
+                                )}
+                                <span>{option.text}</span>
+                              </>
+                            )}
                           </Button>
                         ))}
                       </div>
                       <div className="mt-4 text-sm text-muted-foreground">
-                        Varighet: {lastEvent.data.duration} sekunder
+                        Duration: {lastEvent.data.duration} seconds
                       </div>
                     </div>
                     {lastEvent.data.imageUrl && (
@@ -203,11 +217,11 @@ export default function ViewerPage() {
                     <p className="text-muted-foreground mb-4">{lastEvent.data.prize}</p>
                     <div className="grid grid-cols-2 gap-4 text-sm">
                       <div>
-                        <span className="text-muted-foreground">Frist:</span>
+                        <span className="text-muted-foreground">Deadline:</span>
                         <div className="font-medium">{lastEvent.data.deadline}</div>
                       </div>
                       <div>
-                        <span className="text-muted-foreground">Maks deltakere:</span>
+                        <span className="text-muted-foreground">Max participants:</span>
                         <div className="font-medium">{lastEvent.data.maxParticipants}</div>
                       </div>
                     </div>
@@ -220,7 +234,7 @@ export default function ViewerPage() {
 
         {/* Event History */}
         <div>
-          <h2 className="text-2xl font-bold mb-6">Hendelseshistorikk</h2>
+          <h2 className="text-2xl font-bold mb-6">Event History</h2>
           
           {events.length === 0 ? (
             <Card>
@@ -228,10 +242,10 @@ export default function ViewerPage() {
                 <svg className="w-16 h-16 text-muted-foreground mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"></path>
                 </svg>
-                <h3 className="text-lg font-semibold mb-2">Ingen hendelser</h3>
+                <h3 className="text-lg font-semibold mb-2">No events</h3>
                 <p className="text-muted-foreground text-center">
-                  Koble til WebSocket for å se hendelser i sanntid.<br />
-                  Gå til administrasjonspanelet for å sende testhendelser.
+                  Connect to WebSocket to see events in real-time.<br />
+                  Go to the admin panel to send test events.
                 </p>
               </CardContent>
             </Card>
@@ -246,7 +260,7 @@ export default function ViewerPage() {
                         <div className="flex-1 min-w-0">
                           <div className="font-semibold truncate">
                             {event.type === 'product' && event.data.name}
-                            {event.type === 'poll' && 'Avstemning'}
+                            {event.type === 'poll' && 'Poll'}
                             {event.type === 'contest' && event.data.name}
                           </div>
                           <div className="text-xs text-muted-foreground">
@@ -290,7 +304,7 @@ export default function ViewerPage() {
                           </div>
                         )}
                         <div className="text-xs text-muted-foreground">
-                          {event.data.options.length} alternativer • {event.data.duration}s
+                          {event.data.options.length} options • {event.data.duration}s
                         </div>
                       </div>
                     )}
@@ -301,7 +315,7 @@ export default function ViewerPage() {
                           {event.data.prize}
                         </p>
                         <div className="text-xs text-muted-foreground">
-                          Fram til {event.data.deadline}
+                          Until {event.data.deadline}
                         </div>
                       </div>
                     )}
