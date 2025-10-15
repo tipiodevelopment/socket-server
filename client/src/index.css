@@ -1,67 +1,92 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Fira+Code:wght@400;500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 :root {
-  --background: hsl(222, 47%, 11%);
-  --foreground: hsl(210, 40%, 98%);
-  --card: hsl(217, 33%, 17%);
-  --card-foreground: hsl(210, 40%, 98%);
-  --popover: hsl(217, 33%, 17%);
-  --popover-foreground: hsl(210, 40%, 98%);
-  --primary: hsl(217, 91%, 60%);
+  /* Gradient background - purple to blue */
+  --background: linear-gradient(135deg, #1a0f2e 0%, #0f1729 100%);
+  --foreground: hsl(0, 0%, 100%);
+  
+  /* Glass morphism cards */
+  --card: rgba(30, 30, 50, 0.6);
+  --card-foreground: hsl(0, 0%, 100%);
+  --popover: rgba(40, 40, 60, 0.95);
+  --popover-foreground: hsl(0, 0%, 100%);
+  
+  /* Vibrant blue primary */
+  --primary: #0066FF;
   --primary-foreground: hsl(0, 0%, 100%);
-  --secondary: hsl(243, 75%, 59%);
+  --primary-hover: #0052CC;
+  
+  /* Secondary colors */
+  --secondary: #A855F7;
   --secondary-foreground: hsl(0, 0%, 100%);
-  --muted: hsl(217, 33%, 17%);
-  --muted-foreground: hsl(215, 20%, 65%);
-  --accent: hsl(217, 91%, 60%);
+  
+  /* Muted backgrounds */
+  --muted: rgba(255, 255, 255, 0.1);
+  --muted-foreground: rgba(255, 255, 255, 0.7);
+  
+  /* Accent */
+  --accent: #0066FF;
   --accent-foreground: hsl(0, 0%, 100%);
-  --destructive: hsl(0, 84%, 60%);
+  
+  /* States */
+  --destructive: #EF4444;
   --destructive-foreground: hsl(0, 0%, 100%);
-  --border: hsl(217, 20%, 25%);
-  --input: hsl(217, 20%, 25%);
-  --ring: hsl(217, 91%, 60%);
-  --chart-1: hsl(217, 91%, 60%);
-  --chart-2: hsl(243, 75%, 59%);
-  --chart-3: hsl(0, 84%, 60%);
-  --chart-4: hsl(147, 78%, 42%);
-  --chart-5: hsl(341, 75%, 51%);
-  --sidebar: hsl(217, 33%, 17%);
-  --sidebar-foreground: hsl(210, 40%, 98%);
-  --sidebar-primary: hsl(217, 91%, 60%);
+  --success: #10B981;
+  --warning: #F59E0B;
+  
+  /* Borders and inputs */
+  --border: rgba(255, 255, 255, 0.1);
+  --input: rgba(255, 255, 255, 0.05);
+  --ring: #0066FF;
+  
+  /* Charts */
+  --chart-1: #0066FF;
+  --chart-2: #A855F7;
+  --chart-3: #10B981;
+  --chart-4: #F59E0B;
+  --chart-5: #EF4444;
+  
+  /* Sidebar */
+  --sidebar: rgba(0, 0, 0, 0.5);
+  --sidebar-foreground: hsl(0, 0%, 100%);
+  --sidebar-primary: #0066FF;
   --sidebar-primary-foreground: hsl(0, 0%, 100%);
-  --sidebar-accent: hsl(217, 91%, 60%);
+  --sidebar-accent: #0066FF;
   --sidebar-accent-foreground: hsl(0, 0%, 100%);
-  --sidebar-border: hsl(217, 20%, 25%);
-  --sidebar-ring: hsl(217, 91%, 60%);
-  --font-sans: 'Inter', system-ui, sans-serif;
-  --font-serif: Georgia, serif;
-  --font-mono: 'Fira Code', Monaco, monospace;
-  --radius: 0.5rem;
+  --sidebar-border: rgba(255, 255, 255, 0.1);
+  --sidebar-ring: #0066FF;
+  
+  /* Fonts */
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', Monaco, monospace;
+  
+  /* Radius */
+  --radius: 0.75rem;
 }
 
 .dark {
-  --background: hsl(222, 47%, 11%);
-  --foreground: hsl(210, 40%, 98%);
-  --card: hsl(217, 33%, 17%);
-  --card-foreground: hsl(210, 40%, 98%);
-  --popover: hsl(217, 33%, 17%);
-  --popover-foreground: hsl(210, 40%, 98%);
-  --primary: hsl(217, 91%, 60%);
+  --background: linear-gradient(135deg, #1a0f2e 0%, #0f1729 100%);
+  --foreground: hsl(0, 0%, 100%);
+  --card: rgba(30, 30, 50, 0.6);
+  --card-foreground: hsl(0, 0%, 100%);
+  --popover: rgba(40, 40, 60, 0.95);
+  --popover-foreground: hsl(0, 0%, 100%);
+  --primary: #0066FF;
   --primary-foreground: hsl(0, 0%, 100%);
-  --secondary: hsl(243, 75%, 59%);
+  --secondary: #A855F7;
   --secondary-foreground: hsl(0, 0%, 100%);
-  --muted: hsl(217, 33%, 17%);
-  --muted-foreground: hsl(215, 20%, 65%);
-  --accent: hsl(217, 91%, 60%);
+  --muted: rgba(255, 255, 255, 0.1);
+  --muted-foreground: rgba(255, 255, 255, 0.7);
+  --accent: #0066FF;
   --accent-foreground: hsl(0, 0%, 100%);
-  --destructive: hsl(0, 84%, 60%);
+  --destructive: #EF4444;
   --destructive-foreground: hsl(0, 0%, 100%);
-  --border: hsl(217, 20%, 25%);
-  --input: hsl(217, 20%, 25%);
-  --ring: hsl(217, 91%, 60%);
+  --border: rgba(255, 255, 255, 0.1);
+  --input: rgba(255, 255, 255, 0.05);
+  --ring: #0066FF;
 }
 
 @layer base {
@@ -70,10 +95,19 @@
   }
 
   body {
-    @apply font-sans antialiased bg-background text-foreground;
+    @apply font-sans antialiased text-foreground;
+    background: linear-gradient(135deg, #1a0f2e 0%, #0f1729 100%);
+    background-attachment: fixed;
+    min-height: 100vh;
+  }
+  
+  /* Make body and html fill viewport */
+  html, body, #root {
+    height: 100%;
   }
 }
 
+/* Status indicator pulse */
 .status-indicator {
   animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
 }
@@ -87,11 +121,14 @@
   }
 }
 
+/* Card hover effects */
 .event-card:hover {
   transform: translateY(-2px);
   transition: transform 0.2s ease-in-out;
+  filter: brightness(1.05);
 }
 
+/* Log entry animation */
 .log-entry {
   opacity: 0;
   animation: fadeIn 0.3s ease-in forwards;
@@ -108,26 +145,78 @@
   }
 }
 
+/* Custom scrollbar */
 .scrollbar-thin::-webkit-scrollbar {
   width: 8px;
 }
 
 .scrollbar-thin::-webkit-scrollbar-track {
-  background: hsl(217, 33%, 17%);
+  background: rgba(255, 255, 255, 0.05);
   border-radius: 4px;
 }
 
 .scrollbar-thin::-webkit-scrollbar-thumb {
-  background: hsl(217, 20%, 35%);
+  background: rgba(255, 255, 255, 0.2);
   border-radius: 4px;
 }
 
 .scrollbar-thin::-webkit-scrollbar-thumb:hover {
-  background: hsl(217, 20%, 45%);
+  background: rgba(255, 255, 255, 0.3);
 }
 
+/* Code blocks */
 .code-block {
-  font-family: 'Fira Code', 'Monaco', monospace;
+  font-family: 'JetBrains Mono', 'Fira Code', 'Monaco', monospace;
   font-size: 0.875rem;
   line-height: 1.5;
+}
+
+/* Glass morphism effect for cards */
+.glass-card {
+  background: rgba(30, 30, 50, 0.6);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+/* Primary button style */
+.btn-primary {
+  background: #0066FF;
+  color: white;
+  transition: all 0.2s ease;
+}
+
+.btn-primary:hover {
+  background: #0052CC;
+  filter: brightness(1.1);
+}
+
+/* Secondary button style */
+.btn-secondary {
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: white;
+  transition: all 0.2s ease;
+}
+
+.btn-secondary:hover {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+/* Input focus states */
+input:focus, textarea:focus, select:focus {
+  outline: none;
+  border-color: #0066FF;
+  box-shadow: 0 0 0 3px rgba(0, 102, 255, 0.2);
+}
+
+/* Backdrop blur utilities */
+.backdrop-blur-glass {
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+}
+
+.backdrop-blur-strong {
+  backdrop-filter: blur(40px);
+  -webkit-backdrop-filter: blur(40px);
 }
