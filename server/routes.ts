@@ -156,7 +156,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           type: dbEvent.type,
           data: dbEvent.data,
           campaignLogo: dbEvent.campaignLogo || undefined,
-          timestamp: new Date(dbEvent.createdAt).getTime()
+          timestamp: new Date(dbEvent.timestamp).getTime()
         }));
         res.json(events);
       } else {
