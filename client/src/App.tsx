@@ -8,6 +8,7 @@ import ViewerPage from "@/pages/viewer";
 import DocsPage from "@/pages/docs";
 import CampaignsPage from "@/pages/campaigns";
 import CampaignViewerPage from "@/pages/campaign-viewer";
+import AdvancedCampaignPage from "@/pages/advanced-campaign";
 import NotFound from "@/pages/not-found";
 
 function Router() {
@@ -17,6 +18,7 @@ function Router() {
       <Route path="/" component={CampaignsPage} />
       
       {/* Campaign-specific routes - more specific routes first */}
+      <Route path="/campaign/:id/advanced" component={AdvancedCampaignPage} />
       <Route path="/campaign/:id/admin" component={AdminPage} />
       <Route path="/campaign/:name/:id" component={CampaignViewerPage} />
       

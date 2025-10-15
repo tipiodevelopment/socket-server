@@ -10,7 +10,7 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import type { Campaign } from '@shared/schema';
-import { Plus, Rocket, Calendar, Image } from 'lucide-react';
+import { Plus, Rocket, Calendar, Image, Settings } from 'lucide-react';
 
 export default function CampaignsPage() {
   const { toast } = useToast();
@@ -195,8 +195,7 @@ export default function CampaignsPage() {
             {campaigns.map((campaign) => (
               <Card 
                 key={campaign.id} 
-                className="hover:border-primary transition-colors cursor-pointer"
-                onClick={() => navigateToCampaign(campaign)}
+                className="hover:border-primary transition-colors"
                 data-testid={`card-campaign-${campaign.id}`}
               >
                 <CardHeader>
@@ -221,13 +220,34 @@ export default function CampaignsPage() {
                   </div>
                 </CardHeader>
                 <CardContent>
-                  <div className="flex items-center gap-4 text-sm text-muted-foreground">
+                  <div className="flex items-center gap-4 text-sm text-muted-foreground mb-4">
                     <div className="flex items-center gap-1">
                       <Calendar className="w-4 h-4" />
                       <span>
                         {new Date(campaign.createdAt).toLocaleDateString('nb-NO')}
                       </span>
                     </div>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="flex-1"
+                      onClick={() => setLocation(`/campaign/${campaign.id}/admin`)}
+                      data-testid={`button-admin-${campaign.id}`}
+                    >
+                      Admin
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="flex-1"
+                      onClick={() => setLocation(`/campaign/${campaign.id}/advanced`)}
+                      data-testid={`button-advanced-${campaign.id}`}
+                    >
+                      <Settings className="w-4 h-4 mr-1" />
+                      Avanzado
+                    </Button>
                   </div>
                 </CardContent>
               </Card>
