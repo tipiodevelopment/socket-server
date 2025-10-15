@@ -10,7 +10,7 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import type { Campaign } from '@shared/schema';
-import { Plus, Rocket, Calendar, Image, Settings } from 'lucide-react';
+import { Plus, Rocket, Calendar, Settings } from 'lucide-react';
 
 export default function CampaignsPage() {
   const { toast } = useToast();
@@ -35,8 +35,8 @@ export default function CampaignsPage() {
     },
     onSuccess: (newCampaign) => {
       toast({
-        title: "Kampanje opprettet",
-        description: "Den nye kampanjen er klar til bruk",
+        title: "Campaign Created",
+        description: "Your new campaign is ready to use",
       });
       queryClient.invalidateQueries({ queryKey: ['/api/campaigns'] });
       setIsDialogOpen(false);
@@ -47,8 +47,8 @@ export default function CampaignsPage() {
     },
     onError: () => {
       toast({
-        title: "Feil",
-        description: "Kunne ikke opprette kampanje",
+        title: "Error",
+        description: "Could not create campaign",
         variant: "destructive",
       });
     }
@@ -59,15 +59,10 @@ export default function CampaignsPage() {
     createMutation.mutate(formData);
   };
 
-  const navigateToCampaign = (campaign: Campaign) => {
-    // Navigate to campaign admin page
-    setLocation(`/campaign/${campaign.id}/admin`);
-  };
-
   return (
     <div className="min-h-screen bg-background text-foreground">
       {/* Header */}
-      <header className="border-b border-border bg-card">
+      <header className="bg-card">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-3">
@@ -75,14 +70,14 @@ export default function CampaignsPage() {
                 <Rocket className="w-6 h-6 text-primary-foreground" />
               </div>
               <div>
-                <h1 className="text-xl font-bold text-foreground">Kampanjestyring</h1>
-                <p className="text-sm text-muted-foreground">Administrer dine hendelseskampanjer</p>
+                <h1 className="text-xl font-bold text-foreground">Campaign Manager</h1>
+                <p className="text-sm text-muted-foreground">Manage your event campaigns</p>
               </div>
             </div>
             
             <Link href="/docs">
               <Button variant="ghost" size="sm" data-testid="link-docs">
-                Dokumentasjon
+                Documentation
               </Button>
             </Link>
           </div>
@@ -93,9 +88,9 @@ export default function CampaignsPage() {
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="flex justify-between items-center mb-6">
           <div>
-            <h2 className="text-2xl font-bold">Mine Kampanjer</h2>
+            <h2 className="text-2xl font-bold">My Campaigns</h2>
             <p className="text-muted-foreground mt-1">
-              Velg en kampanje for å sende hendelser, eller opprett en ny
+              Select a campaign to send events, or create a new one
             </p>
           </div>
           
@@ -103,26 +98,27 @@ export default function CampaignsPage() {
             <DialogTrigger asChild>
               <Button data-testid="button-create-campaign" className="gap-2">
                 <Plus className="w-4 h-4" />
-                Ny kampanje
+                New Campaign
               </Button>
             </DialogTrigger>
-            <DialogContent>
+            <DialogContent className="border-0">
               <DialogHeader>
-                <DialogTitle>Opprett ny kampanje</DialogTitle>
+                <DialogTitle>Create New Campaign</DialogTitle>
                 <DialogDescription>
-                  Fyll ut informasjonen for din nye hendelseskampanje
+                  Fill in the information for your new event campaign
                 </DialogDescription>
               </DialogHeader>
               <form onSubmit={handleSubmit} className="space-y-4">
                 <div>
-                  <Label htmlFor="name">Navn *</Label>
+                  <Label htmlFor="name">Name *</Label>
                   <Input
                     id="name"
                     value={formData.name}
                     onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                    placeholder="F.eks. Champions League 2024"
+                    placeholder="e.g. Champions League 2024"
                     required
                     data-testid="input-campaign-name"
+                    className="border-0"
                   />
                 </div>
                 <div>
@@ -133,17 +129,19 @@ export default function CampaignsPage() {
                     onChange={(e) => setFormData({ ...formData, logo: e.target.value })}
                     placeholder="https://example.com/logo.png"
                     data-testid="input-campaign-logo"
+                    className="border-0"
                   />
                 </div>
                 <div>
-                  <Label htmlFor="description">Beskrivelse</Label>
+                  <Label htmlFor="description">Description</Label>
                   <Textarea
                     id="description"
                     value={formData.description}
                     onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                    placeholder="Kort beskrivelse av kampanjen"
+                    placeholder="Brief description of the campaign"
                     rows={3}
                     data-testid="input-campaign-description"
+                    className="border-0"
                   />
                 </div>
                 <div className="flex justify-end gap-2">
@@ -152,15 +150,16 @@ export default function CampaignsPage() {
                     variant="outline" 
                     onClick={() => setIsDialogOpen(false)}
                     data-testid="button-cancel"
+                    className="border-0"
                   >
-                    Avbryt
+                    Cancel
                   </Button>
                   <Button 
                     type="submit" 
                     disabled={createMutation.isPending}
                     data-testid="button-submit-campaign"
                   >
-                    {createMutation.isPending ? 'Oppretter...' : 'Opprett kampanje'}
+                    {createMutation.isPending ? 'Creating...' : 'Create Campaign'}
                   </Button>
                 </div>
               </form>
@@ -171,22 +170,22 @@ export default function CampaignsPage() {
         {/* Campaigns Grid */}
         {isLoading ? (
           <div className="text-center py-12">
-            <p className="text-muted-foreground">Laster kampanjer...</p>
+            <p className="text-muted-foreground">Loading campaigns...</p>
           </div>
         ) : campaigns.length === 0 ? (
-          <Card className="border-dashed">
+          <Card className="border-0">
             <CardContent className="flex flex-col items-center justify-center py-12">
               <Rocket className="w-12 h-12 text-muted-foreground mb-4" />
-              <h3 className="text-lg font-semibold mb-2">Ingen kampanjer ennå</h3>
+              <h3 className="text-lg font-semibold mb-2">No campaigns yet</h3>
               <p className="text-muted-foreground mb-4">
-                Kom i gang ved å opprette din første kampanje
+                Get started by creating your first campaign
               </p>
               <Button 
                 onClick={() => setIsDialogOpen(true)}
                 data-testid="button-create-first-campaign"
               >
                 <Plus className="w-4 h-4 mr-2" />
-                Opprett kampanje
+                Create Campaign
               </Button>
             </CardContent>
           </Card>
@@ -195,7 +194,7 @@ export default function CampaignsPage() {
             {campaigns.map((campaign) => (
               <Card 
                 key={campaign.id} 
-                className="hover:border-primary transition-colors"
+                className="border-0 hover:bg-gray-800/50 transition-colors"
                 data-testid={`card-campaign-${campaign.id}`}
               >
                 <CardHeader>
@@ -224,7 +223,7 @@ export default function CampaignsPage() {
                     <div className="flex items-center gap-1">
                       <Calendar className="w-4 h-4" />
                       <span>
-                        {new Date(campaign.createdAt).toLocaleDateString('nb-NO')}
+                        {new Date(campaign.createdAt).toLocaleDateString('en-US')}
                       </span>
                     </div>
                   </div>
@@ -232,7 +231,7 @@ export default function CampaignsPage() {
                     <Button
                       variant="outline"
                       size="sm"
-                      className="flex-1"
+                      className="flex-1 border-0"
                       onClick={() => setLocation(`/campaign/${campaign.id}/admin`)}
                       data-testid={`button-admin-${campaign.id}`}
                     >
@@ -241,12 +240,12 @@ export default function CampaignsPage() {
                     <Button
                       variant="outline"
                       size="sm"
-                      className="flex-1"
+                      className="flex-1 border-0"
                       onClick={() => setLocation(`/campaign/${campaign.id}/advanced`)}
                       data-testid={`button-advanced-${campaign.id}`}
                     >
                       <Settings className="w-4 h-4 mr-1" />
-                      Avanzado
+                      Advanced
                     </Button>
                   </div>
                 </CardContent>

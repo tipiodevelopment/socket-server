@@ -1,6 +1,5 @@
 import { useParams, Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
-import { useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -29,7 +28,7 @@ export default function AdvancedCampaign() {
     return (
       <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 p-8">
         <div className="max-w-6xl mx-auto">
-          <div className="text-white">Cargando...</div>
+          <div className="text-white">Loading...</div>
         </div>
       </div>
     );
@@ -39,7 +38,7 @@ export default function AdvancedCampaign() {
     return (
       <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 p-8">
         <div className="max-w-6xl mx-auto">
-          <div className="text-white">Campaña no encontrada</div>
+          <div className="text-white">Campaign not found</div>
         </div>
       </div>
     );
@@ -48,10 +47,10 @@ export default function AdvancedCampaign() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 p-8">
       <div className="max-w-6xl mx-auto">
-        <Link href="/campaigns">
+        <Link href="/">
           <Button variant="ghost" className="mb-6 text-white hover:text-white/80" data-testid="button-back">
             <ArrowLeft className="w-4 h-4 mr-2" />
-            Volver a campañas
+            Back to campaigns
           </Button>
         </Link>
 
@@ -65,26 +64,26 @@ export default function AdvancedCampaign() {
           </div>
 
           <Tabs defaultValue="overview" className="w-full">
-            <TabsList className="grid w-full grid-cols-3 bg-gray-800">
-              <TabsTrigger value="overview" data-testid="tab-overview">Vista General</TabsTrigger>
-              <TabsTrigger value="integration" data-testid="tab-integration">Integraciones</TabsTrigger>
-              <TabsTrigger value="components" data-testid="tab-components">Componentes Programados</TabsTrigger>
+            <TabsList className="grid w-full grid-cols-3 bg-gray-800 border-0">
+              <TabsTrigger value="overview" data-testid="tab-overview">Overview</TabsTrigger>
+              <TabsTrigger value="integration" data-testid="tab-integration">Integrations</TabsTrigger>
+              <TabsTrigger value="components" data-testid="tab-components">Scheduled Components</TabsTrigger>
             </TabsList>
 
             {/* Overview Tab */}
             <TabsContent value="overview" className="space-y-4">
-              <Card className="bg-gray-800 border-gray-700">
+              <Card className="bg-gray-800 border-0">
                 <CardHeader>
-                  <CardTitle className="text-white">Información de la Campaña</CardTitle>
-                  <CardDescription className="text-gray-400">Detalles básicos y programación</CardDescription>
+                  <CardTitle className="text-white">Campaign Information</CardTitle>
+                  <CardDescription className="text-gray-400">Basic details and scheduling</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <Label className="text-gray-300">Nombre</Label>
+                      <Label className="text-gray-300">Name</Label>
                       <Input 
                         value={campaign.name} 
-                        className="bg-gray-700 border-gray-600 text-white"
+                        className="bg-gray-700 border-0 text-white"
                         disabled
                         data-testid="input-campaign-name"
                       />
@@ -93,8 +92,8 @@ export default function AdvancedCampaign() {
                       <Label className="text-gray-300">Logo URL</Label>
                       <Input 
                         value={campaign.logo || ''} 
-                        placeholder="Sin logo configurado"
-                        className="bg-gray-700 border-gray-600 text-white"
+                        placeholder="No logo configured"
+                        className="bg-gray-700 border-0 text-white"
                         disabled
                         data-testid="input-campaign-logo"
                       />
@@ -102,10 +101,10 @@ export default function AdvancedCampaign() {
                   </div>
 
                   <div>
-                    <Label className="text-gray-300">Descripción</Label>
+                    <Label className="text-gray-300">Description</Label>
                     <Textarea 
                       value={campaign.description || ''} 
-                      className="bg-gray-700 border-gray-600 text-white"
+                      className="bg-gray-700 border-0 text-white"
                       disabled
                       data-testid="textarea-campaign-description"
                     />
@@ -115,12 +114,12 @@ export default function AdvancedCampaign() {
                     <div>
                       <Label className="text-gray-300 flex items-center gap-2">
                         <Calendar className="w-4 h-4" />
-                        Fecha de Inicio
+                        Start Date
                       </Label>
                       <Input 
                         type="datetime-local"
                         value={campaign.startDate ? new Date(campaign.startDate).toISOString().slice(0, 16) : ''} 
-                        className="bg-gray-700 border-gray-600 text-white"
+                        className="bg-gray-700 border-0 text-white"
                         disabled
                         data-testid="input-start-date"
                       />
@@ -128,12 +127,12 @@ export default function AdvancedCampaign() {
                     <div>
                       <Label className="text-gray-300 flex items-center gap-2">
                         <Clock className="w-4 h-4" />
-                        Fecha de Fin
+                        End Date
                       </Label>
                       <Input 
                         type="datetime-local"
                         value={campaign.endDate ? new Date(campaign.endDate).toISOString().slice(0, 16) : ''} 
-                        className="bg-gray-700 border-gray-600 text-white"
+                        className="bg-gray-700 border-0 text-white"
                         disabled
                         data-testid="input-end-date"
                       />
@@ -145,14 +144,14 @@ export default function AdvancedCampaign() {
 
             {/* Integration Tab */}
             <TabsContent value="integration" className="space-y-4">
-              <Card className="bg-gray-800 border-gray-700">
+              <Card className="bg-gray-800 border-0">
                 <CardHeader>
                   <CardTitle className="text-white flex items-center gap-2">
                     <ShoppingBag className="w-5 h-5" />
                     Reachu.io Channel
                   </CardTitle>
                   <CardDescription className="text-gray-400">
-                    Conecta un channel de Reachu para obtener productos en tiempo real
+                    Connect a Reachu channel to fetch products in real-time
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
@@ -161,8 +160,8 @@ export default function AdvancedCampaign() {
                       <Label className="text-gray-300">Channel ID</Label>
                       <Input 
                         value={campaign.reachuChannelId || ''} 
-                        placeholder="Sin channel configurado"
-                        className="bg-gray-700 border-gray-600 text-white"
+                        placeholder="No channel configured"
+                        className="bg-gray-700 border-0 text-white"
                         disabled
                         data-testid="input-reachu-channel-id"
                       />
@@ -172,29 +171,29 @@ export default function AdvancedCampaign() {
                       <Input 
                         type="password"
                         value={campaign.reachuApiKey || ''} 
-                        placeholder="Sin API key configurada"
-                        className="bg-gray-700 border-gray-600 text-white"
+                        placeholder="No API key configured"
+                        className="bg-gray-700 border-0 text-white"
                         disabled
                         data-testid="input-reachu-api-key"
                       />
                     </div>
                   </div>
                   {campaign.reachuChannelId && (
-                    <Badge className="bg-green-600" data-testid="badge-reachu-connected">
-                      ✓ Conectado a Reachu
+                    <Badge className="bg-green-600 border-0" data-testid="badge-reachu-connected">
+                      ✓ Connected to Reachu
                     </Badge>
                   )}
                 </CardContent>
               </Card>
 
-              <Card className="bg-gray-800 border-gray-700">
+              <Card className="bg-gray-800 border-0">
                 <CardHeader>
                   <CardTitle className="text-white flex items-center gap-2">
                     <Radio className="w-5 h-5" />
                     Tipio.no Liveshow
                   </CardTitle>
                   <CardDescription className="text-gray-400">
-                    Conecta esta campaña con un liveshow de Tipio
+                    Connect this campaign to a Tipio liveshow
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
@@ -202,15 +201,15 @@ export default function AdvancedCampaign() {
                     <Label className="text-gray-300">Liveshow ID</Label>
                     <Input 
                       value={campaign.tipioLiveshowId || ''} 
-                      placeholder="Sin liveshow configurado"
-                      className="bg-gray-700 border-gray-600 text-white"
+                      placeholder="No liveshow configured"
+                      className="bg-gray-700 border-0 text-white"
                       disabled
                       data-testid="input-tipio-liveshow-id"
                     />
                   </div>
                   {campaign.tipioLiveshowId && (
-                    <Badge className="bg-purple-600" data-testid="badge-tipio-connected">
-                      ✓ Conectado a Tipio
+                    <Badge className="bg-purple-600 border-0" data-testid="badge-tipio-connected">
+                      ✓ Connected to Tipio
                     </Badge>
                   )}
                 </CardContent>
@@ -219,21 +218,21 @@ export default function AdvancedCampaign() {
 
             {/* Components Tab */}
             <TabsContent value="components" className="space-y-4">
-              <Card className="bg-gray-800 border-gray-700">
+              <Card className="bg-gray-800 border-0">
                 <CardHeader>
                   <div className="flex items-center justify-between">
                     <div>
-                      <CardTitle className="text-white">Componentes Programados</CardTitle>
+                      <CardTitle className="text-white">Scheduled Components</CardTitle>
                       <CardDescription className="text-gray-400">
-                        Componentes que se mostrarán automáticamente en tiempo específico
+                        Components that will automatically display at specific times
                       </CardDescription>
                     </div>
                     <Button 
-                      className="bg-blue-600 hover:bg-blue-700"
+                      className="bg-blue-600 hover:bg-blue-700 border-0"
                       data-testid="button-add-component"
                     >
                       <Plus className="w-4 h-4 mr-2" />
-                      Agregar Componente
+                      Add Component
                     </Button>
                   </div>
                 </CardHeader>
@@ -241,8 +240,8 @@ export default function AdvancedCampaign() {
                   {components.length === 0 ? (
                     <div className="text-center py-12 text-gray-400">
                       <Clock className="w-12 h-12 mx-auto mb-4 opacity-50" />
-                      <p>No hay componentes programados</p>
-                      <p className="text-sm mt-2">Agrega componentes para mostrar contenido en momentos específicos</p>
+                      <p>No scheduled components</p>
+                      <p className="text-sm mt-2">Add components to display content at specific times</p>
                     </div>
                   ) : (
                     <div className="space-y-3">
@@ -255,33 +254,33 @@ export default function AdvancedCampaign() {
               </Card>
 
               {/* Component Types Info */}
-              <Card className="bg-gray-800 border-gray-700">
+              <Card className="bg-gray-800 border-0">
                 <CardHeader>
-                  <CardTitle className="text-white text-sm">Tipos de Componentes Disponibles</CardTitle>
+                  <CardTitle className="text-white text-sm">Available Component Types</CardTitle>
                 </CardHeader>
                 <CardContent className="grid grid-cols-2 gap-3">
                   <ComponentTypeCard 
                     type="carousel"
-                    title="Carrusel"
-                    description="Muestra productos de Reachu en rotación automática"
+                    title="Carousel"
+                    description="Display Reachu products in automatic rotation"
                     icon={<ShoppingBag className="w-4 h-4" />}
                   />
                   <ComponentTypeCard 
                     type="store_view"
-                    title="Vista de Tienda"
-                    description="Grid/lista de productos de una categoría"
+                    title="Store View"
+                    description="Grid/list of products from a category"
                     icon={<ShoppingBag className="w-4 h-4" />}
                   />
                   <ComponentTypeCard 
                     type="product_spotlight"
-                    title="Producto Destacado"
-                    description="Destaca un producto específico por tiempo limitado"
+                    title="Product Spotlight"
+                    description="Highlight a specific product for limited time"
                     icon={<ShoppingBag className="w-4 h-4" />}
                   />
                   <ComponentTypeCard 
                     type="liveshow_trigger"
-                    title="Iniciar Liveshow"
-                    description="Inicia automáticamente el liveshow de Tipio"
+                    title="Start Liveshow"
+                    description="Automatically start Tipio liveshow"
                     icon={<Radio className="w-4 h-4" />}
                   />
                 </CardContent>
@@ -297,10 +296,10 @@ export default function AdvancedCampaign() {
 function ComponentCard({ component }: { component: ScheduledComponent }) {
   const getTypeLabel = (type: string) => {
     const types: Record<string, string> = {
-      carousel: "Carrusel",
-      store_view: "Vista de Tienda",
-      product_spotlight: "Producto Destacado",
-      liveshow_trigger: "Iniciar Liveshow"
+      carousel: "Carousel",
+      store_view: "Store View",
+      product_spotlight: "Product Spotlight",
+      liveshow_trigger: "Start Liveshow"
     };
     return types[type] || type;
   };
@@ -316,12 +315,12 @@ function ComponentCard({ component }: { component: ScheduledComponent }) {
 
   return (
     <div 
-      className="flex items-center justify-between p-4 bg-gray-700 rounded-lg border border-gray-600"
+      className="flex items-center justify-between p-4 bg-gray-700 rounded-lg border-0"
       data-testid={`component-${component.id}`}
     >
       <div className="flex-1">
         <div className="flex items-center gap-3 mb-2">
-          <Badge className={getStatusColor(component.status)} data-testid={`status-${component.id}`}>
+          <Badge className={`${getStatusColor(component.status)} border-0`} data-testid={`status-${component.id}`}>
             {component.status}
           </Badge>
           <span className="text-white font-medium" data-testid={`type-${component.id}`}>
@@ -331,7 +330,7 @@ function ComponentCard({ component }: { component: ScheduledComponent }) {
         <div className="flex items-center gap-2 text-sm text-gray-400">
           <Clock className="w-4 h-4" />
           <span data-testid={`time-${component.id}`}>
-            {new Date(component.scheduledTime).toLocaleString('es-ES')}
+            {new Date(component.scheduledTime).toLocaleString('en-US')}
           </span>
         </div>
       </div>
@@ -360,7 +359,7 @@ function ComponentTypeCard({
 }) {
   return (
     <div 
-      className="p-3 bg-gray-700 rounded-lg border border-gray-600"
+      className="p-3 bg-gray-700 rounded-lg border-0"
       data-testid={`info-${type}`}
     >
       <div className="flex items-center gap-2 mb-2">
