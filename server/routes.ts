@@ -69,12 +69,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       campaignClients.set(campaignId, new Set());
     }
     campaignClients.get(campaignId)!.add(ws);
-    storage.incrementClientsCount();
     
-    console.log(`Client connected to campaign ${campaignId}. Total clients: ${storage.getConnectedClientsCount()}`);
-
-    // Send current client count to all clients in this campaign
-    broadcastClientCountToCampaign(campaignId);
+    console.log(`Client connected to campaign ${campaignId}`);
 
     ws.on('close', () => {
       const clients = campaignClients.get(campaignId);
@@ -84,9 +80,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           campaignClients.delete(campaignId);
         }
       }
-      storage.decrementClientsCount();
-      console.log(`Client disconnected from campaign ${campaignId}. Total clients: ${storage.getConnectedClientsCount()}`);
-      broadcastClientCountToCampaign(campaignId);
+      console.log(`Client disconnected from campaign ${campaignId}`);
     });
 
     ws.on('error', (error) => {
@@ -95,7 +89,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (clients) {
         clients.delete(ws);
       }
-      storage.decrementClientsCount();
     });
   });
 
@@ -110,18 +103,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
     }
   }
-
-  // Function to broadcast client count to a specific campaign
-  function broadcastClientCountToCampaign(campaignId: number) {
-    const clients = campaignClients.get(campaignId);
-    const count = clients ? clients.size : 0;
-    const countMessage = JSON.stringify({
-      type: 'client_count',
-      data: { count },
-      timestamp: Date.now()
-    });
-    broadcastToCampaign(campaignId, countMessage);
-  }
   
   // Legacy broadcast function (broadcasts to all campaigns)
   function broadcast(message: string) {
@@ -131,13 +112,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
           client.send(message);
         }
       });
-    });
-  }
-
-  // Function to broadcast client count to all campaigns
-  function broadcastClientCount() {
-    campaignClients.forEach((clients, campaignId) => {
-      broadcastClientCountToCampaign(campaignId);
     });
   }
 
@@ -174,7 +148,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get('/api/status', (req, res) => {
     res.json({
       server: 'running',
-      connectedClients: storage.getConnectedClientsCount(),
       wsPort: 'same as http',
       httpPort: process.env.PORT || 5000
     });

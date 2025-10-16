@@ -5,13 +5,11 @@ import { webSocketEventSchema } from '@shared/schema';
 interface UseWebSocketOptions {
   campaignId?: number;
   onMessage?: (event: WebSocketEvent) => void;
-  onClientCountUpdate?: (count: number) => void;
 }
 
 export function useWebSocket(options: UseWebSocketOptions = {}) {
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('disconnected');
   const [lastMessage, setLastMessage] = useState<WebSocketEvent | null>(null);
-  const [clientCount, setClientCount] = useState(0);
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout>();
 
@@ -42,13 +40,6 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
     ws.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data);
-        
-        // Handle client count updates separately
-        if (data.type === 'client_count') {
-          setClientCount(data.data.count);
-          options.onClientCountUpdate?.(data.data.count);
-          return;
-        }
         
         // Validate and handle event messages
         const parseResult = webSocketEventSchema.safeParse(data);
@@ -104,7 +95,6 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
   return {
     connectionStatus,
     lastMessage,
-    clientCount,
     connect,
     disconnect,
     isConnected: connectionStatus === 'connected'
