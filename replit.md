@@ -41,10 +41,10 @@ Preferred communication style: Simple, everyday language.
 - **Database:** PostgreSQL with Drizzle ORM for campaign and event persistence.
 - **WebSocket:** Campaign-specific channels (`/ws/:campaignId`) for isolated event streams; legacy `/ws` (campaign ID 0) for backward compatibility.
 - **Event Broadcasting:** Events broadcast only to clients within the same campaign room.
-- **Client Tracking:** Real-time client count per campaign.
 - **Logging:** Custom middleware for API request logging.
 - **Validation:** Server-side validation for `campaignId` before broadcasting.
 - **Integration APIs:** Mock endpoint for Reachu.io channels, Tipio livestream data stored as JSON.
+- **Simplified Design:** Client count tracking removed for demo simplicity - focuses solely on event broadcasting.
 
 ### Database Schema
 
