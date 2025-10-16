@@ -1,0 +1,119 @@
+
+index-CVJke3hh.js:138 WebSocket error: Event {isTrusted: true, type: 'error', target: WebSocket, currentTarget: WebSocket, eventPhase: 2, …}
+overrideMethod @ hook.js:608
+b.onerror @ index-CVJke3hh.js:138Understand this error
+index-CVJke3hh.js:138 Disconnected from WebSocket server
+index-CVJke3hh.js:138 WebSocket error: Event {isTrusted: true, type: 'error', target: WebSocket, currentTarget: WebSocket, eventPhase: 2, …}
+overrideMethod @ hook.js:608
+b.onerror @ index-CVJke3hh.js:138Understand this error
+index-CVJke3hh.js:138 Disconnected from WebSocket server
+index-CVJke3hh.js:138 WebSocket connection to 'wss://event-streamer-angelo100.replit.app/ws/3' failed: Insufficient resources
+(anonymous) @ index-CVJke3hh.js:138
+(anonymous) @ index-CVJke3hh.js:138
+gp @ index-CVJke3hh.js:40
+po @ index-CVJke3hh.js:40
+(anonymous) @ index-CVJke3hh.js:40
+T @ index-CVJke3hh.js:25
+H @ index-CVJke3hh.js:25Understand this error
+index-CVJke3hh.js:138 WebSocket error: Event {isTrusted: true, type: 'error', target: WebSocket, currentTarget: WebSocket, eventPhase: 2, …}
+overrideMethod @ hook.js:608
+b.onerror @ index-CVJke3hh.js:138Understand this error
+index-CVJke3hh.js:138 Disconnected from WebSocket server
+index-CVJke3hh.js:138 WebSocket connection to 'wss://event-streamer-angelo100.replit.app/ws/3' failed: Insufficient resources
+(anonymous) @ index-CVJke3hh.js:138
+(anonymous) @ index-CVJke3hh.js:138
+gp @ index-CVJke3hh.js:40
+po @ index-CVJke3hh.js:40
+c4 @ index-CVJke3hh.js:40
+Ws @ index-CVJke3hh.js:40
+r0 @ index-CVJke3hh.js:40
+Us @ index-CVJke3hh.js:38
+(anonymous) @ index-CVJke3hh.js:40Understand this error
+index-CVJke3hh.js:138 WebSocket error: Event {isTrusted: true, type: 'error', target: WebSocket, currentTarget: WebSocket, eventPhase: 2, …}
+overrideMethod @ hook.js:608
+b.onerror @ index-CVJke3hh.js:138Understand this error
+index-CVJke3hh.js:138 Disconnected from WebSocket server
+index-CVJke3hh.js:138 WebSocket error: Event {isTrusted: true, type: 'error', target: WebSocket, currentTarget: WebSocket, eventPhase: 2, …}
+overrideMethod @ hook.js:608
+b.onerror @ index-CVJke3hh.js:138Understand this error
+index-CVJke3hh.js:138 Disconnected from WebSocket server
+index-CVJke3hh.js:138 WebSocket error: Event {isTrusted: true, type: 'error', target: WebSocket, currentTarget: WebSocket, eventPhase: 2, …}
+overrideMethod @ hook.js:608
+b.onerror @ index-CVJke3hh.js:138Understand this error
+index-CVJke3hh.js:138 Disconnected from WebSocket server
+index-CVJke3hh.js:138 WebSocket error: Event {isTrusted: true, type: 'error', target: WebSocket, currentTarget: WebSocket, eventPhase: 2, …}
+overrideMethod @ hook.js:608
+b.onerror @ index-CVJke3hh.js:138Understand this error
+index-CVJke3hh.js:138 Disconnected from WebSocket server
+index-CVJke3hh.js:138 WebSocket connection to 'wss://event-streamer-angelo100.replit.app/ws/3' failed: Insufficient resources
+(anonymous) @ index-CVJke3hh.js:138
+(anonymous) @ index-CVJke3hh.js:138
+gp @ index-CVJke3hh.js:40
+po @ index-CVJke3hh.js:40
+(anonymous) @ index-CVJke3hh.js:40
+T @ index-CVJke3hh.js:25
+H @ index-CVJke3hh.js:25Understand this error
+index-CVJke3hh.js:138 WebSocket error: Event {isTrusted: true, type: 'error', target: WebSocket, currentTarget: WebSocket, eventPhase: 2, …}
+overrideMethod @ hook.js:608
+b.onerror @ index-CVJke3hh.js:138Understand this error
+index-CVJke3hh.js:138 Disconnected from WebSocket server
+index-CVJke3hh.js:138 WebSocket connection to 'wss://event-streamer-angelo100.replit.app/ws/3' failed: Insufficient resources
+(anonymous) @ index-CVJke3hh.js:138
+(anonymous) @ index-CVJke3hh.js:138
+gp @ index-CVJke3hh.js:40
+po @ index-CVJke3hh.js:40
+c4 @ index-CVJke3hh.js:40
+Ws @ index-CVJke3hh.js:40
+r0 @ index-CVJke3hh.js:40
+Us @ index-CVJke3hh.js:38
+(anonymous) @ index-CVJke3hh.js:40Understand this error
+index-CVJke3hh.js:138 WebSocket error: Event {isTrusted: true, type: 'error', target: WebSocket, currentTarget: WebSocket, eventPhase: 2, …}
+overrideMethod @ hook.js:608
+b.onerror @ index-CVJke3hh.js:138Understand this error
+index-CVJke3hh.js:138 Disconnected from WebSocket server
+index-CVJke3hh.js:138 WebSocket error: Event {isTrusted: true, type: 'error', target: WebSocket, currentTarget: WebSocket, eventPhase: 2, …}
+overrideMethod @ hook.js:608
+b.onerror @ index-CVJke3hh.js:138Understand this error
+index-CVJke3hh.js:138 Disconnected from WebSocket server
+index-CVJke3hh.js:138 WebSocket error: Event {isTrusted: true, type: 'error', target: WebSocket, currentTarget: WebSocket, eventPhase: 2, …}
+overrideMethod @ hook.js:608
+b.onerror @ index-CVJke3hh.js:138Understand this error
+index-CVJke3hh.js:138 Disconnected from WebSocket server
+index-CVJke3hh.js:138 WebSocket error: Event {isTrusted: true, type: 'error', target: WebSocket, currentTarget: WebSocket, eventPhase: 2, …}
+overrideMethod @ hook.js:608
+b.onerror @ index-CVJke3hh.js:138Understand this error
+index-CVJke3hh.js:138 Disconnected from WebSocket server
+index-CVJke3hh.js:138 WebSocket connection to 'wss://event-streamer-angelo100.replit.app/ws/3' failed: Insufficient resources
+(anonymous) @ index-CVJke3hh.js:138
+(anonymous) @ index-CVJke3hh.js:138
+gp @ index-CVJke3hh.js:40
+po @ index-CVJke3hh.js:40
+(anonymous) @ index-CVJke3hh.js:40
+T @ index-CVJke3hh.js:25
+H @ index-CVJke3hh.js:25Understand this error
+index-CVJke3hh.js:138 WebSocket error: Event {isTrusted: true, type: 'error', target: WebSocket, currentTarget: WebSocket, eventPhase: 2, …}
+overrideMethod @ hook.js:608
+b.onerror @ index-CVJke3hh.js:138Understand this error
+index-CVJke3hh.js:138 Disconnected from WebSocket server
+index-CVJke3hh.js:138 WebSocket connection to 'wss://event-streamer-angelo100.replit.app/ws/3' failed: Insufficient resources
+(anonymous) @ index-CVJke3hh.js:138
+(anonymous) @ index-CVJke3hh.js:138
+gp @ index-CVJke3hh.js:40
+po @ index-CVJke3hh.js:40
+c4 @ index-CVJke3hh.js:40
+Ws @ index-CVJke3hh.js:40
+r0 @ index-CVJke3hh.js:40
+Us @ index-CVJke3hh.js:38
+(anonymous) @ index-CVJke3hh.js:40Understand this error
+index-CVJke3hh.js:138 WebSocket error: Event {isTrusted: true, type: 'error', target: WebSocket, currentTarget: WebSocket, eventPhase: 2, …}
+overrideMethod @ hook.js:608
+b.onerror @ index-CVJke3hh.js:138Understand this error
+index-CVJke3hh.js:138 Disconnected from WebSocket server
+index-CVJke3hh.js:138 WebSocket error: Event {isTrusted: true, type: 'error', target: WebSocket, currentTarget: WebSocket, eventPhase: 2, …}
+overrideMethod @ hook.js:608
+b.onerror @ index-CVJke3hh.js:138Understand this error
+index-CVJke3hh.js:138 Disconnected from WebSocket server
+index-CVJke3hh.js:138 WebSocket error: Event {isTrusted: true, type: 'error', target: WebSocket, currentTarget: WebSocket, eventPhase: 2, …}
+overrideMethod @ hook.js:608
+b.onerror @ index-CVJke3hh.js:138Understand this error
+index-CVJke3hh.js:138 Disconnected from WebSocket server
