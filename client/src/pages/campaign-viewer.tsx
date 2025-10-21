@@ -33,7 +33,7 @@ export default function CampaignViewerPage() {
   }, [historicalEvents]);
 
   // WebSocket connection
-  const { connectionStatus, clientCount } = useWebSocket({
+  const { connectionStatus } = useWebSocket({
     campaignId,
     onMessage: (event) => {
       setEvents((prev) => {
@@ -109,7 +109,7 @@ export default function CampaignViewerPage() {
             </div>
             
             <div className="flex items-center gap-2 sm:gap-4 w-full sm:w-auto">
-              <ConnectionStatusComponent status={connectionStatus} clientCount={clientCount} />
+              <ConnectionStatusComponent status={connectionStatus} />
               {notificationPermission === 'default' && (
                 <Button 
                   onClick={requestNotificationPermission}

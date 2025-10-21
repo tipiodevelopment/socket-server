@@ -2,10 +2,10 @@ import type { ConnectionStatus } from '@shared/schema';
 
 interface ConnectionStatusProps {
   status: ConnectionStatus;
-  clientCount: number;
+  clientCount?: number;
 }
 
-export function ConnectionStatusComponent({ status, clientCount }: ConnectionStatusProps) {
+export function ConnectionStatusComponent({ status, clientCount = 0 }: ConnectionStatusProps) {
   const getStatusColor = () => {
     switch (status) {
       case 'connected':

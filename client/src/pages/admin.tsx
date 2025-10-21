@@ -82,7 +82,7 @@ export default function AdminPage() {
   }, [historicalEvents]);
   
   // WebSocket connection - now with campaignId
-  const { connectionStatus, clientCount } = useWebSocket({
+  const { connectionStatus } = useWebSocket({
     campaignId,
     onMessage: (event) => {
       setEventHistory(prev => {
@@ -590,8 +590,7 @@ export default function AdminPage() {
             
             <div className="flex items-center gap-2 sm:gap-4 w-full sm:w-auto">
               <ConnectionStatusComponent 
-                status={connectionStatus} 
-                clientCount={clientCount} 
+                status={connectionStatus}
               />
               <div className="flex gap-2">
                 <Link href="/viewer">

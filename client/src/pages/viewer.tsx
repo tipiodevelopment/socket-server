@@ -11,7 +11,7 @@ export default function ViewerPage() {
   const [events, setEvents] = useState<WebSocketEvent[]>([]);
   const [lastEvent, setLastEvent] = useState<WebSocketEvent | null>(null);
   
-  const { connectionStatus, clientCount } = useWebSocket({
+  const { connectionStatus } = useWebSocket({
     onMessage: (event) => {
       setEvents(prev => [event, ...prev.slice(0, 29)]);
       setLastEvent(event);
@@ -103,8 +103,7 @@ export default function ViewerPage() {
             
             <div className="flex items-center space-x-4">
               <ConnectionStatusComponent 
-                status={connectionStatus} 
-                clientCount={clientCount} 
+                status={connectionStatus}
               />
               <div className="flex space-x-2">
                 <Link href="/">
