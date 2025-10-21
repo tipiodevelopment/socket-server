@@ -30,13 +30,13 @@ export function ImageUploadWithPreview({
 
     // Validate file type
     if (!file.type.startsWith('image/')) {
-      setUploadError('Por favor selecciona un archivo de imagen');
+      setUploadError('Please select an image file');
       return;
     }
 
     // Validate file size (max 10MB)
     if (file.size > 10 * 1024 * 1024) {
-      setUploadError('El archivo es muy grande. Máximo 10MB');
+      setUploadError('File is too large. Maximum 10MB');
       return;
     }
 
@@ -71,7 +71,7 @@ export function ImageUploadWithPreview({
       onChange(objectPath);
     } catch (error) {
       console.error('Upload error:', error);
-      setUploadError('Error al subir el archivo');
+      setUploadError('Failed to upload file');
     } finally {
       setIsUploading(false);
       // Reset file input
@@ -144,7 +144,7 @@ export function ImageUploadWithPreview({
 
       {value && (
         <div className="mt-3 p-3 bg-muted/50 rounded-lg">
-          <p className="text-xs text-muted-foreground mb-2">Vista previa:</p>
+          <p className="text-xs text-muted-foreground mb-2">Preview:</p>
           <div className="relative w-full aspect-video rounded overflow-hidden bg-background border border-white/10">
             <img
               src={value}
@@ -153,7 +153,7 @@ export function ImageUploadWithPreview({
               onError={(e) => {
                 // If image fails to load, show placeholder
                 e.currentTarget.src = '';
-                e.currentTarget.alt = 'Error al cargar la imagen';
+                e.currentTarget.alt = 'Failed to load image';
               }}
               data-testid={`${testId}-preview`}
             />
