@@ -18,6 +18,7 @@ function Router() {
     <Switch>
       {/* Main page - campaign management */}
       <Route path="/" component={CampaignsPage} />
+      <Route path="/campaigns" component={CampaignsPage} />
       <Route path="/campaigns/new" component={NewCampaignPage} />
       <Route path="/components" component={ComponentsPage} />
       

@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
 import { queryClient, apiRequest } from '@/lib/queryClient';
+import { ImageUploadWithPreview } from '@/components/ImageUploadWithPreview';
 import type { Component, ComponentType } from '@shared/schema';
 import { Plus, Code, Trash2, Edit, ArrowLeft, Copy, Check } from 'lucide-react';
 import { useState } from 'react';
@@ -296,48 +297,45 @@ function ComponentForm({
       case 'banner':
         return (
           <>
+            <ImageUploadWithPreview
+              label="Imagen del Banner"
+              value={config.imageUrl || ''}
+              onChange={(url) => setConfig({ ...config, imageUrl: url })}
+              placeholder="https://example.com/banner.jpg"
+              testId="input-imageUrl"
+            />
             <div className="space-y-2">
-              <Label htmlFor="imageUrl">Image URL</Label>
-              <Input
-                id="imageUrl"
-                placeholder="https://example.com/banner.jpg"
-                value={config.imageUrl || ''}
-                onChange={(e) => setConfig({ ...config, imageUrl: e.target.value })}
-                data-testid="input-imageUrl"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="title">Title</Label>
+              <Label htmlFor="title">Título</Label>
               <Input
                 id="title"
-                placeholder="50% OFF Everything"
+                placeholder="50% OFF en Todo"
                 value={config.title || ''}
                 onChange={(e) => setConfig({ ...config, title: e.target.value })}
                 data-testid="input-title"
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="subtitle">Subtitle (Optional)</Label>
+              <Label htmlFor="subtitle">Subtítulo (Opcional)</Label>
               <Input
                 id="subtitle"
-                placeholder="Limited time offer"
+                placeholder="Oferta por tiempo limitado"
                 value={config.subtitle || ''}
                 onChange={(e) => setConfig({ ...config, subtitle: e.target.value })}
                 data-testid="input-subtitle"
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="ctaText">CTA Text (Optional)</Label>
+              <Label htmlFor="ctaText">Texto del Botón (Opcional)</Label>
               <Input
                 id="ctaText"
-                placeholder="Shop Now"
+                placeholder="Comprar Ahora"
                 value={config.ctaText || ''}
                 onChange={(e) => setConfig({ ...config, ctaText: e.target.value })}
                 data-testid="input-ctaText"
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="ctaLink">CTA Link (Optional)</Label>
+              <Label htmlFor="ctaLink">Enlace del Botón (Opcional)</Label>
               <Input
                 id="ctaLink"
                 placeholder="https://example.com/sale"
