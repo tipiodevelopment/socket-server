@@ -58,6 +58,17 @@ Preferred communication style: Simple, everyday language.
 - Fields: `component type` (carousel, store_view, product_spotlight, liveshow_trigger), `scheduledTime`, `data` (JSON config), `status` (pending, sent, cancelled).
 - Component Schemas: Carousel, Store View, Product Spotlight, Liveshow Trigger with specific configuration fields.
 
+**Components Table (Dynamic Components):**
+- Reusable UI component library.
+- Fields: `id` (UUID), `type` (banner, countdown, carousel_auto, carousel_manual, product_spotlight, offer_badge), `name`, `config` (JSON), `createdAt`.
+- Purpose: Store reusable component configurations that can be shared across multiple campaigns.
+
+**Campaign Components Table:**
+- Links components to campaigns with real-time control.
+- Fields: `id`, `campaignId`, `componentId`, `status` (active, inactive), `activatedAt`, `updatedAt`.
+- Purpose: Enable dynamic activation/deactivation of components per campaign via WebSocket.
+- Validation: Prevents same component from being active in multiple campaigns simultaneously.
+
 ### Data Flow & Event System
 
 **Event Types:**
@@ -71,14 +82,48 @@ Preferred communication style: Simple, everyday language.
 
 **Historical Events:** Persisted events retrieved via `/api/events?campaignId=X`, merged with real-time events, with duplicate prevention.
 
+### Dynamic Component Management System
+
+**Architecture:**
+- **Hybrid API + WebSocket:** REST API for configuration and CRUD operations, WebSocket for real-time status toggles and config updates.
+- **Reusability:** Components created once in the library, reusable across multiple campaigns.
+- **Conflict Prevention:** System validates that a component is not active in multiple campaigns simultaneously.
+- **iOS Integration:** Each component has a unique ID that developers integrate into their iOS apps using code snippets like `ReachuComponent(componentId: "cmp_abc123")`.
+
+**Component Types:**
+1. **Banner:** Promotional banner with image, title, subtitle, CTA button and link.
+2. **Countdown:** Timer displaying time remaining until a specified end date.
+3. **Carousel Auto:** Automatic product carousel fed from a Reachu channel.
+4. **Carousel Manual:** Product carousel with manually selected product IDs.
+5. **Product Spotlight:** Highlight a specific product with optional text.
+6. **Offer Badge:** Display promotional badge with customizable color and text.
+
+**WebSocket Events:**
+- `component_status_changed`: Broadcast when component is activated/deactivated in a campaign.
+- `component_config_updated`: Broadcast when component configuration is edited.
+
+**API Endpoints:**
+- Component Library: `GET/POST /api/components`, `PATCH/DELETE /api/components/:id`
+- Campaign Components: `GET/POST /api/campaigns/:id/components`, `PATCH/DELETE /api/campaigns/:id/components/:cmpId`
+- Validation: `GET /api/components/:id/availability` (check if component is available for activation)
+
+**Workflow:**
+1. Developer creates component in library (`/components` page) with type-specific configuration
+2. Developer integrates component ID into iOS app code
+3. Admin adds component to campaign from the library
+4. Admin toggles component ON/OFF in real-time via Advanced Campaign page
+5. iOS app receives WebSocket updates and shows/hides component instantly
+6. Admin can edit component config; changes broadcast to all campaigns using the component
+
 ### Page Structure
 
-- **Campaigns Page (`/` or `/campaigns`):** Dashboard for managing campaigns, creating new ones, and accessing admin/advanced settings.
+- **Campaigns Page (`/` or `/campaigns`):** Dashboard for managing campaigns, creating new ones, and accessing admin/advanced settings and component library.
 - **New Campaign Page (`/campaigns/new`):** Form for creating new campaigns with basic info, optional Reachu.io integration, and optional Tipio Livestream integration.
 - **Campaign Admin Page (`/campaign/:id/admin`):** Campaign-specific dashboard for creating and broadcasting various event types (products, polls, contests). Features form state persistence, poll options with images, logo configuration (URL/upload), real-time event log, and connection status.
 - **Campaign Viewer Page (`/campaign/:name/:id`):** Real-time event display for viewers, with notifications and event history.
 - **Legacy Admin (`/admin`) & Viewer (`/viewer`) Pages:** Backward-compatible pages using campaign ID 0.
-- **Advanced Campaign Page (`/campaign/:id/advanced`):** Tabbed interface for extended management: Overview (scheduling), Integrations (Reachu/Tipio), Components (scheduled components with timeline view).
+- **Advanced Campaign Page (`/campaign/:id/advanced`):** Tabbed interface with four tabs: Overview (scheduling), Integrations (Reachu/Tipio), Scheduled Components (timeline view), and Dynamic Components (real-time component management).
+- **Components Library Page (`/components`):** Central repository for reusable UI components. Create, edit, delete components with type-specific forms (banner, countdown, carousel_auto, carousel_manual, product_spotlight, offer_badge). Display iOS integration code snippets and usage status across campaigns.
 - **Docs Page (`/docs`):** Integration documentation with code examples.
 
 ## External Dependencies

@@ -549,5 +549,220 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Component Library Routes
+  
+  // Get all components
+  app.get('/api/components', async (req, res) => {
+    try {
+      const components = await storage.getComponents();
+      res.json(components);
+    } catch (error) {
+      console.error('Error fetching components:', error);
+      res.status(500).json({ message: 'Error fetching components' });
+    }
+  });
+
+  // Create new component
+  app.post('/api/components', async (req, res) => {
+    try {
+      const { type, name, config } = req.body;
+      
+      if (!type || !name || !config) {
+        return res.status(400).json({ message: 'Missing required fields: type, name, config' });
+      }
+
+      const component = await storage.createComponent({ type, name, config });
+      res.status(201).json(component);
+    } catch (error) {
+      console.error('Error creating component:', error);
+      res.status(500).json({ message: 'Error creating component' });
+    }
+  });
+
+  // Get component by ID
+  app.get('/api/components/:id', async (req, res) => {
+    try {
+      const component = await storage.getComponentById(req.params.id);
+      
+      if (!component) {
+        return res.status(404).json({ message: 'Component not found' });
+      }
+      
+      res.json(component);
+    } catch (error) {
+      console.error('Error fetching component:', error);
+      res.status(500).json({ message: 'Error fetching component' });
+    }
+  });
+
+  // Update component
+  app.patch('/api/components/:id', async (req, res) => {
+    try {
+      const { type, name, config } = req.body;
+      const updates: any = {};
+      
+      if (type !== undefined) updates.type = type;
+      if (name !== undefined) updates.name = name;
+      if (config !== undefined) updates.config = config;
+      
+      const component = await storage.updateComponent(req.params.id, updates);
+      
+      if (!component) {
+        return res.status(404).json({ message: 'Component not found' });
+      }
+      
+      // Broadcast config update to all campaigns using this component
+      const allCampaigns = await storage.getAllCampaigns();
+      for (const campaign of allCampaigns) {
+        const campaignComponents = await storage.getCampaignComponents(campaign.id);
+        const isUsed = campaignComponents.some(cc => cc.componentId === req.params.id);
+        
+        if (isUsed) {
+          broadcastToCampaign(campaign.id, JSON.stringify({
+            type: 'component_config_updated',
+            campaignId: campaign.id,
+            componentId: req.params.id,
+            config: updates.config || component.config
+          }));
+        }
+      }
+      
+      res.json(component);
+    } catch (error) {
+      console.error('Error updating component:', error);
+      res.status(500).json({ message: 'Error updating component' });
+    }
+  });
+
+  // Delete component
+  app.delete('/api/components/:id', async (req, res) => {
+    try {
+      await storage.deleteComponent(req.params.id);
+      res.status(204).send();
+    } catch (error) {
+      console.error('Error deleting component:', error);
+      res.status(500).json({ message: 'Error deleting component' });
+    }
+  });
+
+  // Campaign Component Routes
+  
+  // Get components for a campaign
+  app.get('/api/campaigns/:id/components', async (req, res) => {
+    try {
+      const campaignId = parseInt(req.params.id);
+      const components = await storage.getCampaignComponents(campaignId);
+      res.json(components);
+    } catch (error) {
+      console.error('Error fetching campaign components:', error);
+      res.status(500).json({ message: 'Error fetching campaign components' });
+    }
+  });
+
+  // Add component to campaign
+  app.post('/api/campaigns/:id/components', async (req, res) => {
+    try {
+      const campaignId = parseInt(req.params.id);
+      const { componentId, status } = req.body;
+      
+      if (!componentId) {
+        return res.status(400).json({ message: 'Missing required field: componentId' });
+      }
+
+      // Validate component availability if status is active
+      if (status === 'active') {
+        const availability = await storage.validateComponentAvailability(componentId, campaignId);
+        if (!availability.available) {
+          return res.status(409).json({ 
+            message: 'Component is already active in another campaign',
+            activeCampaignId: availability.activeCampaignId
+          });
+        }
+      }
+
+      const campaignComponent = await storage.addComponentToCampaign({
+        campaignId,
+        componentId,
+        status: status || 'inactive'
+      });
+      
+      res.status(201).json(campaignComponent);
+    } catch (error) {
+      console.error('Error adding component to campaign:', error);
+      res.status(500).json({ message: 'Error adding component to campaign' });
+    }
+  });
+
+  // Update campaign component status (toggle ON/OFF)
+  app.patch('/api/campaigns/:id/components/:componentId', async (req, res) => {
+    try {
+      const campaignId = parseInt(req.params.id);
+      const { componentId } = req.params;
+      const { status } = req.body;
+      
+      if (!status || !['active', 'inactive'].includes(status)) {
+        return res.status(400).json({ message: 'Invalid status. Must be "active" or "inactive"' });
+      }
+
+      // Validate component availability if activating
+      if (status === 'active') {
+        const availability = await storage.validateComponentAvailability(componentId, campaignId);
+        if (!availability.available) {
+          return res.status(409).json({ 
+            message: 'Component is already active in another campaign',
+            activeCampaignId: availability.activeCampaignId
+          });
+        }
+      }
+
+      const updated = await storage.updateCampaignComponentStatus(campaignId, componentId, status);
+      
+      if (!updated) {
+        return res.status(404).json({ message: 'Campaign component not found' });
+      }
+
+      // Broadcast status change via WebSocket
+      broadcastToCampaign(campaignId, JSON.stringify({
+        type: 'component_status_changed',
+        campaignId,
+        componentId,
+        status
+      }));
+      
+      res.json(updated);
+    } catch (error) {
+      console.error('Error updating campaign component status:', error);
+      res.status(500).json({ message: 'Error updating campaign component status' });
+    }
+  });
+
+  // Remove component from campaign
+  app.delete('/api/campaigns/:id/components/:componentId', async (req, res) => {
+    try {
+      const campaignId = parseInt(req.params.id);
+      const { componentId } = req.params;
+      
+      await storage.removeComponentFromCampaign(campaignId, componentId);
+      res.status(204).send();
+    } catch (error) {
+      console.error('Error removing component from campaign:', error);
+      res.status(500).json({ message: 'Error removing component from campaign' });
+    }
+  });
+
+  // Validate component availability
+  app.get('/api/components/:id/availability', async (req, res) => {
+    try {
+      const componentId = req.params.id;
+      const campaignId = req.query.campaignId ? parseInt(req.query.campaignId as string) : undefined;
+      
+      const availability = await storage.validateComponentAvailability(componentId, campaignId);
+      res.json(availability);
+    } catch (error) {
+      console.error('Error validating component availability:', error);
+      res.status(500).json({ message: 'Error validating component availability' });
+    }
+  });
+
   return httpServer;
 }

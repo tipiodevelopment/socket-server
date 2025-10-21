@@ -1,7 +1,7 @@
-import { WebSocketEvent, Campaign, InsertCampaign, Event, InsertEvent, CampaignFormState, InsertFormState, ScheduledComponent, InsertScheduledComponent } from "@shared/schema";
+import { WebSocketEvent, Campaign, InsertCampaign, Event, InsertEvent, CampaignFormState, InsertFormState, ScheduledComponent, InsertScheduledComponent, Component, InsertComponent, CampaignComponent, InsertCampaignComponent } from "@shared/schema";
 import { db } from "./db";
-import { campaigns, events, campaignFormState, scheduledComponents } from "@shared/schema";
-import { eq, desc, and, gte } from "drizzle-orm";
+import { campaigns, events, campaignFormState, scheduledComponents, components, campaignComponents } from "@shared/schema";
+import { eq, desc, and, gte, ne } from "drizzle-orm";
 
 export interface IStorage {
   addEvent(event: WebSocketEvent): Promise<void>;
@@ -30,6 +30,20 @@ export interface IStorage {
   getPendingScheduledComponents(campaignId: number): Promise<ScheduledComponent[]>;
   updateScheduledComponent(id: number, component: Partial<InsertScheduledComponent>): Promise<ScheduledComponent | undefined>;
   deleteScheduledComponent(id: number): Promise<void>;
+  
+  // Dynamic component methods
+  createComponent(component: InsertComponent): Promise<Component>;
+  getComponents(): Promise<Component[]>;
+  getComponentById(id: string): Promise<Component | undefined>;
+  updateComponent(id: string, component: Partial<InsertComponent>): Promise<Component | undefined>;
+  deleteComponent(id: string): Promise<void>;
+  
+  // Campaign component methods
+  getCampaignComponents(campaignId: number): Promise<Array<CampaignComponent & { component: Component }>>;
+  addComponentToCampaign(campaignComponent: InsertCampaignComponent): Promise<CampaignComponent>;
+  updateCampaignComponentStatus(campaignId: number, componentId: string, status: 'active' | 'inactive'): Promise<CampaignComponent | undefined>;
+  removeComponentFromCampaign(campaignId: number, componentId: string): Promise<void>;
+  validateComponentAvailability(componentId: string, campaignId?: number): Promise<{ available: boolean; activeCampaignId?: number }>;
 }
 
 export class MemStorage implements IStorage {
@@ -179,6 +193,111 @@ export class MemStorage implements IStorage {
 
   async deleteScheduledComponent(id: number): Promise<void> {
     await db.delete(scheduledComponents).where(eq(scheduledComponents.id, id));
+  }
+
+  // Dynamic component methods (database-backed)
+  async createComponent(component: InsertComponent): Promise<Component> {
+    const [newComponent] = await db.insert(components).values(component).returning();
+    return newComponent;
+  }
+
+  async getComponents(): Promise<Component[]> {
+    return await db.select().from(components).orderBy(desc(components.createdAt));
+  }
+
+  async getComponentById(id: string): Promise<Component | undefined> {
+    const [component] = await db.select().from(components).where(eq(components.id, id));
+    return component || undefined;
+  }
+
+  async updateComponent(id: string, component: Partial<InsertComponent>): Promise<Component | undefined> {
+    const [updated] = await db.update(components)
+      .set(component)
+      .where(eq(components.id, id))
+      .returning();
+    return updated || undefined;
+  }
+
+  async deleteComponent(id: string): Promise<void> {
+    await db.delete(components).where(eq(components.id, id));
+  }
+
+  // Campaign component methods (database-backed)
+  async getCampaignComponents(campaignId: number): Promise<Array<CampaignComponent & { component: Component }>> {
+    const results = await db.select()
+      .from(campaignComponents)
+      .leftJoin(components, eq(campaignComponents.componentId, components.id))
+      .where(eq(campaignComponents.campaignId, campaignId));
+    
+    return results.map(row => ({
+      ...row.campaign_components,
+      component: row.components!
+    }));
+  }
+
+  async addComponentToCampaign(campaignComponent: InsertCampaignComponent): Promise<CampaignComponent> {
+    const [newCampaignComponent] = await db.insert(campaignComponents).values(campaignComponent).returning();
+    return newCampaignComponent;
+  }
+
+  async updateCampaignComponentStatus(campaignId: number, componentId: string, status: 'active' | 'inactive'): Promise<CampaignComponent | undefined> {
+    const updateData: any = { 
+      status,
+      updatedAt: new Date()
+    };
+    
+    // Set activatedAt when activating
+    if (status === 'active') {
+      updateData.activatedAt = new Date();
+    }
+    
+    const [updated] = await db.update(campaignComponents)
+      .set(updateData)
+      .where(
+        and(
+          eq(campaignComponents.campaignId, campaignId),
+          eq(campaignComponents.componentId, componentId)
+        )
+      )
+      .returning();
+    return updated || undefined;
+  }
+
+  async removeComponentFromCampaign(campaignId: number, componentId: string): Promise<void> {
+    await db.delete(campaignComponents)
+      .where(
+        and(
+          eq(campaignComponents.campaignId, campaignId),
+          eq(campaignComponents.componentId, componentId)
+        )
+      );
+  }
+
+  async validateComponentAvailability(componentId: string, campaignId?: number): Promise<{ available: boolean; activeCampaignId?: number }> {
+    // Check if component is active in any other campaign
+    const conditions = [
+      eq(campaignComponents.componentId, componentId),
+      eq(campaignComponents.status, 'active')
+    ];
+    
+    // Exclude the current campaign if specified
+    if (campaignId !== undefined) {
+      conditions.push(ne(campaignComponents.campaignId, campaignId));
+    }
+    
+    const [activeInOtherCampaign] = await db.select()
+      .from(campaignComponents)
+      .where(and(...conditions))
+      .limit(1);
+    
+    if (activeInOtherCampaign) {
+      return {
+        available: false,
+        activeCampaignId: activeInOtherCampaign.campaignId
+      };
+    }
+    
+    return { available: true };
   }
 }
 

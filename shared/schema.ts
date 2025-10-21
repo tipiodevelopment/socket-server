@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { pgTable, serial, varchar, text, timestamp, json, integer } from "drizzle-orm/pg-core";
-import { relations } from "drizzle-orm";
+import { relations, sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 
 // Database Tables
@@ -45,11 +45,31 @@ export const scheduledComponents = pgTable("scheduled_components", {
   createdAt: timestamp("created_at").defaultNow().notNull()
 });
 
+// Dynamic Components - Reusable UI components library
+export const components = pgTable("components", {
+  id: varchar("id", { length: 50 }).primaryKey().default(sql`gen_random_uuid()`),
+  type: varchar("type", { length: 50 }).notNull(), // banner, countdown, carousel_auto, carousel_manual, product_spotlight, offer_badge
+  name: varchar("name", { length: 255 }).notNull(),
+  config: json("config").notNull(), // Type-specific configuration
+  createdAt: timestamp("created_at").defaultNow().notNull()
+});
+
+// Campaign Components - Links components to campaigns with status
+export const campaignComponents = pgTable("campaign_components", {
+  id: serial("id").primaryKey(),
+  campaignId: integer("campaign_id").notNull().references(() => campaigns.id, { onDelete: 'cascade' }),
+  componentId: varchar("component_id", { length: 50 }).notNull().references(() => components.id, { onDelete: 'cascade' }),
+  status: varchar("status", { length: 20 }).notNull().default('inactive'), // active, inactive
+  activatedAt: timestamp("activated_at"),
+  updatedAt: timestamp("updated_at").defaultNow().notNull()
+});
+
 // Relations
 export const campaignsRelations = relations(campaigns, ({ many }) => ({
   events: many(events),
   formStates: many(campaignFormState),
-  scheduledComponents: many(scheduledComponents)
+  scheduledComponents: many(scheduledComponents),
+  campaignComponents: many(campaignComponents)
 }));
 
 export const eventsRelations = relations(events, ({ one }) => ({
@@ -70,6 +90,21 @@ export const scheduledComponentsRelations = relations(scheduledComponents, ({ on
   campaign: one(campaigns, {
     fields: [scheduledComponents.campaignId],
     references: [campaigns.id]
+  })
+}));
+
+export const componentsRelations = relations(components, ({ many }) => ({
+  campaignComponents: many(campaignComponents)
+}));
+
+export const campaignComponentsRelations = relations(campaignComponents, ({ one }) => ({
+  campaign: one(campaigns, {
+    fields: [campaignComponents.campaignId],
+    references: [campaigns.id]
+  }),
+  component: one(components, {
+    fields: [campaignComponents.componentId],
+    references: [components.id]
   })
 }));
 
@@ -94,6 +129,16 @@ export const insertScheduledComponentSchema = createInsertSchema(scheduledCompon
   createdAt: true 
 });
 
+export const insertComponentSchema = createInsertSchema(components).omit({ 
+  id: true,
+  createdAt: true 
+});
+
+export const insertCampaignComponentSchema = createInsertSchema(campaignComponents).omit({ 
+  id: true,
+  updatedAt: true 
+});
+
 // Types
 export type Campaign = typeof campaigns.$inferSelect;
 export type InsertCampaign = z.infer<typeof insertCampaignSchema>;
@@ -103,6 +148,10 @@ export type CampaignFormState = typeof campaignFormState.$inferSelect;
 export type InsertFormState = z.infer<typeof insertFormStateSchema>;
 export type ScheduledComponent = typeof scheduledComponents.$inferSelect;
 export type InsertScheduledComponent = z.infer<typeof insertScheduledComponentSchema>;
+export type Component = typeof components.$inferSelect;
+export type InsertComponent = z.infer<typeof insertComponentSchema>;
+export type CampaignComponent = typeof campaignComponents.$inferSelect;
+export type InsertCampaignComponent = z.infer<typeof insertCampaignComponentSchema>;
 
 // Event schemas
 export const productEventSchema = z.object({
@@ -234,3 +283,68 @@ export const reachuChannelSchema = z.object({
 });
 
 export type ReachuChannel = z.infer<typeof reachuChannelSchema>;
+
+// Dynamic Component Config Schemas
+export const bannerComponentConfigSchema = z.object({
+  imageUrl: z.string().url(),
+  title: z.string(),
+  subtitle: z.string().optional(),
+  ctaText: z.string().optional(),
+  ctaLink: z.string().url().optional()
+});
+
+export const countdownComponentConfigSchema = z.object({
+  endDate: z.string(), // ISO timestamp
+  title: z.string(),
+  style: z.enum(["minimal", "full"]).default("full")
+});
+
+export const carouselAutoComponentConfigSchema = z.object({
+  channelId: z.string(), // Reachu channel ID
+  displayCount: z.number().default(5)
+});
+
+export const carouselManualComponentConfigSchema = z.object({
+  productIds: z.array(z.string()),
+  displayCount: z.number().default(5)
+});
+
+export const productSpotlightConfigSchema = z.object({
+  productId: z.string(),
+  highlightText: z.string().optional()
+});
+
+export const offerBadgeConfigSchema = z.object({
+  text: z.string(),
+  color: z.enum(["red", "blue", "green", "gold"]).default("red")
+});
+
+export const componentConfigSchema = z.union([
+  bannerComponentConfigSchema,
+  countdownComponentConfigSchema,
+  carouselAutoComponentConfigSchema,
+  carouselManualComponentConfigSchema,
+  productSpotlightConfigSchema,
+  offerBadgeConfigSchema
+]);
+
+// Dynamic Component Config Types
+export type BannerComponentConfig = z.infer<typeof bannerComponentConfigSchema>;
+export type CountdownComponentConfig = z.infer<typeof countdownComponentConfigSchema>;
+export type CarouselAutoComponentConfig = z.infer<typeof carouselAutoComponentConfigSchema>;
+export type CarouselManualComponentConfig = z.infer<typeof carouselManualComponentConfigSchema>;
+export type ProductSpotlightConfig = z.infer<typeof productSpotlightConfigSchema>;
+export type OfferBadgeConfig = z.infer<typeof offerBadgeConfigSchema>;
+export type ComponentConfig = z.infer<typeof componentConfigSchema>;
+
+// Component types enum for validation
+export const componentTypes = [
+  'banner',
+  'countdown',
+  'carousel_auto',
+  'carousel_manual',
+  'product_spotlight',
+  'offer_badge'
+] as const;
+
+export type ComponentType = typeof componentTypes[number];

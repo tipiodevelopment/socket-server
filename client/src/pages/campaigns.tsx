@@ -27,11 +27,18 @@ export default function CampaignsPage() {
               </div>
             </div>
             
-            <Link href="/docs">
-              <Button variant="ghost" size="sm" data-testid="link-docs" className="text-xs sm:text-sm">
-                Docs
-              </Button>
-            </Link>
+            <div className="flex gap-2">
+              <Link href="/components">
+                <Button variant="ghost" size="sm" data-testid="link-components" className="text-xs sm:text-sm">
+                  Components
+                </Button>
+              </Link>
+              <Link href="/docs">
+                <Button variant="ghost" size="sm" data-testid="link-docs" className="text-xs sm:text-sm">
+                  Docs
+                </Button>
+              </Link>
+            </div>
           </div>
         </div>
       </header>

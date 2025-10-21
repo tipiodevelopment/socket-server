@@ -1,14 +1,19 @@
 import { useParams, Link } from "wouter";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Calendar, Clock, ShoppingBag, Radio, ArrowLeft, Plus, Trash2 } from "lucide-react";
-import { Campaign, ScheduledComponent } from "@shared/schema";
+import { Calendar, Clock, ShoppingBag, Radio, ArrowLeft, Plus, Trash2, ToggleLeft, ToggleRight } from "lucide-react";
+import { Campaign, ScheduledComponent, Component, CampaignComponent } from "@shared/schema";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { useToast } from "@/hooks/use-toast";
+import { queryClient, apiRequest } from "@/lib/queryClient";
+import { useState } from "react";
 
 export default function AdvancedCampaign() {
   const { id } = useParams();
@@ -19,9 +24,18 @@ export default function AdvancedCampaign() {
     enabled: !!campaignId
   });
 
-  const { data: components = [] } = useQuery<ScheduledComponent[]>({
+  const { data: scheduledComponents = [] } = useQuery<ScheduledComponent[]>({
+    queryKey: ['/api/campaigns', campaignId, 'scheduled-components'],
+    enabled: !!campaignId
+  });
+
+  const { data: campaignComponents = [] } = useQuery<Array<CampaignComponent & { component: Component }>>({
     queryKey: ['/api/campaigns', campaignId, 'components'],
     enabled: !!campaignId
+  });
+
+  const { data: allComponents = [] } = useQuery<Component[]>({
+    queryKey: ['/api/components'],
   });
 
   if (isLoading) {
@@ -64,10 +78,11 @@ export default function AdvancedCampaign() {
           </div>
 
           <Tabs defaultValue="overview" className="w-full">
-            <TabsList className="grid w-full grid-cols-1 sm:grid-cols-3 bg-gray-800 border-0">
+            <TabsList className="grid w-full grid-cols-2 sm:grid-cols-4 bg-gray-800 border-0">
               <TabsTrigger value="overview" data-testid="tab-overview">Overview</TabsTrigger>
               <TabsTrigger value="integration" data-testid="tab-integration">Integrations</TabsTrigger>
-              <TabsTrigger value="components" data-testid="tab-components">Scheduled Components</TabsTrigger>
+              <TabsTrigger value="components" data-testid="tab-components">Scheduled</TabsTrigger>
+              <TabsTrigger value="dynamic" data-testid="tab-dynamic">Components</TabsTrigger>
             </TabsList>
 
             {/* Overview Tab */}
@@ -237,7 +252,7 @@ export default function AdvancedCampaign() {
                   </div>
                 </CardHeader>
                 <CardContent>
-                  {components.length === 0 ? (
+                  {scheduledComponents.length === 0 ? (
                     <div className="text-center py-12 text-gray-400">
                       <Clock className="w-12 h-12 mx-auto mb-4 opacity-50" />
                       <p>No scheduled components</p>
@@ -245,8 +260,8 @@ export default function AdvancedCampaign() {
                     </div>
                   ) : (
                     <div className="space-y-3">
-                      {components.map((component) => (
-                        <ComponentCard key={component.id} component={component} />
+                      {scheduledComponents.map((component: ScheduledComponent) => (
+                        <ScheduledComponentCard key={component.id} component={component} />
                       ))}
                     </div>
                   )}
@@ -286,6 +301,11 @@ export default function AdvancedCampaign() {
                 </CardContent>
               </Card>
             </TabsContent>
+
+            {/* Dynamic Components Tab */}
+            <TabsContent value="dynamic" className="space-y-4">
+              <DynamicComponentsTab campaignId={campaignId!} campaignComponents={campaignComponents} allComponents={allComponents} />
+            </TabsContent>
           </Tabs>
         </div>
       </div>
@@ -293,7 +313,7 @@ export default function AdvancedCampaign() {
   );
 }
 
-function ComponentCard({ component }: { component: ScheduledComponent }) {
+function ScheduledComponentCard({ component }: { component: ScheduledComponent }) {
   const getTypeLabel = (type: string) => {
     const types: Record<string, string> = {
       carousel: "Carousel",
@@ -343,6 +363,248 @@ function ComponentCard({ component }: { component: ScheduledComponent }) {
         <Trash2 className="w-4 h-4" />
       </Button>
     </div>
+  );
+}
+
+function DynamicComponentsTab({
+  campaignId,
+  campaignComponents,
+  allComponents,
+}: {
+  campaignId: number;
+  campaignComponents: Array<CampaignComponent & { component: Component }>;
+  allComponents: Component[];
+}) {
+  const { toast } = useToast();
+  const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
+  const [selectedComponentId, setSelectedComponentId] = useState<string>('');
+
+  const addComponentMutation = useMutation({
+    mutationFn: async (componentId: string) => {
+      return await apiRequest('POST', `/api/campaigns/${campaignId}/components`, {
+        componentId,
+        status: 'inactive',
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/campaigns', campaignId, 'components'] });
+      setIsAddDialogOpen(false);
+      setSelectedComponentId('');
+      toast({
+        title: 'Component added',
+        description: 'Component has been added to this campaign.',
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: 'Error',
+        description: error.message || 'Failed to add component.',
+        variant: 'destructive',
+      });
+    },
+  });
+
+  const toggleStatusMutation = useMutation({
+    mutationFn: async ({ componentId, status }: { componentId: string; status: 'active' | 'inactive' }) => {
+      return await apiRequest('PATCH', `/api/campaigns/${campaignId}/components/${componentId}`, { status });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/campaigns', campaignId, 'components'] });
+      toast({
+        title: 'Status updated',
+        description: 'Component status has been updated.',
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: 'Error',
+        description: error.message || 'Failed to update component status.',
+        variant: 'destructive',
+      });
+    },
+  });
+
+  const removeComponentMutation = useMutation({
+    mutationFn: async (componentId: string) => {
+      return await apiRequest('DELETE', `/api/campaigns/${campaignId}/components/${componentId}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/campaigns', campaignId, 'components'] });
+      toast({
+        title: 'Component removed',
+        description: 'Component has been removed from this campaign.',
+      });
+    },
+    onError: () => {
+      toast({
+        title: 'Error',
+        description: 'Failed to remove component.',
+        variant: 'destructive',
+      });
+    },
+  });
+
+  const availableComponents = allComponents.filter(
+    (comp) => !campaignComponents.some((cc) => cc.componentId === comp.id)
+  );
+
+  const getComponentTypeLabel = (type: string) => {
+    const labels: Record<string, string> = {
+      banner: 'Banner',
+      countdown: 'Countdown',
+      carousel_auto: 'Auto Carousel',
+      carousel_manual: 'Manual Carousel',
+      product_spotlight: 'Product Spotlight',
+      offer_badge: 'Offer Badge',
+    };
+    return labels[type] || type;
+  };
+
+  return (
+    <Card className="bg-gray-800 border-0">
+      <CardHeader>
+        <div className="flex items-center justify-between">
+          <div>
+            <CardTitle className="text-white">Dynamic Components</CardTitle>
+            <CardDescription className="text-gray-400">
+              Reusable UI components that can be toggled on/off in real-time
+            </CardDescription>
+          </div>
+          <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
+            <DialogTrigger asChild>
+              <Button className="bg-blue-600 hover:bg-blue-700 border-0" data-testid="button-add-dynamic-component">
+                <Plus className="w-4 h-4 mr-2" />
+                Add Component
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="bg-gray-800 text-white border-gray-700">
+              <DialogHeader>
+                <DialogTitle>Add Component to Campaign</DialogTitle>
+                <DialogDescription className="text-gray-400">
+                  Select a component from your library to add to this campaign.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-4">
+                {availableComponents.length === 0 ? (
+                  <div className="text-center py-8 text-gray-400">
+                    <p>No available components.</p>
+                    <Link href="/components">
+                      <Button variant="link" className="mt-2">
+                        Create a component in the library
+                      </Button>
+                    </Link>
+                  </div>
+                ) : (
+                  <>
+                    <div className="space-y-2">
+                      <Label>Select Component</Label>
+                      <Select value={selectedComponentId} onValueChange={setSelectedComponentId}>
+                        <SelectTrigger className="bg-gray-700 border-0">
+                          <SelectValue placeholder="Choose a component..." />
+                        </SelectTrigger>
+                        <SelectContent className="bg-gray-800 border-gray-700">
+                          {availableComponents.map((comp) => (
+                            <SelectItem key={comp.id} value={comp.id} className="text-white">
+                              {comp.name} ({getComponentTypeLabel(comp.type)})
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <Button
+                      onClick={() => selectedComponentId && addComponentMutation.mutate(selectedComponentId)}
+                      disabled={!selectedComponentId || addComponentMutation.isPending}
+                      className="w-full bg-blue-600 hover:bg-blue-700"
+                      data-testid="button-confirm-add"
+                    >
+                      {addComponentMutation.isPending ? 'Adding...' : 'Add to Campaign'}
+                    </Button>
+                  </>
+                )}
+              </div>
+            </DialogContent>
+          </Dialog>
+        </div>
+      </CardHeader>
+      <CardContent>
+        {campaignComponents.length === 0 ? (
+          <div className="text-center py-12 text-gray-400">
+            <ShoppingBag className="w-12 h-12 mx-auto mb-4 opacity-50" />
+            <p>No components added yet</p>
+            <p className="text-sm mt-2">Add reusable components from your library</p>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {campaignComponents.map((cc) => (
+              <div
+                key={cc.id}
+                className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 p-4 bg-gray-700 rounded-lg border-0"
+                data-testid={`dynamic-component-${cc.id}`}
+              >
+                <div className="flex-1 w-full">
+                  <div className="flex items-center gap-3 mb-2">
+                    <Badge
+                      className={`${cc.status === 'active' ? 'bg-green-600' : 'bg-gray-600'} border-0`}
+                      data-testid={`status-${cc.id}`}
+                    >
+                      {cc.status}
+                    </Badge>
+                    <span className="text-white font-medium text-sm sm:text-base" data-testid={`name-${cc.id}`}>
+                      {cc.component.name}
+                    </span>
+                    <Badge className="bg-blue-600 border-0 text-xs" data-testid={`type-${cc.id}`}>
+                      {getComponentTypeLabel(cc.component.type)}
+                    </Badge>
+                  </div>
+                  <div className="text-xs sm:text-sm text-gray-400 font-mono">
+                    ID: {cc.componentId}
+                  </div>
+                </div>
+                <div className="flex gap-2 w-full sm:w-auto">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() =>
+                      toggleStatusMutation.mutate({
+                        componentId: cc.componentId,
+                        status: cc.status === 'active' ? 'inactive' : 'active',
+                      })
+                    }
+                    disabled={toggleStatusMutation.isPending}
+                    className={`flex-1 sm:flex-none ${
+                      cc.status === 'active'
+                        ? 'text-yellow-400 hover:text-yellow-300 hover:bg-yellow-950'
+                        : 'text-green-400 hover:text-green-300 hover:bg-green-950'
+                    }`}
+                    data-testid={`button-toggle-${cc.id}`}
+                  >
+                    {cc.status === 'active' ? (
+                      <ToggleRight className="w-4 h-4" />
+                    ) : (
+                      <ToggleLeft className="w-4 h-4" />
+                    )}
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      if (confirm('Are you sure you want to remove this component from the campaign?')) {
+                        removeComponentMutation.mutate(cc.componentId);
+                      }
+                    }}
+                    disabled={removeComponentMutation.isPending}
+                    className="text-red-400 hover:text-red-300 hover:bg-red-950"
+                    data-testid={`button-remove-${cc.id}`}
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 
