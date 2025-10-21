@@ -391,14 +391,14 @@ function DynamicComponentsTab({
       setIsAddDialogOpen(false);
       setSelectedComponentId('');
       toast({
-        title: 'Componente agregado',
-        description: 'El componente ha sido agregado a esta campaña.',
+        title: 'Component Added',
+        description: 'The component has been added to this campaign.',
       });
     },
     onError: (error: any) => {
       toast({
         title: 'Error',
-        description: error.message || 'No se pudo agregar el componente.',
+        description: error.message || 'Failed to add component.',
         variant: 'destructive',
       });
     },
@@ -411,14 +411,14 @@ function DynamicComponentsTab({
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/campaigns', campaignId, 'components'] });
       toast({
-        title: 'Estado actualizado',
-        description: 'El estado del componente ha sido actualizado.',
+        title: 'Status Updated',
+        description: 'The component status has been updated.',
       });
     },
     onError: (error: any) => {
       toast({
         title: 'Error',
-        description: error.message || 'No se pudo actualizar el estado del componente.',
+        description: error.message || 'Failed to update component status.',
         variant: 'destructive',
       });
     },
@@ -431,14 +431,14 @@ function DynamicComponentsTab({
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/campaigns', campaignId, 'components'] });
       toast({
-        title: 'Componente eliminado',
-        description: 'El componente ha sido eliminado de esta campaña.',
+        title: 'Component Removed',
+        description: 'The component has been removed from this campaign.',
       });
     },
     onError: () => {
       toast({
         title: 'Error',
-        description: 'No se pudo eliminar el componente.',
+        description: 'Failed to remove component.',
         variant: 'destructive',
       });
     },
