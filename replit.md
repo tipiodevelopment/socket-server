@@ -103,6 +103,7 @@ Preferred communication style: Simple, everyday language.
 - `component_config_updated`: Broadcast when component configuration is edited.
 
 **API Endpoints:**
+- Campaigns: `GET/POST /api/campaigns`, `GET/PUT/DELETE /api/campaigns/:id`
 - Component Library: `GET/POST /api/components`, `PATCH/DELETE /api/components/:id`
 - Campaign Components: `GET/POST /api/campaigns/:id/components`, `PATCH/DELETE /api/campaigns/:id/components/:cmpId`
 - Validation: `GET /api/components/:id/availability` (check if component is available for activation)
@@ -117,7 +118,7 @@ Preferred communication style: Simple, everyday language.
 
 ### Page Structure
 
-- **Campaigns Page (`/` or `/campaigns`):** Dashboard for managing campaigns, creating new ones, and accessing admin/advanced settings and component library.
+- **Campaigns Page (`/` or `/campaigns`):** Dashboard for managing campaigns, creating new ones, deleting existing campaigns (with confirmation dialog), and accessing admin/advanced settings and component library.
 - **New Campaign Page (`/campaigns/new`):** Form for creating new campaigns with basic info, optional Reachu.io integration, and optional Tipio Livestream integration.
 - **Campaign Admin Page (`/campaign/:id/admin`):** Campaign-specific dashboard for creating and broadcasting various event types (products, polls, contests). Features form state persistence, poll options with images, logo configuration (URL/upload), real-time event log, and connection status.
 - **Campaign Viewer Page (`/campaign/:name/:id`):** Real-time event display for viewers, with notifications and event history.
