@@ -57,8 +57,8 @@ export default function NewCampaignPage() {
     },
     onSuccess: (newCampaign) => {
       toast({
-        title: "Campaign Created",
-        description: "Your new campaign is ready to use",
+        title: "Campaña Creada",
+        description: "Tu nueva campaña está lista para usar",
       });
       queryClient.invalidateQueries({ queryKey: ['/api/campaigns'] });
       setLocation(`/campaign/${newCampaign.id}/admin`);
@@ -66,7 +66,7 @@ export default function NewCampaignPage() {
     onError: () => {
       toast({
         title: "Error",
-        description: "Could not create campaign",
+        description: "No se pudo crear la campaña",
         variant: "destructive",
       });
     }

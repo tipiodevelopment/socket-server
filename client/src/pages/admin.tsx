@@ -429,15 +429,15 @@ export default function AdminPage() {
       }),
     onSuccess: () => {
       toast({
-        title: "Product Event Sent",
-        description: "The event has been sent to all connected clients",
+        title: "Evento de Producto Enviado",
+        description: "El evento ha sido enviado a todos los clientes conectados",
       });
       queryClient.invalidateQueries({ queryKey: ['/api/events'] });
     },
     onError: () => {
       toast({
         title: "Error",
-        description: "Could not send product event",
+        description: "No se pudo enviar el evento de producto",
         variant: "destructive",
       });
     }
@@ -455,15 +455,15 @@ export default function AdminPage() {
       }),
     onSuccess: () => {
       toast({
-        title: "Poll Started",
-        description: "The poll has been sent to all connected clients",
+        title: "Encuesta Iniciada",
+        description: "La encuesta ha sido enviada a todos los clientes conectados",
       });
       queryClient.invalidateQueries({ queryKey: ['/api/events'] });
     },
     onError: () => {
       toast({
         title: "Error",
-        description: "Could not start the poll",
+        description: "No se pudo iniciar la encuesta",
         variant: "destructive",
       });
     }
@@ -481,15 +481,15 @@ export default function AdminPage() {
       }),
     onSuccess: () => {
       toast({
-        title: "Contest Launched",
-        description: "The contest has been sent to all connected clients",
+        title: "Concurso Lanzado",
+        description: "El concurso ha sido enviado a todos los clientes conectados",
       });
       queryClient.invalidateQueries({ queryKey: ['/api/events'] });
     },
     onError: () => {
       toast({
         title: "Error",
-        description: "Could not launch the contest",
+        description: "No se pudo lanzar el concurso",
         variant: "destructive",
       });
     }
@@ -509,8 +509,8 @@ export default function AdminPage() {
   const sendTwoProducts = async () => {
     if (productForms.length < 2) {
       toast({
-        title: "Not Enough Products",
-        description: "You need at least 2 products to send two simultaneously",
+        title: "No Hay Suficientes Productos",
+        description: "Necesitas al menos 2 productos para enviar dos simultáneamente",
         variant: "destructive",
       });
       return;
@@ -540,13 +540,13 @@ export default function AdminPage() {
       });
 
       toast({
-        title: "Two Products Sent",
-        description: "The first two products have been sent simultaneously",
+        title: "Dos Productos Enviados",
+        description: "Los primeros dos productos han sido enviados simultáneamente",
       });
     } catch (error) {
       toast({
         title: "Error",
-        description: "Could not send both products",
+        description: "No se pudieron enviar ambos productos",
         variant: "destructive",
       });
     } finally {
@@ -562,8 +562,8 @@ export default function AdminPage() {
     try {
       await navigator.clipboard.writeText(text);
       toast({
-        title: "Copied",
-        description: "Text copied to clipboard",
+        title: "Copiado",
+        description: "Texto copiado al portapapeles",
       });
     } catch (err) {
       console.error('Failed to copy: ', err);
@@ -695,13 +695,13 @@ export default function AdminPage() {
                           updateLogoMutation.mutate(objectPath);
                         }
                         toast({
-                          title: "Logo Uploaded",
-                          description: "Campaign logo has been updated and saved",
+                          title: "Logo Subido",
+                          description: "El logo de la campaña ha sido actualizado y guardado",
                         });
                       }}
                       onUploadError={(error) => {
                         toast({
-                          title: "Upload Failed",
+                          title: "Error al Subir",
                           description: error.message,
                           variant: "destructive",
                         });
@@ -1019,7 +1019,7 @@ export default function AdminPage() {
                               onUploadComplete={(url: string) => updatePollForm(form.id, 'imageUrl', url)}
                               onUploadError={(error: Error) => {
                                 toast({
-                                  title: "Upload Error",
+                                  title: "Error al Subir",
                                   description: error.message,
                                   variant: "destructive",
                                 });

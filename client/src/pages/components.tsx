@@ -41,14 +41,14 @@ export default function ComponentsPage() {
       queryClient.invalidateQueries({ queryKey: ['/api/components'] });
       setIsCreateOpen(false);
       toast({
-        title: 'Component created',
-        description: 'Your component has been created successfully.',
+        title: 'Componente creado',
+        description: 'Tu componente ha sido creado exitosamente.',
       });
     },
     onError: () => {
       toast({
         title: 'Error',
-        description: 'Failed to create component.',
+        description: 'No se pudo crear el componente.',
         variant: 'destructive',
       });
     },
@@ -62,14 +62,14 @@ export default function ComponentsPage() {
       queryClient.invalidateQueries({ queryKey: ['/api/components'] });
       setEditingComponent(null);
       toast({
-        title: 'Component updated',
-        description: 'Your component has been updated successfully.',
+        title: 'Componente actualizado',
+        description: 'Tu componente ha sido actualizado exitosamente.',
       });
     },
     onError: () => {
       toast({
         title: 'Error',
-        description: 'Failed to update component.',
+        description: 'No se pudo actualizar el componente.',
         variant: 'destructive',
       });
     },
@@ -82,14 +82,14 @@ export default function ComponentsPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/components'] });
       toast({
-        title: 'Component deleted',
-        description: 'Component has been removed from the library.',
+        title: 'Componente eliminado',
+        description: 'El componente ha sido eliminado de la biblioteca.',
       });
     },
     onError: () => {
       toast({
         title: 'Error',
-        description: 'Failed to delete component.',
+        description: 'No se pudo eliminar el componente.',
         variant: 'destructive',
       });
     },
@@ -101,8 +101,8 @@ export default function ComponentsPage() {
     setCopiedId(componentId);
     setTimeout(() => setCopiedId(null), 2000);
     toast({
-      title: 'Copied!',
-      description: 'iOS code snippet copied to clipboard.',
+      title: '¡Copiado!',
+      description: 'Código iOS copiado al portapapeles.',
     });
   };
 
