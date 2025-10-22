@@ -65,7 +65,7 @@ Preferred communication style: Simple, everyday language.
 
 **Components Table (Dynamic Components):**
 - Reusable UI component library.
-- Fields: `id` (UUID), `type` (banner, countdown, carousel_auto, carousel_manual, product_spotlight, offer_badge), `name`, `config` (JSON), `createdAt`.
+- Fields: `id` (UUID), `type` (banner, countdown, carousel_auto, carousel_manual, product_spotlight, offer_badge, offer_banner), `name`, `config` (JSON), `createdAt`.
 - Purpose: Store reusable component configurations that can be shared across multiple campaigns.
 
 **Campaign Components Table:**
@@ -102,6 +102,7 @@ Preferred communication style: Simple, everyday language.
 4. **Carousel Manual:** Product carousel with manually selected product IDs.
 5. **Product Spotlight:** Highlight a specific product with optional text.
 6. **Offer Badge:** Display promotional badge with customizable color and text.
+7. **Offer Banner:** Premium promotional banner with logo, title, subtitle, background image, countdown timer, discount badge, CTA button, and overlay opacity (9 config fields total).
 
 **WebSocket Events:**
 - `component_status_changed`: Broadcast when component is activated/deactivated in a campaign.
@@ -112,6 +113,7 @@ Preferred communication style: Simple, everyday language.
 - Scheduled Components: `GET /api/campaigns/:id/scheduled-components`, `POST /api/campaigns/:id/scheduled-components`, `PATCH /api/scheduled-components/:id`, `DELETE /api/scheduled-components/:id`
 - Component Library: `GET/POST /api/components`, `PATCH/DELETE /api/components/:id`
 - Campaign Components: `GET/POST /api/campaigns/:id/components`, `PATCH/DELETE /api/campaigns/:id/components/:cmpId`
+- Active Components: `GET /api/campaigns/:id/active-components` (fetch all active components with full config for iOS app initial state)
 - Validation: `GET /api/components/:id/availability` (check if component is available for activation)
 
 **Workflow:**
@@ -144,7 +146,7 @@ Preferred communication style: Simple, everyday language.
   - **Dynamic Components**: Real-time component management with toggle controls. Helper text references Library tab for component creation.
   - **Library**: Integrated component library for creating, editing, and managing reusable UI components. Uses shared ComponentLibraryTab with 5-column grid layout, type-specific forms, iOS integration code snippets, and usage tracking across campaigns.
 - **Components Library Page (`/components`):** Standalone page for component management using the same shared ComponentLibraryTab as Advanced Campaign Library tab. Provides identical functionality with header and back button for external access.
-- **Docs Page (`/docs`):** Integration documentation with code examples.
+- **Docs Page (`/docs`):** Integration documentation with Swift code examples, including complete Dynamic Components section with GET /api/campaigns/:id/active-components endpoint details, WebSocket events (component_status_changed, component_config_updated), offer_banner JSON structure example, and Swift integration code.
 
 ## External Dependencies
 
