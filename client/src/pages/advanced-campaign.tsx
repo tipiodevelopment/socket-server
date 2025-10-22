@@ -16,8 +16,10 @@ import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useState } from "react";
 
 export default function AdvancedCampaign() {
+  const { toast } = useToast();
   const { id } = useParams();
   const campaignId = id ? parseInt(id) : null;
+  const [isAddScheduledOpen, setIsAddScheduledOpen] = useState(false);
 
   const { data: campaign, isLoading } = useQuery<Campaign>({
     queryKey: ['/api/campaigns', campaignId],
@@ -36,6 +38,47 @@ export default function AdvancedCampaign() {
 
   const { data: allComponents = [] } = useQuery<Component[]>({
     queryKey: ['/api/components'],
+  });
+
+  const createScheduledMutation = useMutation({
+    mutationFn: async (data: { type: string; scheduledTime: string; data: any }) => {
+      return await apiRequest('POST', `/api/campaigns/${campaignId}/scheduled-components`, data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/campaigns', campaignId, 'scheduled-components'] });
+      setIsAddScheduledOpen(false);
+      toast({
+        title: 'Scheduled Component Created',
+        description: 'The component has been scheduled successfully.',
+      });
+    },
+    onError: () => {
+      toast({
+        title: 'Error',
+        description: 'Failed to create scheduled component.',
+        variant: 'destructive',
+      });
+    },
+  });
+
+  const deleteScheduledMutation = useMutation({
+    mutationFn: async (id: number) => {
+      return await apiRequest('DELETE', `/api/scheduled-components/${id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/campaigns', campaignId, 'scheduled-components'] });
+      toast({
+        title: 'Scheduled Component Deleted',
+        description: 'The scheduled component has been removed.',
+      });
+    },
+    onError: () => {
+      toast({
+        title: 'Error',
+        description: 'Failed to delete scheduled component.',
+        variant: 'destructive',
+      });
+    },
   });
 
   if (isLoading) {
@@ -242,13 +285,34 @@ export default function AdvancedCampaign() {
                         Components that will automatically display at specific times
                       </CardDescription>
                     </div>
-                    <Button 
-                      className="bg-blue-600 hover:bg-blue-700 border-0"
-                      data-testid="button-add-component"
-                    >
-                      <Plus className="w-4 h-4 mr-2" />
-                      Add Component
-                    </Button>
+                    <Dialog open={isAddScheduledOpen} onOpenChange={setIsAddScheduledOpen}>
+                      <DialogTrigger asChild>
+                        <Button 
+                          className="bg-blue-600 hover:bg-blue-700 border-0"
+                          data-testid="button-add-component"
+                        >
+                          <Plus className="w-4 h-4 mr-2" />
+                          Add Component
+                        </Button>
+                      </DialogTrigger>
+                      <DialogContent 
+                        className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto bg-gray-800 border-0"
+                        onInteractOutside={(e) => e.preventDefault()}
+                      >
+                        <DialogHeader>
+                          <DialogTitle className="text-white">Schedule Component</DialogTitle>
+                          <DialogDescription className="text-gray-400">
+                            Create a component that will automatically display at a specific time
+                          </DialogDescription>
+                        </DialogHeader>
+                        <ScheduledComponentForm
+                          onSubmit={(data) => createScheduledMutation.mutate(data)}
+                          onCancel={() => setIsAddScheduledOpen(false)}
+                          isLoading={createScheduledMutation.isPending}
+                          campaign={campaign}
+                        />
+                      </DialogContent>
+                    </Dialog>
                   </div>
                 </CardHeader>
                 <CardContent>
@@ -261,7 +325,11 @@ export default function AdvancedCampaign() {
                   ) : (
                     <div className="space-y-3">
                       {scheduledComponents.map((component: ScheduledComponent) => (
-                        <ScheduledComponentCard key={component.id} component={component} />
+                        <ScheduledComponentCard 
+                          key={component.id} 
+                          component={component} 
+                          onDelete={() => deleteScheduledMutation.mutate(component.id)}
+                        />
                       ))}
                     </div>
                   )}
@@ -313,7 +381,7 @@ export default function AdvancedCampaign() {
   );
 }
 
-function ScheduledComponentCard({ component }: { component: ScheduledComponent }) {
+function ScheduledComponentCard({ component, onDelete }: { component: ScheduledComponent; onDelete: () => void }) {
   const getTypeLabel = (type: string) => {
     const types: Record<string, string> = {
       carousel: "Carousel",
@@ -354,10 +422,11 @@ function ScheduledComponentCard({ component }: { component: ScheduledComponent }
           </span>
         </div>
       </div>
-      <Button 
-        variant="ghost" 
-        size="sm" 
-        className="text-red-400 hover:text-red-300 hover:bg-red-950 w-full sm:w-auto"
+      <Button
+        variant="ghost"
+        size="sm"
+        onClick={onDelete}
+        className="text-red-400 hover:text-red-300 hover:bg-red-950"
         data-testid={`button-delete-${component.id}`}
       >
         <Trash2 className="w-4 h-4" />
@@ -630,5 +699,225 @@ function ComponentTypeCard({
       </div>
       <p className="text-gray-400 text-xs">{description}</p>
     </div>
+  );
+}
+
+function ScheduledComponentForm({
+  onSubmit,
+  onCancel,
+  isLoading,
+  campaign,
+}: {
+  onSubmit: (data: { type: string; scheduledTime: string; data: any }) => void;
+  onCancel: () => void;
+  isLoading: boolean;
+  campaign?: Campaign;
+}) {
+  type ComponentType = 'carousel' | 'store_view' | 'product_spotlight' | 'liveshow_trigger';
+  
+  const [type, setType] = useState<ComponentType>('carousel');
+  const [scheduledTime, setScheduledTime] = useState('');
+  const [config, setConfig] = useState<Record<string, any>>({});
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    onSubmit({ type, scheduledTime, data: config });
+  };
+
+  const renderConfigFields = () => {
+    switch (type) {
+      case 'carousel':
+        return (
+          <>
+            <div className="space-y-2">
+              <Label htmlFor="productIds" className="text-gray-300">Product IDs (comma-separated)</Label>
+              <Input
+                id="productIds"
+                placeholder="prod_1, prod_2, prod_3"
+                value={config.productIds?.join(', ') || ''}
+                onChange={(e) => setConfig({ ...config, productIds: e.target.value.split(',').map(id => id.trim()) })}
+                className="bg-gray-700 border-0 text-white"
+                data-testid="input-productIds"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="intervalSeconds" className="text-gray-300">Interval (seconds)</Label>
+                <Input
+                  id="intervalSeconds"
+                  type="number"
+                  placeholder="5"
+                  value={config.intervalSeconds || 5}
+                  onChange={(e) => setConfig({ ...config, intervalSeconds: parseInt(e.target.value) })}
+                  className="bg-gray-700 border-0 text-white"
+                  data-testid="input-intervalSeconds"
+                />
+              </div>
+            </div>
+          </>
+        );
+      case 'store_view':
+        return (
+          <>
+            <div className="space-y-2">
+              <Label htmlFor="categoryId" className="text-gray-300">Category ID (optional)</Label>
+              <Input
+                id="categoryId"
+                placeholder="cat_123"
+                value={config.categoryId || ''}
+                onChange={(e) => setConfig({ ...config, categoryId: e.target.value })}
+                className="bg-gray-700 border-0 text-white"
+                data-testid="input-categoryId"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="layout" className="text-gray-300">Layout</Label>
+                <Select
+                  value={config.layout || 'grid'}
+                  onValueChange={(value) => setConfig({ ...config, layout: value })}
+                >
+                  <SelectTrigger className="bg-gray-700 border-0 text-white" data-testid="select-layout">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="grid">Grid</SelectItem>
+                    <SelectItem value="list">List</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="maxItems" className="text-gray-300">Max Items</Label>
+                <Input
+                  id="maxItems"
+                  type="number"
+                  placeholder="20"
+                  value={config.maxItems || 20}
+                  onChange={(e) => setConfig({ ...config, maxItems: parseInt(e.target.value) })}
+                  className="bg-gray-700 border-0 text-white"
+                  data-testid="input-maxItems"
+                />
+              </div>
+            </div>
+          </>
+        );
+      case 'product_spotlight':
+        return (
+          <>
+            <div className="space-y-2">
+              <Label htmlFor="productId" className="text-gray-300">Product ID</Label>
+              <Input
+                id="productId"
+                placeholder="prod_123"
+                value={config.productId || ''}
+                onChange={(e) => setConfig({ ...config, productId: e.target.value })}
+                required
+                className="bg-gray-700 border-0 text-white"
+                data-testid="input-productId"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="highlightText" className="text-gray-300">Highlight Text (optional)</Label>
+              <Input
+                id="highlightText"
+                placeholder="Featured Product"
+                value={config.highlightText || ''}
+                onChange={(e) => setConfig({ ...config, highlightText: e.target.value })}
+                className="bg-gray-700 border-0 text-white"
+                data-testid="input-highlightText"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="durationSeconds" className="text-gray-300">Duration (seconds)</Label>
+              <Input
+                id="durationSeconds"
+                type="number"
+                placeholder="30"
+                value={config.durationSeconds || 30}
+                onChange={(e) => setConfig({ ...config, durationSeconds: parseInt(e.target.value) })}
+                className="bg-gray-700 border-0 text-white"
+                data-testid="input-durationSeconds"
+              />
+            </div>
+          </>
+        );
+      case 'liveshow_trigger':
+        return (
+          <>
+            <div className="space-y-2">
+              <Label htmlFor="liveshowId" className="text-gray-300">Liveshow ID</Label>
+              <Input
+                id="liveshowId"
+                placeholder={campaign?.tipioLiveshowId || 'liveshow_123'}
+                value={config.liveshowId || campaign?.tipioLiveshowId || ''}
+                onChange={(e) => setConfig({ ...config, liveshowId: e.target.value })}
+                required
+                className="bg-gray-700 border-0 text-white"
+                data-testid="input-liveshowId"
+              />
+              {campaign?.tipioLiveshowId && (
+                <p className="text-xs text-gray-400">Using campaign's Tipio liveshow ID by default</p>
+              )}
+            </div>
+          </>
+        );
+      default:
+        return null;
+    }
+  };
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-4">
+      <div className="space-y-2">
+        <Label htmlFor="type" className="text-gray-300">Component Type</Label>
+        <Select value={type} onValueChange={(value) => setType(value as ComponentType)}>
+          <SelectTrigger className="bg-gray-700 border-0 text-white" data-testid="select-type">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="carousel">Carousel</SelectItem>
+            <SelectItem value="store_view">Store View</SelectItem>
+            <SelectItem value="product_spotlight">Product Spotlight</SelectItem>
+            <SelectItem value="liveshow_trigger">Start Liveshow</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+
+      <div className="space-y-2">
+        <Label htmlFor="scheduledTime" className="text-gray-300">Scheduled Time</Label>
+        <Input
+          id="scheduledTime"
+          type="datetime-local"
+          value={scheduledTime}
+          onChange={(e) => setScheduledTime(e.target.value)}
+          required
+          className="bg-gray-700 border-0 text-white"
+          data-testid="input-scheduledTime"
+        />
+      </div>
+
+      {renderConfigFields()}
+
+      <div className="flex gap-3 pt-4">
+        <Button
+          type="button"
+          variant="outline"
+          onClick={onCancel}
+          disabled={isLoading}
+          className="flex-1 border-gray-600 text-gray-300 hover:bg-gray-700"
+          data-testid="button-cancel"
+        >
+          Cancel
+        </Button>
+        <Button 
+          type="submit" 
+          disabled={isLoading} 
+          className="flex-1 bg-blue-600 hover:bg-blue-700" 
+          data-testid="button-submit"
+        >
+          {isLoading ? 'Scheduling...' : 'Schedule Component'}
+        </Button>
+      </div>
+    </form>
   );
 }
