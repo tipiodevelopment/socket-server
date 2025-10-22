@@ -41,7 +41,7 @@ export default function AdvancedCampaign() {
   });
 
   const createScheduledMutation = useMutation({
-    mutationFn: async (data: { type: string; scheduledTime: string; data: any }) => {
+    mutationFn: async (data: { type: string; scheduledTime: string; endTime?: string; data: any }) => {
       return await apiRequest('POST', `/api/campaigns/${campaignId}/scheduled-components`, data);
     },
     onSuccess: () => {
@@ -716,15 +716,20 @@ function ScheduledComponentForm({
   isLoading,
   campaign,
 }: {
-  onSubmit: (data: { type: string; scheduledTime: string; data: any }) => void;
+  onSubmit: (data: { type: string; scheduledTime: string; endTime?: string; data: any }) => void;
   onCancel: () => void;
   isLoading: boolean;
   campaign?: Campaign;
 }) {
   type ComponentType = 'carousel' | 'store_view' | 'product_spotlight' | 'liveshow_trigger' | 'custom_component';
+  type EndTimeMode = 'none' | 'specific' | 'duration';
   
   const [type, setType] = useState<ComponentType>('carousel');
   const [scheduledTime, setScheduledTime] = useState('');
+  const [endTimeMode, setEndTimeMode] = useState<EndTimeMode>('none');
+  const [endTime, setEndTime] = useState('');
+  const [durationDays, setDurationDays] = useState(0);
+  const [durationHours, setDurationHours] = useState(1);
   const [config, setConfig] = useState<Record<string, any>>({});
 
   // Fetch available components from library
@@ -735,7 +740,25 @@ function ScheduledComponentForm({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    onSubmit({ type, scheduledTime, data: config });
+    
+    // Calculate endTime based on mode
+    let calculatedEndTime: string | undefined;
+    
+    if (endTimeMode === 'specific' && endTime) {
+      calculatedEndTime = endTime;
+    } else if (endTimeMode === 'duration' && scheduledTime) {
+      const startDate = new Date(scheduledTime);
+      const totalHours = (durationDays * 24) + durationHours;
+      const endDate = new Date(startDate.getTime() + (totalHours * 60 * 60 * 1000));
+      calculatedEndTime = endDate.toISOString();
+    }
+    
+    onSubmit({ 
+      type, 
+      scheduledTime, 
+      endTime: calculatedEndTime,
+      data: config 
+    });
   };
 
   const renderConfigFields = () => {
@@ -933,7 +956,7 @@ function ScheduledComponentForm({
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor="scheduledTime" className="text-gray-300">Scheduled Time</Label>
+        <Label htmlFor="scheduledTime" className="text-gray-300">Start Time</Label>
         <Input
           id="scheduledTime"
           type="datetime-local"
@@ -944,6 +967,64 @@ function ScheduledComponentForm({
           data-testid="input-scheduledTime"
         />
       </div>
+
+      <div className="space-y-2">
+        <Label htmlFor="endTimeMode" className="text-gray-300">End Time</Label>
+        <Select value={endTimeMode} onValueChange={(value) => setEndTimeMode(value as EndTimeMode)}>
+          <SelectTrigger className="bg-gray-700 border-0 text-white" data-testid="select-endTimeMode">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="none">No End Time (Until manually stopped)</SelectItem>
+            <SelectItem value="specific">Specific Date/Time</SelectItem>
+            <SelectItem value="duration">Duration</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+
+      {endTimeMode === 'specific' && (
+        <div className="space-y-2">
+          <Label htmlFor="endTime" className="text-gray-300">End Date/Time</Label>
+          <Input
+            id="endTime"
+            type="datetime-local"
+            value={endTime}
+            onChange={(e) => setEndTime(e.target.value)}
+            required
+            className="bg-gray-700 border-0 text-white"
+            data-testid="input-endTime"
+          />
+        </div>
+      )}
+
+      {endTimeMode === 'duration' && (
+        <div className="grid grid-cols-2 gap-4">
+          <div className="space-y-2">
+            <Label htmlFor="durationDays" className="text-gray-300">Days</Label>
+            <Input
+              id="durationDays"
+              type="number"
+              min="0"
+              value={durationDays}
+              onChange={(e) => setDurationDays(parseInt(e.target.value) || 0)}
+              className="bg-gray-700 border-0 text-white"
+              data-testid="input-durationDays"
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="durationHours" className="text-gray-300">Hours</Label>
+            <Input
+              id="durationHours"
+              type="number"
+              min="0"
+              value={durationHours}
+              onChange={(e) => setDurationHours(parseInt(e.target.value) || 0)}
+              className="bg-gray-700 border-0 text-white"
+              data-testid="input-durationHours"
+            />
+          </div>
+        </div>
+      )}
 
       {renderConfigFields()}
 
