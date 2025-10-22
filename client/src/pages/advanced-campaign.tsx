@@ -125,12 +125,20 @@ export default function AdvancedCampaign() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 p-4 sm:p-8">
       <div className="max-w-6xl mx-auto">
-        <Link href="/" className="w-full sm:w-auto">
-          <Button variant="ghost" className="mb-6 text-white hover:text-white/80 w-full sm:w-auto" data-testid="button-back">
-            <ArrowLeft className="w-4 h-4 mr-2" />
-            Back to campaigns
-          </Button>
-        </Link>
+        <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 mb-6">
+          <Link href="/" className="w-full sm:w-auto">
+            <Button variant="ghost" className="text-white hover:text-white/80 w-full sm:w-auto" data-testid="button-back">
+              <ArrowLeft className="w-4 h-4 mr-2" />
+              Back to campaigns
+            </Button>
+          </Link>
+          <Link href="/components" className="w-full sm:w-auto">
+            <Button variant="default" className="w-full sm:w-auto" data-testid="button-component-library">
+              <ShoppingBag className="w-4 h-4 mr-2" />
+              Component Library
+            </Button>
+          </Link>
+        </div>
 
         <div className="space-y-6">
           {/* Header */}
@@ -320,7 +328,10 @@ export default function AdvancedCampaign() {
                     <div>
                       <CardTitle className="text-white">Scheduled Components</CardTitle>
                       <CardDescription className="text-gray-400">
-                        Components that will automatically display at specific times. To edit component content, visit the Component Library.
+                        Components that will automatically display at specific times. To edit component content,{' '}
+                        <Link href="/components" className="text-blue-400 hover:text-blue-300 underline">
+                          visit the Component Library
+                        </Link>.
                       </CardDescription>
                     </div>
                     <Dialog open={isAddScheduledOpen} onOpenChange={setIsAddScheduledOpen}>
@@ -648,7 +659,10 @@ function DynamicComponentsTab({
           <div>
             <CardTitle className="text-white">Dynamic Components</CardTitle>
             <CardDescription className="text-gray-400">
-              Reusable UI components that can be toggled on/off in real-time. To edit component content, visit the Component Library.
+              Reusable UI components that can be toggled on/off in real-time. To edit component content,{' '}
+              <Link href="/components" className="text-blue-400 hover:text-blue-300 underline">
+                visit the Component Library
+              </Link>.
             </CardDescription>
           </div>
           <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
@@ -692,6 +706,16 @@ function DynamicComponentsTab({
                         </SelectContent>
                       </Select>
                     </div>
+                    
+                    <div className="flex items-center justify-center gap-2 py-2 text-sm text-gray-400">
+                      <span>Don't see your component?</span>
+                      <Link href="/components">
+                        <Button variant="link" className="h-auto p-0 text-blue-400 hover:text-blue-300" data-testid="button-create-new-component">
+                          Create it first
+                        </Button>
+                      </Link>
+                    </div>
+                    
                     <Button
                       onClick={() => selectedComponentId && addComponentMutation.mutate(selectedComponentId)}
                       disabled={!selectedComponentId || addComponentMutation.isPending}

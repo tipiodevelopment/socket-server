@@ -15,7 +15,7 @@ import type { WebSocketEvent, Campaign } from '@shared/schema';
 import { ObjectUploader } from '@/components/ObjectUploader';
 import barcelonaLogo from '@assets/barcelona_1760348072481.png';
 import psgLogo from '@assets/download_1760348072483.png';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, ShoppingBag } from 'lucide-react';
 
 interface ProductForm {
   id: number;
@@ -610,12 +610,18 @@ export default function AdminPage() {
       </header>
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Back Button */}
-        <div className="mb-6">
+        {/* Navigation Buttons */}
+        <div className="mb-6 flex flex-col sm:flex-row gap-2 sm:gap-3">
           <Link href="/">
-            <Button variant="outline" size="sm" data-testid="button-back-to-campaigns" className="gap-2 border-0">
+            <Button variant="outline" size="sm" data-testid="button-back-to-campaigns" className="gap-2 border-0 w-full sm:w-auto">
               <ArrowLeft className="w-4 h-4" />
               Back to campaigns
+            </Button>
+          </Link>
+          <Link href="/components">
+            <Button variant="default" size="sm" data-testid="button-component-library" className="gap-2 w-full sm:w-auto">
+              <ShoppingBag className="w-4 h-4" />
+              Component Library
             </Button>
           </Link>
         </div>

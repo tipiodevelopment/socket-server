@@ -6,7 +6,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { useToast } from '@/hooks/use-toast';
 import { queryClient, apiRequest } from '@/lib/queryClient';
 import type { Campaign } from '@shared/schema';
-import { Plus, Rocket, Calendar, Settings, Trash2 } from 'lucide-react';
+import { Plus, Rocket, Calendar, Settings, Trash2, ShoppingBag } from 'lucide-react';
 
 export default function CampaignsPage() {
   const { toast } = useToast();
@@ -55,7 +55,8 @@ export default function CampaignsPage() {
             
             <div className="flex gap-2">
               <Link href="/components">
-                <Button variant="ghost" size="sm" data-testid="link-components" className="text-xs sm:text-sm">
+                <Button variant="default" size="sm" data-testid="link-components" className="text-xs sm:text-sm gap-1.5">
+                  <ShoppingBag className="w-3.5 h-3.5" />
                   Components
                 </Button>
               </Link>
