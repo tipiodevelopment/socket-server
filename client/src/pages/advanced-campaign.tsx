@@ -15,6 +15,7 @@ import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useState } from "react";
 import { ImageUploadWithPreview } from "@/components/ImageUploadWithPreview";
+import { ComponentLibraryTab } from "@/components/ComponentLibraryTab";
 
 export default function AdvancedCampaign() {
   const { toast } = useToast();
@@ -125,20 +126,12 @@ export default function AdvancedCampaign() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 p-4 sm:p-8">
       <div className="max-w-6xl mx-auto">
-        <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 mb-6">
-          <Link href="/" className="w-full sm:w-auto">
-            <Button variant="ghost" className="text-white hover:text-white/80 w-full sm:w-auto" data-testid="button-back">
-              <ArrowLeft className="w-4 h-4 mr-2" />
-              Back to campaigns
-            </Button>
-          </Link>
-          <Link href="/components" className="w-full sm:w-auto">
-            <Button variant="default" className="w-full sm:w-auto" data-testid="button-component-library">
-              <ShoppingBag className="w-4 h-4 mr-2" />
-              Component Library
-            </Button>
-          </Link>
-        </div>
+        <Link href="/" className="mb-6">
+          <Button variant="ghost" className="text-white hover:text-white/80 w-full sm:w-auto" data-testid="button-back">
+            <ArrowLeft className="w-4 h-4 mr-2" />
+            Back to campaigns
+          </Button>
+        </Link>
 
         <div className="space-y-6">
           {/* Header */}
@@ -150,11 +143,12 @@ export default function AdvancedCampaign() {
           </div>
 
           <Tabs defaultValue="overview" className="w-full">
-            <TabsList className="grid w-full grid-cols-2 sm:grid-cols-4 bg-gray-800 border-0">
+            <TabsList className="grid w-full grid-cols-2 sm:grid-cols-5 bg-gray-800 border-0">
               <TabsTrigger value="overview" data-testid="tab-overview">Overview</TabsTrigger>
               <TabsTrigger value="integration" data-testid="tab-integration">Integrations</TabsTrigger>
               <TabsTrigger value="components" data-testid="tab-components">Scheduled</TabsTrigger>
               <TabsTrigger value="dynamic" data-testid="tab-dynamic">Components</TabsTrigger>
+              <TabsTrigger value="library" data-testid="tab-library">Library</TabsTrigger>
             </TabsList>
 
             {/* Overview Tab */}
@@ -328,10 +322,7 @@ export default function AdvancedCampaign() {
                     <div>
                       <CardTitle className="text-white">Scheduled Components</CardTitle>
                       <CardDescription className="text-gray-400">
-                        Components that will automatically display at specific times. To edit component content,{' '}
-                        <Link href="/components" className="text-blue-400 hover:text-blue-300 underline">
-                          visit the Component Library
-                        </Link>.
+                        Components that will automatically display at specific times. To create or edit components, use the Library tab above.
                       </CardDescription>
                     </div>
                     <Dialog open={isAddScheduledOpen} onOpenChange={setIsAddScheduledOpen}>
@@ -424,6 +415,11 @@ export default function AdvancedCampaign() {
             {/* Dynamic Components Tab */}
             <TabsContent value="dynamic" className="space-y-4">
               <DynamicComponentsTab campaignId={campaignId!} campaignComponents={campaignComponents} allComponents={allComponents} />
+            </TabsContent>
+
+            {/* Library Tab */}
+            <TabsContent value="library" className="space-y-4">
+              <ComponentLibraryTab />
             </TabsContent>
           </Tabs>
         </div>
@@ -580,6 +576,7 @@ function DynamicComponentsTab({
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/campaigns', campaignId, 'components'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/components/usage'] });
       setIsAddDialogOpen(false);
       setSelectedComponentId('');
       toast({
@@ -622,6 +619,7 @@ function DynamicComponentsTab({
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/campaigns', campaignId, 'components'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/components/usage'] });
       toast({
         title: 'Component Removed',
         description: 'The component has been removed from this campaign.',
@@ -659,10 +657,7 @@ function DynamicComponentsTab({
           <div>
             <CardTitle className="text-white">Dynamic Components</CardTitle>
             <CardDescription className="text-gray-400">
-              Reusable UI components that can be toggled on/off in real-time. To edit component content,{' '}
-              <Link href="/components" className="text-blue-400 hover:text-blue-300 underline">
-                visit the Component Library
-              </Link>.
+              Reusable UI components that can be toggled on/off in real-time. To create or edit components, use the Library tab above.
             </CardDescription>
           </div>
           <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
@@ -683,11 +678,7 @@ function DynamicComponentsTab({
                 {availableComponents.length === 0 ? (
                   <div className="text-center py-8 text-gray-400">
                     <p>No available components.</p>
-                    <Link href="/components">
-                      <Button variant="link" className="mt-2">
-                        Create a component in the library
-                      </Button>
-                    </Link>
+                    <p className="text-sm mt-2">Go to the Library tab above to create components.</p>
                   </div>
                 ) : (
                   <>
@@ -707,13 +698,8 @@ function DynamicComponentsTab({
                       </Select>
                     </div>
                     
-                    <div className="flex items-center justify-center gap-2 py-2 text-sm text-gray-400">
-                      <span>Don't see your component?</span>
-                      <Link href="/components">
-                        <Button variant="link" className="h-auto p-0 text-blue-400 hover:text-blue-300" data-testid="button-create-new-component">
-                          Create it first
-                        </Button>
-                      </Link>
+                    <div className="flex items-center justify-center py-2 text-sm text-gray-400">
+                      <span>Don't see your component? Create it in the Library tab above.</span>
                     </div>
                     
                     <Button
