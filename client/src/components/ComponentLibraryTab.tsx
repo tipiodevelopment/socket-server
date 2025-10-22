@@ -192,37 +192,55 @@ export function ComponentLibraryTab() {
                       {/* Config preview based on component type */}
                       {(() => {
                         const config = component.config as any;
+                        
+                        // Safe helper to access config properties
+                        const getConfigValue = (key: string): string | undefined => {
+                          try {
+                            return config?.[key];
+                          } catch {
+                            return undefined;
+                          }
+                        };
+                        
                         return (
                           <div className="text-xs text-gray-400 space-y-0.5 mb-2">
-                            {component.type === 'banner' && config.title && (
-                              <div>Title: <span className="text-gray-300">{config.title}</span></div>
+                            {component.type === 'banner' && getConfigValue('title') && (
+                              <div>Title: <span className="text-gray-300">{getConfigValue('title')}</span></div>
                             )}
-                            {component.type === 'countdown' && config.title && (
-                              <div>Title: <span className="text-gray-300">{config.title}</span></div>
+                            {component.type === 'countdown' && getConfigValue('title') && (
+                              <div>Title: <span className="text-gray-300">{getConfigValue('title')}</span></div>
                             )}
-                            {component.type === 'carousel_auto' && config.channelId && (
-                              <div>Channel: <span className="text-gray-300">{config.channelId}</span></div>
+                            {component.type === 'carousel_auto' && getConfigValue('channelId') && (
+                              <div>Channel: <span className="text-gray-300">{getConfigValue('channelId')}</span></div>
                             )}
-                            {component.type === 'carousel_manual' && config.productIds && (
+                            {component.type === 'carousel_manual' && config?.productIds?.length && (
                               <div>Products: <span className="text-gray-300">{config.productIds.length} items</span></div>
                             )}
-                            {component.type === 'product_spotlight' && config.productId && (
-                              <div>Product: <span className="text-gray-300">{config.productId}</span></div>
+                            {component.type === 'product_spotlight' && getConfigValue('productId') && (
+                              <div>Product: <span className="text-gray-300">{getConfigValue('productId')}</span></div>
                             )}
-                            {component.type === 'offer_badge' && config.text && (
-                              <div>Text: <span className="text-gray-300">{config.text}</span></div>
+                            {component.type === 'offer_badge' && getConfigValue('text') && (
+                              <div>Text: <span className="text-gray-300">{getConfigValue('text')}</span></div>
                             )}
                             {component.type === 'offer_banner' && (
                               <>
-                                {config.title && (
-                                  <div>Title: <span className="text-gray-300">{config.title}</span></div>
+                                {getConfigValue('title') && (
+                                  <div>Title: <span className="text-gray-300">{getConfigValue('title')}</span></div>
                                 )}
-                                {config.discountBadgeText && (
-                                  <div>Discount: <span className="text-gray-300">{config.discountBadgeText}</span></div>
+                                {getConfigValue('discountBadgeText') && (
+                                  <div>Discount: <span className="text-gray-300">{getConfigValue('discountBadgeText')}</span></div>
                                 )}
-                                {config.countdownEndDate && (
-                                  <div>Ends: <span className="text-gray-300">{new Date(config.countdownEndDate).toLocaleDateString()}</span></div>
-                                )}
+                                {(() => {
+                                  const endDate = getConfigValue('countdownEndDate');
+                                  if (!endDate) return null;
+                                  try {
+                                    const date = new Date(endDate);
+                                    if (isNaN(date.getTime())) return null;
+                                    return <div>Ends: <span className="text-gray-300">{date.toLocaleDateString()}</span></div>;
+                                  } catch {
+                                    return null;
+                                  }
+                                })()}
                               </>
                             )}
                           </div>

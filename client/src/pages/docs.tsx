@@ -709,6 +709,30 @@ struct ContestEvent: Codable {
               <p className="text-muted-foreground mb-3">
                 The Offer Banner is a premium promotional component with countdown timer, discount badge, and CTA button.
               </p>
+
+              <div className="bg-background rounded-lg p-4 mb-3">
+                <h4 className="font-semibold mb-2">Complete JSON Example:</h4>
+                <pre className="bg-gray-900 rounded p-3 overflow-x-auto text-xs">
+                  <code className="text-green-400">{`{
+  "componentId": "cmp_abc123",
+  "type": "offer_banner",
+  "name": "Weekly Offer Banner",
+  "config": {
+    "logoUrl": "https://example.com/logo.png",
+    "title": "Ukens tilbud",
+    "subtitle": "Se denne ukes beste tilbud",
+    "backgroundImageUrl": "https://example.com/banner-bg.jpg",
+    "countdownEndDate": "2025-12-31T23:59:59Z",
+    "discountBadgeText": "Opp til 30%",
+    "ctaText": "Se alle tilbud",
+    "ctaLink": "https://example.com/offers",
+    "overlayOpacity": 0.4
+  },
+  "status": "active",
+  "activatedAt": "2025-10-22T12:00:00Z"
+}`}</code>
+                </pre>
+              </div>
               
               <div className="bg-background rounded-lg p-4 mb-3">
                 <h4 className="font-semibold mb-2">Swift Data Model:</h4>
