@@ -713,11 +713,17 @@ function ScheduledComponentForm({
   isLoading: boolean;
   campaign?: Campaign;
 }) {
-  type ComponentType = 'carousel' | 'store_view' | 'product_spotlight' | 'liveshow_trigger';
+  type ComponentType = 'carousel' | 'store_view' | 'product_spotlight' | 'liveshow_trigger' | 'custom_component';
   
   const [type, setType] = useState<ComponentType>('carousel');
   const [scheduledTime, setScheduledTime] = useState('');
   const [config, setConfig] = useState<Record<string, any>>({});
+
+  // Fetch available components from library
+  const { data: availableComponents, isLoading: componentsLoading } = useQuery<Component[]>({
+    queryKey: ['/api/components'],
+    enabled: type === 'custom_component'
+  });
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -861,6 +867,40 @@ function ScheduledComponentForm({
             </div>
           </>
         );
+      case 'custom_component':
+        return (
+          <>
+            <div className="space-y-2">
+              <Label htmlFor="componentId" className="text-gray-300">Select Component</Label>
+              {componentsLoading ? (
+                <div className="text-gray-400 text-sm">Loading components...</div>
+              ) : !availableComponents || availableComponents.length === 0 ? (
+                <div className="text-gray-400 text-sm">
+                  No components available. Create components in the Components Library first.
+                </div>
+              ) : (
+                <Select
+                  value={config.componentId || ''}
+                  onValueChange={(value) => setConfig({ ...config, componentId: value })}
+                >
+                  <SelectTrigger className="bg-gray-700 border-0 text-white" data-testid="select-componentId">
+                    <SelectValue placeholder="Choose a component" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {availableComponents.map((comp) => (
+                      <SelectItem key={comp.id} value={comp.id}>
+                        {comp.name} ({comp.type})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+              <p className="text-xs text-gray-400">
+                The component will be activated at the scheduled time with its configured settings.
+              </p>
+            </div>
+          </>
+        );
       default:
         return null;
     }
@@ -879,6 +919,7 @@ function ScheduledComponentForm({
             <SelectItem value="store_view">Store View</SelectItem>
             <SelectItem value="product_spotlight">Product Spotlight</SelectItem>
             <SelectItem value="liveshow_trigger">Start Liveshow</SelectItem>
+            <SelectItem value="custom_component">Custom Component</SelectItem>
           </SelectContent>
         </Select>
       </div>
