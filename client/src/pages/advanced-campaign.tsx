@@ -760,8 +760,36 @@ function DynamicComponentsTab({
                       {getComponentTypeLabel(cc.component.type)}
                     </Badge>
                   </div>
-                  <div className="text-xs sm:text-sm text-gray-400 font-mono">
-                    ID: {cc.componentId}
+                  <div className="space-y-1">
+                    {/* Show relevant config info based on component type */}
+                    {cc.component.type === 'banner' && cc.component.config && (cc.component.config as any).title && (
+                      <div className="text-xs sm:text-sm text-gray-300" data-testid={`config-title-${cc.id}`}>
+                        Title: {(cc.component.config as any).title}
+                      </div>
+                    )}
+                    {cc.component.type === 'countdown' && cc.component.config && (cc.component.config as any).title && (
+                      <div className="text-xs sm:text-sm text-gray-300">
+                        Title: {(cc.component.config as any).title}
+                      </div>
+                    )}
+                    {cc.component.type === 'product_spotlight' && cc.component.config && (cc.component.config as any).productId && (
+                      <div className="text-xs sm:text-sm text-gray-300">
+                        Product: {(cc.component.config as any).productId}
+                      </div>
+                    )}
+                    {cc.component.type === 'carousel_auto' && cc.component.config && (cc.component.config as any).channelId && (
+                      <div className="text-xs sm:text-sm text-gray-300">
+                        Channel: {(cc.component.config as any).channelId}
+                      </div>
+                    )}
+                    {cc.component.type === 'offer_badge' && cc.component.config && (cc.component.config as any).text && (
+                      <div className="text-xs sm:text-sm text-gray-300">
+                        Text: {(cc.component.config as any).text}
+                      </div>
+                    )}
+                    <div className="text-xs sm:text-sm text-gray-400 font-mono">
+                      ID: {cc.componentId}
+                    </div>
                   </div>
                 </div>
                 <div className="flex gap-2 w-full sm:w-auto">
