@@ -512,7 +512,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post('/api/campaigns/:id/scheduled-components', async (req, res) => {
     try {
       const campaignId = parseInt(req.params.id);
-      const { type, scheduledTime, data } = req.body;
+      const { type, scheduledTime, endTime, data } = req.body;
 
       if (!type || !scheduledTime || !data) {
         return res.status(400).json({ message: 'Missing required fields' });
@@ -533,6 +533,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         campaignId,
         type,
         scheduledTime: new Date(scheduledTime),
+        endTime: endTime ? new Date(endTime) : undefined,
         data,
         status: 'pending'
       });
