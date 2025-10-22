@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Calendar, Clock, ShoppingBag, Radio, ArrowLeft, Plus, Trash2, ToggleLeft, ToggleRight, Pencil, Activity, CheckCircle2, XCircle, PlayCircle, Edit } from "lucide-react";
+import { Calendar, Clock, ShoppingBag, Radio, ArrowLeft, Plus, Trash2, ToggleLeft, ToggleRight, Pencil, Activity, CheckCircle2, XCircle, PlayCircle, ExternalLink } from "lucide-react";
 import { Campaign, ScheduledComponent, Component, CampaignComponent, ComponentType } from "@shared/schema";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
@@ -320,7 +320,7 @@ export default function AdvancedCampaign() {
                     <div>
                       <CardTitle className="text-white">Scheduled Components</CardTitle>
                       <CardDescription className="text-gray-400">
-                        Components that will automatically display at specific times
+                        Components that will automatically display at specific times. To edit component content, visit the Component Library.
                       </CardDescription>
                     </div>
                     <Dialog open={isAddScheduledOpen} onOpenChange={setIsAddScheduledOpen}>
@@ -559,7 +559,6 @@ function DynamicComponentsTab({
   const { toast } = useToast();
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [selectedComponentId, setSelectedComponentId] = useState<string>('');
-  const [editingComponent, setEditingComponent] = useState<Component | null>(null);
 
   const addComponentMutation = useMutation({
     mutationFn: async (componentId: string) => {
@@ -626,28 +625,6 @@ function DynamicComponentsTab({
     },
   });
 
-  const updateComponentMutation = useMutation({
-    mutationFn: async ({ id, data }: { id: string; data: Partial<Component> }) => {
-      return await apiRequest('PATCH', `/api/components/${id}`, data);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/components'] });
-      queryClient.invalidateQueries({ queryKey: ['/api/campaigns', campaignId, 'components'] });
-      setEditingComponent(null);
-      toast({
-        title: 'Component Updated',
-        description: 'The component configuration has been updated.',
-      });
-    },
-    onError: () => {
-      toast({
-        title: 'Error',
-        description: 'Failed to update component.',
-        variant: 'destructive',
-      });
-    },
-  });
-
   const availableComponents = allComponents.filter(
     (comp) => !campaignComponents.some((cc) => cc.componentId === comp.id)
   );
@@ -671,7 +648,7 @@ function DynamicComponentsTab({
           <div>
             <CardTitle className="text-white">Dynamic Components</CardTitle>
             <CardDescription className="text-gray-400">
-              Reusable UI components that can be toggled on/off in real-time
+              Reusable UI components that can be toggled on/off in real-time. To edit component content, visit the Component Library.
             </CardDescription>
           </div>
           <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
@@ -816,15 +793,17 @@ function DynamicComponentsTab({
                       <ToggleLeft className="w-4 h-4" />
                     )}
                   </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setEditingComponent(cc.component)}
-                    className="text-blue-400 hover:text-blue-300 hover:bg-blue-950"
-                    data-testid={`button-edit-${cc.id}`}
-                  >
-                    <Edit className="w-4 h-4" />
-                  </Button>
+                  <Link href="/components">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="text-blue-400 hover:text-blue-300 hover:bg-blue-950"
+                      data-testid={`button-view-library-${cc.id}`}
+                      title="View in Component Library"
+                    >
+                      <ExternalLink className="w-4 h-4" />
+                    </Button>
+                  </Link>
                   <Button
                     variant="ghost"
                     size="sm"
@@ -845,31 +824,6 @@ function DynamicComponentsTab({
           </div>
         )}
       </CardContent>
-
-      {/* Edit Component Dialog */}
-      <Dialog open={!!editingComponent} onOpenChange={(open) => !open && setEditingComponent(null)}>
-        <DialogContent 
-          className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto bg-gray-800 border-0"
-          onInteractOutside={(e) => e.preventDefault()}
-        >
-          <DialogHeader>
-            <DialogTitle className="text-white">Edit Component</DialogTitle>
-            <DialogDescription className="text-gray-400">
-              Update the component configuration. Changes will apply to all campaigns using this component.
-            </DialogDescription>
-          </DialogHeader>
-          {editingComponent && (
-            <ComponentForm
-              component={editingComponent}
-              onSubmit={(data) =>
-                updateComponentMutation.mutate({ id: editingComponent.id, data })
-              }
-              onCancel={() => setEditingComponent(null)}
-              isLoading={updateComponentMutation.isPending}
-            />
-          )}
-        </DialogContent>
-      </Dialog>
     </Card>
   );
 }

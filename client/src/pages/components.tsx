@@ -33,6 +33,11 @@ export default function ComponentsPage() {
     queryKey: ['/api/components'],
   });
 
+  // Fetch component usage across campaigns
+  const { data: componentUsage = {} } = useQuery<Record<string, Array<{ campaignId: number; campaignName: string }>>>({
+    queryKey: ['/api/components/usage'],
+  });
+
   const createMutation = useMutation({
     mutationFn: async (data: { type: string; name: string; config: any }) => {
       return await apiRequest('POST', '/api/components', data);
@@ -192,9 +197,21 @@ export default function ComponentsPage() {
                         {componentTypes.find((t) => t.value === component.type)?.label}
                       </div>
                       <CardTitle className="text-lg mb-1">{component.name}</CardTitle>
-                      <CardDescription className="font-mono text-xs">
+                      <CardDescription className="font-mono text-xs mb-2">
                         ID: {component.id.substring(0, 8)}...
                       </CardDescription>
+                      {componentUsage[component.id] && componentUsage[component.id].length > 0 && (
+                        <div className="text-xs text-muted-foreground">
+                          Used in <span className="font-semibold">{componentUsage[component.id].length}</span> campaign{componentUsage[component.id].length !== 1 ? 's' : ''}:
+                          <div className="mt-1 flex flex-wrap gap-1">
+                            {componentUsage[component.id].map((usage) => (
+                              <span key={usage.campaignId} className="inline-block px-2 py-0.5 rounded-full text-xs bg-blue-500/20 text-blue-300">
+                                {usage.campaignName}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </div>
                 </CardHeader>

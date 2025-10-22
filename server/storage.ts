@@ -37,6 +37,7 @@ export interface IStorage {
   getComponentById(id: string): Promise<Component | undefined>;
   updateComponent(id: string, component: Partial<InsertComponent>): Promise<Component | undefined>;
   deleteComponent(id: string): Promise<void>;
+  getComponentUsage(): Promise<Record<string, Array<{ campaignId: number; campaignName: string }>>>;
   
   // Campaign component methods
   getCampaignComponents(campaignId: number): Promise<Array<CampaignComponent & { component: Component }>>;
@@ -220,6 +221,31 @@ export class MemStorage implements IStorage {
 
   async deleteComponent(id: string): Promise<void> {
     await db.delete(components).where(eq(components.id, id));
+  }
+
+  async getComponentUsage(): Promise<Record<string, Array<{ campaignId: number; campaignName: string }>>> {
+    const results = await db.select({
+      componentId: campaignComponents.componentId,
+      campaignId: campaigns.id,
+      campaignName: campaigns.name
+    })
+      .from(campaignComponents)
+      .innerJoin(campaigns, eq(campaignComponents.campaignId, campaigns.id));
+    
+    // Group by componentId
+    const usage: Record<string, Array<{ campaignId: number; campaignName: string }>> = {};
+    
+    for (const row of results) {
+      if (!usage[row.componentId]) {
+        usage[row.componentId] = [];
+      }
+      usage[row.componentId].push({
+        campaignId: row.campaignId,
+        campaignName: row.campaignName
+      });
+    }
+    
+    return usage;
   }
 
   // Campaign component methods (database-backed)

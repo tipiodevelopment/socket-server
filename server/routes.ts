@@ -681,6 +681,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Get component usage across campaigns
+  app.get('/api/components/usage', async (req, res) => {
+    try {
+      const usage = await storage.getComponentUsage();
+      res.json(usage);
+    } catch (error) {
+      console.error('Error fetching component usage:', error);
+      res.status(500).json({ message: 'Error fetching component usage' });
+    }
+  });
+
   // Create new component
   app.post('/api/components', async (req, res) => {
     try {
