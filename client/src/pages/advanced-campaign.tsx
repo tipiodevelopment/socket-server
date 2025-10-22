@@ -1345,3 +1345,315 @@ function OverviewDynamicItem({ component }: { component: CampaignComponent & { c
     </div>
   );
 }
+
+function ComponentForm({
+  component,
+  onSubmit,
+  onCancel,
+  isLoading,
+}: {
+  component?: Component;
+  onSubmit: (data: { type: string; name: string; config: any }) => void;
+  onCancel: () => void;
+  isLoading: boolean;
+}) {
+  const [type, setType] = useState<ComponentType>(component?.type as ComponentType || 'banner');
+  const [name, setName] = useState(component?.name || '');
+  const [config, setConfig] = useState<Record<string, any>>(component?.config || {});
+
+  const componentTypes: { value: ComponentType; label: string }[] = [
+    { value: 'banner', label: 'Banner' },
+    { value: 'countdown', label: 'Countdown Timer' },
+    { value: 'carousel_auto', label: 'Auto Carousel' },
+    { value: 'carousel_manual', label: 'Manual Carousel' },
+    { value: 'product_spotlight', label: 'Product Spotlight' },
+    { value: 'offer_badge', label: 'Offer Badge' },
+  ];
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    onSubmit({ type, name, config });
+  };
+
+  const renderConfigFields = () => {
+    switch (type) {
+      case 'banner':
+        return (
+          <>
+            <ImageUploadWithPreview
+              label="Banner Image"
+              value={config.imageUrl || ''}
+              onChange={(url) => setConfig({ ...config, imageUrl: url })}
+              placeholder="https://example.com/banner.jpg"
+              testId="input-imageUrl"
+            />
+            <div className="space-y-2">
+              <Label htmlFor="title" className="text-gray-300">Title</Label>
+              <Input
+                id="title"
+                placeholder="50% OFF Everything"
+                value={config.title || ''}
+                onChange={(e) => setConfig({ ...config, title: e.target.value })}
+                className="bg-gray-700 border-0 text-white"
+                data-testid="input-title"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="subtitle" className="text-gray-300">Subtitle (Optional)</Label>
+              <Input
+                id="subtitle"
+                placeholder="Limited time offer"
+                value={config.subtitle || ''}
+                onChange={(e) => setConfig({ ...config, subtitle: e.target.value })}
+                className="bg-gray-700 border-0 text-white"
+                data-testid="input-subtitle"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="ctaText" className="text-gray-300">Button Text (Optional)</Label>
+              <Input
+                id="ctaText"
+                placeholder="Shop Now"
+                value={config.ctaText || ''}
+                onChange={(e) => setConfig({ ...config, ctaText: e.target.value })}
+                className="bg-gray-700 border-0 text-white"
+                data-testid="input-ctaText"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="ctaLink" className="text-gray-300">Button Link (Optional)</Label>
+              <Input
+                id="ctaLink"
+                placeholder="https://example.com/sale"
+                value={config.ctaLink || ''}
+                onChange={(e) => setConfig({ ...config, ctaLink: e.target.value })}
+                className="bg-gray-700 border-0 text-white"
+                data-testid="input-ctaLink"
+              />
+            </div>
+          </>
+        );
+      case 'countdown':
+        return (
+          <>
+            <div className="space-y-2">
+              <Label htmlFor="endDate" className="text-gray-300">End Date</Label>
+              <Input
+                id="endDate"
+                type="datetime-local"
+                value={config.endDate || ''}
+                onChange={(e) => setConfig({ ...config, endDate: e.target.value })}
+                className="bg-gray-700 border-0 text-white"
+                data-testid="input-endDate"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="title" className="text-gray-300">Title</Label>
+              <Input
+                id="title"
+                placeholder="Sale Ends In"
+                value={config.title || ''}
+                onChange={(e) => setConfig({ ...config, title: e.target.value })}
+                className="bg-gray-700 border-0 text-white"
+                data-testid="input-title"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="style" className="text-gray-300">Style</Label>
+              <Select
+                value={config.style || 'full'}
+                onValueChange={(value) => setConfig({ ...config, style: value })}
+              >
+                <SelectTrigger className="bg-gray-700 border-0 text-white" data-testid="select-style">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent className="bg-gray-800 border-gray-700">
+                  <SelectItem value="minimal">Minimal</SelectItem>
+                  <SelectItem value="full">Full</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </>
+        );
+      case 'carousel_auto':
+        return (
+          <>
+            <div className="space-y-2">
+              <Label htmlFor="channelId" className="text-gray-300">Reachu Channel ID</Label>
+              <Input
+                id="channelId"
+                placeholder="ch_123"
+                value={config.channelId || ''}
+                onChange={(e) => setConfig({ ...config, channelId: e.target.value })}
+                className="bg-gray-700 border-0 text-white"
+                data-testid="input-channelId"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="displayCount" className="text-gray-300">Display Count</Label>
+              <Input
+                id="displayCount"
+                type="number"
+                placeholder="5"
+                value={config.displayCount || 5}
+                onChange={(e) => setConfig({ ...config, displayCount: parseInt(e.target.value) })}
+                className="bg-gray-700 border-0 text-white"
+                data-testid="input-displayCount"
+              />
+            </div>
+          </>
+        );
+      case 'carousel_manual':
+        return (
+          <>
+            <div className="space-y-2">
+              <Label htmlFor="productIds" className="text-gray-300">Product IDs (comma-separated)</Label>
+              <Textarea
+                id="productIds"
+                placeholder="prod_1, prod_2, prod_3"
+                value={config.productIds?.join(', ') || ''}
+                onChange={(e) =>
+                  setConfig({
+                    ...config,
+                    productIds: e.target.value.split(',').map((id) => id.trim()),
+                  })
+                }
+                className="bg-gray-700 border-0 text-white"
+                data-testid="input-productIds"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="displayCount" className="text-gray-300">Display Count</Label>
+              <Input
+                id="displayCount"
+                type="number"
+                placeholder="5"
+                value={config.displayCount || 5}
+                onChange={(e) => setConfig({ ...config, displayCount: parseInt(e.target.value) })}
+                className="bg-gray-700 border-0 text-white"
+                data-testid="input-displayCount"
+              />
+            </div>
+          </>
+        );
+      case 'product_spotlight':
+        return (
+          <>
+            <div className="space-y-2">
+              <Label htmlFor="productId" className="text-gray-300">Product ID</Label>
+              <Input
+                id="productId"
+                placeholder="prod_123"
+                value={config.productId || ''}
+                onChange={(e) => setConfig({ ...config, productId: e.target.value })}
+                className="bg-gray-700 border-0 text-white"
+                data-testid="input-productId"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="highlightText" className="text-gray-300">Highlight Text (Optional)</Label>
+              <Input
+                id="highlightText"
+                placeholder="Featured Product"
+                value={config.highlightText || ''}
+                onChange={(e) => setConfig({ ...config, highlightText: e.target.value })}
+                className="bg-gray-700 border-0 text-white"
+                data-testid="input-highlightText"
+              />
+            </div>
+          </>
+        );
+      case 'offer_badge':
+        return (
+          <>
+            <div className="space-y-2">
+              <Label htmlFor="text" className="text-gray-300">Text</Label>
+              <Input
+                id="text"
+                placeholder="SALE"
+                value={config.text || ''}
+                onChange={(e) => setConfig({ ...config, text: e.target.value })}
+                className="bg-gray-700 border-0 text-white"
+                data-testid="input-text"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="color" className="text-gray-300">Color</Label>
+              <Select
+                value={config.color || 'red'}
+                onValueChange={(value) => setConfig({ ...config, color: value })}
+              >
+                <SelectTrigger className="bg-gray-700 border-0 text-white" data-testid="select-color">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent className="bg-gray-800 border-gray-700">
+                  <SelectItem value="red">Red</SelectItem>
+                  <SelectItem value="blue">Blue</SelectItem>
+                  <SelectItem value="green">Green</SelectItem>
+                  <SelectItem value="gold">Gold</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </>
+        );
+      default:
+        return null;
+    }
+  };
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-4">
+      <div className="space-y-2">
+        <Label htmlFor="type" className="text-gray-300">Component Type</Label>
+        <Select value={type} onValueChange={(value) => setType(value as ComponentType)} disabled={!!component}>
+          <SelectTrigger className="bg-gray-700 border-0 text-white" data-testid="select-type">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent className="bg-gray-800 border-gray-700">
+            {componentTypes.map((t) => (
+              <SelectItem key={t.value} value={t.value}>
+                {t.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
+      <div className="space-y-2">
+        <Label htmlFor="name" className="text-gray-300">Component Name</Label>
+        <Input
+          id="name"
+          placeholder="My Banner"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          required
+          className="bg-gray-700 border-0 text-white"
+          data-testid="input-name"
+        />
+      </div>
+
+      {renderConfigFields()}
+
+      <div className="flex gap-3 pt-4">
+        <Button
+          type="button"
+          variant="outline"
+          onClick={onCancel}
+          disabled={isLoading}
+          className="flex-1 border-gray-600 text-gray-300 hover:bg-gray-700"
+          data-testid="button-cancel"
+        >
+          Cancel
+        </Button>
+        <Button 
+          type="submit" 
+          disabled={isLoading} 
+          className="flex-1 bg-blue-600 hover:bg-blue-700" 
+          data-testid="button-submit"
+        >
+          {isLoading ? 'Saving...' : component ? 'Update Component' : 'Create Component'}
+        </Button>
+      </div>
+    </form>
+  );
+}
