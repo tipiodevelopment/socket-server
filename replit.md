@@ -121,7 +121,14 @@ Preferred communication style: Simple, everyday language.
    - **Manual Control:** Add component to campaign and toggle ON/OFF in real-time via Dynamic Components tab
    - **Scheduled Activation:** Schedule component for automatic activation at specific date/time via Scheduled Components tab
 4. iOS app receives WebSocket updates and shows/hides component instantly
-5. Admin can edit component config; changes broadcast to all campaigns using the component
+5. Admin can edit component config directly from Dynamic Components tab or Components Library; changes broadcast to all campaigns using the component
+
+**Edit Feature:**
+- Edit button (blue pencil icon) available on each dynamic component card
+- Opens dialog with pre-filled form showing current configuration
+- Type-specific forms for all 6 component types (banner, countdown, carousel_auto, carousel_manual, product_spotlight, offer_badge)
+- Changes apply to all campaigns using the component
+- Component cards now display relevant config info (e.g., banner title, countdown title, product ID, channel ID, badge text) for better visibility
 
 ### Page Structure
 
