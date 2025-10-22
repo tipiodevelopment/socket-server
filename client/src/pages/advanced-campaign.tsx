@@ -5,8 +5,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Calendar, Clock, ShoppingBag, Radio, ArrowLeft, Plus, Trash2, ToggleLeft, ToggleRight, Pencil, Activity, CheckCircle2, XCircle, PlayCircle } from "lucide-react";
-import { Campaign, ScheduledComponent, Component, CampaignComponent } from "@shared/schema";
+import { Calendar, Clock, ShoppingBag, Radio, ArrowLeft, Plus, Trash2, ToggleLeft, ToggleRight, Pencil, Activity, CheckCircle2, XCircle, PlayCircle, Edit } from "lucide-react";
+import { Campaign, ScheduledComponent, Component, CampaignComponent, ComponentType } from "@shared/schema";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -14,6 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useState } from "react";
+import { ImageUploadWithPreview } from "@/components/ImageUploadWithPreview";
 
 export default function AdvancedCampaign() {
   const { toast } = useToast();
@@ -558,6 +559,7 @@ function DynamicComponentsTab({
   const { toast } = useToast();
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [selectedComponentId, setSelectedComponentId] = useState<string>('');
+  const [editingComponent, setEditingComponent] = useState<Component | null>(null);
 
   const addComponentMutation = useMutation({
     mutationFn: async (componentId: string) => {
@@ -619,6 +621,28 @@ function DynamicComponentsTab({
       toast({
         title: 'Error',
         description: 'Failed to remove component.',
+        variant: 'destructive',
+      });
+    },
+  });
+
+  const updateComponentMutation = useMutation({
+    mutationFn: async ({ id, data }: { id: string; data: Partial<Component> }) => {
+      return await apiRequest('PATCH', `/api/components/${id}`, data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/components'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/campaigns', campaignId, 'components'] });
+      setEditingComponent(null);
+      toast({
+        title: 'Component Updated',
+        description: 'The component configuration has been updated.',
+      });
+    },
+    onError: () => {
+      toast({
+        title: 'Error',
+        description: 'Failed to update component.',
         variant: 'destructive',
       });
     },
@@ -767,6 +791,15 @@ function DynamicComponentsTab({
                   <Button
                     variant="ghost"
                     size="sm"
+                    onClick={() => setEditingComponent(cc.component)}
+                    className="text-blue-400 hover:text-blue-300 hover:bg-blue-950"
+                    data-testid={`button-edit-${cc.id}`}
+                  >
+                    <Edit className="w-4 h-4" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
                     onClick={() => {
                       if (confirm('Are you sure you want to remove this component from the campaign?')) {
                         removeComponentMutation.mutate(cc.componentId);
@@ -784,6 +817,31 @@ function DynamicComponentsTab({
           </div>
         )}
       </CardContent>
+
+      {/* Edit Component Dialog */}
+      <Dialog open={!!editingComponent} onOpenChange={(open) => !open && setEditingComponent(null)}>
+        <DialogContent 
+          className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto bg-gray-800 border-0"
+          onInteractOutside={(e) => e.preventDefault()}
+        >
+          <DialogHeader>
+            <DialogTitle className="text-white">Edit Component</DialogTitle>
+            <DialogDescription className="text-gray-400">
+              Update the component configuration. Changes will apply to all campaigns using this component.
+            </DialogDescription>
+          </DialogHeader>
+          {editingComponent && (
+            <ComponentForm
+              component={editingComponent}
+              onSubmit={(data) =>
+                updateComponentMutation.mutate({ id: editingComponent.id, data })
+              }
+              onCancel={() => setEditingComponent(null)}
+              isLoading={updateComponentMutation.isPending}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
     </Card>
   );
 }
