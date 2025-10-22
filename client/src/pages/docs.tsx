@@ -91,11 +91,28 @@ class WebSocketManager: NSObject, URLSessionWebSocketDelegate {
         case "contest":
             let event = try JSONDecoder().decode(ContestEvent.self, from: data)
             handleContestEvent(event)
+        case "campaign_ended":
+            // Campaign has ended, hide all components immediately
+            handleCampaignEnded(json)
+        case "component_status_changed":
+            // Handle dynamic component status updates
+            handleComponentStatusChanged(json)
+        case "component_config_updated":
+            // Handle dynamic component config updates
+            handleComponentConfigUpdated(json)
         default:
             print("Unknown event type: \\(eventType)")
         }
     } catch {
         print("Error decoding event: \\(error)")
+    }
+}
+
+private func handleCampaignEnded(_ json: [String: Any]) {
+    DispatchQueue.main.async {
+        // Hide all campaign components immediately
+        self.hideAllComponents()
+        print("Campaign ended, all components hidden")
     }
 }
 

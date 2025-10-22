@@ -8,6 +8,7 @@ import {
   ObjectStorageService,
   ObjectNotFoundError,
 } from "./objectStorage";
+import { isCampaignActive } from "./utils";
 
 // Helper function to convert relative paths to absolute URLs
 function toAbsoluteUrl(pathOrUrl: string | undefined, req: Request): string | undefined {
@@ -63,7 +64,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // WebSocket connection handling
-  wss.on('connection', (ws: WebSocket, request: any, campaignId: number) => {
+  wss.on('connection', async (ws: WebSocket, request: any, campaignId: number) => {
     // Add client to campaign room
     if (!campaignClients.has(campaignId)) {
       campaignClients.set(campaignId, new Set());
@@ -71,6 +72,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
     campaignClients.get(campaignId)!.add(ws);
     
     console.log(`Client connected to campaign ${campaignId}`);
+
+    // Check if campaign is inactive and immediately notify
+    if (campaignId !== 0) {
+      try {
+        const campaign = await storage.getCampaign(campaignId);
+        if (campaign && !isCampaignActive(campaign)) {
+          // Campaign has already ended, notify client immediately
+          if (ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({
+              type: 'campaign_ended',
+              campaignId: campaign.id,
+              endDate: campaign.endDate
+            }));
+            console.log(`Sent campaign_ended notification to new client for campaign ${campaignId}`);
+          }
+        }
+      } catch (error) {
+        console.error('Error checking campaign status on connection:', error);
+      }
+    }
 
     ws.on('close', () => {
       const clients = campaignClients.get(campaignId);
@@ -114,6 +135,36 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
     });
   }
+
+  // Check for ended campaigns and broadcast campaign_ended events
+  async function checkAndNotifyEndedCampaigns() {
+    try {
+      const campaigns = await storage.getAllCampaigns();
+      const now = new Date();
+      
+      for (const campaign of campaigns) {
+        if (campaign.endDate) {
+          const endDate = new Date(campaign.endDate);
+          // Check if campaign just ended (within last minute)
+          const timeDiff = now.getTime() - endDate.getTime();
+          if (timeDiff >= 0 && timeDiff < 60000) {
+            // Campaign just ended, broadcast to all connected clients
+            broadcastToCampaign(campaign.id, JSON.stringify({
+              type: 'campaign_ended',
+              campaignId: campaign.id,
+              endDate: campaign.endDate
+            }));
+            console.log(`Campaign ${campaign.id} (${campaign.name}) has ended`);
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Error checking ended campaigns:', error);
+    }
+  }
+
+  // Check every 30 seconds for ended campaigns
+  setInterval(checkAndNotifyEndedCampaigns, 30000);
 
   // HTTP API endpoints
   
@@ -390,6 +441,77 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error setting campaign logo:", error);
       res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  // User CRUD endpoints
+  
+  // Get all users
+  app.get('/api/users', async (req, res) => {
+    try {
+      const allUsers = await storage.getAllUsers();
+      res.json(allUsers);
+    } catch (error) {
+      console.error('Error fetching users:', error);
+      res.status(500).json({ message: 'Error fetching users' });
+    }
+  });
+
+  // Get user by ID
+  app.get('/api/users/:id', async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const user = await storage.getUser(id);
+      if (!user) {
+        return res.status(404).json({ message: 'User not found' });
+      }
+      res.json(user);
+    } catch (error) {
+      console.error('Error fetching user:', error);
+      res.status(500).json({ message: 'Error fetching user' });
+    }
+  });
+
+  // Get user by Reachu ID
+  app.get('/api/users/reachu/:reachuUserId', async (req, res) => {
+    try {
+      const user = await storage.getUserByReachuId(req.params.reachuUserId);
+      if (!user) {
+        return res.status(404).json({ message: 'User not found' });
+      }
+      res.json(user);
+    } catch (error) {
+      console.error('Error fetching user by Reachu ID:', error);
+      res.status(500).json({ message: 'Error fetching user' });
+    }
+  });
+
+  // Create user
+  app.post('/api/users', async (req, res) => {
+    try {
+      const user = await storage.createUser(req.body);
+      res.status(201).json(user);
+    } catch (error) {
+      console.error('Error creating user:', error);
+      res.status(400).json({ 
+        message: 'Error creating user',
+        error: error instanceof Error ? error.message : String(error)
+      });
+    }
+  });
+
+  // Update user
+  app.patch('/api/users/:id', async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const user = await storage.updateUser(id, req.body);
+      if (!user) {
+        return res.status(404).json({ message: 'User not found' });
+      }
+      res.json(user);
+    } catch (error) {
+      console.error('Error updating user:', error);
+      res.status(500).json({ message: 'Error updating user' });
     }
   });
 
@@ -744,6 +866,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Broadcast config update to all campaigns using this component
       const allCampaigns = await storage.getAllCampaigns();
       for (const campaign of allCampaigns) {
+        // Only broadcast to active campaigns
+        if (!isCampaignActive(campaign)) {
+          continue;
+        }
+        
         const campaignComponents = await storage.getCampaignComponents(campaign.id);
         const isUsed = campaignComponents.some(cc => cc.componentId === req.params.id);
         
@@ -798,6 +925,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get('/api/campaigns/:id/active-components', async (req, res) => {
     try {
       const campaignId = parseInt(req.params.id);
+      
+      // Check if campaign exists and is active
+      const campaign = await storage.getCampaign(campaignId);
+      if (!campaign) {
+        return res.status(404).json({ message: 'Campaign not found' });
+      }
+      
+      if (!isCampaignActive(campaign)) {
+        // Campaign has ended, return empty array
+        return res.json([]);
+      }
+      
       const allComponents = await storage.getCampaignComponents(campaignId);
       
       // Filter only active components and format for iOS consumption
@@ -881,22 +1020,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: 'Campaign component not found' });
       }
 
-      // Get full component details for broadcast
-      const fullComponent = await storage.getComponentById(componentId);
-      
-      // Broadcast status change via WebSocket with complete component data
-      broadcastToCampaign(campaignId, JSON.stringify({
-        type: 'component_status_changed',
-        campaignId,
-        componentId,
-        status,
-        component: fullComponent ? {
-          id: fullComponent.id,
-          type: fullComponent.type,
-          name: fullComponent.name,
-          config: fullComponent.config
-        } : null
-      }));
+      // Check if campaign is active before broadcasting
+      const campaign = await storage.getCampaign(campaignId);
+      if (campaign && isCampaignActive(campaign)) {
+        // Get full component details for broadcast
+        const fullComponent = await storage.getComponentById(componentId);
+        
+        // Broadcast status change via WebSocket with complete component data
+        broadcastToCampaign(campaignId, JSON.stringify({
+          type: 'component_status_changed',
+          campaignId,
+          componentId,
+          status,
+          component: fullComponent ? {
+            id: fullComponent.id,
+            type: fullComponent.type,
+            name: fullComponent.name,
+            config: fullComponent.config
+          } : null
+        }));
+      }
       
       res.json(updated);
     } catch (error) {

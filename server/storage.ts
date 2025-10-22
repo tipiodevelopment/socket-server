@@ -1,11 +1,18 @@
-import { WebSocketEvent, Campaign, InsertCampaign, Event, InsertEvent, CampaignFormState, InsertFormState, ScheduledComponent, InsertScheduledComponent, Component, InsertComponent, CampaignComponent, InsertCampaignComponent } from "@shared/schema";
+import { WebSocketEvent, Campaign, InsertCampaign, Event, InsertEvent, CampaignFormState, InsertFormState, ScheduledComponent, InsertScheduledComponent, Component, InsertComponent, CampaignComponent, InsertCampaignComponent, User, InsertUser } from "@shared/schema";
 import { db } from "./db";
-import { campaigns, events, campaignFormState, scheduledComponents, components, campaignComponents } from "@shared/schema";
+import { campaigns, events, campaignFormState, scheduledComponents, components, campaignComponents, users } from "@shared/schema";
 import { eq, desc, and, gte, ne } from "drizzle-orm";
 
 export interface IStorage {
   addEvent(event: WebSocketEvent): Promise<void>;
   getRecentEvents(limit?: number): Promise<WebSocketEvent[]>;
+  
+  // User methods
+  createUser(user: InsertUser): Promise<User>;
+  getUser(id: number): Promise<User | undefined>;
+  getUserByReachuId(reachuUserId: string): Promise<User | undefined>;
+  getAllUsers(): Promise<User[]>;
+  updateUser(id: number, user: Partial<InsertUser>): Promise<User | undefined>;
   
   // Campaign methods
   createCampaign(campaign: InsertCampaign): Promise<Campaign>;
@@ -60,6 +67,34 @@ export class MemStorage implements IStorage {
 
   async getRecentEvents(limit: number = 50): Promise<WebSocketEvent[]> {
     return this.events.slice(0, limit);
+  }
+
+  // User methods (database-backed)
+  async createUser(user: InsertUser): Promise<User> {
+    const [newUser] = await db.insert(users).values(user).returning();
+    return newUser;
+  }
+
+  async getUser(id: number): Promise<User | undefined> {
+    const [user] = await db.select().from(users).where(eq(users.id, id));
+    return user || undefined;
+  }
+
+  async getUserByReachuId(reachuUserId: string): Promise<User | undefined> {
+    const [user] = await db.select().from(users).where(eq(users.reachuUserId, reachuUserId));
+    return user || undefined;
+  }
+
+  async getAllUsers(): Promise<User[]> {
+    return await db.select().from(users).orderBy(desc(users.createdAt));
+  }
+
+  async updateUser(id: number, user: Partial<InsertUser>): Promise<User | undefined> {
+    const [updated] = await db.update(users)
+      .set(user)
+      .where(eq(users.id, id))
+      .returning();
+    return updated || undefined;
   }
 
   // Campaign methods (database-backed)

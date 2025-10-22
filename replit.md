@@ -52,10 +52,16 @@ Preferred communication style: Simple, everyday language.
 
 ### Database Schema
 
+**Users Table:**
+- Fields: `id` (serial), `reachuUserId` (unique), `firebaseToken` (nullable), `createdAt`.
+- Purpose: Multi-user architecture linking Reachu user IDs to internal users.
+- Each user can manage multiple campaigns.
+
 **Campaigns Table:**
-- Basic fields: `id`, `name`, `logo`, `description`, `createdAt`.
-- Scheduling: `startDate`, `endDate`.
+- Basic fields: `id`, `name`, `userId` (foreign key to users), `logo`, `description`, `createdAt`.
+- Scheduling: `startDate`, `endDate` (nullable = runs indefinitely).
 - Integrations: `reachuChannelId`, `reachuApiKey`, `tipioLiveshowId`, `tipioLivestreamData` (JSON object for Tipio configuration).
+- **Campaign Lifecycle:** When a campaign reaches its `endDate`, all components (dynamic, scheduled, liveshow) automatically stop showing. The `isCampaignActive()` helper validates campaign status before returning active components or broadcasting events.
 
 **Scheduled Components Table:**
 - Linked to `campaignId` (cascade delete).
@@ -111,8 +117,10 @@ Preferred communication style: Simple, everyday language.
 **WebSocket Events:**
 - `component_status_changed`: Broadcast when component is activated/deactivated in a campaign.
 - `component_config_updated`: Broadcast when component configuration is edited.
+- `campaign_ended`: Broadcast when a campaign reaches its `endDate`, instructing iOS apps to hide all components immediately.
 
 **API Endpoints:**
+- Users: `GET/POST /api/users`, `GET /api/users/:id`, `GET /api/users/reachu/:reachuUserId`, `PATCH /api/users/:id`
 - Campaigns: `GET/POST /api/campaigns`, `GET/PUT/DELETE /api/campaigns/:id`
 - Scheduled Components: `GET /api/campaigns/:id/scheduled-components`, `POST /api/campaigns/:id/scheduled-components`, `PATCH /api/scheduled-components/:id`, `DELETE /api/scheduled-components/:id`
 - Component Library: `GET/POST /api/components`, `PATCH/DELETE /api/components/:id`
