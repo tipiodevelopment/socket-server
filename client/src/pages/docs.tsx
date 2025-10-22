@@ -33,13 +33,20 @@ export default function DocsPage() {
 class WebSocketManager: NSObject, URLSessionWebSocketDelegate {
     private var webSocketTask: URLSessionWebSocketTask?
     private var urlSession: URLSession!
+    private let campaignId: Int
+    
+    init(campaignId: Int) {
+        self.campaignId = campaignId
+        super.init()
+    }
     
     func connect() {
         urlSession = URLSession(configuration: .default, 
                                delegate: self, 
                                delegateQueue: OperationQueue())
         
-        let url = URL(string: "${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/ws")!
+        // Each campaign has its own isolated WebSocket channel
+        let url = URL(string: "${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/ws/\\(campaignId)")!
         webSocketTask = urlSession.webSocketTask(with: url)
         webSocketTask?.resume()
         
@@ -294,14 +301,26 @@ struct ContestEvent: Codable {
             
             <div className="bg-primary/10 border-0 rounded-lg p-4">
               <h4 className="font-semibold mb-2 text-primary">Connection Information</h4>
-              <div className="space-y-2 text-sm">
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">WebSocket URL:</span>
-                  <code className="font-mono bg-background px-2 py-1 rounded">
-                    {`${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/ws`}
+              <div className="space-y-3 text-sm">
+                <div>
+                  <span className="text-muted-foreground block mb-2">WebSocket URL Pattern:</span>
+                  <code className="font-mono bg-background px-3 py-2 rounded block">
+                    {`${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/ws/:campaignId`}
                   </code>
                 </div>
-                <div className="flex justify-between">
+                <div className="bg-background/50 rounded p-3 space-y-1.5">
+                  <p className="text-xs text-muted-foreground font-semibold">Examples:</p>
+                  <code className="font-mono text-xs block text-green-400">
+                    {`${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/ws/10`} → Campaign 10
+                  </code>
+                  <code className="font-mono text-xs block text-blue-400">
+                    {`${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/ws/25`} → Campaign 25
+                  </code>
+                  <code className="font-mono text-xs block text-purple-400">
+                    {`${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/ws/123`} → Campaign 123
+                  </code>
+                </div>
+                <div className="flex justify-between pt-2">
                   <span className="text-muted-foreground">Protocol:</span>
                   <code className="font-mono bg-background px-2 py-1 rounded">WebSocket</code>
                 </div>
@@ -310,6 +329,19 @@ struct ContestEvent: Codable {
                   <code className="font-mono bg-background px-2 py-1 rounded">JSON</code>
                 </div>
               </div>
+            </div>
+            
+            <div className="bg-green-500/10 border-0 rounded-lg p-4 mt-4">
+              <h4 className="font-semibold mb-2 text-green-400 flex items-center space-x-2">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path>
+                </svg>
+                <span>Efficient Architecture</span>
+              </h4>
+              <p className="text-sm text-muted-foreground">
+                Each campaign has its own isolated WebSocket channel. Events are only broadcast to clients connected to that specific campaign, 
+                ensuring optimal performance and data isolation. Your app won't receive irrelevant events from other campaigns.
+              </p>
             </div>
           </CardContent>
         </Card>
@@ -324,7 +356,7 @@ struct ContestEvent: Codable {
           </CardHeader>
           <CardContent>
             <p className="text-muted-foreground mb-4">
-              First, create a class to handle the WebSocket connection:
+              Create a class to handle the WebSocket connection. Pass the campaign ID to connect to the correct channel:
             </p>
             
             <div className="relative">
@@ -339,6 +371,17 @@ struct ContestEvent: Codable {
               </Button>
               <pre className="bg-background border-0 rounded-lg p-4 overflow-x-auto code-block text-sm">
                 <code className="text-green-400">{swiftConnectionCode}</code>
+              </pre>
+            </div>
+            
+            <div className="bg-background/50 rounded-lg p-4 mt-4">
+              <h4 className="font-semibold mb-2 text-sm">Usage Example:</h4>
+              <pre className="bg-gray-900 rounded p-3 overflow-x-auto text-xs">
+                <code className="text-blue-400">{`// Initialize with your campaign ID
+let wsManager = WebSocketManager(campaignId: 10)
+wsManager.connect()
+
+// Now you'll only receive events from campaign 10`}</code>
               </pre>
             </div>
           </CardContent>

@@ -39,12 +39,16 @@ Preferred communication style: Simple, everyday language.
 
 **Design Decisions:**
 - **Database:** PostgreSQL with Drizzle ORM for campaign and event persistence.
-- **WebSocket:** Campaign-specific channels (`/ws/:campaignId`) for isolated event streams; legacy `/ws` (campaign ID 0) for backward compatibility.
-- **Event Broadcasting:** Events broadcast only to clients within the same campaign room.
+- **WebSocket Architecture:** Each campaign has its own isolated WebSocket channel for maximum efficiency:
+  - **URL Pattern:** `/ws/:campaignId` (e.g., `/ws/10`, `/ws/25`, `/ws/123`)
+  - **Isolation:** Clients connected to `/ws/10` only receive events from campaign 10
+  - **Efficiency:** Events are broadcast only to relevant clients, not all connected users
+  - **Data Structure:** Server maintains a `Map<campaignId, Set<WebSocket>>` for organized client grouping
+  - **Legacy Support:** `/ws` endpoint (campaign ID 0) maintained for backward compatibility
+- **Event Broadcasting:** All events (products, polls, contests, component updates) broadcast only to clients within the same campaign room via `broadcastToCampaign(campaignId, message)` function.
 - **Logging:** Custom middleware for API request logging.
 - **Validation:** Server-side validation for `campaignId` before broadcasting.
 - **Integration APIs:** Mock endpoint for Reachu.io channels, Tipio livestream data stored as JSON.
-- **Simplified Design:** Client count tracking removed for demo simplicity - focuses solely on event broadcasting.
 
 ### Database Schema
 
