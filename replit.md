@@ -130,7 +130,11 @@ Preferred communication style: Simple, everyday language.
 - **Campaign Admin Page (`/campaign/:id/admin`):** Campaign-specific dashboard for creating and broadcasting various event types (products, polls, contests). Features form state persistence, poll options with images, logo configuration (URL/upload), real-time event log, and connection status.
 - **Campaign Viewer Page (`/campaign/:name/:id`):** Real-time event display for viewers, with notifications and event history.
 - **Legacy Admin (`/admin`) & Viewer (`/viewer`) Pages:** Backward-compatible pages using campaign ID 0.
-- **Advanced Campaign Page (`/campaign/:id/advanced`):** Tabbed interface with four tabs: Overview (scheduling), Integrations (Reachu/Tipio), Scheduled Components (timeline view with edit capability), and Dynamic Components (real-time component management).
+- **Advanced Campaign Page (`/campaign/:id/advanced`):** Tabbed interface with four tabs:
+  - **Overview**: Unified dashboard with statistics cards (scheduled count, dynamic count, active count, upcoming count) and visual overview of all scheduled and dynamic components with intelligent status indicators (upcoming, active, ended, cancelled, completed for scheduled; active/inactive for dynamic).
+  - **Integrations**: Reachu.io and Tipio.no integration configuration.
+  - **Scheduled Components**: Timeline view with full edit capability for automated components.
+  - **Dynamic Components**: Real-time component management with toggle controls.
 - **Components Library Page (`/components`):** Central repository for reusable UI components. Create, edit, delete components with type-specific forms (banner, countdown, carousel_auto, carousel_manual, product_spotlight, offer_badge). Display iOS integration code snippets and usage status across campaigns.
 - **Docs Page (`/docs`):** Integration documentation with code examples.
 
