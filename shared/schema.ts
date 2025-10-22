@@ -40,6 +40,7 @@ export const scheduledComponents = pgTable("scheduled_components", {
   campaignId: integer("campaign_id").notNull().references(() => campaigns.id, { onDelete: 'cascade' }),
   type: varchar("type", { length: 50 }).notNull(), // carousel, store_view, product_spotlight, liveshow_trigger
   scheduledTime: timestamp("scheduled_time").notNull(),
+  endTime: timestamp("end_time"), // Optional end time for component display
   data: json("data").notNull(),
   status: varchar("status", { length: 20 }).notNull().default('pending'), // pending, sent, cancelled
   createdAt: timestamp("created_at").defaultNow().notNull()
