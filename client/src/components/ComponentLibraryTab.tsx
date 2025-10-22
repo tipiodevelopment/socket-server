@@ -188,6 +188,47 @@ export function ComponentLibraryTab() {
                       <CardDescription className="font-mono text-xs mb-2">
                         ID: {component.id.substring(0, 8)}...
                       </CardDescription>
+                      
+                      {/* Config preview based on component type */}
+                      {(() => {
+                        const config = component.config as any;
+                        return (
+                          <div className="text-xs text-gray-400 space-y-0.5 mb-2">
+                            {component.type === 'banner' && config.title && (
+                              <div>Title: <span className="text-gray-300">{config.title}</span></div>
+                            )}
+                            {component.type === 'countdown' && config.title && (
+                              <div>Title: <span className="text-gray-300">{config.title}</span></div>
+                            )}
+                            {component.type === 'carousel_auto' && config.channelId && (
+                              <div>Channel: <span className="text-gray-300">{config.channelId}</span></div>
+                            )}
+                            {component.type === 'carousel_manual' && config.productIds && (
+                              <div>Products: <span className="text-gray-300">{config.productIds.length} items</span></div>
+                            )}
+                            {component.type === 'product_spotlight' && config.productId && (
+                              <div>Product: <span className="text-gray-300">{config.productId}</span></div>
+                            )}
+                            {component.type === 'offer_badge' && config.text && (
+                              <div>Text: <span className="text-gray-300">{config.text}</span></div>
+                            )}
+                            {component.type === 'offer_banner' && (
+                              <>
+                                {config.title && (
+                                  <div>Title: <span className="text-gray-300">{config.title}</span></div>
+                                )}
+                                {config.discountBadgeText && (
+                                  <div>Discount: <span className="text-gray-300">{config.discountBadgeText}</span></div>
+                                )}
+                                {config.countdownEndDate && (
+                                  <div>Ends: <span className="text-gray-300">{new Date(config.countdownEndDate).toLocaleDateString()}</span></div>
+                                )}
+                              </>
+                            )}
+                          </div>
+                        );
+                      })()}
+                      
                       {componentUsage[component.id] && componentUsage[component.id].length > 0 && (
                         <div className="text-xs text-gray-400">
                           Used in <span className="font-semibold text-white">{componentUsage[component.id].length}</span> campaign{componentUsage[component.id].length !== 1 ? 's' : ''}:
