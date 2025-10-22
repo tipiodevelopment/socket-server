@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Calendar, Clock, ShoppingBag, Radio, ArrowLeft, Plus, Trash2, ToggleLeft, ToggleRight, Pencil } from "lucide-react";
+import { Calendar, Clock, ShoppingBag, Radio, ArrowLeft, Plus, Trash2, ToggleLeft, ToggleRight, Pencil, Activity, CheckCircle2, XCircle, PlayCircle } from "lucide-react";
 import { Campaign, ScheduledComponent, Component, CampaignComponent } from "@shared/schema";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
@@ -149,73 +149,90 @@ export default function AdvancedCampaign() {
             </TabsList>
 
             {/* Overview Tab */}
-            <TabsContent value="overview" className="space-y-4">
+            <TabsContent value="overview" className="space-y-6">
+              {/* Statistics Cards */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                <StatCard
+                  icon={<Calendar className="w-5 h-5" />}
+                  label="Scheduled"
+                  value={scheduledComponents.length}
+                  color="blue"
+                  testId="stat-scheduled"
+                />
+                <StatCard
+                  icon={<Activity className="w-5 h-5" />}
+                  label="Dynamic"
+                  value={campaignComponents.length}
+                  color="purple"
+                  testId="stat-dynamic"
+                />
+                <StatCard
+                  icon={<CheckCircle2 className="w-5 h-5" />}
+                  label="Active"
+                  value={campaignComponents.filter(c => c.status === 'active').length}
+                  color="green"
+                  testId="stat-active"
+                />
+                <StatCard
+                  icon={<Clock className="w-5 h-5" />}
+                  label="Upcoming"
+                  value={scheduledComponents.filter(c => c.status === 'pending').length}
+                  color="yellow"
+                  testId="stat-upcoming"
+                />
+              </div>
+
+              {/* Scheduled Components Overview */}
               <Card className="bg-gray-800 border-0">
                 <CardHeader>
-                  <CardTitle className="text-white">Campaign Information</CardTitle>
-                  <CardDescription className="text-gray-400">Basic details and scheduling</CardDescription>
+                  <CardTitle className="text-white flex items-center gap-2">
+                    <Calendar className="w-5 h-5" />
+                    Scheduled Components
+                  </CardTitle>
+                  <CardDescription className="text-gray-400">
+                    Components programmed to activate automatically
+                  </CardDescription>
                 </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div>
-                      <Label className="text-gray-300">Name</Label>
-                      <Input 
-                        value={campaign.name} 
-                        className="bg-gray-700 border-0 text-white"
-                        disabled
-                        data-testid="input-campaign-name"
-                      />
+                <CardContent>
+                  {scheduledComponents.length === 0 ? (
+                    <div className="text-center py-8 text-gray-400">
+                      <Calendar className="w-12 h-12 mx-auto mb-3 opacity-30" />
+                      <p className="text-sm">No scheduled components</p>
                     </div>
-                    <div>
-                      <Label className="text-gray-300">Logo URL</Label>
-                      <Input 
-                        value={campaign.logo || ''} 
-                        placeholder="No logo configured"
-                        className="bg-gray-700 border-0 text-white"
-                        disabled
-                        data-testid="input-campaign-logo"
-                      />
+                  ) : (
+                    <div className="space-y-2">
+                      {scheduledComponents.map((comp) => (
+                        <OverviewScheduledItem key={comp.id} component={comp} />
+                      ))}
                     </div>
-                  </div>
+                  )}
+                </CardContent>
+              </Card>
 
-                  <div>
-                    <Label className="text-gray-300">Description</Label>
-                    <Textarea 
-                      value={campaign.description || ''} 
-                      className="bg-gray-700 border-0 text-white"
-                      disabled
-                      data-testid="textarea-campaign-description"
-                    />
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div>
-                      <Label className="text-gray-300 flex items-center gap-2">
-                        <Calendar className="w-4 h-4" />
-                        Start Date
-                      </Label>
-                      <Input 
-                        type="datetime-local"
-                        value={campaign.startDate ? new Date(campaign.startDate).toISOString().slice(0, 16) : ''} 
-                        className="bg-gray-700 border-0 text-white"
-                        disabled
-                        data-testid="input-start-date"
-                      />
+              {/* Dynamic Components Overview */}
+              <Card className="bg-gray-800 border-0">
+                <CardHeader>
+                  <CardTitle className="text-white flex items-center gap-2">
+                    <Activity className="w-5 h-5" />
+                    Dynamic Components
+                  </CardTitle>
+                  <CardDescription className="text-gray-400">
+                    Real-time toggleable components
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {campaignComponents.length === 0 ? (
+                    <div className="text-center py-8 text-gray-400">
+                      <Activity className="w-12 h-12 mx-auto mb-3 opacity-30" />
+                      <p className="text-sm">No dynamic components</p>
                     </div>
-                    <div>
-                      <Label className="text-gray-300 flex items-center gap-2">
-                        <Clock className="w-4 h-4" />
-                        End Date
-                      </Label>
-                      <Input 
-                        type="datetime-local"
-                        value={campaign.endDate ? new Date(campaign.endDate).toISOString().slice(0, 16) : ''} 
-                        className="bg-gray-700 border-0 text-white"
-                        disabled
-                        data-testid="input-end-date"
-                      />
+                  ) : (
+                    <div className="space-y-2">
+                      {campaignComponents.map((comp) => (
+                        <OverviewDynamicItem key={comp.id} component={comp} />
+                      ))}
                     </div>
-                  </div>
+                  )}
                 </CardContent>
               </Card>
             </TabsContent>
@@ -1150,5 +1167,123 @@ function ScheduledComponentForm({
         </Button>
       </div>
     </form>
+  );
+}
+
+function StatCard({
+  icon,
+  label,
+  value,
+  color,
+  testId
+}: {
+  icon: React.ReactNode;
+  label: string;
+  value: number;
+  color: 'blue' | 'purple' | 'green' | 'yellow';
+  testId: string;
+}) {
+  const colorClasses = {
+    blue: 'bg-blue-600/20 text-blue-400 border-blue-600/30',
+    purple: 'bg-purple-600/20 text-purple-400 border-purple-600/30',
+    green: 'bg-green-600/20 text-green-400 border-green-600/30',
+    yellow: 'bg-yellow-600/20 text-yellow-400 border-yellow-600/30',
+  };
+
+  return (
+    <div 
+      className={`p-4 rounded-lg border ${colorClasses[color]}`}
+      data-testid={testId}
+    >
+      <div className="flex items-center gap-3">
+        <div className="opacity-80">{icon}</div>
+        <div>
+          <div className="text-2xl font-bold">{value}</div>
+          <div className="text-xs opacity-80">{label}</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function OverviewScheduledItem({ component }: { component: ScheduledComponent & { componentDetails?: Component } }) {
+  const now = new Date();
+  const startTime = new Date(component.scheduledTime);
+  const endTime = component.endTime ? new Date(component.endTime) : null;
+  
+  const getStatus = () => {
+    if (component.status === 'cancelled') return { label: 'Cancelled', color: 'bg-red-600', icon: <XCircle className="w-4 h-4" /> };
+    if (component.status === 'sent') return { label: 'Completed', color: 'bg-green-600', icon: <CheckCircle2 className="w-4 h-4" /> };
+    
+    if (endTime && now > endTime) return { label: 'Ended', color: 'bg-gray-600', icon: <XCircle className="w-4 h-4" /> };
+    if (now >= startTime && (!endTime || now <= endTime)) return { label: 'Active', color: 'bg-green-600', icon: <PlayCircle className="w-4 h-4" /> };
+    return { label: 'Upcoming', color: 'bg-yellow-600', icon: <Clock className="w-4 h-4" /> };
+  };
+
+  const status = getStatus();
+  const getTypeLabel = (type: string) => {
+    const types: Record<string, string> = {
+      carousel: "Carousel",
+      store_view: "Store View",
+      product_spotlight: "Product Spotlight",
+      liveshow_trigger: "Start Liveshow",
+      custom_component: "Custom Component"
+    };
+    return types[type] || type;
+  };
+
+  return (
+    <div className="flex items-center justify-between p-3 bg-gray-700/50 rounded-lg border border-gray-600/50">
+      <div className="flex-1">
+        <div className="flex items-center gap-2 mb-1">
+          <Badge className={`${status.color} border-0 flex items-center gap-1`}>
+            {status.icon}
+            <span>{status.label}</span>
+          </Badge>
+          <span className="text-white text-sm font-medium">
+            {component.type === 'custom_component' && component.componentDetails 
+              ? component.componentDetails.name 
+              : getTypeLabel(component.type)}
+          </span>
+        </div>
+        <div className="text-xs text-gray-400">
+          {startTime.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+          {endTime && ` → ${endTime.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}`}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function OverviewDynamicItem({ component }: { component: CampaignComponent & { component: Component } }) {
+  const getComponentTypeLabel = (type: string) => {
+    const labels: Record<string, string> = {
+      banner: 'Banner',
+      countdown: 'Countdown',
+      carousel_auto: 'Auto Carousel',
+      carousel_manual: 'Manual Carousel',
+      product_spotlight: 'Product Spotlight',
+      offer_badge: 'Offer Badge',
+    };
+    return labels[type] || type;
+  };
+
+  return (
+    <div className="flex items-center justify-between p-3 bg-gray-700/50 rounded-lg border border-gray-600/50">
+      <div className="flex-1">
+        <div className="flex items-center gap-2 mb-1">
+          <Badge className={`${component.status === 'active' ? 'bg-green-600' : 'bg-gray-600'} border-0 flex items-center gap-1`}>
+            {component.status === 'active' ? <CheckCircle2 className="w-3 h-3" /> : <XCircle className="w-3 h-3" />}
+            <span>{component.status === 'active' ? 'Active' : 'Inactive'}</span>
+          </Badge>
+          <span className="text-white text-sm font-medium">
+            {component.component.name}
+          </span>
+        </div>
+        <div className="text-xs text-gray-400">
+          {getComponentTypeLabel(component.component.type)}
+        </div>
+      </div>
+    </div>
   );
 }
