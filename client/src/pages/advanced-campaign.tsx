@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Calendar, Clock, ShoppingBag, Radio, ArrowLeft, Plus, Trash2, ToggleLeft, ToggleRight } from "lucide-react";
+import { Calendar, Clock, ShoppingBag, Radio, ArrowLeft, Plus, Trash2, ToggleLeft, ToggleRight, Pencil } from "lucide-react";
 import { Campaign, ScheduledComponent, Component, CampaignComponent } from "@shared/schema";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
@@ -56,6 +56,26 @@ export default function AdvancedCampaign() {
       toast({
         title: 'Error',
         description: 'Failed to create scheduled component.',
+        variant: 'destructive',
+      });
+    },
+  });
+
+  const updateScheduledMutation = useMutation({
+    mutationFn: async ({ id, data }: { id: number; data: { type: string; scheduledTime: string; endTime?: string; data: any } }) => {
+      return await apiRequest('PATCH', `/api/scheduled-components/${id}`, data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/campaigns', campaignId, 'scheduled-components'] });
+      toast({
+        title: 'Scheduled Component Updated',
+        description: 'The component has been updated successfully.',
+      });
+    },
+    onError: () => {
+      toast({
+        title: 'Error',
+        description: 'Failed to update scheduled component.',
         variant: 'destructive',
       });
     },
@@ -327,7 +347,9 @@ export default function AdvancedCampaign() {
                       {scheduledComponents.map((component: ScheduledComponent) => (
                         <ScheduledComponentCard 
                           key={component.id} 
-                          component={component} 
+                          component={component}
+                          campaign={campaign}
+                          onEdit={(data) => updateScheduledMutation.mutate({ id: component.id, data })}
                           onDelete={() => deleteScheduledMutation.mutate(component.id)}
                         />
                       ))}
@@ -381,7 +403,19 @@ export default function AdvancedCampaign() {
   );
 }
 
-function ScheduledComponentCard({ component, onDelete }: { component: ScheduledComponent & { componentDetails?: Component }; onDelete: () => void }) {
+function ScheduledComponentCard({ 
+  component, 
+  campaign,
+  onDelete,
+  onEdit
+}: { 
+  component: ScheduledComponent & { componentDetails?: Component }; 
+  campaign: Campaign;
+  onDelete: () => void;
+  onEdit: (data: { type: string; scheduledTime: string; endTime?: string; data: any }) => void;
+}) {
+  const [isEditOpen, setIsEditOpen] = useState(false);
+  
   const getTypeLabel = (type: string) => {
     const types: Record<string, string> = {
       carousel: "Carousel",
@@ -403,58 +437,95 @@ function ScheduledComponentCard({ component, onDelete }: { component: ScheduledC
   };
 
   return (
-    <div 
-      className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 p-4 bg-gray-700 rounded-lg border-0"
-      data-testid={`component-${component.id}`}
-    >
-      <div className="flex-1 w-full">
-        <div className="flex items-center gap-3 mb-2">
-          <Badge className={`${getStatusColor(component.status)} border-0`} data-testid={`status-${component.id}`}>
-            {component.status}
-          </Badge>
-          <span className="text-white font-medium text-sm sm:text-base" data-testid={`type-${component.id}`}>
-            {component.type === 'custom_component' && component.componentDetails 
-              ? component.componentDetails.name 
-              : getTypeLabel(component.type)}
-          </span>
-        </div>
-        <div className="space-y-1">
-          <div className="flex items-center gap-2 text-xs sm:text-sm text-gray-400">
-            <Clock className="w-4 h-4" />
-            <span data-testid={`time-${component.id}`}>
-              Start: {new Date(component.scheduledTime).toLocaleString('en-US')}
+    <>
+      <div 
+        className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 p-4 bg-gray-700 rounded-lg border-0"
+        data-testid={`component-${component.id}`}
+      >
+        <div className="flex-1 w-full">
+          <div className="flex items-center gap-3 mb-2">
+            <Badge className={`${getStatusColor(component.status)} border-0`} data-testid={`status-${component.id}`}>
+              {component.status}
+            </Badge>
+            <span className="text-white font-medium text-sm sm:text-base" data-testid={`type-${component.id}`}>
+              {component.type === 'custom_component' && component.componentDetails 
+                ? component.componentDetails.name 
+                : getTypeLabel(component.type)}
             </span>
           </div>
-          {component.endTime && (
+          <div className="space-y-1">
             <div className="flex items-center gap-2 text-xs sm:text-sm text-gray-400">
               <Clock className="w-4 h-4" />
-              <span data-testid={`endtime-${component.id}`}>
-                End: {new Date(component.endTime).toLocaleString('en-US')}
+              <span data-testid={`time-${component.id}`}>
+                Start: {new Date(component.scheduledTime).toLocaleString('en-US')}
               </span>
             </div>
-          )}
-          {!component.endTime && (
-            <div className="text-xs text-gray-500">
-              Duration: Until manually stopped
+            {component.endTime && (
+              <div className="flex items-center gap-2 text-xs sm:text-sm text-gray-400">
+                <Clock className="w-4 h-4" />
+                <span data-testid={`endtime-${component.id}`}>
+                  End: {new Date(component.endTime).toLocaleString('en-US')}
+                </span>
+              </div>
+            )}
+            {!component.endTime && (
+              <div className="text-xs text-gray-500">
+                Duration: Until manually stopped
+              </div>
+            )}
+          </div>
+          {component.type === 'custom_component' && component.componentDetails && (
+            <div className="text-xs text-gray-500 mt-1">
+              Type: {component.componentDetails.type}
             </div>
           )}
         </div>
-        {component.type === 'custom_component' && component.componentDetails && (
-          <div className="text-xs text-gray-500 mt-1">
-            Type: {component.componentDetails.type}
-          </div>
-        )}
+        <div className="flex gap-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setIsEditOpen(true)}
+            className="text-blue-400 hover:text-blue-300 hover:bg-blue-950"
+            data-testid={`button-edit-${component.id}`}
+          >
+            <Pencil className="w-4 h-4" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={onDelete}
+            className="text-red-400 hover:text-red-300 hover:bg-red-950"
+            data-testid={`button-delete-${component.id}`}
+          >
+            <Trash2 className="w-4 h-4" />
+          </Button>
+        </div>
       </div>
-      <Button
-        variant="ghost"
-        size="sm"
-        onClick={onDelete}
-        className="text-red-400 hover:text-red-300 hover:bg-red-950"
-        data-testid={`button-delete-${component.id}`}
-      >
-        <Trash2 className="w-4 h-4" />
-      </Button>
-    </div>
+
+      <Dialog open={isEditOpen} onOpenChange={setIsEditOpen}>
+        <DialogContent 
+          className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto bg-gray-800 border-0"
+          onInteractOutside={(e) => e.preventDefault()}
+        >
+          <DialogHeader>
+            <DialogTitle className="text-white">Edit Scheduled Component</DialogTitle>
+            <DialogDescription className="text-gray-400">
+              Update the scheduled component settings
+            </DialogDescription>
+          </DialogHeader>
+          <ScheduledComponentForm
+            initialData={component}
+            onSubmit={(data) => {
+              onEdit(data);
+              setIsEditOpen(false);
+            }}
+            onCancel={() => setIsEditOpen(false)}
+            isLoading={false}
+            campaign={campaign}
+          />
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
 
@@ -726,11 +797,13 @@ function ComponentTypeCard({
 }
 
 function ScheduledComponentForm({
+  initialData,
   onSubmit,
   onCancel,
   isLoading,
   campaign,
 }: {
+  initialData?: ScheduledComponent & { componentDetails?: Component };
   onSubmit: (data: { type: string; scheduledTime: string; endTime?: string; data: any }) => void;
   onCancel: () => void;
   isLoading: boolean;
@@ -739,13 +812,26 @@ function ScheduledComponentForm({
   type ComponentType = 'carousel' | 'store_view' | 'product_spotlight' | 'liveshow_trigger' | 'custom_component';
   type EndTimeMode = 'none' | 'specific' | 'duration';
   
-  const [type, setType] = useState<ComponentType>('carousel');
-  const [scheduledTime, setScheduledTime] = useState('');
-  const [endTimeMode, setEndTimeMode] = useState<EndTimeMode>('none');
-  const [endTime, setEndTime] = useState('');
+  // Initialize from initialData if provided
+  const [type, setType] = useState<ComponentType>((initialData?.type as ComponentType) || 'carousel');
+  const [scheduledTime, setScheduledTime] = useState(
+    initialData?.scheduledTime 
+      ? new Date(initialData.scheduledTime).toISOString().slice(0, 16) 
+      : ''
+  );
+  const [endTimeMode, setEndTimeMode] = useState<EndTimeMode>(
+    initialData?.endTime ? 'specific' : 'none'
+  );
+  const [endTime, setEndTime] = useState(
+    initialData?.endTime 
+      ? new Date(initialData.endTime).toISOString().slice(0, 16) 
+      : ''
+  );
   const [durationDays, setDurationDays] = useState(0);
   const [durationHours, setDurationHours] = useState(1);
-  const [config, setConfig] = useState<Record<string, any>>({});
+  const [config, setConfig] = useState<Record<string, any>>(
+    initialData?.data ? (typeof initialData.data === 'object' ? initialData.data as Record<string, any> : {}) : {}
+  );
 
   // Fetch available components from library
   const { data: availableComponents, isLoading: componentsLoading } = useQuery<Component[]>({
