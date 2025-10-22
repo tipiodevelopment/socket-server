@@ -499,6 +499,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: 'Missing required fields' });
       }
 
+      // Validate custom component exists
+      if (type === 'custom_component') {
+        if (!data.componentId) {
+          return res.status(400).json({ message: 'componentId is required for custom components' });
+        }
+        const existingComponent = await storage.getComponent(data.componentId);
+        if (!existingComponent) {
+          return res.status(404).json({ message: 'Component not found' });
+        }
+      }
+
       const component = await storage.createScheduledComponent({
         campaignId,
         type,
