@@ -752,7 +752,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
             type: 'component_config_updated',
             campaignId: campaign.id,
             componentId: req.params.id,
-            config: updates.config || component.config
+            component: {
+              id: component.id,
+              type: component.type,
+              name: component.name,
+              config: updates.config || component.config
+            }
           }));
         }
       }
@@ -876,12 +881,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: 'Campaign component not found' });
       }
 
-      // Broadcast status change via WebSocket
+      // Get full component details for broadcast
+      const fullComponent = await storage.getComponentById(componentId);
+      
+      // Broadcast status change via WebSocket with complete component data
       broadcastToCampaign(campaignId, JSON.stringify({
         type: 'component_status_changed',
         campaignId,
         componentId,
-        status
+        status,
+        component: fullComponent ? {
+          id: fullComponent.id,
+          type: fullComponent.type,
+          name: fullComponent.name,
+          config: fullComponent.config
+        } : null
       }));
       
       res.json(updated);
