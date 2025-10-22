@@ -55,9 +55,13 @@ Preferred communication style: Simple, everyday language.
 
 **Scheduled Components Table:**
 - Linked to `campaignId` (cascade delete).
-- Fields: `component type` (carousel, store_view, product_spotlight, liveshow_trigger, custom_component), `scheduledTime`, `data` (JSON config), `status` (pending, sent, cancelled).
+- Fields: `component type` (carousel, store_view, product_spotlight, liveshow_trigger, custom_component), `scheduledTime`, `endTime` (optional), `data` (JSON config), `status` (pending, sent, cancelled).
 - Component Schemas: Carousel, Store View, Product Spotlight, Liveshow Trigger, Custom Component with specific configuration fields.
 - Custom Component Type: References components from the library via `componentId`, enabling scheduled activation of reusable components.
+- End Time Support: Components can have optional end time specified as:
+  - Specific date/time for precise control
+  - Duration (days + hours) with automatic calculation
+  - No end time (runs until manually stopped)
 
 **Components Table (Dynamic Components):**
 - Reusable UI component library.
