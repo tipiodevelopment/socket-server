@@ -476,6 +476,58 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Scheduled Components Routes
+  
+  // Get scheduled components for a campaign
+  app.get('/api/campaigns/:id/scheduled-components', async (req, res) => {
+    try {
+      const components = await storage.getCampaignScheduledComponents(parseInt(req.params.id));
+      res.json(components);
+    } catch (error) {
+      console.error('Error fetching scheduled components:', error);
+      res.status(500).json({ message: 'Error fetching scheduled components' });
+    }
+  });
+
+  // Create scheduled component
+  app.post('/api/campaigns/:id/scheduled-components', async (req, res) => {
+    try {
+      const campaignId = parseInt(req.params.id);
+      const { type, scheduledTime, data } = req.body;
+
+      if (!type || !scheduledTime || !data) {
+        return res.status(400).json({ message: 'Missing required fields' });
+      }
+
+      const component = await storage.createScheduledComponent({
+        campaignId,
+        type,
+        scheduledTime: new Date(scheduledTime),
+        data,
+        status: 'pending'
+      });
+
+      res.status(201).json(component);
+    } catch (error) {
+      console.error('Error creating scheduled component:', error);
+      res.status(400).json({ 
+        message: 'Error creating scheduled component',
+        error: error instanceof Error ? error.message : String(error)
+      });
+    }
+  });
+
+  // Delete scheduled component
+  app.delete('/api/scheduled-components/:id', async (req, res) => {
+    try {
+      await storage.deleteScheduledComponent(parseInt(req.params.id));
+      res.status(204).send();
+    } catch (error) {
+      console.error('Error deleting scheduled component:', error);
+      res.status(500).json({ message: 'Error deleting scheduled component' });
+    }
+  });
+
   // Form state routes
   
   // Save form state
