@@ -482,7 +482,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get('/api/campaigns/:id/scheduled-components', async (req, res) => {
     try {
       const components = await storage.getCampaignScheduledComponents(parseInt(req.params.id));
-      res.json(components);
+      
+      // Enrich custom components with component details
+      const enrichedComponents = await Promise.all(
+        components.map(async (comp) => {
+          if (comp.type === 'custom_component' && 
+              comp.data && 
+              typeof comp.data === 'object' && 
+              'componentId' in comp.data && 
+              typeof comp.data.componentId === 'string') {
+            const componentDetails = await storage.getComponentById(comp.data.componentId);
+            return {
+              ...comp,
+              componentDetails
+            };
+          }
+          return comp;
+        })
+      );
+      
+      res.json(enrichedComponents);
     } catch (error) {
       console.error('Error fetching scheduled components:', error);
       res.status(500).json({ message: 'Error fetching scheduled components' });
@@ -504,7 +523,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         if (!data.componentId) {
           return res.status(400).json({ message: 'componentId is required for custom components' });
         }
-        const existingComponent = await storage.getComponent(data.componentId);
+        const existingComponent = await storage.getComponentById(data.componentId);
         if (!existingComponent) {
           return res.status(404).json({ message: 'Component not found' });
         }

@@ -381,13 +381,14 @@ export default function AdvancedCampaign() {
   );
 }
 
-function ScheduledComponentCard({ component, onDelete }: { component: ScheduledComponent; onDelete: () => void }) {
+function ScheduledComponentCard({ component, onDelete }: { component: ScheduledComponent & { componentDetails?: Component }; onDelete: () => void }) {
   const getTypeLabel = (type: string) => {
     const types: Record<string, string> = {
       carousel: "Carousel",
       store_view: "Store View",
       product_spotlight: "Product Spotlight",
-      liveshow_trigger: "Start Liveshow"
+      liveshow_trigger: "Start Liveshow",
+      custom_component: "Custom Component"
     };
     return types[type] || type;
   };
@@ -412,7 +413,9 @@ function ScheduledComponentCard({ component, onDelete }: { component: ScheduledC
             {component.status}
           </Badge>
           <span className="text-white font-medium text-sm sm:text-base" data-testid={`type-${component.id}`}>
-            {getTypeLabel(component.type)}
+            {component.type === 'custom_component' && component.componentDetails 
+              ? component.componentDetails.name 
+              : getTypeLabel(component.type)}
           </span>
         </div>
         <div className="flex items-center gap-2 text-xs sm:text-sm text-gray-400">
@@ -421,6 +424,11 @@ function ScheduledComponentCard({ component, onDelete }: { component: ScheduledC
             {new Date(component.scheduledTime).toLocaleString('en-US')}
           </span>
         </div>
+        {component.type === 'custom_component' && component.componentDetails && (
+          <div className="text-xs text-gray-500 mt-1">
+            Type: {component.componentDetails.type}
+          </div>
+        )}
       </div>
       <Button
         variant="ghost"
