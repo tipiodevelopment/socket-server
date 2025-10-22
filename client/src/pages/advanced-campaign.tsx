@@ -418,11 +418,26 @@ function ScheduledComponentCard({ component, onDelete }: { component: ScheduledC
               : getTypeLabel(component.type)}
           </span>
         </div>
-        <div className="flex items-center gap-2 text-xs sm:text-sm text-gray-400">
-          <Clock className="w-4 h-4" />
-          <span data-testid={`time-${component.id}`}>
-            {new Date(component.scheduledTime).toLocaleString('en-US')}
-          </span>
+        <div className="space-y-1">
+          <div className="flex items-center gap-2 text-xs sm:text-sm text-gray-400">
+            <Clock className="w-4 h-4" />
+            <span data-testid={`time-${component.id}`}>
+              Start: {new Date(component.scheduledTime).toLocaleString('en-US')}
+            </span>
+          </div>
+          {component.endTime && (
+            <div className="flex items-center gap-2 text-xs sm:text-sm text-gray-400">
+              <Clock className="w-4 h-4" />
+              <span data-testid={`endtime-${component.id}`}>
+                End: {new Date(component.endTime).toLocaleString('en-US')}
+              </span>
+            </div>
+          )}
+          {!component.endTime && (
+            <div className="text-xs text-gray-500">
+              Duration: Until manually stopped
+            </div>
+          )}
         </div>
         {component.type === 'custom_component' && component.componentDetails && (
           <div className="text-xs text-gray-500 mt-1">
