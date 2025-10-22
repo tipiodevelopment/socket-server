@@ -595,6 +595,201 @@ struct ContestEvent: Codable {
           </CardContent>
         </Card>
 
+        {/* Dynamic Components Documentation */}
+        <Card className="border-0 bg-gradient-to-br from-blue-500/10 to-purple-500/10">
+          <CardHeader>
+            <CardTitle className="flex items-center space-x-2 text-2xl">
+              <svg className="w-8 h-8 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z"></path>
+              </svg>
+              <span>Dynamic Components System</span>
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            <div>
+              <h3 className="text-lg font-semibold mb-3 text-primary">Overview</h3>
+              <p className="text-muted-foreground mb-4">
+                The Dynamic Components system allows you to display and control UI components in real-time from the admin panel. 
+                Components can be activated, deactivated, or updated without rebuilding your iOS app.
+              </p>
+            </div>
+
+            <div>
+              <h3 className="text-lg font-semibold mb-3 text-primary">Initial State - GET Active Components</h3>
+              <p className="text-muted-foreground mb-3">
+                When your app launches, fetch all active components for a campaign:
+              </p>
+              <div className="bg-background rounded-lg p-4 mb-3">
+                <code className="text-green-400 text-sm">
+                  GET {`${window.location.protocol}//${window.location.host}`}/api/campaigns/:id/active-components
+                </code>
+              </div>
+              <p className="text-muted-foreground mb-3 text-sm">
+                Response example:
+              </p>
+              <pre className="bg-background rounded-lg p-4 overflow-x-auto text-xs">
+                <code className="text-green-400">{`[
+  {
+    "componentId": "cmp_abc123",
+    "type": "offer_banner",
+    "name": "Weekly Offer Banner",
+    "config": {
+      "logoUrl": "https://...",
+      "title": "Ukens tilbud",
+      "subtitle": "Se denne ukes beste tilbud",
+      "backgroundImageUrl": "https://...",
+      "countdownEndDate": "2025-12-31T23:59:59Z",
+      "discountBadgeText": "Opp til 30%",
+      "ctaText": "Se alle tilbud",
+      "ctaLink": "https://example.com/offers",
+      "overlayOpacity": 0.4
+    },
+    "status": "active",
+    "activatedAt": "2025-10-22T12:00:00Z"
+  }
+]`}</code>
+              </pre>
+            </div>
+
+            <div>
+              <h3 className="text-lg font-semibold mb-3 text-primary">Real-Time Updates via WebSocket</h3>
+              <p className="text-muted-foreground mb-3">
+                Your app receives two types of component events:
+              </p>
+              
+              <div className="space-y-4">
+                <div className="bg-background rounded-lg p-4">
+                  <h4 className="font-semibold mb-2 text-blue-400">1. component_status_changed</h4>
+                  <p className="text-sm text-muted-foreground mb-2">
+                    Fired when a component is activated or deactivated:
+                  </p>
+                  <pre className="bg-gray-900 rounded p-3 overflow-x-auto text-xs">
+                    <code className="text-green-400">{`{
+  "type": "component_status_changed",
+  "campaignId": 10,
+  "componentId": "cmp_abc123",
+  "status": "active",
+  "component": {
+    "id": "cmp_abc123",
+    "type": "offer_banner",
+    "name": "Weekly Offer Banner",
+    "config": { ... }
+  }
+}`}</code>
+                  </pre>
+                </div>
+
+                <div className="bg-background rounded-lg p-4">
+                  <h4 className="font-semibold mb-2 text-purple-400">2. component_config_updated</h4>
+                  <p className="text-sm text-muted-foreground mb-2">
+                    Fired when a component's configuration is edited:
+                  </p>
+                  <pre className="bg-gray-900 rounded p-3 overflow-x-auto text-xs">
+                    <code className="text-green-400">{`{
+  "type": "component_config_updated",
+  "campaignId": 10,
+  "componentId": "cmp_abc123",
+  "component": {
+    "id": "cmp_abc123",
+    "type": "offer_banner",
+    "name": "Weekly Offer Banner",
+    "config": {
+      "title": "Updated Title",
+      ...
+    }
+  }
+}`}</code>
+                  </pre>
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <h3 className="text-lg font-semibold mb-3 text-primary">Offer Banner Component (XXL)</h3>
+              <p className="text-muted-foreground mb-3">
+                The Offer Banner is a premium promotional component with countdown timer, discount badge, and CTA button.
+              </p>
+              
+              <div className="bg-background rounded-lg p-4 mb-3">
+                <h4 className="font-semibold mb-2">Swift Data Model:</h4>
+                <pre className="bg-gray-900 rounded p-3 overflow-x-auto text-xs">
+                  <code className="text-green-400">{`struct OfferBannerConfig: Codable {
+    let logoUrl: String
+    let title: String
+    let subtitle: String?
+    let backgroundImageUrl: String
+    let countdownEndDate: String // ISO 8601
+    let discountBadgeText: String
+    let ctaText: String
+    let ctaLink: String?
+    let overlayOpacity: Double?
+}`}</code>
+                </pre>
+              </div>
+
+              <div className="bg-background rounded-lg p-4">
+                <h4 className="font-semibold mb-2">Usage Example:</h4>
+                <pre className="bg-gray-900 rounded p-3 overflow-x-auto text-xs">
+                  <code className="text-green-400">{`// Decode component from WebSocket or API
+if component.type == "offer_banner" {
+    let config = try JSONDecoder().decode(
+        OfferBannerConfig.self, 
+        from: JSONEncoder().encode(component.config)
+    )
+    
+    // Display your OfferBannerView
+    OfferBannerView(
+        logoUrl: config.logoUrl,
+        title: config.title,
+        subtitle: config.subtitle,
+        backgroundImageUrl: config.backgroundImageUrl,
+        countdownEndDate: config.countdownEndDate,
+        discountBadgeText: config.discountBadgeText,
+        ctaText: config.ctaText,
+        ctaLink: config.ctaLink,
+        overlayOpacity: config.overlayOpacity ?? 0.4
+    )
+}`}</code>
+                </pre>
+              </div>
+            </div>
+
+            <div className="bg-blue-500/10 rounded-lg p-4">
+              <h4 className="font-semibold mb-2 text-blue-400">Component Types Available</h4>
+              <ul className="text-sm space-y-1 text-muted-foreground">
+                <li className="flex items-center space-x-2">
+                  <span className="text-blue-500">•</span>
+                  <span><code className="text-blue-300">banner</code> - Simple promotional banner</span>
+                </li>
+                <li className="flex items-center space-x-2">
+                  <span className="text-purple-500">•</span>
+                  <span><code className="text-purple-300">offer_banner</code> - Premium banner with countdown and badges</span>
+                </li>
+                <li className="flex items-center space-x-2">
+                  <span className="text-green-500">•</span>
+                  <span><code className="text-green-300">countdown</code> - Standalone countdown timer</span>
+                </li>
+                <li className="flex items-center space-x-2">
+                  <span className="text-amber-500">•</span>
+                  <span><code className="text-amber-300">carousel_auto</code> - Auto product carousel</span>
+                </li>
+                <li className="flex items-center space-x-2">
+                  <span className="text-red-500">•</span>
+                  <span><code className="text-red-300">carousel_manual</code> - Manual product carousel</span>
+                </li>
+                <li className="flex items-center space-x-2">
+                  <span className="text-cyan-500">•</span>
+                  <span><code className="text-cyan-300">product_spotlight</code> - Highlight specific product</span>
+                </li>
+                <li className="flex items-center space-x-2">
+                  <span className="text-pink-500">•</span>
+                  <span><code className="text-pink-300">offer_badge</code> - Small promotional badge</span>
+                </li>
+              </ul>
+            </div>
+          </CardContent>
+        </Card>
+
         {/* Footer Note */}
         <div className="text-center text-sm text-muted-foreground pt-8 border-0">
           <p>Need help? Check the <Link href="/"><Button variant="link" className="p-0 h-auto" data-testid="link-admin-footer">admin panel</Button></Link> to test events in real-time.</p>
