@@ -4,8 +4,16 @@ import { relations, sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 
 // Database Tables
+export const users = pgTable("users", {
+  id: serial("id").primaryKey(),
+  reachuUserId: varchar("reachu_user_id", { length: 255 }).notNull().unique(),
+  firebaseToken: text("firebase_token"),
+  createdAt: timestamp("created_at").defaultNow().notNull()
+});
+
 export const campaigns = pgTable("campaigns", {
   id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull().references(() => users.id, { onDelete: 'cascade' }),
   name: varchar("name", { length: 255 }).notNull(),
   logo: text("logo"),
   description: text("description"),
@@ -66,7 +74,15 @@ export const campaignComponents = pgTable("campaign_components", {
 });
 
 // Relations
-export const campaignsRelations = relations(campaigns, ({ many }) => ({
+export const usersRelations = relations(users, ({ many }) => ({
+  campaigns: many(campaigns)
+}));
+
+export const campaignsRelations = relations(campaigns, ({ one, many }) => ({
+  user: one(users, {
+    fields: [campaigns.userId],
+    references: [users.id]
+  }),
   events: many(events),
   formStates: many(campaignFormState),
   scheduledComponents: many(scheduledComponents),
@@ -110,6 +126,11 @@ export const campaignComponentsRelations = relations(campaignComponents, ({ one 
 }));
 
 // Insert Schemas
+export const insertUserSchema = createInsertSchema(users).omit({ 
+  id: true,
+  createdAt: true 
+});
+
 export const insertCampaignSchema = createInsertSchema(campaigns).omit({ 
   id: true,
   createdAt: true 
@@ -141,6 +162,8 @@ export const insertCampaignComponentSchema = createInsertSchema(campaignComponen
 });
 
 // Types
+export type User = typeof users.$inferSelect;
+export type InsertUser = z.infer<typeof insertUserSchema>;
 export type Campaign = typeof campaigns.$inferSelect;
 export type InsertCampaign = z.infer<typeof insertCampaignSchema>;
 export type Event = typeof events.$inferSelect;
