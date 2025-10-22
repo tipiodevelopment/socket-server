@@ -2,7 +2,7 @@ import type { Express, Request } from "express";
 import { createServer, type Server } from "http";
 import { WebSocketServer, WebSocket } from "ws";
 import { storage } from "./storage";
-import { webSocketEventSchema, type WebSocketEvent } from "@shared/schema";
+import { webSocketEventSchema, type WebSocketEvent, type InsertScheduledComponent } from "@shared/schema";
 import { randomUUID } from "crypto";
 import {
   ObjectStorageService,
@@ -543,6 +543,42 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.error('Error creating scheduled component:', error);
       res.status(400).json({ 
         message: 'Error creating scheduled component',
+        error: error instanceof Error ? error.message : String(error)
+      });
+    }
+  });
+
+  // Update scheduled component
+  app.patch('/api/scheduled-components/:id', async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const { type, scheduledTime, endTime, data } = req.body;
+
+      // Validate custom component if type is being updated
+      if (type === 'custom_component' && data?.componentId) {
+        const existingComponent = await storage.getComponentById(data.componentId);
+        if (!existingComponent) {
+          return res.status(404).json({ message: 'Component not found' });
+        }
+      }
+
+      const updateData: Partial<InsertScheduledComponent> = {};
+      if (type !== undefined) updateData.type = type;
+      if (scheduledTime !== undefined) updateData.scheduledTime = new Date(scheduledTime);
+      if (endTime !== undefined) updateData.endTime = endTime ? new Date(endTime) : null;
+      if (data !== undefined) updateData.data = data;
+
+      const updated = await storage.updateScheduledComponent(id, updateData);
+
+      if (!updated) {
+        return res.status(404).json({ message: 'Scheduled component not found' });
+      }
+
+      res.json(updated);
+    } catch (error) {
+      console.error('Error updating scheduled component:', error);
+      res.status(500).json({ 
+        message: 'Error updating scheduled component',
         error: error instanceof Error ? error.message : String(error)
       });
     }
