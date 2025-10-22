@@ -133,7 +133,10 @@ export default function ComponentsPage() {
                   <span className="hidden sm:inline">New Component</span>
                 </Button>
               </DialogTrigger>
-              <DialogContent className="sm:max-w-[600px]">
+              <DialogContent 
+                className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto"
+                onInteractOutside={(e) => e.preventDefault()}
+              >
                 <DialogHeader>
                   <DialogTitle>Create New Component</DialogTitle>
                   <DialogDescription>
@@ -142,6 +145,7 @@ export default function ComponentsPage() {
                 </DialogHeader>
                 <ComponentForm
                   onSubmit={(data) => createMutation.mutate(data)}
+                  onCancel={() => setIsCreateOpen(false)}
                   isLoading={createMutation.isPending}
                 />
               </DialogContent>
@@ -231,7 +235,10 @@ export default function ComponentsPage() {
                           Edit
                         </Button>
                       </DialogTrigger>
-                      <DialogContent className="sm:max-w-[600px]">
+                      <DialogContent 
+                        className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto"
+                        onInteractOutside={(e) => e.preventDefault()}
+                      >
                         <DialogHeader>
                           <DialogTitle>Edit Component</DialogTitle>
                           <DialogDescription>
@@ -244,6 +251,7 @@ export default function ComponentsPage() {
                             onSubmit={(data) =>
                               updateMutation.mutate({ id: component.id, data })
                             }
+                            onCancel={() => setEditingComponent(null)}
                             isLoading={updateMutation.isPending}
                           />
                         )}
@@ -277,10 +285,12 @@ export default function ComponentsPage() {
 function ComponentForm({
   component,
   onSubmit,
+  onCancel,
   isLoading,
 }: {
   component?: Component;
   onSubmit: (data: { type: string; name: string; config: any }) => void;
+  onCancel: () => void;
   isLoading: boolean;
 }) {
   const [type, setType] = useState<ComponentType>(component?.type as ComponentType || 'banner');
@@ -537,9 +547,26 @@ function ComponentForm({
 
       {renderConfigFields()}
 
-      <Button type="submit" disabled={isLoading} className="w-full" data-testid="button-submit">
-        {isLoading ? 'Saving...' : component ? 'Update Component' : 'Create Component'}
-      </Button>
+      <div className="flex gap-3 pt-4">
+        <Button
+          type="button"
+          variant="outline"
+          onClick={onCancel}
+          disabled={isLoading}
+          className="flex-1"
+          data-testid="button-cancel"
+        >
+          Cancel
+        </Button>
+        <Button 
+          type="submit" 
+          disabled={isLoading} 
+          className="flex-1" 
+          data-testid="button-submit"
+        >
+          {isLoading ? 'Saving...' : component ? 'Update Component' : 'Create Component'}
+        </Button>
+      </div>
     </form>
   );
 }
