@@ -20,6 +20,7 @@ const componentTypes: { value: ComponentType; label: string }[] = [
   { value: 'carousel_manual', label: 'Manual Carousel' },
   { value: 'product_spotlight', label: 'Product Spotlight' },
   { value: 'offer_badge', label: 'Offer Badge' },
+  { value: 'offer_banner', label: 'Offer Banner (XXL)' },
 ];
 
 export function ComponentLibraryTab() {
@@ -510,6 +511,106 @@ function ComponentForm({
                   <SelectItem value="gold">Gold</SelectItem>
                 </SelectContent>
               </Select>
+            </div>
+          </>
+        );
+      case 'offer_banner':
+        return (
+          <>
+            <ImageUploadWithPreview
+              label="Logo URL"
+              value={config.logoUrl || ''}
+              onChange={(url) => setConfig({ ...config, logoUrl: url })}
+              placeholder="https://example.com/logo.png"
+              testId="input-logoUrl"
+            />
+            <div className="space-y-2">
+              <Label htmlFor="title" className="text-gray-300">Title</Label>
+              <Input
+                id="title"
+                placeholder="Ukens tilbud"
+                value={config.title || ''}
+                onChange={(e) => setConfig({ ...config, title: e.target.value })}
+                data-testid="input-title"
+                className="bg-gray-700 border-0 text-white"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="subtitle" className="text-gray-300">Subtitle (Optional)</Label>
+              <Input
+                id="subtitle"
+                placeholder="Se denne ukes beste tilbud"
+                value={config.subtitle || ''}
+                onChange={(e) => setConfig({ ...config, subtitle: e.target.value })}
+                data-testid="input-subtitle"
+                className="bg-gray-700 border-0 text-white"
+              />
+            </div>
+            <ImageUploadWithPreview
+              label="Background Image URL"
+              value={config.backgroundImageUrl || ''}
+              onChange={(url) => setConfig({ ...config, backgroundImageUrl: url })}
+              placeholder="https://example.com/background.jpg"
+              testId="input-backgroundImageUrl"
+            />
+            <div className="space-y-2">
+              <Label htmlFor="countdownEndDate" className="text-gray-300">Countdown End Date</Label>
+              <Input
+                id="countdownEndDate"
+                type="datetime-local"
+                value={config.countdownEndDate || ''}
+                onChange={(e) => setConfig({ ...config, countdownEndDate: e.target.value })}
+                data-testid="input-countdownEndDate"
+                className="bg-gray-700 border-0 text-white"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="discountBadgeText" className="text-gray-300">Discount Badge Text</Label>
+              <Input
+                id="discountBadgeText"
+                placeholder="Opp til 30%"
+                value={config.discountBadgeText || ''}
+                onChange={(e) => setConfig({ ...config, discountBadgeText: e.target.value })}
+                data-testid="input-discountBadgeText"
+                className="bg-gray-700 border-0 text-white"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="ctaText" className="text-gray-300">Button Text</Label>
+              <Input
+                id="ctaText"
+                placeholder="Se alle tilbud"
+                value={config.ctaText || ''}
+                onChange={(e) => setConfig({ ...config, ctaText: e.target.value })}
+                data-testid="input-ctaText"
+                className="bg-gray-700 border-0 text-white"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="ctaLink" className="text-gray-300">Button Link (Optional)</Label>
+              <Input
+                id="ctaLink"
+                placeholder="https://example.com/offers"
+                value={config.ctaLink || ''}
+                onChange={(e) => setConfig({ ...config, ctaLink: e.target.value })}
+                data-testid="input-ctaLink"
+                className="bg-gray-700 border-0 text-white"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="overlayOpacity" className="text-gray-300">Overlay Opacity (Optional, 0-1)</Label>
+              <Input
+                id="overlayOpacity"
+                type="number"
+                step="0.1"
+                min="0"
+                max="1"
+                placeholder="0.4"
+                value={config.overlayOpacity || ''}
+                onChange={(e) => setConfig({ ...config, overlayOpacity: e.target.value ? parseFloat(e.target.value) : undefined })}
+                data-testid="input-overlayOpacity"
+                className="bg-gray-700 border-0 text-white"
+              />
             </div>
           </>
         );
