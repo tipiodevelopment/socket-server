@@ -244,11 +244,17 @@ export const liveshowTriggerComponentSchema = z.object({
   autoStart: z.boolean().default(true)
 });
 
+export const customComponentSchema = z.object({
+  type: z.literal("custom_component"),
+  componentId: z.string() // References components table
+});
+
 export const scheduledComponentDataSchema = z.union([
   carouselComponentSchema,
   storeViewComponentSchema,
   productSpotlightComponentSchema,
-  liveshowTriggerComponentSchema
+  liveshowTriggerComponentSchema,
+  customComponentSchema
 ]);
 
 // Scheduled Component Types
@@ -256,6 +262,7 @@ export type CarouselComponent = z.infer<typeof carouselComponentSchema>;
 export type StoreViewComponent = z.infer<typeof storeViewComponentSchema>;
 export type ProductSpotlightComponent = z.infer<typeof productSpotlightComponentSchema>;
 export type LiveshowTriggerComponent = z.infer<typeof liveshowTriggerComponentSchema>;
+export type CustomComponent = z.infer<typeof customComponentSchema>;
 export type ScheduledComponentData = z.infer<typeof scheduledComponentDataSchema>;
 
 // Tipio Livestream Schema
