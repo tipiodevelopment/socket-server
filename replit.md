@@ -55,8 +55,9 @@ Preferred communication style: Simple, everyday language.
 
 **Scheduled Components Table:**
 - Linked to `campaignId` (cascade delete).
-- Fields: `component type` (carousel, store_view, product_spotlight, liveshow_trigger), `scheduledTime`, `data` (JSON config), `status` (pending, sent, cancelled).
-- Component Schemas: Carousel, Store View, Product Spotlight, Liveshow Trigger with specific configuration fields.
+- Fields: `component type` (carousel, store_view, product_spotlight, liveshow_trigger, custom_component), `scheduledTime`, `data` (JSON config), `status` (pending, sent, cancelled).
+- Component Schemas: Carousel, Store View, Product Spotlight, Liveshow Trigger, Custom Component with specific configuration fields.
+- Custom Component Type: References components from the library via `componentId`, enabling scheduled activation of reusable components.
 
 **Components Table (Dynamic Components):**
 - Reusable UI component library.
@@ -111,10 +112,11 @@ Preferred communication style: Simple, everyday language.
 **Workflow:**
 1. Developer creates component in library (`/components` page) with type-specific configuration
 2. Developer integrates component ID into iOS app code
-3. Admin adds component to campaign from the library
-4. Admin toggles component ON/OFF in real-time via Advanced Campaign page
-5. iOS app receives WebSocket updates and shows/hides component instantly
-6. Admin can edit component config; changes broadcast to all campaigns using the component
+3. Admin has two activation options:
+   - **Manual Control:** Add component to campaign and toggle ON/OFF in real-time via Dynamic Components tab
+   - **Scheduled Activation:** Schedule component for automatic activation at specific date/time via Scheduled Components tab
+4. iOS app receives WebSocket updates and shows/hides component instantly
+5. Admin can edit component config; changes broadcast to all campaigns using the component
 
 ### Page Structure
 
