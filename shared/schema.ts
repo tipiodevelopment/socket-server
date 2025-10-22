@@ -327,13 +327,26 @@ export const offerBadgeConfigSchema = z.object({
   color: z.enum(["red", "blue", "green", "gold"]).default("red")
 });
 
+export const offerBannerConfigSchema = z.object({
+  logoUrl: z.string().url(),
+  title: z.string(),
+  subtitle: z.string().optional(),
+  backgroundImageUrl: z.string().url(),
+  countdownEndDate: z.string(), // ISO timestamp
+  discountBadgeText: z.string(),
+  ctaText: z.string(),
+  ctaLink: z.string().url().optional(),
+  overlayOpacity: z.number().min(0).max(1).default(0.4).optional()
+});
+
 export const componentConfigSchema = z.union([
   bannerComponentConfigSchema,
   countdownComponentConfigSchema,
   carouselAutoComponentConfigSchema,
   carouselManualComponentConfigSchema,
   productSpotlightConfigSchema,
-  offerBadgeConfigSchema
+  offerBadgeConfigSchema,
+  offerBannerConfigSchema
 ]);
 
 // Dynamic Component Config Types
@@ -343,6 +356,7 @@ export type CarouselAutoComponentConfig = z.infer<typeof carouselAutoComponentCo
 export type CarouselManualComponentConfig = z.infer<typeof carouselManualComponentConfigSchema>;
 export type ProductSpotlightConfig = z.infer<typeof productSpotlightConfigSchema>;
 export type OfferBadgeConfig = z.infer<typeof offerBadgeConfigSchema>;
+export type OfferBannerConfig = z.infer<typeof offerBannerConfigSchema>;
 export type ComponentConfig = z.infer<typeof componentConfigSchema>;
 
 // Component types enum for validation
@@ -352,7 +366,8 @@ export const componentTypes = [
   'carousel_auto',
   'carousel_manual',
   'product_spotlight',
-  'offer_badge'
+  'offer_badge',
+  'offer_banner'
 ] as const;
 
 export type ComponentType = typeof componentTypes[number];
