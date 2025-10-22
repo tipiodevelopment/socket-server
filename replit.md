@@ -115,20 +115,20 @@ Preferred communication style: Simple, everyday language.
 - Validation: `GET /api/components/:id/availability` (check if component is available for activation)
 
 **Workflow:**
-1. Developer creates component in library (`/components` page) with type-specific configuration
+1. Developer creates component in Library tab (within Advanced Campaign page) with type-specific configuration
 2. Developer integrates component ID into iOS app code
 3. Admin has two activation options:
    - **Manual Control:** Add component to campaign and toggle ON/OFF in real-time via Dynamic Components tab
    - **Scheduled Activation:** Schedule component for automatic activation at specific date/time via Scheduled Components tab
 4. iOS app receives WebSocket updates and shows/hides component instantly
-5. Admin can edit component config directly from Dynamic Components tab or Components Library; changes broadcast to all campaigns using the component
+5. Admin can edit component config directly from Library tab; changes broadcast to all campaigns using the component
 
-**Edit Feature:**
-- Edit button (blue pencil icon) available on each dynamic component card
-- Opens dialog with pre-filled form showing current configuration
-- Type-specific forms for all 6 component types (banner, countdown, carousel_auto, carousel_manual, product_spotlight, offer_badge)
-- Changes apply to all campaigns using the component
-- Component cards now display relevant config info (e.g., banner title, countdown title, product ID, channel ID, badge text) for better visibility
+**Component Management:**
+- **Shared ComponentLibraryTab:** Single reusable component used by both Advanced Campaign Library tab and standalone `/components` page
+- **Complete Cache Invalidation:** All mutations (create/update/delete/add/remove) invalidate both `/api/components` and `/api/components/usage` queries for real-time synchronization
+- **Edit Feature:** Edit button (blue pencil icon) on each component card opens pre-filled dialog with type-specific forms
+- **Usage Tracking:** Component cards display usage badges showing which campaigns use each component
+- **Conflict Prevention:** System validates that a component is not active in multiple campaigns simultaneously
 
 ### Page Structure
 
@@ -137,12 +137,13 @@ Preferred communication style: Simple, everyday language.
 - **Campaign Admin Page (`/campaign/:id/admin`):** Campaign-specific dashboard for creating and broadcasting various event types (products, polls, contests). Features form state persistence, poll options with images, logo configuration (URL/upload), real-time event log, and connection status.
 - **Campaign Viewer Page (`/campaign/:name/:id`):** Real-time event display for viewers, with notifications and event history.
 - **Legacy Admin (`/admin`) & Viewer (`/viewer`) Pages:** Backward-compatible pages using campaign ID 0.
-- **Advanced Campaign Page (`/campaign/:id/advanced`):** Tabbed interface with four tabs:
+- **Advanced Campaign Page (`/campaign/:id/advanced`):** Tabbed interface with five tabs:
   - **Overview**: Unified dashboard with statistics cards (scheduled count, dynamic count, active count, upcoming count) and visual overview of all scheduled and dynamic components with intelligent status indicators (upcoming, active, ended, cancelled, completed for scheduled; active/inactive for dynamic).
   - **Integrations**: Reachu.io and Tipio.no integration configuration.
-  - **Scheduled Components**: Timeline view with full edit capability for automated components.
-  - **Dynamic Components**: Real-time component management with toggle controls.
-- **Components Library Page (`/components`):** Central repository for reusable UI components. Create, edit, delete components with type-specific forms (banner, countdown, carousel_auto, carousel_manual, product_spotlight, offer_badge). Display iOS integration code snippets and usage status across campaigns.
+  - **Scheduled Components**: Timeline view with full edit capability for automated components. Helper text references Library tab for component creation.
+  - **Dynamic Components**: Real-time component management with toggle controls. Helper text references Library tab for component creation.
+  - **Library**: Integrated component library for creating, editing, and managing reusable UI components. Uses shared ComponentLibraryTab with 5-column grid layout, type-specific forms, iOS integration code snippets, and usage tracking across campaigns.
+- **Components Library Page (`/components`):** Standalone page for component management using the same shared ComponentLibraryTab as Advanced Campaign Library tab. Provides identical functionality with header and back button for external access.
 - **Docs Page (`/docs`):** Integration documentation with code examples.
 
 ## External Dependencies
