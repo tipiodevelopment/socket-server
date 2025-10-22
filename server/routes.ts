@@ -789,6 +789,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Get active components for a campaign (for iOS app initial state)
+  app.get('/api/campaigns/:id/active-components', async (req, res) => {
+    try {
+      const campaignId = parseInt(req.params.id);
+      const allComponents = await storage.getCampaignComponents(campaignId);
+      
+      // Filter only active components and format for iOS consumption
+      const activeComponents = allComponents
+        .filter(cc => cc.status === 'active')
+        .map(cc => ({
+          componentId: cc.component.id,
+          type: cc.component.type,
+          name: cc.component.name,
+          config: cc.component.config,
+          status: cc.status,
+          activatedAt: cc.activatedAt
+        }));
+      
+      res.json(activeComponents);
+    } catch (error) {
+      console.error('Error fetching active campaign components:', error);
+      res.status(500).json({ message: 'Error fetching active campaign components' });
+    }
+  });
+
   // Add component to campaign
   app.post('/api/campaigns/:id/components', async (req, res) => {
     try {
