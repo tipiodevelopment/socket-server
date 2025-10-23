@@ -2,7 +2,7 @@
 
 ## Overview
 
-This project is a real-time event broadcasting application using React, Express, and WebSockets. It enables multi-campaign management, where each campaign features isolated WebSocket channels, events, and configurations stored in PostgreSQL. Administrators can create campaigns and broadcast various events (products, polls, contests) to viewers in real-time. The system provides a modern full-stack TypeScript environment with a Vite-powered React frontend, an Express backend, WebSocket room-based communication, and a UI component library based on shadcn/ui.
+This project is a real-time event broadcasting application designed for multi-campaign management. It allows administrators to create and manage campaigns, broadcasting various real-time events (products, polls, contests) to viewers. The system features a modern full-stack TypeScript environment with a React frontend (Vite), an Express backend, and WebSocket-based communication. Key capabilities include isolated WebSocket channels per campaign, persistent configuration and event storage in PostgreSQL, and a dynamic UI component library built with shadcn/ui. The project aims to provide a robust, scalable solution for interactive real-time audience engagement.
 
 ## User Preferences
 
@@ -10,187 +10,80 @@ Preferred communication style: Simple, everyday language.
 
 ## System Architecture
 
-### Frontend Architecture
+### UI/UX Decisions
+The frontend utilizes React 18 with TypeScript and Vite, styled with Tailwind CSS, and uses Radix UI primitives with shadcn/ui for components. The design aesthetic features a premium gradient background, glass morphism, vibrant blue accents, Inter font, and a borderless design. It is fully responsive across mobile and desktop breakpoints (320px - 768px), adapting layouts and interactive elements for optimal viewing and touch interactions.
 
-**Technology Stack:**
-- **Framework:** React 18 with TypeScript
-- **Build Tool:** Vite
-- **Routing:** Wouter
-- **State Management:** TanStack Query (React Query)
-- **UI Components:** Radix UI primitives with shadcn/ui
-- **Styling:** Tailwind CSS with CSS variables
-
-**Design Decisions:**
-- **Aesthetic:** Premium gradient background, glass morphism for components, vibrant blue accents, Inter font family, and borderless design.
-- **Responsive Design:** Full mobile responsiveness (320px - 768px) with Tailwind breakpoints (sm:, md:, lg:). Headers, grids, buttons, and typography adapt to screen size. Flex layouts stack on mobile, grids collapse to single columns, and interactive elements expand to full width for better touch targets.
-- **Real-time:** Custom `useWebSocket` hook for connection management and reconnection logic.
-- **Type Safety:** Shared Zod schemas for type-safe event structures.
-- **Localization:** Complete English translation.
+### Technical Implementations
+**Frontend:**
+- **State Management:** TanStack Query.
+- **Routing:** Wouter.
+- **Real-time:** Custom `useWebSocket` hook handles connection and reconnection logic.
+- **Type Safety:** Shared Zod schemas ensure type-safe event structures.
+- **Localization:** English translation.
 - **Navigation:** Back buttons on all sub-pages.
 
-### Backend Architecture
-
-**Technology Stack:**
-- **Runtime:** Node.js with Express.js
-- **WebSocket:** `ws` library
-- **Type Safety:** TypeScript
-- **ORM:** Drizzle ORM
-- **Build:** esbuild
-
-**Design Decisions:**
-- **Database:** PostgreSQL with Drizzle ORM for campaign and event persistence.
-- **WebSocket Architecture:** Each campaign has its own isolated WebSocket channel for maximum efficiency:
-  - **URL Pattern:** `/ws/:campaignId` (e.g., `/ws/10`, `/ws/25`, `/ws/123`)
-  - **Isolation:** Clients connected to `/ws/10` only receive events from campaign 10
-  - **Efficiency:** Events are broadcast only to relevant clients, not all connected users
-  - **Data Structure:** Server maintains a `Map<campaignId, Set<WebSocket>>` for organized client grouping
-  - **Legacy Support:** `/ws` endpoint (campaign ID 0) maintained for backward compatibility
-- **Event Broadcasting:** All events (products, polls, contests, component updates) broadcast only to clients within the same campaign room via `broadcastToCampaign(campaignId, message)` function.
+**Backend:**
+- **Runtime:** Node.js with Express.js.
+- **WebSockets:** `ws` library for real-time communication.
+- **Database:** PostgreSQL with Drizzle ORM for data persistence.
+- **Build:** esbuild.
+- **URL Normalization:** Object storage URLs are automatically converted to absolute URLs for external client compatibility, detecting the base URL from environment variables or the first HTTP request.
 - **Logging:** Custom middleware for API request logging.
-- **Validation:** Server-side validation for `campaignId` before broadcasting.
-- **Integration APIs:** Mock endpoint for Reachu.io channels, Tipio livestream data stored as JSON.
+- **Validation:** Server-side validation for campaign IDs.
 
-### Database Schema
+### Feature Specifications
+- **Campaign Management:** Administrators can create, manage, and delete campaigns. Each campaign can have associated integrations (Reachu.io, Tipio). Campaigns have a lifecycle defined by `startDate` and `endDate`.
+- **WebSocket Architecture:** Each campaign (`/ws/:campaignId`) has an isolated WebSocket channel, ensuring events are broadcast only to relevant clients, managed by a `Map<campaignId, Set<WebSocket>>`.
+- **Dynamic Component Management:**
+    - A library of reusable UI components (e.g., Banner, Countdown, Carousel, Product Spotlight, Offer Badge, Offer Banner) configurable via a REST API.
+    - Components can be activated/deactivated manually or scheduled for automatic display within specific campaigns.
+    - Real-time updates via WebSockets (`component_status_changed`, `component_config_updated`, `campaign_ended`) for dynamic display in client applications (e.g., iOS).
+    - Prevents a component from being active in multiple campaigns simultaneously.
+    - Integration documentation with Swift code examples is provided for client-side implementation.
+- **Event Broadcasting:** Supports Product, Poll, and Contest events, validated by Zod schemas, stored in PostgreSQL, and broadcast to campaign-specific WebSocket clients in real-time. Historical events are also retrievable.
 
-**Users Table:**
-- Fields: `id` (serial), `reachuUserId` (unique), `firebaseToken` (nullable), `createdAt`.
-- Purpose: Multi-user architecture linking Reachu user IDs to internal users.
-- Each user can manage multiple campaigns.
-
-**Campaigns Table:**
-- Basic fields: `id`, `name`, `userId` (foreign key to users), `logo`, `description`, `createdAt`.
-- Scheduling: `startDate`, `endDate` (nullable = runs indefinitely).
-- Integrations: `reachuChannelId`, `reachuApiKey`, `tipioLiveshowId`, `tipioLivestreamData` (JSON object for Tipio configuration).
-- **Campaign Lifecycle:** When a campaign reaches its `endDate`, all components (dynamic, scheduled, liveshow) automatically stop showing. The `isCampaignActive()` helper validates campaign status before returning active components or broadcasting events.
-
-**Scheduled Components Table:**
-- Linked to `campaignId` (cascade delete).
-- Fields: `component type` (carousel, store_view, product_spotlight, liveshow_trigger, custom_component), `scheduledTime`, `endTime` (optional), `data` (JSON config), `status` (pending, sent, cancelled).
-- Component Schemas: Carousel, Store View, Product Spotlight, Liveshow Trigger, Custom Component with specific configuration fields.
-- Custom Component Type: References components from the library via `componentId`, enabling scheduled activation of reusable components.
-- End Time Support: Components can have optional end time specified as:
-  - Specific date/time for precise control
-  - Duration (days + hours) with automatic calculation
-  - No end time (runs until manually stopped)
-
-**Components Table (Dynamic Components):**
-- Reusable UI component library.
-- Fields: `id` (UUID), `type` (banner, countdown, carousel_auto, carousel_manual, product_spotlight, offer_badge, offer_banner), `name`, `config` (JSON), `createdAt`.
-- Purpose: Store reusable component configurations that can be shared across multiple campaigns.
-
-**Campaign Components Table:**
-- Links components to campaigns with real-time control.
-- Fields: `id`, `campaignId`, `componentId`, `status` (active, inactive), `activatedAt`, `updatedAt`.
-- Purpose: Enable dynamic activation/deactivation of components per campaign via WebSocket.
-- Validation: Prevents same component from being active in multiple campaigns simultaneously.
-
-### Data Flow & Event System
-
-**Event Types:**
-- Product Events (with `productId`, `name`, `pricing`, `images`)
-- Poll Events (with multiple choices, optional images)
-- Contest Events (with prizes, participation limits)
-
-**Schema Validation:** Zod schemas in `shared/schema.ts` for runtime and compile-time validation.
-
-**Event Lifecycle:** Admin creates event -> Server validates and stores in PostgreSQL -> Event broadcast to WebSocket clients in real-time.
-
-**Historical Events:** Persisted events retrieved via `/api/events?campaignId=X`, merged with real-time events, with duplicate prevention.
-
-### Dynamic Component Management System
-
-**Architecture:**
-- **Hybrid API + WebSocket:** REST API for configuration and CRUD operations, WebSocket for real-time status toggles and config updates.
-- **Reusability:** Components created once in the library, reusable across multiple campaigns.
-- **Conflict Prevention:** System validates that a component is not active in multiple campaigns simultaneously.
-- **iOS Integration:** Each component has a unique ID that developers integrate into their iOS apps using code snippets like `ReachuComponent(componentId: "cmp_abc123")`.
-
-**Component Types:**
-1. **Banner:** Promotional banner with image, title, subtitle, CTA button and link.
-2. **Countdown:** Timer displaying time remaining until a specified end date.
-3. **Carousel Auto:** Automatic product carousel fed from a Reachu channel.
-4. **Carousel Manual:** Product carousel with manually selected product IDs.
-5. **Product Spotlight:** Highlight a specific product with optional text.
-6. **Offer Badge:** Display promotional badge with customizable color and text.
-7. **Offer Banner:** Premium promotional banner with logo, title, subtitle, background image, countdown timer, discount badge, CTA button, and overlay opacity (9 config fields total).
-
-**WebSocket Events:**
-- `component_status_changed`: Broadcast when component is activated/deactivated in a campaign.
-- `component_config_updated`: Broadcast when component configuration is edited.
-- `campaign_ended`: Broadcast when a campaign reaches its `endDate`, instructing iOS apps to hide all components immediately.
-
-**API Endpoints:**
-- Users: `GET/POST /api/users`, `GET /api/users/:id`, `GET /api/users/reachu/:reachuUserId`, `PATCH /api/users/:id`
-- Campaigns: `GET/POST /api/campaigns`, `GET/PUT/DELETE /api/campaigns/:id`
-- Scheduled Components: `GET /api/campaigns/:id/scheduled-components`, `POST /api/campaigns/:id/scheduled-components`, `PATCH /api/scheduled-components/:id`, `DELETE /api/scheduled-components/:id`
-- Component Library: `GET/POST /api/components`, `PATCH/DELETE /api/components/:id`
-- Campaign Components: `GET/POST /api/campaigns/:id/components`, `PATCH/DELETE /api/campaigns/:id/components/:cmpId`
-- Active Components: `GET /api/campaigns/:id/active-components` (fetch all active components with full config for iOS app initial state)
-- Validation: `GET /api/components/:id/availability` (check if component is available for activation)
-
-**Workflow:**
-1. Developer creates component in Library tab (within Advanced Campaign page) with type-specific configuration
-2. Developer integrates component ID into iOS app code
-3. Admin has two activation options:
-   - **Manual Control:** Add component to campaign and toggle ON/OFF in real-time via Dynamic Components tab
-   - **Scheduled Activation:** Schedule component for automatic activation at specific date/time via Scheduled Components tab
-4. iOS app receives WebSocket updates and shows/hides component instantly
-5. Admin can edit component config directly from Library tab; changes broadcast to all campaigns using the component
-
-**Component Management:**
-- **Shared ComponentLibraryTab:** Single reusable component used by both Advanced Campaign Library tab and standalone `/components` page
-- **Complete Cache Invalidation:** All mutations (create/update/delete/add/remove) invalidate both `/api/components` and `/api/components/usage` queries for real-time synchronization
-- **Edit Feature:** Edit button (blue pencil icon) on each component card opens pre-filled dialog with type-specific forms
-- **Usage Tracking:** Component cards display usage badges showing which campaigns use each component
-- **Conflict Prevention:** System validates that a component is not active in multiple campaigns simultaneously
-
-### Page Structure
-
-- **Campaigns Page (`/` or `/campaigns`):** Dashboard for managing campaigns, creating new ones, deleting existing campaigns (with confirmation dialog), and accessing admin/advanced settings and component library.
-- **New Campaign Page (`/campaigns/new`):** Form for creating new campaigns with basic info, optional Reachu.io integration, and optional Tipio Livestream integration.
-- **Campaign Admin Page (`/campaign/:id/admin`):** Campaign-specific dashboard for creating and broadcasting various event types (products, polls, contests). Features form state persistence, poll options with images, logo configuration (URL/upload), real-time event log, and connection status.
-- **Campaign Viewer Page (`/campaign/:name/:id`):** Real-time event display for viewers, with notifications and event history.
-- **Legacy Admin (`/admin`) & Viewer (`/viewer`) Pages:** Backward-compatible pages using campaign ID 0.
-- **Advanced Campaign Page (`/campaign/:id/advanced`):** Tabbed interface with five tabs:
-  - **Overview**: Unified dashboard with statistics cards (scheduled count, dynamic count, active count, upcoming count) and visual overview of all scheduled and dynamic components with intelligent status indicators (upcoming, active, ended, cancelled, completed for scheduled; active/inactive for dynamic).
-  - **Integrations**: Reachu.io and Tipio.no integration configuration.
-  - **Scheduled Components**: Timeline view with full edit capability for automated components. Helper text references Library tab for component creation.
-  - **Dynamic Components**: Real-time component management with toggle controls. Helper text references Library tab for component creation.
-  - **Library**: Integrated component library for creating, editing, and managing reusable UI components. Uses shared ComponentLibraryTab with 5-column grid layout, type-specific forms, iOS integration code snippets, and usage tracking across campaigns.
-- **Components Library Page (`/components`):** Standalone page for component management using the same shared ComponentLibraryTab as Advanced Campaign Library tab. Provides identical functionality with header and back button for external access.
-- **Docs Page (`/docs`):** Integration documentation with Swift code examples, including complete Dynamic Components section with GET /api/campaigns/:id/active-components endpoint details, WebSocket events (component_status_changed, component_config_updated), offer_banner JSON structure example, and Swift integration code.
+### System Design Choices
+- **Database Schema:**
+    - `Users`: Stores user information (id, reachuUserId, firebaseToken) for multi-user architecture.
+    - `Campaigns`: Stores campaign details (name, user, logo, description, scheduling, integration IDs).
+    - `Scheduled Components`: Manages automated component display with `component type`, `scheduledTime`, `endTime`, `data` (JSON config), and `status`. Supports various component types and flexible end-time configurations.
+    - `Components`: Reusable UI component library with `id`, `type`, `name`, and `config` (JSON).
+    - `Campaign Components`: Links `Components` to `Campaigns` for real-time activation/deactivation.
+- **Page Structure:**
+    - **Campaigns Page:** Dashboard for campaign administration.
+    - **New Campaign Page:** Form for campaign creation.
+    - **Campaign Admin Page:** Campaign-specific dashboard for event broadcasting.
+    - **Campaign Viewer Page:** Real-time event display for end-users.
+    - **Advanced Campaign Page:** Tabbed interface for Overview, Integrations, Scheduled Components (timeline view), Dynamic Components (real-time toggle controls), and Library (integrated component management).
+    - **Components Library Page:** Standalone page for managing reusable components.
+    - **Docs Page:** Integration documentation with Swift code examples.
 
 ## External Dependencies
 
 ### UI & Styling
 - **Radix UI:** Accessible component primitives.
 - **Tailwind CSS:** Utility-first CSS framework.
-- **class-variance-authority & clsx:** Dynamic styling utilities.
+- **class-variance-authority & clsx:** Dynamic styling.
 - **Lucide React:** Icon library.
 
 ### Data & State Management
 - **TanStack Query:** Server state management.
-- **React Hook Form:** Form state management with Zod resolvers.
+- **React Hook Form:** Form state management.
 - **Zod:** Schema validation.
-- **Drizzle ORM & Drizzle Zod:** Database ORM and schema integration.
+- **Drizzle ORM & Drizzle Zod:** PostgreSQL ORM and schema integration.
 
 ### Real-time Communication
-- **ws (WebSocket):** WebSocket server.
-- **Custom WebSocket Hook:** Client-side WebSocket management.
+- **ws:** WebSocket server library.
 
 ### File Upload & Object Storage
-- **Uppy:** File uploader with `uppy/react` and `uppy/aws-s3` for direct cloud storage uploads.
+- **Uppy:** File uploader with `uppy/react` and `uppy/aws-s3`.
 - **Replit Object Storage:** Built-in cloud storage (via `@google-cloud/storage`).
-- **ObjectStorageService:** Custom service for upload URL generation and file serving.
 
 ### Development Tools
 - **Vite:** Frontend development and build.
 - **esbuild:** Backend bundling.
 - **tsx:** TypeScript execution for development.
-- **Replit Plugins:** Development banner, cartographer, runtime error overlay.
 
 ### Database
-- **Neon Serverless PostgreSQL:** Configured via `@neondatabase/serverless`.
+- **Neon Serverless PostgreSQL:** Configured via `@neondatabase/serverless` for campaign and event storage.
 - **Drizzle Kit:** Migrations and schema management.
-- **Connection:** PostgreSQL via `DATABASE_URL` environment variable.
-- **Note:** PostgreSQL is actively used for campaign and event storage.

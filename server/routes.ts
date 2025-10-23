@@ -8,7 +8,7 @@ import {
   ObjectStorageService,
   ObjectNotFoundError,
 } from "./objectStorage";
-import { isCampaignActive } from "./utils";
+import { isCampaignActive, normalizeUrls } from "./utils";
 
 // Helper function to convert relative paths to absolute URLs
 function toAbsoluteUrl(pathOrUrl: string | undefined, req: Request): string | undefined {
@@ -883,7 +883,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
               id: component.id,
               type: component.type,
               name: component.name,
-              config: updates.config || component.config
+              config: normalizeUrls(updates.config || component.config, req.protocol, req.get('host')) // Normalize URLs to absolute
             }
           }));
         }
@@ -946,7 +946,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           componentId: cc.component.id,
           type: cc.component.type,
           name: cc.component.name,
-          config: cc.component.config,
+          config: normalizeUrls(cc.component.config, req.protocol, req.get('host')), // Normalize URLs to absolute
           status: cc.status,
           activatedAt: cc.activatedAt
         }));
@@ -1036,7 +1036,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             id: fullComponent.id,
             type: fullComponent.type,
             name: fullComponent.name,
-            config: fullComponent.config
+            config: normalizeUrls(fullComponent.config, req.protocol, req.get('host')) // Normalize URLs to absolute
           } : null
         }));
       }
