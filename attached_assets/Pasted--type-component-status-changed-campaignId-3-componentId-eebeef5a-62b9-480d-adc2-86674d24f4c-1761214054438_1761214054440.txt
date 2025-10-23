@@ -1,0 +1,20 @@
+{"type":"component_status_changed","campaignId":3,"componentId":"eebeef5a-62b9-480d-adc2-86674d24f4c2","status":"active","component":{"id":"eebeef5a-62b9-480d-adc2-86674d24f4c2","type":"product_spotlight","name":"test1","config":{"productId":"408841","highlightText":"Feature Product"}}}
+❌ [ComponentManager] Failed to decode WebSocket message
+📨 [WebSocketManager] Received message: {"type":"component_status_changed","campaignId":3,"componentId":"7c4284e9-f7cd-447c-ac9b-beaf126ed354","status":"active","component":{"id":"7c4284e9-f7cd-447c-ac9b-beaf126ed354","type":"banner","name":"XXL-Banner","config":{"imageUrl":"/objects/uploads/186726bc-bc72-4da0-9561-8d29b7c0a549","title":"Test Updated Title x5YI","subtitle":"Se denne ukes beste tilbud","ctaText":"Se alle tilbud"}}}
+❌ [ComponentManager] Failed to decode WebSocket message
+📨 [WebSocketManager] Received message: {"type":"component_status_changed","campaignId":3,"componentId":"7c4284e9-f7cd-447c-ac9b-beaf126ed354","status":"inactive","component":{"id":"7c4284e9-f7cd-447c-ac9b-beaf126ed354","type":"banner","name":"XXL-Banner","config":{"imageUrl":"/objects/uploads/186726bc-bc72-4da0-9561-8d29b7c0a549","title":"Test Updated Title x5YI","subtitle":"Se denne ukes beste tilbud","ctaText":"Se alle tilbud"}}}
+❌ [ComponentManager] Failed to decode WebSocket message
+Task <7493C5C0-6056-47F5-B4AC-CF56793EA128>.<2> finished with error [57] Error Domain=NSPOSIXErrorDomain Code=57 "Socket is not connected" UserInfo={NSErrorFailingURLStringKey=https://event-streamer-angelo100.replit.app/ws/3, NSErrorFailingURLKey=https://event-streamer-angelo100.replit.app/ws/3, _NSURLErrorRelatedURLSessionTaskErrorKey=(
+    "LocalWebSocketTask <7493C5C0-6056-47F5-B4AC-CF56793EA128>.<2>"
+), _NSURLErrorFailingURLSessionTaskErrorKey=LocalWebSocketTask <7493C5C0-6056-47F5-B4AC-CF56793EA128>.<2>}
+❌ [WebSocketManager] WebSocket error: Error Domain=NSPOSIXErrorDomain Code=57 "Socket is not connected" UserInfo={NSErrorFailingURLStringKey=https://event-streamer-angelo100.replit.app/ws/3, NSErrorFailingURLKey=https://event-streamer-angelo100.replit.app/ws/3}
+🔌 [WebSocketManager] Connected to campaign 3
+Task <D4A811D0-CE40-4A49-83BE-90885C3E8290>.<3> finished with error [57] Error Domain=NSPOSIXErrorDomain Code=57 "Socket is not connected" UserInfo={NSErrorFailingURLStringKey=https://event-streamer-angelo100.replit.app/ws/3, NSErrorFailingURLKey=https://event-streamer-angelo100.replit.app/ws/3, _NSURLErrorRelatedURLSessionTaskErrorKey=(
+    "LocalWebSocketTask <D4A811D0-CE40-4A49-83BE-90885C3E8290>.<3>"
+), _NSURLErrorFailingURLSessionTaskErrorKey=LocalWebSocketTask <D4A811D0-CE40-4A49-83BE-90885C3E8290>.<3>}
+❌ [WebSocketManager] WebSocket error: Error Domain=NSPOSIXErrorDomain Code=57 "Socket is not connected" UserInfo={NSErrorFailingURLStringKey=https://event-streamer-angelo100.replit.app/ws/3, NSErrorFailingURLKey=https://event-streamer-angelo100.replit.app/ws/3}
+🔌 [WebSocketManager] Connected to campaign 3
+❌ [WebSocketManager] WebSocket error: Error Domain=NSPOSIXErrorDomain Code=57 "Socket is not connected" UserInfo={NSErrorFailingURLStringKey=https://event-streamer-angelo100.replit.app/ws/3, NSErrorFailingURLKey=https://event-streamer-angelo100.replit.app/ws/3}
+Task <14CEAE71-847B-4A3D-9A3F-F8BA9ED0A8F7>.<4> finished with error [57] Error Domain=NSPOSIXErrorDomain Code=57 "Socket is not connected" UserInfo={NSErrorFailingURLStringKey=https://event-streamer-angelo100.replit.app/ws/3, NSErrorFailingURLKey=https://event-streamer-angelo100.replit.app/ws/3, _NSURLErrorRelatedURLSessionTaskErrorKey=(
+    "LocalWebSocketTask <14CEAE71-847B-4A3D-9A3F-F8BA9ED0A8F7>.<4>"
+), _NSURLErrorFailingURLSessionTaskErrorKey=LocalWebSocketTask <14CEAE71-847B-4A3D-9A3F-F8BA9ED0A8F7>.<4>}
