@@ -103,12 +103,19 @@ jobs:
             echo "AZ_RG_PROD=${{ secrets.AZ_RG_PROD }}" >> $GITHUB_ENV
           fi
 
-      - name: Azure CLI Login
-        uses: azure/login@v2
+      - name: Azure CLI Login Manual
+        uses: azure/cli@v2
         with:
-          creds: '${{ toJSON({ "clientId": env.SV_APP_ID_PROD, "clientSecret": env.SV_PASSWORD_PROD, "tenantId": env.SV_TENANT_ID_PROD}) }}'
-          subscription-id: ${{ secrets.SV_SUBSCRIPTION_ID }}
-          auth-type: service_principal
+          inlineScript: |
+            # Usa az login con los Service Principal credentials.
+            # Asegúrate de que las variables ya estén cargadas en el entorno global.
+            az login --service-principal \
+                     --username "${{ env.SV_APP_ID_PROD }}" \
+                     --password "${{ env.SV_PASSWORD_PROD }}" \
+                     --tenant "${{ env.SV_TENANT_ID_PROD }}"
+            
+            # (Opcional) Establece la suscripción por defecto.
+            az account set --subscription "${{ secrets.SV_SUBSCRIPTION_ID }}"
 
       - name: Configure AKS
         run: |
