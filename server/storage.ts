@@ -50,6 +50,7 @@ export interface IStorage {
   getCampaignComponents(campaignId: number): Promise<Array<CampaignComponent & { component: Component }>>;
   addComponentToCampaign(campaignComponent: InsertCampaignComponent): Promise<CampaignComponent>;
   updateCampaignComponentStatus(campaignId: number, componentId: string, status: 'active' | 'inactive'): Promise<CampaignComponent | undefined>;
+  updateCampaignComponentConfig(campaignId: number, componentId: string, customConfig: any): Promise<CampaignComponent | undefined>;
   removeComponentFromCampaign(campaignId: number, componentId: string): Promise<void>;
   validateComponentAvailability(componentId: string, campaignId?: number): Promise<{ available: boolean; activeCampaignId?: number }>;
 }
@@ -314,6 +315,22 @@ export class MemStorage implements IStorage {
     
     const [updated] = await db.update(campaignComponents)
       .set(updateData)
+      .where(
+        and(
+          eq(campaignComponents.campaignId, campaignId),
+          eq(campaignComponents.componentId, componentId)
+        )
+      )
+      .returning();
+    return updated || undefined;
+  }
+
+  async updateCampaignComponentConfig(campaignId: number, componentId: string, customConfig: any): Promise<CampaignComponent | undefined> {
+    const [updated] = await db.update(campaignComponents)
+      .set({ 
+        customConfig,
+        updatedAt: new Date()
+      })
       .where(
         and(
           eq(campaignComponents.campaignId, campaignId),

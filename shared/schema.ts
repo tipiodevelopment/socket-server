@@ -63,12 +63,13 @@ export const components = pgTable("components", {
   createdAt: timestamp("created_at").defaultNow().notNull()
 });
 
-// Campaign Components - Links components to campaigns with status
+// Campaign Components - Links components to campaigns with status and custom config
 export const campaignComponents = pgTable("campaign_components", {
   id: serial("id").primaryKey(),
   campaignId: integer("campaign_id").notNull().references(() => campaigns.id, { onDelete: 'cascade' }),
   componentId: varchar("component_id", { length: 50 }).notNull().references(() => components.id, { onDelete: 'cascade' }),
   status: varchar("status", { length: 20 }).notNull().default('inactive'), // active, inactive
+  customConfig: json("custom_config"), // Campaign-specific config override (optional)
   activatedAt: timestamp("activated_at"),
   updatedAt: timestamp("updated_at").defaultNow().notNull()
 });
