@@ -114,6 +114,8 @@ jobs:
             # 2. AKS CONFIG (genera el kubeconfig dentro del contenedor)
             # Nota: Necesitas que el AZ CLI tenga las variables AZ_RG_PROD y AZ_KUB_NAME_PROD
             az aks get-credentials -g $AZ_RG_PROD -n $AZ_KUB_NAME_PROD --overwrite-existing --admin
+
+            sudo apt-get update && sudo apt-get install -y tar
             
             # 3. HELM INSTALL (ejecutado dentro del contenedor)
             curl -L https://get.helm.sh/helm-v3.13.1-linux-amd64.tar.gz -o helm.tar.gz
