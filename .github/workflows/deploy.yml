@@ -109,6 +109,7 @@ jobs:
           inlineScript: |
             tdnf makecache
             tdnf install -y tar
+            tdnf install -y kubernetes-client
 
             az login --service-principal --username "${{ env.SV_APP_ID_PROD }}" --password "${{ env.SV_PASSWORD_PROD }}" --tenant "${{ env.SV_TENANT_ID_PROD }}"
             az account set --subscription "${{ secrets.SV_SUBSCRIPTION_ID }}"
