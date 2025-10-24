@@ -38,6 +38,11 @@ The frontend utilizes React 18 with TypeScript and Vite, styled with Tailwind CS
     - A library of reusable UI components (e.g., Banner, Countdown, Carousel, Product Spotlight, Offer Badge, Offer Banner) configurable via a REST API.
     - Components can be activated/deactivated manually or scheduled for automatic display within specific campaigns.
     - **Campaign-Specific Customization:** Each campaign can personalize component configurations (texts, images, links) without affecting the original template or other campaigns. Custom configurations are stored per campaign in `campaignComponents.customConfig`.
+        - **UI Controls:** Purple "Customize" button (pencil icon) opens a dialog with all configurable fields
+        - **Visual Indicators:** "Customized" badge (purple) appears on components with custom configurations
+        - **Revert Functionality:** "Revert to Original" button sets customConfig to null, restoring template defaults
+        - **Field Pre-population:** Dialog pre-fills with current values (customConfig || template.config)
+        - **Immediate Updates:** Changes reflect in UI immediately after successful mutation
     - Real-time updates via WebSockets (`component_status_changed`, `component_config_updated`, `campaign_ended`) for dynamic display in client applications (e.g., iOS).
     - Prevents a component from being active in multiple campaigns simultaneously.
     - **Deeplink Support:** Components with CTAs (Banner, Offer Banner) support optional deeplinks for in-app navigation. When specified, deeplinks take priority over web links, enabling seamless transitions to specific app screens (e.g., `myapp://offers/weekly`). Supports both custom URL schemes and universal links.
@@ -50,7 +55,7 @@ The frontend utilizes React 18 with TypeScript and Vite, styled with Tailwind CS
     - `Campaigns`: Stores campaign details (name, user, logo, description, scheduling, integration IDs).
     - `Scheduled Components`: Manages automated component display with `component type`, `scheduledTime`, `endTime`, `data` (JSON config), and `status`. Supports various component types and flexible end-time configurations.
     - `Components`: Reusable UI component library with `id`, `type`, `name`, and `config` (JSON).
-    - `Campaign Components`: Links `Components` to `Campaigns` for real-time activation/deactivation.
+    - `Campaign Components`: Links `Components` to `Campaigns` for real-time activation/deactivation. Includes `customConfig` (JSON, nullable) for campaign-specific configuration overrides. When null, uses the template's default config; when set, takes priority over template config.
 - **Page Structure:**
     - **Campaigns Page:** Dashboard for campaign administration.
     - **New Campaign Page:** Form for campaign creation.
