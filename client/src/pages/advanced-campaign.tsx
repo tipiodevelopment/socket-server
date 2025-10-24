@@ -566,6 +566,7 @@ function DynamicComponentsTab({
   const { toast } = useToast();
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [selectedComponentId, setSelectedComponentId] = useState<string>('');
+  const [editingConfigFor, setEditingConfigFor] = useState<(CampaignComponent & { component: Component }) | null>(null);
 
   const addComponentMutation = useMutation({
     mutationFn: async (componentId: string) => {
@@ -608,6 +609,27 @@ function DynamicComponentsTab({
       toast({
         title: 'Error',
         description: error.message || 'Failed to update component status.',
+        variant: 'destructive',
+      });
+    },
+  });
+
+  const updateConfigMutation = useMutation({
+    mutationFn: async ({ componentId, customConfig }: { componentId: string; customConfig: any }) => {
+      return await apiRequest('PATCH', `/api/campaigns/${campaignId}/components/${componentId}/config`, { customConfig });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/campaigns', campaignId, 'components'] });
+      setEditingConfigFor(null);
+      toast({
+        title: 'Configuration Updated',
+        description: 'The component configuration has been personalized for this campaign.',
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: 'Error',
+        description: error.message || 'Failed to update component configuration.',
         variant: 'destructive',
       });
     },
@@ -746,40 +768,67 @@ function DynamicComponentsTab({
                     <Badge className="bg-blue-600 border-0 text-xs" data-testid={`type-${cc.id}`}>
                       {getComponentTypeLabel(cc.component.type)}
                     </Badge>
+                    {cc.customConfig !== null && cc.customConfig !== undefined && (
+                      <Badge className="bg-purple-600 border-0 text-xs" data-testid={`badge-custom-${cc.id}`}>
+                        Customized
+                      </Badge>
+                    )}
                   </div>
                   <div className="space-y-1">
-                    {/* Show relevant config info based on component type */}
-                    {cc.component.type === 'banner' && cc.component.config && (cc.component.config as any).title && (
-                      <div className="text-xs sm:text-sm text-gray-300" data-testid={`config-title-${cc.id}`}>
-                        Title: {(cc.component.config as any).title}
-                      </div>
-                    )}
-                    {cc.component.type === 'countdown' && cc.component.config && (cc.component.config as any).title && (
-                      <div className="text-xs sm:text-sm text-gray-300">
-                        Title: {(cc.component.config as any).title}
-                      </div>
-                    )}
-                    {cc.component.type === 'product_spotlight' && cc.component.config && (cc.component.config as any).productId && (
-                      <div className="text-xs sm:text-sm text-gray-300">
-                        Product: {(cc.component.config as any).productId}
-                      </div>
-                    )}
-                    {cc.component.type === 'carousel_auto' && cc.component.config && (cc.component.config as any).channelId && (
-                      <div className="text-xs sm:text-sm text-gray-300">
-                        Channel: {(cc.component.config as any).channelId}
-                      </div>
-                    )}
-                    {cc.component.type === 'offer_badge' && cc.component.config && (cc.component.config as any).text && (
-                      <div className="text-xs sm:text-sm text-gray-300">
-                        Text: {(cc.component.config as any).text}
-                      </div>
-                    )}
+                    {/* Show relevant config info based on component type - use customConfig if available */}
+                    {(() => {
+                      const config = (cc.customConfig || cc.component.config) as any;
+                      return (
+                        <>
+                          {cc.component.type === 'banner' && config?.title && (
+                            <div className="text-xs sm:text-sm text-gray-300" data-testid={`config-title-${cc.id}`}>
+                              Title: {config.title}
+                            </div>
+                          )}
+                          {cc.component.type === 'countdown' && config?.title && (
+                            <div className="text-xs sm:text-sm text-gray-300">
+                              Title: {config.title}
+                            </div>
+                          )}
+                          {cc.component.type === 'product_spotlight' && config?.productId && (
+                            <div className="text-xs sm:text-sm text-gray-300">
+                              Product: {config.productId}
+                            </div>
+                          )}
+                          {cc.component.type === 'carousel_auto' && config?.channelId && (
+                            <div className="text-xs sm:text-sm text-gray-300">
+                              Channel: {config.channelId}
+                            </div>
+                          )}
+                          {cc.component.type === 'offer_badge' && config?.text && (
+                            <div className="text-xs sm:text-sm text-gray-300">
+                              Text: {config.text}
+                            </div>
+                          )}
+                          {cc.component.type === 'offer_banner' && config?.title && (
+                            <div className="text-xs sm:text-sm text-gray-300">
+                              Title: {config.title}
+                            </div>
+                          )}
+                        </>
+                      );
+                    })()}
                     <div className="text-xs sm:text-sm text-gray-400 font-mono">
                       ID: {cc.componentId}
                     </div>
                   </div>
                 </div>
                 <div className="flex gap-2 w-full sm:w-auto">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setEditingConfigFor(cc)}
+                    className="text-purple-400 hover:text-purple-300 hover:bg-purple-950"
+                    data-testid={`button-customize-${cc.id}`}
+                    title="Customize for this campaign"
+                  >
+                    <Pencil className="w-4 h-4" />
+                  </Button>
                   <Button
                     variant="ghost"
                     size="sm"
@@ -834,6 +883,42 @@ function DynamicComponentsTab({
           </div>
         )}
       </CardContent>
+      
+      {/* Edit Config Dialog */}
+      <Dialog open={!!editingConfigFor} onOpenChange={(open) => !open && setEditingConfigFor(null)}>
+        <DialogContent 
+          className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto bg-gray-800 text-white border-gray-700"
+          onInteractOutside={(e) => e.preventDefault()}
+        >
+          <DialogHeader>
+            <DialogTitle>Customize Component for This Campaign</DialogTitle>
+            <DialogDescription className="text-gray-400">
+              Personalize this component's configuration for this campaign only. Changes won't affect the original template or other campaigns.
+            </DialogDescription>
+          </DialogHeader>
+          {editingConfigFor && (
+            <CampaignComponentConfigForm
+              campaignComponent={editingConfigFor}
+              onSubmit={(customConfig) =>
+                updateConfigMutation.mutate({ 
+                  componentId: editingConfigFor.componentId, 
+                  customConfig 
+                })
+              }
+              onRevertToDefault={() => {
+                if (confirm('Revert to the original template configuration? Your customizations will be lost.')) {
+                  updateConfigMutation.mutate({ 
+                    componentId: editingConfigFor.componentId, 
+                    customConfig: null 
+                  });
+                }
+              }}
+              onCancel={() => setEditingConfigFor(null)}
+              isLoading={updateConfigMutation.isPending}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
     </Card>
   );
 }
@@ -1644,6 +1729,406 @@ function ComponentForm({
           data-testid="button-submit"
         >
           {isLoading ? 'Saving...' : component ? 'Update Component' : 'Create Component'}
+        </Button>
+      </div>
+    </form>
+  );
+}
+
+function CampaignComponentConfigForm({
+  campaignComponent,
+  onSubmit,
+  onRevertToDefault,
+  onCancel,
+  isLoading,
+}: {
+  campaignComponent: CampaignComponent & { component: Component };
+  onSubmit: (customConfig: any) => void;
+  onRevertToDefault: () => void;
+  onCancel: () => void;
+  isLoading: boolean;
+}) {
+  const component = campaignComponent.component;
+  const initialConfig = (campaignComponent.customConfig || component.config) as Record<string, any>;
+  const [config, setConfig] = useState<Record<string, any>>(initialConfig);
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    onSubmit(config);
+  };
+
+  const renderConfigFields = () => {
+    switch (component.type) {
+      case 'banner':
+        return (
+          <>
+            <ImageUploadWithPreview
+              label="Banner Image"
+              value={config.imageUrl || ''}
+              onChange={(url) => setConfig({ ...config, imageUrl: url })}
+              placeholder="https://example.com/banner.jpg"
+              testId="input-imageUrl"
+            />
+            <div className="space-y-2">
+              <Label htmlFor="title" className="text-gray-300">Title</Label>
+              <Input
+                id="title"
+                placeholder="50% OFF Everything"
+                value={config.title || ''}
+                onChange={(e) => setConfig({ ...config, title: e.target.value })}
+                data-testid="input-title"
+                className="bg-gray-700 border-0 text-white"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="subtitle" className="text-gray-300">Subtitle (Optional)</Label>
+              <Input
+                id="subtitle"
+                placeholder="Limited time offer"
+                value={config.subtitle || ''}
+                onChange={(e) => setConfig({ ...config, subtitle: e.target.value })}
+                data-testid="input-subtitle"
+                className="bg-gray-700 border-0 text-white"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="ctaText" className="text-gray-300">Button Text (Optional)</Label>
+              <Input
+                id="ctaText"
+                placeholder="Shop Now"
+                value={config.ctaText || ''}
+                onChange={(e) => setConfig({ ...config, ctaText: e.target.value })}
+                data-testid="input-ctaText"
+                className="bg-gray-700 border-0 text-white"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="ctaLink" className="text-gray-300">Button Link (Optional)</Label>
+              <Input
+                id="ctaLink"
+                placeholder="https://example.com/sale"
+                value={config.ctaLink || ''}
+                onChange={(e) => setConfig({ ...config, ctaLink: e.target.value })}
+                data-testid="input-ctaLink"
+                className="bg-gray-700 border-0 text-white"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="deeplink" className="text-gray-300">Deeplink (Optional)</Label>
+              <Input
+                id="deeplink"
+                placeholder="myapp://sale/flash"
+                value={config.deeplink || ''}
+                onChange={(e) => setConfig({ ...config, deeplink: e.target.value })}
+                data-testid="input-deeplink"
+                className="bg-gray-700 border-0 text-white"
+              />
+              <p className="text-xs text-gray-400">iOS app URL scheme or universal link. If provided, takes priority over Button Link.</p>
+            </div>
+          </>
+        );
+      case 'countdown':
+        return (
+          <>
+            <div className="space-y-2">
+              <Label htmlFor="endDate" className="text-gray-300">End Date</Label>
+              <Input
+                id="endDate"
+                type="datetime-local"
+                value={config.endDate || ''}
+                onChange={(e) => setConfig({ ...config, endDate: e.target.value })}
+                data-testid="input-endDate"
+                className="bg-gray-700 border-0 text-white"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="title" className="text-gray-300">Title</Label>
+              <Input
+                id="title"
+                placeholder="Sale Ends In"
+                value={config.title || ''}
+                onChange={(e) => setConfig({ ...config, title: e.target.value })}
+                data-testid="input-title"
+                className="bg-gray-700 border-0 text-white"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="style" className="text-gray-300">Style</Label>
+              <Select
+                value={config.style || 'full'}
+                onValueChange={(value) => setConfig({ ...config, style: value })}
+              >
+                <SelectTrigger data-testid="select-style" className="bg-gray-700 border-0 text-white">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent className="bg-gray-800 border-gray-700">
+                  <SelectItem value="minimal">Minimal</SelectItem>
+                  <SelectItem value="full">Full</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </>
+        );
+      case 'carousel_auto':
+        return (
+          <>
+            <div className="space-y-2">
+              <Label htmlFor="channelId" className="text-gray-300">Reachu Channel ID</Label>
+              <Input
+                id="channelId"
+                placeholder="ch_123"
+                value={config.channelId || ''}
+                onChange={(e) => setConfig({ ...config, channelId: e.target.value })}
+                data-testid="input-channelId"
+                className="bg-gray-700 border-0 text-white"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="displayCount" className="text-gray-300">Display Count</Label>
+              <Input
+                id="displayCount"
+                type="number"
+                placeholder="5"
+                value={config.displayCount || 5}
+                onChange={(e) => setConfig({ ...config, displayCount: parseInt(e.target.value) })}
+                data-testid="input-displayCount"
+                className="bg-gray-700 border-0 text-white"
+              />
+            </div>
+          </>
+        );
+      case 'carousel_manual':
+        return (
+          <>
+            <div className="space-y-2">
+              <Label htmlFor="productIds" className="text-gray-300">Product IDs (comma-separated)</Label>
+              <Textarea
+                id="productIds"
+                placeholder="prod_1, prod_2, prod_3"
+                value={config.productIds?.join(', ') || ''}
+                onChange={(e) => setConfig({ 
+                  ...config, 
+                  productIds: e.target.value.split(',').map(id => id.trim()).filter(id => id) 
+                })}
+                data-testid="input-productIds"
+                className="bg-gray-700 border-0 text-white"
+              />
+            </div>
+          </>
+        );
+      case 'product_spotlight':
+        return (
+          <>
+            <div className="space-y-2">
+              <Label htmlFor="productId" className="text-gray-300">Product ID</Label>
+              <Input
+                id="productId"
+                placeholder="prod_123"
+                value={config.productId || ''}
+                onChange={(e) => setConfig({ ...config, productId: e.target.value })}
+                data-testid="input-productId"
+                className="bg-gray-700 border-0 text-white"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="title" className="text-gray-300">Title (Optional)</Label>
+              <Input
+                id="title"
+                placeholder="Featured Deal"
+                value={config.title || ''}
+                onChange={(e) => setConfig({ ...config, title: e.target.value })}
+                data-testid="input-title"
+                className="bg-gray-700 border-0 text-white"
+              />
+            </div>
+          </>
+        );
+      case 'offer_badge':
+        return (
+          <>
+            <div className="space-y-2">
+              <Label htmlFor="text" className="text-gray-300">Text</Label>
+              <Input
+                id="text"
+                placeholder="SALE"
+                value={config.text || ''}
+                onChange={(e) => setConfig({ ...config, text: e.target.value })}
+                data-testid="input-text"
+                className="bg-gray-700 border-0 text-white"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="color" className="text-gray-300">Color</Label>
+              <Select
+                value={config.color || 'red'}
+                onValueChange={(value) => setConfig({ ...config, color: value })}
+              >
+                <SelectTrigger data-testid="select-color" className="bg-gray-700 border-0 text-white">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent className="bg-gray-800 border-gray-700">
+                  <SelectItem value="red">Red</SelectItem>
+                  <SelectItem value="blue">Blue</SelectItem>
+                  <SelectItem value="green">Green</SelectItem>
+                  <SelectItem value="gold">Gold</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </>
+        );
+      case 'offer_banner':
+        return (
+          <>
+            <ImageUploadWithPreview
+              label="Background Image"
+              value={config.backgroundImageUrl || ''}
+              onChange={(url) => setConfig({ ...config, backgroundImageUrl: url })}
+              placeholder="https://example.com/bg.jpg"
+              testId="input-backgroundImageUrl"
+            />
+            <div className="space-y-2">
+              <Label htmlFor="title" className="text-gray-300">Title</Label>
+              <Input
+                id="title"
+                placeholder="Mega Sale"
+                value={config.title || ''}
+                onChange={(e) => setConfig({ ...config, title: e.target.value })}
+                data-testid="input-title"
+                className="bg-gray-700 border-0 text-white"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="subtitle" className="text-gray-300">Subtitle (Optional)</Label>
+              <Input
+                id="subtitle"
+                placeholder="Don't miss out"
+                value={config.subtitle || ''}
+                onChange={(e) => setConfig({ ...config, subtitle: e.target.value })}
+                data-testid="input-subtitle"
+                className="bg-gray-700 border-0 text-white"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="discountBadgeText" className="text-gray-300">Discount Badge Text</Label>
+              <Input
+                id="discountBadgeText"
+                placeholder="50% OFF"
+                value={config.discountBadgeText || ''}
+                onChange={(e) => setConfig({ ...config, discountBadgeText: e.target.value })}
+                data-testid="input-discountBadgeText"
+                className="bg-gray-700 border-0 text-white"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="countdownEndDate" className="text-gray-300">Countdown End Date</Label>
+              <Input
+                id="countdownEndDate"
+                type="datetime-local"
+                value={config.countdownEndDate || ''}
+                onChange={(e) => setConfig({ ...config, countdownEndDate: e.target.value })}
+                data-testid="input-countdownEndDate"
+                className="bg-gray-700 border-0 text-white"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="ctaText" className="text-gray-300">Button Text</Label>
+              <Input
+                id="ctaText"
+                placeholder="Shop Now"
+                value={config.ctaText || ''}
+                onChange={(e) => setConfig({ ...config, ctaText: e.target.value })}
+                data-testid="input-ctaText"
+                className="bg-gray-700 border-0 text-white"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="ctaLink" className="text-gray-300">Button Link (Optional)</Label>
+              <Input
+                id="ctaLink"
+                placeholder="https://example.com/offers"
+                value={config.ctaLink || ''}
+                onChange={(e) => setConfig({ ...config, ctaLink: e.target.value })}
+                data-testid="input-ctaLink"
+                className="bg-gray-700 border-0 text-white"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="deeplink" className="text-gray-300">Deeplink (Optional)</Label>
+              <Input
+                id="deeplink"
+                placeholder="myapp://offers/weekly"
+                value={config.deeplink || ''}
+                onChange={(e) => setConfig({ ...config, deeplink: e.target.value })}
+                data-testid="input-deeplink"
+                className="bg-gray-700 border-0 text-white"
+              />
+              <p className="text-xs text-gray-400">iOS app URL scheme or universal link. If provided, takes priority over Button Link.</p>
+            </div>
+          </>
+        );
+      default:
+        return (
+          <div className="text-gray-400 text-sm">
+            This component type doesn't have configurable fields.
+          </div>
+        );
+    }
+  };
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-4">
+      <div className="bg-blue-900/30 border border-blue-700/50 rounded-lg p-3 mb-4">
+        <p className="text-xs text-blue-300">
+          <strong>Note:</strong> Changes here only affect this campaign. The original template and other campaigns remain unchanged.
+        </p>
+      </div>
+
+      <div className="space-y-2">
+        <div className="text-sm text-gray-400">
+          <strong className="text-white">Component:</strong> {component.name}
+        </div>
+        <div className="text-sm text-gray-400">
+          <strong className="text-white">Type:</strong> {component.type}
+        </div>
+        {campaignComponent.customConfig !== null && campaignComponent.customConfig !== undefined && (
+          <Badge className="bg-purple-600 border-0 text-xs">
+            Currently using custom configuration
+          </Badge>
+        )}
+      </div>
+
+      {renderConfigFields()}
+
+      <div className="flex gap-3 pt-4">
+        <Button
+          type="button"
+          variant="outline"
+          onClick={onCancel}
+          disabled={isLoading}
+          className="flex-1 border-gray-600 text-gray-300 hover:bg-gray-700"
+          data-testid="button-cancel"
+        >
+          Cancel
+        </Button>
+        {campaignComponent.customConfig !== null && campaignComponent.customConfig !== undefined && (
+          <Button
+            type="button"
+            variant="outline"
+            onClick={onRevertToDefault}
+            disabled={isLoading}
+            className="border-orange-600 text-orange-400 hover:bg-orange-950"
+            data-testid="button-revert"
+          >
+            Revert to Original
+          </Button>
+        )}
+        <Button 
+          type="submit" 
+          disabled={isLoading} 
+          className="flex-1 bg-purple-600 hover:bg-purple-700" 
+          data-testid="button-submit"
+        >
+          {isLoading ? 'Saving...' : 'Save Customization'}
         </Button>
       </div>
     </form>
