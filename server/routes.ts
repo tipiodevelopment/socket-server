@@ -25,6 +25,11 @@ function toAbsoluteUrl(pathOrUrl: string | undefined, req: Request): string | un
   return `${protocol}://${host}${pathOrUrl.startsWith('/') ? pathOrUrl : '/' + pathOrUrl}`;
 }
 
+// Export broadcastToCampaign function (will be set during registerRoutes)
+export let broadcastToCampaign: (campaignId: number, message: string) => void = () => {
+  console.warn('[WebSocket] broadcastToCampaign called before initialization');
+};
+
 export async function registerRoutes(app: Express): Promise<Server> {
   const httpServer = createServer(app);
   
@@ -114,7 +119,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Function to broadcast to clients in a specific campaign
-  function broadcastToCampaign(campaignId: number, message: string) {
+  const broadcastToCampaignImpl = (campaignId: number, message: string) => {
     const clients = campaignClients.get(campaignId);
     if (clients) {
       clients.forEach((client) => {
@@ -123,7 +128,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       });
     }
-  }
+  };
+  
+  // Assign to exported variable
+  broadcastToCampaign = broadcastToCampaignImpl;
   
   // Legacy broadcast function (broadcasts to all campaigns)
   function broadcast(message: string) {
@@ -149,7 +157,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           const timeDiff = now.getTime() - endDate.getTime();
           if (timeDiff >= 0 && timeDiff < 60000) {
             // Campaign just ended, broadcast to all connected clients
-            broadcastToCampaign(campaign.id, JSON.stringify({
+            broadcastToCampaignImpl(campaign.id, JSON.stringify({
               type: 'campaign_ended',
               campaignId: campaign.id,
               endDate: campaign.endDate
@@ -248,7 +256,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
         
         // Broadcast to specific campaign
-        broadcastToCampaign(campaignId, JSON.stringify(productEvent));
+        broadcastToCampaignImpl(campaignId, JSON.stringify(productEvent));
       } else {
         // Legacy: Broadcast to all connected clients
         broadcast(JSON.stringify(productEvent));
@@ -329,7 +337,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
         
         // Broadcast to specific campaign
-        broadcastToCampaign(campaignId, JSON.stringify(pollEvent));
+        broadcastToCampaignImpl(campaignId, JSON.stringify(pollEvent));
       } else {
         // Legacy: Broadcast to all connected clients
         broadcast(JSON.stringify(pollEvent));
@@ -384,7 +392,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
         
         // Broadcast to specific campaign
-        broadcastToCampaign(campaignId, JSON.stringify(contestEvent));
+        broadcastToCampaignImpl(campaignId, JSON.stringify(contestEvent));
       } else {
         // Legacy: Broadcast to all connected clients
         broadcast(JSON.stringify(contestEvent));
@@ -1009,7 +1017,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const isUsed = campaignComponents.some(cc => cc.componentId === req.params.id);
         
         if (isUsed) {
-          broadcastToCampaign(campaign.id, JSON.stringify({
+          broadcastToCampaignImpl(campaign.id, JSON.stringify({
             type: 'component_config_updated',
             campaignId: campaign.id,
             componentId: req.params.id,
@@ -1208,7 +1216,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const fullComponent = await storage.getComponentById(componentId);
         
         // Broadcast status change via WebSocket with complete component data
-        broadcastToCampaign(campaignId, JSON.stringify({
+        broadcastToCampaignImpl(campaignId, JSON.stringify({
           type: 'component_status_changed',
           campaignId,
           componentId,
@@ -1258,7 +1266,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         // Use customConfig if set, otherwise fall back to component's default config
         const effectiveConfig = updated.customConfig || fullComponent?.config;
         
-        broadcastToCampaign(campaignId, JSON.stringify({
+        broadcastToCampaignImpl(campaignId, JSON.stringify({
           type: 'component_config_updated',
           campaignId,
           componentId,

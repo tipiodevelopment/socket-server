@@ -30,6 +30,7 @@ The frontend utilizes React 18 with TypeScript and Vite, styled with Tailwind CS
 - **URL Normalization:** Object storage URLs are automatically converted to absolute URLs for external client compatibility, detecting the base URL from environment variables or the first HTTP request.
 - **Logging:** Custom middleware for API request logging.
 - **Validation:** Server-side validation for campaign IDs.
+- **Scheduler Service:** Automatic component activation/deactivation based on scheduled times. Configurable interval via `SCHEDULER_INTERVAL_MINUTES` environment variable (default: 1 minute). Sends identical WebSocket events whether components are activated manually or automatically.
 
 ### Feature Specifications
 - **Campaign Management:** Administrators can create, manage, and delete campaigns. Each campaign can have associated integrations (Reachu.io, Tipio). Campaigns have a lifecycle defined by `startDate` and `endDate`.
@@ -57,9 +58,13 @@ The frontend utilizes React 18 with TypeScript and Vite, styled with Tailwind CS
 - **Database Schema:**
     - `Users`: Stores user information (id, reachuUserId, firebaseToken) for multi-user architecture.
     - `Campaigns`: Stores campaign details (name, user, logo, description, scheduling, integration IDs).
-    - `Scheduled Components`: Manages automated component display with `component type`, `scheduledTime`, `endTime`, `data` (JSON config), and `status`. Supports various component types and flexible end-time configurations.
     - `Components`: Reusable UI component library with `id`, `type`, `name`, and `config` (JSON).
-    - `Campaign Components`: Links `Components` to `Campaigns` for real-time activation/deactivation. Includes `customConfig` (JSON, nullable) for campaign-specific configuration overrides. When null, uses the template's default config; when set, takes priority over template config.
+    - `Campaign Components`: Links `Components` to `Campaigns` for both manual and automatic activation/deactivation. Includes:
+        - `status`: Current activation state ('active' or 'inactive')
+        - `scheduledTime` (nullable): Optional ISO timestamp for automatic activation
+        - `endTime` (nullable): Optional ISO timestamp for automatic deactivation
+        - `customConfig` (JSON, nullable): Campaign-specific configuration overrides. When null, uses the template's default config; when set, takes priority over template config.
+        - Supports both manual toggle controls and automatic scheduler-based display in a unified table structure.
 - **Page Structure:**
     - **Campaigns Page:** Dashboard for campaign administration.
     - **New Campaign Page:** Form for campaign creation.

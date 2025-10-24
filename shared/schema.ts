@@ -64,12 +64,15 @@ export const components = pgTable("components", {
 });
 
 // Campaign Components - Links components to campaigns with status and custom config
+// Can be manual toggle OR scheduled OR both
 export const campaignComponents = pgTable("campaign_components", {
   id: serial("id").primaryKey(),
   campaignId: integer("campaign_id").notNull().references(() => campaigns.id, { onDelete: 'cascade' }),
   componentId: varchar("component_id", { length: 50 }).notNull().references(() => components.id, { onDelete: 'cascade' }),
   status: varchar("status", { length: 20 }).notNull().default('inactive'), // active, inactive
   customConfig: json("custom_config"), // Campaign-specific config override (optional)
+  scheduledTime: timestamp("scheduled_time"), // Optional: auto-activate at this time (null = manual toggle only)
+  endTime: timestamp("end_time"), // Optional: auto-deactivate at this time (null = no end)
   activatedAt: timestamp("activated_at"),
   updatedAt: timestamp("updated_at").defaultNow().notNull()
 });
