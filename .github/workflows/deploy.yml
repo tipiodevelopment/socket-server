@@ -106,9 +106,12 @@ jobs:
       - name: Azure CLI Login
         uses: azure/login@v2
         with:
+          client-id: ${{ env.SV_APP_ID_PROD }}
+          tenant-id: ${{ env.SV_TENANT_ID_PROD }}
+          client-secret: ${{ env.SV_PASSWORD_PROD }}
           subscription-id: ${{ secrets.SV_SUBSCRIPTION_ID }}
           auth-type: service_principal
-
+          
       - name: Configure AKS
         run: |
           az aks get-credentials -g $AZ_RG_PROD -n $AZ_KUB_NAME_PROD
