@@ -107,7 +107,8 @@ jobs:
         uses: azure/cli@v2
         with:
           inlineScript: |
-            apt-get update && apt-get install -y tar
+            sudo apt-get update
+            sudo apt-get install -y tar
             # 1. LOGIN
             az login --service-principal --username "${{ env.SV_APP_ID_PROD }}" --password "${{ env.SV_PASSWORD_PROD }}" --tenant "${{ env.SV_TENANT_ID_PROD }}"
             az account set --subscription "${{ secrets.SV_SUBSCRIPTION_ID }}"
