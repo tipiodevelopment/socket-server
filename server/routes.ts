@@ -946,7 +946,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
           componentId: cc.component.id,
           type: cc.component.type,
           name: cc.component.name,
-          config: normalizeUrls(cc.component.config, req.protocol, req.get('host')), // Normalize URLs to absolute
+          // Use campaign-specific customConfig if available, otherwise use component's default config
+          config: normalizeUrls(cc.customConfig || cc.component.config, req.protocol, req.get('host')),
           status: cc.status,
           activatedAt: cc.activatedAt
         }));
@@ -1036,7 +1037,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
             id: fullComponent.id,
             type: fullComponent.type,
             name: fullComponent.name,
-            config: normalizeUrls(fullComponent.config, req.protocol, req.get('host')) // Normalize URLs to absolute
+            // Use campaign-specific customConfig if available, otherwise use component's default config
+            config: normalizeUrls(updated.customConfig || fullComponent.config, req.protocol, req.get('host'))
           } : null
         }));
       }
@@ -1045,6 +1047,54 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error('Error updating campaign component status:', error);
       res.status(500).json({ message: 'Error updating campaign component status' });
+    }
+  });
+
+  // Update campaign component custom configuration
+  app.patch('/api/campaigns/:id/components/:componentId/config', async (req, res) => {
+    try {
+      const campaignId = parseInt(req.params.id);
+      const { componentId } = req.params;
+      const { customConfig } = req.body;
+      
+      // Allow null/undefined to clear customConfig and revert to template defaults
+      if (customConfig === undefined) {
+        return res.status(400).json({ message: 'Missing required field: customConfig (use null to clear)' });
+      }
+
+      const updated = await storage.updateCampaignComponentConfig(campaignId, componentId, customConfig);
+      
+      if (!updated) {
+        return res.status(404).json({ message: 'Campaign component not found' });
+      }
+
+      // Check if campaign is active and component is active before broadcasting
+      const campaign = await storage.getCampaign(campaignId);
+      if (campaign && isCampaignActive(campaign) && updated.status === 'active') {
+        // Get full component details for broadcast
+        const fullComponent = await storage.getComponentById(componentId);
+        
+        // Broadcast config update via WebSocket
+        // Use customConfig if set, otherwise fall back to component's default config
+        const effectiveConfig = updated.customConfig || fullComponent?.config;
+        
+        broadcastToCampaign(campaignId, JSON.stringify({
+          type: 'component_config_updated',
+          campaignId,
+          componentId,
+          component: fullComponent ? {
+            id: fullComponent.id,
+            type: fullComponent.type,
+            name: fullComponent.name,
+            config: normalizeUrls(effectiveConfig, req.protocol, req.get('host'))
+          } : null
+        }));
+      }
+      
+      res.json(updated);
+    } catch (error) {
+      console.error('Error updating campaign component config:', error);
+      res.status(500).json({ message: 'Error updating campaign component config' });
     }
   });
 

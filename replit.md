@@ -37,6 +37,7 @@ The frontend utilizes React 18 with TypeScript and Vite, styled with Tailwind CS
 - **Dynamic Component Management:**
     - A library of reusable UI components (e.g., Banner, Countdown, Carousel, Product Spotlight, Offer Badge, Offer Banner) configurable via a REST API.
     - Components can be activated/deactivated manually or scheduled for automatic display within specific campaigns.
+    - **Campaign-Specific Customization:** Each campaign can personalize component configurations (texts, images, links) without affecting the original template or other campaigns. Custom configurations are stored per campaign in `campaignComponents.customConfig`.
     - Real-time updates via WebSockets (`component_status_changed`, `component_config_updated`, `campaign_ended`) for dynamic display in client applications (e.g., iOS).
     - Prevents a component from being active in multiple campaigns simultaneously.
     - **Deeplink Support:** Components with CTAs (Banner, Offer Banner) support optional deeplinks for in-app navigation. When specified, deeplinks take priority over web links, enabling seamless transitions to specific app screens (e.g., `myapp://offers/weekly`). Supports both custom URL schemes and universal links.
