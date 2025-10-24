@@ -36,6 +36,7 @@ The frontend utilizes React 18 with TypeScript and Vite, styled with Tailwind CS
 - **Logging:** Custom middleware for API request logging.
 - **Validation:** Server-side validation for campaign IDs.
 - **Scheduler Service:** Automatic component activation/deactivation based on scheduled times. Configurable interval via `SCHEDULER_INTERVAL_MINUTES` environment variable (default: 1 minute). Sends identical WebSocket events whether components are activated manually or automatically.
+- **RESTful Event API:** Provides GET `/api/events/:campaignId` for retrieving campaign events and POST `/api/events/:campaignId` for creating events. Events are persisted to both in-memory storage (legacy compatibility) and PostgreSQL database, then broadcast via WebSocket.
 
 ### Feature Specifications
 - **Campaign Management:** Administrators can create, manage, and delete campaigns. Each campaign can have associated integrations (Reachu.io, Tipio). Campaigns have a lifecycle defined by `startDate` and `endDate`.
@@ -74,7 +75,7 @@ The frontend utilizes React 18 with TypeScript and Vite, styled with Tailwind CS
     - **Campaigns Page:** Dashboard listing all campaigns with "Manage Campaign" button for each.
     - **New Campaign Page:** Form for campaign creation.
     - **Campaign Dashboard:** Unified command center with 6 tabs (replaces previous Admin/Advanced split):
-        - **Overview Tab:** Campaign status, quick stats (active/scheduled components, events), upcoming scheduled components, recent events, and quick action buttons
+        - **Overview Tab:** Campaign status, quick stats (active/scheduled components, events), upcoming scheduled components, recent events, and Quick Event Trigger section for instant Product/Poll/Contest broadcasting without switching to Events tab
         - **Events Tab:** Real-time event broadcasting interface with Product/Poll/Contest forms, WebSocket connection status, event history log, and form auto-save
         - **Scheduled Tab:** Timeline view of scheduled components with "Trigger Now" button for manual activation before scheduled time
         - **Components Tab:** Dynamic component management with toggle switches for activation/deactivation, customization dialogs, add/remove functionality
