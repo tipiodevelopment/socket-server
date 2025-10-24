@@ -422,6 +422,18 @@ function ComponentForm({
                 className="bg-gray-700 border-0 text-white"
               />
             </div>
+            <div className="space-y-2">
+              <Label htmlFor="deeplink" className="text-gray-300">Deeplink (Optional)</Label>
+              <Input
+                id="deeplink"
+                placeholder="myapp://sale/flash"
+                value={config.deeplink || ''}
+                onChange={(e) => setConfig({ ...config, deeplink: e.target.value })}
+                data-testid="input-deeplink"
+                className="bg-gray-700 border-0 text-white"
+              />
+              <p className="text-xs text-gray-400">iOS app URL scheme or universal link. If provided, takes priority over Button Link.</p>
+            </div>
           </>
         );
       case 'countdown':
@@ -655,6 +667,18 @@ function ComponentForm({
                 data-testid="input-ctaLink"
                 className="bg-gray-700 border-0 text-white"
               />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="deeplink" className="text-gray-300">Deeplink (Optional)</Label>
+              <Input
+                id="deeplink"
+                placeholder="myapp://offers/black-friday"
+                value={config.deeplink || ''}
+                onChange={(e) => setConfig({ ...config, deeplink: e.target.value })}
+                data-testid="input-deeplink"
+                className="bg-gray-700 border-0 text-white"
+              />
+              <p className="text-xs text-gray-400">iOS app URL scheme or universal link. If provided, takes priority over Button Link.</p>
             </div>
             <div className="space-y-2">
               <Label htmlFor="overlayOpacity" className="text-gray-300">Overlay Opacity (Optional, 0-1)</Label>
