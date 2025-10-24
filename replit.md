@@ -16,11 +16,16 @@ The frontend utilizes React 18 with TypeScript and Vite, styled with Tailwind CS
 ### Technical Implementations
 **Frontend:**
 - **State Management:** TanStack Query.
-- **Routing:** Wouter.
+- **Routing:** Wouter with simplified navigation flow.
+- **Navigation Structure:**
+    - Campaigns List (`/`) → Single "Manage Campaign" button → Campaign Dashboard (`/campaign/:id/dashboard`)
+    - Dashboard has "Back to campaigns" button for easy return
+    - "View Live" button provides quick access to public viewer page
+    - Legacy routes (`/campaign/:id/admin`, `/campaign/:id/advanced`) remain for backward compatibility
 - **Real-time:** Custom `useWebSocket` hook handles connection and reconnection logic.
 - **Type Safety:** Shared Zod schemas ensure type-safe event structures.
 - **Localization:** English translation.
-- **Navigation:** Back buttons on all sub-pages.
+- **Component Architecture:** Dashboard tabs are modular, self-contained components with their own queries and mutations.
 
 **Backend:**
 - **Runtime:** Node.js with Express.js.
@@ -66,13 +71,19 @@ The frontend utilizes React 18 with TypeScript and Vite, styled with Tailwind CS
         - `customConfig` (JSON, nullable): Campaign-specific configuration overrides. When null, uses the template's default config; when set, takes priority over template config.
         - Supports both manual toggle controls and automatic scheduler-based display in a unified table structure.
 - **Page Structure:**
-    - **Campaigns Page:** Dashboard for campaign administration.
+    - **Campaigns Page:** Dashboard listing all campaigns with "Manage Campaign" button for each.
     - **New Campaign Page:** Form for campaign creation.
-    - **Campaign Admin Page:** Campaign-specific dashboard for event broadcasting.
-    - **Campaign Viewer Page:** Real-time event display for end-users.
-    - **Advanced Campaign Page:** Tabbed interface for Overview, Integrations, Scheduled Components (timeline view), Dynamic Components (real-time toggle controls), and Library (integrated component management).
-    - **Components Library Page:** Standalone page for managing reusable components.
+    - **Campaign Dashboard:** Unified command center with 6 tabs (replaces previous Admin/Advanced split):
+        - **Overview Tab:** Campaign status, quick stats (active/scheduled components, events), upcoming scheduled components, recent events, and quick action buttons
+        - **Events Tab:** Real-time event broadcasting interface with Product/Poll/Contest forms, WebSocket connection status, event history log, and form auto-save
+        - **Scheduled Tab:** Timeline view of scheduled components with "Trigger Now" button for manual activation before scheduled time
+        - **Components Tab:** Dynamic component management with toggle switches for activation/deactivation, customization dialogs, add/remove functionality
+        - **Integrations Tab:** Read-only view of Reachu.io and Tipio integration details configured during campaign creation
+        - **Settings Tab:** Campaign metadata editor (name, description, dates, logo) and delete campaign functionality
+    - **Campaign Viewer Page:** Public-facing real-time event display for end-users (accessed via `/campaign/:name/:id`).
+    - **Components Library Page:** Standalone page for managing reusable component templates.
     - **Docs Page:** Integration documentation with Swift code examples.
+    - **Legacy Pages (backward compatibility):** Admin and Advanced pages remain accessible but new navigation uses unified Campaign Dashboard.
 
 ## External Dependencies
 
