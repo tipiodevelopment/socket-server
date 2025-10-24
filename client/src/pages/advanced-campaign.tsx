@@ -54,10 +54,11 @@ export default function AdvancedCampaign() {
         description: 'The component has been scheduled successfully.',
       });
     },
-    onError: () => {
+    onError: (error: any) => {
+      const errorMessage = error.message || 'Failed to create scheduled component.';
       toast({
         title: 'Error',
-        description: 'Failed to create scheduled component.',
+        description: errorMessage,
         variant: 'destructive',
       });
     },
@@ -74,10 +75,11 @@ export default function AdvancedCampaign() {
         description: 'The component has been updated successfully.',
       });
     },
-    onError: () => {
+    onError: (error: any) => {
+      const errorMessage = error.message || 'Failed to update scheduled component.';
       toast({
         title: 'Error',
-        description: 'Failed to update scheduled component.',
+        description: errorMessage,
         variant: 'destructive',
       });
     },

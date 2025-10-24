@@ -640,7 +640,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: 'Missing required fields' });
       }
 
-      // Validate custom component exists
+      // Validate custom component exists and get its type
+      let componentType = type;
+      let componentName = type;
+      
       if (type === 'custom_component') {
         if (!data.componentId) {
           return res.status(400).json({ message: 'componentId is required for custom components' });
@@ -648,6 +651,67 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const existingComponent = await storage.getComponentById(data.componentId);
         if (!existingComponent) {
           return res.status(404).json({ message: 'Component not found' });
+        }
+        componentType = existingComponent.type;
+        componentName = existingComponent.name;
+      }
+
+      // Check for overlapping scheduled components of the same type
+      const allScheduled = await storage.getCampaignScheduledComponents(campaignId);
+      const newStart = new Date(scheduledTime);
+      const newEnd = endTime ? new Date(endTime) : null;
+
+      for (const scheduled of allScheduled) {
+        if (scheduled.status === 'cancelled') continue;
+
+        // Determine the type of the scheduled component
+        let scheduledType = scheduled.type;
+        if (scheduled.type === 'custom_component' && scheduled.data && typeof scheduled.data === 'object' && 'componentId' in scheduled.data) {
+          const comp = await storage.getComponentById(scheduled.data.componentId as string);
+          if (comp) {
+            scheduledType = comp.type;
+          }
+        }
+
+        // Only check components of the same type
+        if (scheduledType !== componentType) continue;
+
+        const existingStart = new Date(scheduled.scheduledTime);
+        const existingEnd = scheduled.endTime ? new Date(scheduled.endTime) : null;
+
+        // Check for overlap
+        const hasOverlap = (() => {
+          // If new component has no end time (runs indefinitely), check if it starts before existing ends
+          if (!newEnd) {
+            return !existingEnd || newStart < existingEnd;
+          }
+
+          // If existing has no end time, check if new overlaps with its start
+          if (!existingEnd) {
+            return newEnd > existingStart;
+          }
+
+          // Both have end times - check for any overlap
+          return newStart < existingEnd && newEnd > existingStart;
+        })();
+
+        if (hasOverlap) {
+          let scheduledName = scheduled.type;
+          if (scheduled.type === 'custom_component' && scheduled.data && typeof scheduled.data === 'object' && 'componentId' in scheduled.data) {
+            const comp = await storage.getComponentById(scheduled.data.componentId as string);
+            if (comp) scheduledName = comp.name;
+          }
+
+          return res.status(409).json({
+            message: `Time conflict: Another ${componentType} component "${scheduledName}" is already scheduled during this time period. Only one component of each type can be active at a time.`,
+            conflictingSchedule: {
+              id: scheduled.id,
+              type: scheduledType,
+              name: scheduledName,
+              scheduledTime: scheduled.scheduledTime,
+              endTime: scheduled.endTime
+            }
+          });
         }
       }
 
@@ -676,11 +740,81 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const id = parseInt(req.params.id);
       const { type, scheduledTime, endTime, data } = req.body;
 
-      // Validate custom component if type is being updated
-      if (type === 'custom_component' && data?.componentId) {
-        const existingComponent = await storage.getComponentById(data.componentId);
-        if (!existingComponent) {
-          return res.status(404).json({ message: 'Component not found' });
+      // Get current scheduled component
+      const current = await storage.getScheduledComponent(id);
+      if (!current) {
+        return res.status(404).json({ message: 'Scheduled component not found' });
+      }
+
+      // Determine the component type for validation
+      let componentType = type || current.type;
+      let componentName = componentType;
+      
+      if (componentType === 'custom_component') {
+        const componentId = data?.componentId || (current.data && typeof current.data === 'object' && 'componentId' in current.data ? current.data.componentId : null);
+        if (componentId) {
+          const existingComponent = await storage.getComponentById(componentId as string);
+          if (!existingComponent) {
+            return res.status(404).json({ message: 'Component not found' });
+          }
+          componentType = existingComponent.type;
+          componentName = existingComponent.name;
+        }
+      }
+
+      // Check for overlapping scheduled components of the same type (if time is being updated)
+      if (scheduledTime !== undefined || endTime !== undefined) {
+        const allScheduled = await storage.getCampaignScheduledComponents(current.campaignId);
+        const newStart = scheduledTime ? new Date(scheduledTime) : new Date(current.scheduledTime);
+        const newEnd = endTime !== undefined ? (endTime ? new Date(endTime) : null) : (current.endTime ? new Date(current.endTime) : null);
+
+        for (const scheduled of allScheduled) {
+          if (scheduled.id === id || scheduled.status === 'cancelled') continue;
+
+          // Determine the type of the scheduled component
+          let scheduledType = scheduled.type;
+          if (scheduled.type === 'custom_component' && scheduled.data && typeof scheduled.data === 'object' && 'componentId' in scheduled.data) {
+            const comp = await storage.getComponentById(scheduled.data.componentId as string);
+            if (comp) {
+              scheduledType = comp.type;
+            }
+          }
+
+          // Only check components of the same type
+          if (scheduledType !== componentType) continue;
+
+          const existingStart = new Date(scheduled.scheduledTime);
+          const existingEnd = scheduled.endTime ? new Date(scheduled.endTime) : null;
+
+          // Check for overlap
+          const hasOverlap = (() => {
+            if (!newEnd) {
+              return !existingEnd || newStart < existingEnd;
+            }
+            if (!existingEnd) {
+              return newEnd > existingStart;
+            }
+            return newStart < existingEnd && newEnd > existingStart;
+          })();
+
+          if (hasOverlap) {
+            let scheduledName = scheduled.type;
+            if (scheduled.type === 'custom_component' && scheduled.data && typeof scheduled.data === 'object' && 'componentId' in scheduled.data) {
+              const comp = await storage.getComponentById(scheduled.data.componentId as string);
+              if (comp) scheduledName = comp.name;
+            }
+
+            return res.status(409).json({
+              message: `Time conflict: Another ${componentType} component "${scheduledName}" is already scheduled during this time period. Only one component of each type can be active at a time.`,
+              conflictingSchedule: {
+                id: scheduled.id,
+                type: scheduledType,
+                name: scheduledName,
+                scheduledTime: scheduled.scheduledTime,
+                endTime: scheduled.endTime
+              }
+            });
+          }
         }
       }
 
@@ -969,6 +1103,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: 'Missing required field: componentId' });
       }
 
+      // Get component details to check type
+      const component = await storage.getComponentById(componentId);
+      if (!component) {
+        return res.status(404).json({ message: 'Component not found' });
+      }
+
       // Validate component availability if status is active
       if (status === 'active') {
         const availability = await storage.validateComponentAvailability(componentId, campaignId);
@@ -976,6 +1116,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
           return res.status(409).json({ 
             message: 'Component is already active in another campaign',
             activeCampaignId: availability.activeCampaignId
+          });
+        }
+
+        // Check if another component of the same type is already active in this campaign
+        const existingComponents = await storage.getCampaignComponents(campaignId);
+        const sameTypeActive = existingComponents.find(
+          cc => cc.status === 'active' && cc.component.type === component.type && cc.componentId !== componentId
+        );
+        
+        if (sameTypeActive) {
+          return res.status(409).json({ 
+            message: `Another ${component.type} component is already active in this campaign. Only one component of each type can be active at a time.`,
+            conflictingComponent: {
+              id: sameTypeActive.component.id,
+              name: sameTypeActive.component.name,
+              type: sameTypeActive.component.type
+            }
           });
         }
       }
@@ -1004,6 +1161,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: 'Invalid status. Must be "active" or "inactive"' });
       }
 
+      // Get component details to check type
+      const component = await storage.getComponentById(componentId);
+      if (!component) {
+        return res.status(404).json({ message: 'Component not found' });
+      }
+
       // Validate component availability if activating
       if (status === 'active') {
         const availability = await storage.validateComponentAvailability(componentId, campaignId);
@@ -1011,6 +1174,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
           return res.status(409).json({ 
             message: 'Component is already active in another campaign',
             activeCampaignId: availability.activeCampaignId
+          });
+        }
+
+        // Check if another component of the same type is already active in this campaign
+        const existingComponents = await storage.getCampaignComponents(campaignId);
+        const sameTypeActive = existingComponents.find(
+          cc => cc.status === 'active' && cc.component.type === component.type && cc.componentId !== componentId
+        );
+        
+        if (sameTypeActive) {
+          return res.status(409).json({ 
+            message: `Another ${component.type} component is already active in this campaign. Only one component of each type can be active at a time.`,
+            conflictingComponent: {
+              id: sameTypeActive.component.id,
+              name: sameTypeActive.component.name,
+              type: sameTypeActive.component.type
+            }
           });
         }
       }
