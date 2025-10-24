@@ -37,6 +37,10 @@ The frontend utilizes React 18 with TypeScript and Vite, styled with Tailwind CS
 - **Dynamic Component Management:**
     - A library of reusable UI components (e.g., Banner, Countdown, Carousel, Product Spotlight, Offer Badge, Offer Banner) configurable via a REST API.
     - Components can be activated/deactivated manually or scheduled for automatic display within specific campaigns.
+    - **Component Type Uniqueness:** Only ONE component of each type can be active at any given time within a campaign. This ensures iOS apps can reliably import components by type without ambiguity (e.g., `activeComponents.first { $0.type == "banner" }` is guaranteed to return at most one result).
+        - **Dynamic Components:** Backend validates that no other component of the same type is active before allowing activation
+        - **Scheduled Components:** Backend validates that no other component of the same type has overlapping time ranges before allowing creation/update
+        - **Error Handling:** Returns 409 Conflict with clear English error messages specifying the conflicting component/schedule
     - **Campaign-Specific Customization:** Each campaign can personalize component configurations (texts, images, links) without affecting the original template or other campaigns. Custom configurations are stored per campaign in `campaignComponents.customConfig`.
         - **UI Controls:** Purple "Customize" button (pencil icon) opens a dialog with all configurable fields
         - **Visual Indicators:** "Customized" badge (purple) appears on components with custom configurations
