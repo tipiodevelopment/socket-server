@@ -148,14 +148,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
   }
 
   // HTTP API endpoints
-  app.get("/api", async (req, res) => {
-    try {
-      res.status(200).json({ message: "API is running" });
-    } catch (error) {
-      console.error("Error fetching events:", error);
-      res.status(500).json({ message: "Error fetching events" });
-    }
-  });
 
   // Get recent events
   app.get("/api/events", async (req, res) => {
