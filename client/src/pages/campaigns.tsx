@@ -176,26 +176,16 @@ export default function CampaignsPage() {
                       </span>
                     </div>
                   </div>
-                  <div className="flex flex-col sm:flex-row gap-2">
-                    <Link href={`/campaign/${campaign.id}/admin`} className="flex-1">
+                  <div className="flex gap-2">
+                    <Link href={`/campaign/${campaign.id}/dashboard`} className="flex-1">
                       <Button
-                        variant="outline"
+                        variant="default"
                         size="sm"
-                        className="w-full border-0"
-                        data-testid={`button-admin-${campaign.id}`}
-                      >
-                        Admin
-                      </Button>
-                    </Link>
-                    <Link href={`/campaign/${campaign.id}/advanced`} className="flex-1">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="w-full border-0"
-                        data-testid={`button-advanced-${campaign.id}`}
+                        className="w-full"
+                        data-testid={`button-manage-${campaign.id}`}
                       >
                         <Settings className="w-3 h-3 sm:w-4 sm:h-4 mr-1" />
-                        Advanced
+                        Manage Campaign
                       </Button>
                     </Link>
                   </div>

@@ -1,0 +1,522 @@
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Plus, ToggleLeft, ToggleRight, Pencil, Trash2, ExternalLink, Activity } from "lucide-react";
+import { CampaignComponent, Component } from "@shared/schema";
+import { useToast } from "@/hooks/use-toast";
+import { queryClient, apiRequest } from "@/lib/queryClient";
+import { useState } from "react";
+import { Link } from "wouter";
+
+interface ComponentsTabProps {
+  campaignId: number;
+}
+
+export function ComponentsTab({ campaignId }: ComponentsTabProps) {
+  const { toast } = useToast();
+  const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
+  const [selectedComponentId, setSelectedComponentId] = useState<string>('');
+  const [editingConfigFor, setEditingConfigFor] = useState<(CampaignComponent & { component: Component }) | null>(null);
+
+  const { data: campaignComponents = [], isLoading } = useQuery<Array<CampaignComponent & { component: Component }>>({
+    queryKey: ['/api/campaigns', campaignId, 'components'],
+  });
+
+  const { data: allComponents = [] } = useQuery<Component[]>({
+    queryKey: ['/api/components'],
+  });
+
+  const addComponentMutation = useMutation({
+    mutationFn: async (componentId: string) => {
+      return await apiRequest('POST', `/api/campaigns/${campaignId}/components`, {
+        componentId,
+        status: 'inactive',
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/campaigns', campaignId, 'components'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/components/usage'] });
+      setIsAddDialogOpen(false);
+      setSelectedComponentId('');
+      toast({
+        title: 'Component Added',
+        description: 'The component has been added to this campaign.',
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: 'Error',
+        description: error.message || 'Failed to add component.',
+        variant: 'destructive',
+      });
+    },
+  });
+
+  const toggleStatusMutation = useMutation({
+    mutationFn: async ({ componentId, status }: { componentId: string; status: 'active' | 'inactive' }) => {
+      return await apiRequest('PATCH', `/api/campaigns/${campaignId}/components/${componentId}`, { status });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/campaigns', campaignId, 'components'] });
+      toast({
+        title: 'Status Updated',
+        description: 'The component status has been updated.',
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: 'Error',
+        description: error.message || 'Failed to update component status.',
+        variant: 'destructive',
+      });
+    },
+  });
+
+  const updateConfigMutation = useMutation({
+    mutationFn: async ({ componentId, customConfig }: { componentId: string; customConfig: any }) => {
+      return await apiRequest('PATCH', `/api/campaigns/${campaignId}/components/${componentId}/config`, { customConfig });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/campaigns', campaignId, 'components'] });
+      setEditingConfigFor(null);
+      toast({
+        title: 'Configuration Updated',
+        description: 'The component configuration has been personalized for this campaign.',
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: 'Error',
+        description: error.message || 'Failed to update component configuration.',
+        variant: 'destructive',
+      });
+    },
+  });
+
+  const removeComponentMutation = useMutation({
+    mutationFn: async (componentId: string) => {
+      return await apiRequest('DELETE', `/api/campaigns/${campaignId}/components/${componentId}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/campaigns', campaignId, 'components'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/components/usage'] });
+      toast({
+        title: 'Component Removed',
+        description: 'The component has been removed from this campaign.',
+      });
+    },
+    onError: () => {
+      toast({
+        title: 'Error',
+        description: 'Failed to remove component.',
+        variant: 'destructive',
+      });
+    },
+  });
+
+  const availableComponents = allComponents.filter(
+    (comp) => !campaignComponents.some((cc) => cc.componentId === comp.id)
+  );
+
+  const getComponentTypeLabel = (type: string) => {
+    const labels: Record<string, string> = {
+      banner: 'Banner',
+      countdown: 'Countdown',
+      carousel_auto: 'Auto Carousel',
+      carousel_manual: 'Manual Carousel',
+      product_spotlight: 'Product Spotlight',
+      offer_badge: 'Offer Badge',
+      offer_banner: 'Offer Banner',
+    };
+    return labels[type] || type;
+  };
+
+  if (isLoading) {
+    return (
+      <Card className="border-0">
+        <CardContent className="p-6">
+          <p className="text-center text-muted-foreground">Loading components...</p>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      <Card className="border-0">
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle className="flex items-center gap-2">
+                <Activity className="w-5 h-5" />
+                Dynamic Components
+              </CardTitle>
+              <CardDescription>
+                Reusable UI components that can be toggled on/off in real-time
+              </CardDescription>
+            </div>
+            <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
+              <DialogTrigger asChild>
+                <Button data-testid="button-add-component">
+                  <Plus className="w-4 h-4 mr-2" />
+                  Add Component
+                </Button>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Add Component to Campaign</DialogTitle>
+                  <DialogDescription>
+                    Select a component from your library to add to this campaign.
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="space-y-4">
+                  {availableComponents.length === 0 ? (
+                    <div className="text-center py-8 text-muted-foreground">
+                      <p>No available components.</p>
+                      <p className="text-sm mt-2">Create components in the Component Library.</p>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="space-y-2">
+                        <Label>Select Component</Label>
+                        <Select value={selectedComponentId} onValueChange={setSelectedComponentId}>
+                          <SelectTrigger data-testid="select-component">
+                            <SelectValue placeholder="Choose a component..." />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {availableComponents.map((comp) => (
+                              <SelectItem key={comp.id} value={comp.id}>
+                                {comp.name} ({getComponentTypeLabel(comp.type)})
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <Button
+                        onClick={() => selectedComponentId && addComponentMutation.mutate(selectedComponentId)}
+                        disabled={!selectedComponentId || addComponentMutation.isPending}
+                        className="w-full"
+                        data-testid="button-confirm-add"
+                      >
+                        {addComponentMutation.isPending ? 'Adding...' : 'Add to Campaign'}
+                      </Button>
+                    </>
+                  )}
+                </div>
+              </DialogContent>
+            </Dialog>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {campaignComponents.length === 0 ? (
+            <div className="text-center py-12 text-muted-foreground">
+              <Activity className="w-12 h-12 mx-auto mb-4 opacity-50" />
+              <p>No components added yet</p>
+              <p className="text-sm mt-2">Add reusable components from your library</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {campaignComponents.map((cc) => (
+                <div
+                  key={cc.id}
+                  className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 p-4 rounded-lg bg-muted/50 border"
+                  data-testid={`component-${cc.id}`}
+                >
+                  <div className="flex-1 w-full">
+                    <div className="flex items-center gap-2 mb-2">
+                      <Badge
+                        variant={cc.status === 'active' ? 'default' : 'secondary'}
+                        data-testid={`status-${cc.id}`}
+                      >
+                        {cc.status}
+                      </Badge>
+                      <span className="font-medium" data-testid={`name-${cc.id}`}>
+                        {cc.component.name}
+                      </span>
+                      <Badge variant="outline" data-testid={`type-${cc.id}`}>
+                        {getComponentTypeLabel(cc.component.type)}
+                      </Badge>
+                      {cc.customConfig !== null && cc.customConfig !== undefined && (
+                        <Badge variant="secondary" data-testid={`badge-customized-${cc.id}`}>
+                          Customized
+                        </Badge>
+                      )}
+                    </div>
+                    <div className="text-sm text-muted-foreground">
+                      {(() => {
+                        const config = (cc.customConfig || cc.component.config) as any;
+                        if (cc.component.type === 'banner' && config?.title) {
+                          return <div key="banner-title">Title: {config.title}</div>;
+                        }
+                        if (cc.component.type === 'countdown' && config?.title) {
+                          return <div key="countdown-title">Title: {config.title}</div>;
+                        }
+                        if (cc.component.type === 'product_spotlight' && config?.productId) {
+                          return <div key="spotlight-product">Product: {config.productId}</div>;
+                        }
+                        if (cc.component.type === 'carousel_auto' && config?.channelId) {
+                          return <div key="carousel-channel">Channel: {config.channelId}</div>;
+                        }
+                        if (cc.component.type === 'offer_badge' && config?.text) {
+                          return <div key="badge-text">Text: {config.text}</div>;
+                        }
+                        if (cc.component.type === 'offer_banner' && config?.title) {
+                          return <div key="banner-title">Title: {config.title}</div>;
+                        }
+                        return <div key="component-id" className="font-mono text-xs">ID: {cc.componentId}</div>;
+                      })()}
+                    </div>
+                  </div>
+                  <div className="flex gap-2 w-full sm:w-auto">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setEditingConfigFor(cc)}
+                      data-testid={`button-customize-${cc.id}`}
+                      title="Customize for this campaign"
+                    >
+                      <Pencil className="w-4 h-4" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() =>
+                        toggleStatusMutation.mutate({
+                          componentId: cc.componentId,
+                          status: cc.status === 'active' ? 'inactive' : 'active',
+                        })
+                      }
+                      disabled={toggleStatusMutation.isPending}
+                      data-testid={`button-toggle-${cc.id}`}
+                    >
+                      {cc.status === 'active' ? (
+                        <ToggleRight className="w-4 h-4" />
+                      ) : (
+                        <ToggleLeft className="w-4 h-4" />
+                      )}
+                    </Button>
+                    <Link href="/components">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        data-testid={`button-view-library-${cc.id}`}
+                        title="View in Component Library"
+                      >
+                        <ExternalLink className="w-4 h-4" />
+                      </Button>
+                    </Link>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        if (confirm('Are you sure you want to remove this component from the campaign?')) {
+                          removeComponentMutation.mutate(cc.componentId);
+                        }
+                      }}
+                      disabled={removeComponentMutation.isPending}
+                      data-testid={`button-remove-${cc.id}`}
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Customize Config Dialog */}
+      <Dialog open={!!editingConfigFor} onOpenChange={(open) => !open && setEditingConfigFor(null)}>
+        <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Customize Component for This Campaign</DialogTitle>
+            <DialogDescription>
+              Personalize this component's configuration for this campaign only. Changes won't affect the original template or other campaigns.
+            </DialogDescription>
+          </DialogHeader>
+          {editingConfigFor && (
+            <CampaignComponentConfigForm
+              campaignComponent={editingConfigFor}
+              onSubmit={(customConfig) =>
+                updateConfigMutation.mutate({ 
+                  componentId: editingConfigFor.componentId, 
+                  customConfig 
+                })
+              }
+              onRevertToDefault={() => {
+                updateConfigMutation.mutate({ 
+                  componentId: editingConfigFor.componentId, 
+                  customConfig: null 
+                });
+              }}
+              onCancel={() => setEditingConfigFor(null)}
+              isLoading={updateConfigMutation.isPending}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
+interface CampaignComponentConfigFormProps {
+  campaignComponent: CampaignComponent & { component: Component };
+  onSubmit: (customConfig: any) => void;
+  onRevertToDefault: () => void;
+  onCancel: () => void;
+  isLoading: boolean;
+}
+
+function CampaignComponentConfigForm({ 
+  campaignComponent, 
+  onSubmit, 
+  onRevertToDefault,
+  onCancel, 
+  isLoading 
+}: CampaignComponentConfigFormProps) {
+  const currentConfig = (campaignComponent.customConfig || campaignComponent.component.config) as any;
+  const [config, setConfig] = useState(currentConfig || {});
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    onSubmit(config);
+  };
+
+  const renderConfigFields = () => {
+    const type = campaignComponent.component.type;
+
+    switch (type) {
+      case 'banner':
+        return (
+          <>
+            <div className="space-y-2">
+              <Label htmlFor="title">Title</Label>
+              <Input
+                id="title"
+                value={config.title || ''}
+                onChange={(e) => setConfig({ ...config, title: e.target.value })}
+                data-testid="input-title"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="subtitle">Subtitle</Label>
+              <Input
+                id="subtitle"
+                value={config.subtitle || ''}
+                onChange={(e) => setConfig({ ...config, subtitle: e.target.value })}
+                data-testid="input-subtitle"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="imageUrl">Image URL</Label>
+              <Input
+                id="imageUrl"
+                value={config.imageUrl || ''}
+                onChange={(e) => setConfig({ ...config, imageUrl: e.target.value })}
+                data-testid="input-imageUrl"
+              />
+            </div>
+          </>
+        );
+
+      case 'countdown':
+        return (
+          <>
+            <div className="space-y-2">
+              <Label htmlFor="title">Title</Label>
+              <Input
+                id="title"
+                value={config.title || ''}
+                onChange={(e) => setConfig({ ...config, title: e.target.value })}
+                data-testid="input-title"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="endDate">End Date</Label>
+              <Input
+                id="endDate"
+                type="datetime-local"
+                value={config.endDate ? new Date(config.endDate).toISOString().slice(0, 16) : ''}
+                onChange={(e) => setConfig({ ...config, endDate: e.target.value })}
+                data-testid="input-endDate"
+              />
+            </div>
+          </>
+        );
+
+      case 'offer_badge':
+        return (
+          <>
+            <div className="space-y-2">
+              <Label htmlFor="text">Badge Text</Label>
+              <Input
+                id="text"
+                value={config.text || ''}
+                onChange={(e) => setConfig({ ...config, text: e.target.value })}
+                data-testid="input-text"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="color">Color</Label>
+              <Select
+                value={config.color || 'red'}
+                onValueChange={(value) => setConfig({ ...config, color: value })}
+              >
+                <SelectTrigger data-testid="select-color">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="red">Red</SelectItem>
+                  <SelectItem value="blue">Blue</SelectItem>
+                  <SelectItem value="green">Green</SelectItem>
+                  <SelectItem value="gold">Gold</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </>
+        );
+
+      default:
+        return (
+          <div className="text-sm text-muted-foreground">
+            <p>Custom configuration for {type} components is not yet available.</p>
+            <p className="mt-2">You can still use the component with its default configuration.</p>
+          </div>
+        );
+    }
+  };
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-4">
+      {renderConfigFields()}
+      
+      <div className="flex gap-2 justify-between pt-4">
+        {campaignComponent.customConfig ? (
+          <Button
+            type="button"
+            variant="outline"
+            onClick={onRevertToDefault}
+            disabled={isLoading}
+            data-testid="button-revert"
+          >
+            Revert to Default
+          </Button>
+        ) : null}
+        <div className="flex gap-2 ml-auto">
+          <Button type="button" variant="outline" onClick={onCancel} data-testid="button-cancel">
+            Cancel
+          </Button>
+          <Button type="submit" disabled={isLoading} data-testid="button-save">
+            {isLoading ? 'Saving...' : 'Save Changes'}
+          </Button>
+        </div>
+      </div>
+    </form>
+  );
+}
