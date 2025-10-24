@@ -702,6 +702,7 @@ wsManager.connect()
       "discountBadgeText": "Opp til 30%",
       "ctaText": "Se alle tilbud",
       "ctaLink": "https://example.com/offers",
+      "deeplink": "myapp://offers/weekly",
       "overlayOpacity": 0.4
     },
     "status": "active",
@@ -786,6 +787,7 @@ wsManager.connect()
     "discountBadgeText": "Opp til 30%",
     "ctaText": "Se alle tilbud",
     "ctaLink": "https://example.com/offers",
+    "deeplink": "myapp://offers/weekly",
     "overlayOpacity": 0.4
   },
   "status": "active",
@@ -806,12 +808,13 @@ wsManager.connect()
     let discountBadgeText: String
     let ctaText: String
     let ctaLink: String?
+    let deeplink: String?  // App URL scheme or universal link
     let overlayOpacity: Double?
 }`}</code>
                 </pre>
               </div>
 
-              <div className="bg-background rounded-lg p-4">
+              <div className="bg-background rounded-lg p-4 mb-3">
                 <h4 className="font-semibold mb-2">Usage Example:</h4>
                 <pre className="bg-gray-900 rounded p-3 overflow-x-auto text-xs">
                   <code className="text-green-400">{`// Decode component from WebSocket or API
@@ -831,9 +834,47 @@ if component.type == "offer_banner" {
         discountBadgeText: config.discountBadgeText,
         ctaText: config.ctaText,
         ctaLink: config.ctaLink,
+        deeplink: config.deeplink,
         overlayOpacity: config.overlayOpacity ?? 0.4
     )
 }`}</code>
+                </pre>
+              </div>
+              
+              <div className="bg-background rounded-lg p-4">
+                <h4 className="font-semibold mb-2">Handling Deeplinks (CTA Button Tap):</h4>
+                <pre className="bg-gray-900 rounded p-3 overflow-x-auto text-xs">
+                  <code className="text-green-400">{`func handleCTAButtonTap(config: OfferBannerConfig) {
+    // Priority: Deeplink > Web Link
+    if let deeplink = config.deeplink, 
+       let url = URL(string: deeplink) {
+        
+        // Try to open deeplink (app URL scheme or universal link)
+        if UIApplication.shared.canOpenURL(url) {
+            UIApplication.shared.open(url, options: [:]) { success in
+                if !success {
+                    // Deeplink failed, fallback to web link
+                    self.openWebLink(config.ctaLink)
+                }
+            }
+        } else {
+            // Deeplink not supported, fallback to web link
+            openWebLink(config.ctaLink)
+        }
+    } else {
+        // No deeplink, open web link
+        openWebLink(config.ctaLink)
+    }
+}
+
+func openWebLink(_ link: String?) {
+    guard let link = link, let url = URL(string: link) else { return }
+    UIApplication.shared.open(url)
+}
+
+// Example deeplink schemes:
+// "myapp://offers/weekly"         -> Custom URL scheme
+// "https://myapp.com/offers/123"  -> Universal link`}</code>
                 </pre>
               </div>
             </div>
