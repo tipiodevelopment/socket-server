@@ -1,7 +1,10 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { 
   Calendar, 
   Activity, 
@@ -9,11 +12,16 @@ import {
   Clock, 
   Zap,
   ExternalLink,
-  PlayCircle
+  ShoppingBag,
+  BarChart2,
+  Trophy
 } from "lucide-react";
 import { Campaign, CampaignComponent, Component, WebSocketEvent } from "@shared/schema";
 import { Link } from "wouter";
 import { format } from "date-fns";
+import { useState } from "react";
+import { useToast } from "@/hooks/use-toast";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 
 interface OverviewTabProps {
   campaignId: number;
@@ -21,6 +29,7 @@ interface OverviewTabProps {
 }
 
 export function OverviewTab({ campaignId, campaign }: OverviewTabProps) {
+  const { toast } = useToast();
   const { data: campaignComponents = [] } = useQuery<Array<CampaignComponent & { component: Component }>>({
     queryKey: ['/api/campaigns', campaignId, 'components'],
   });
@@ -42,6 +51,112 @@ export function OverviewTab({ campaignId, campaign }: OverviewTabProps) {
     if (campaign.endDate && new Date(campaign.endDate) < now) return false;
     return true;
   };
+
+  // Quick event states
+  const [quickProduct, setQuickProduct] = useState({
+    name: 'Flash Sale Item',
+    price: '$99',
+    description: 'Limited time offer - Act now!'
+  });
+
+  const [quickPoll, setQuickPoll] = useState({
+    question: 'What do you think?',
+    option1: 'Option A',
+    option2: 'Option B'
+  });
+
+  const [quickContest, setQuickContest] = useState({
+    name: 'Grand Prize Contest',
+    prize: 'Amazing prizes to be won!'
+  });
+
+  // Mutations for quick events
+  const productMutation = useMutation({
+    mutationFn: async () => {
+      return await apiRequest('POST', `/api/events/${campaignId}`, {
+        type: 'product',
+        data: {
+          productId: `quick-${Date.now()}`,
+          name: quickProduct.name,
+          description: quickProduct.description,
+          price: quickProduct.price,
+          imageUrl: 'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=800&q=80'
+        }
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/events', campaignId] });
+      toast({
+        title: '🎉 Product Event Sent!',
+        description: `"${quickProduct.name}" broadcasted to viewers`,
+      });
+    },
+    onError: () => {
+      toast({
+        title: 'Error',
+        description: 'Failed to send product event',
+        variant: 'destructive',
+      });
+    }
+  });
+
+  const pollMutation = useMutation({
+    mutationFn: async () => {
+      return await apiRequest('POST', `/api/events/${campaignId}`, {
+        type: 'poll',
+        data: {
+          question: quickPoll.question,
+          options: [
+            { text: quickPoll.option1 },
+            { text: quickPoll.option2 }
+          ],
+          duration: 60
+        }
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/events', campaignId] });
+      toast({
+        title: '📊 Poll Event Sent!',
+        description: `"${quickPoll.question}" is now live`,
+      });
+    },
+    onError: () => {
+      toast({
+        title: 'Error',
+        description: 'Failed to send poll event',
+        variant: 'destructive',
+      });
+    }
+  });
+
+  const contestMutation = useMutation({
+    mutationFn: async () => {
+      return await apiRequest('POST', `/api/events/${campaignId}`, {
+        type: 'contest',
+        data: {
+          name: quickContest.name,
+          prize: quickContest.prize,
+          deadline: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+          maxParticipants: 100
+        }
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/events', campaignId] });
+      toast({
+        title: '🏆 Contest Event Sent!',
+        description: `"${quickContest.name}" is now active`,
+      });
+    },
+    onError: () => {
+      toast({
+        title: 'Error',
+        description: 'Failed to send contest event',
+        variant: 'destructive',
+      });
+    }
+  });
 
   return (
     <div className="space-y-6">
@@ -103,57 +218,150 @@ export function OverviewTab({ campaignId, campaign }: OverviewTabProps) {
         />
       </div>
 
-      {/* Quick Actions */}
+      {/* Quick Event Trigger */}
       <Card className="border-0">
         <CardHeader>
-          <CardTitle>Quick Actions</CardTitle>
-          <CardDescription>Common tasks for managing this campaign</CardDescription>
+          <CardTitle className="flex items-center gap-2">
+            <Zap className="w-5 h-5" />
+            Quick Event Trigger
+          </CardTitle>
+          <CardDescription>Send events instantly to your viewers</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <Link href={`#events`}>
+          <Tabs defaultValue="product" className="w-full">
+            <TabsList className="grid w-full grid-cols-3">
+              <TabsTrigger value="product" data-testid="quick-tab-product">
+                <ShoppingBag className="w-4 h-4 mr-2" />
+                Product
+              </TabsTrigger>
+              <TabsTrigger value="poll" data-testid="quick-tab-poll">
+                <BarChart2 className="w-4 h-4 mr-2" />
+                Poll
+              </TabsTrigger>
+              <TabsTrigger value="contest" data-testid="quick-tab-contest">
+                <Trophy className="w-4 h-4 mr-2" />
+                Contest
+              </TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="product" className="space-y-4 mt-4">
+              <div className="space-y-2">
+                <Label htmlFor="quick-product-name">Product Name</Label>
+                <Input
+                  id="quick-product-name"
+                  value={quickProduct.name}
+                  onChange={(e) => setQuickProduct({ ...quickProduct, name: e.target.value })}
+                  placeholder="Product name"
+                  data-testid="input-quick-product-name"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="quick-product-price">Price</Label>
+                <Input
+                  id="quick-product-price"
+                  value={quickProduct.price}
+                  onChange={(e) => setQuickProduct({ ...quickProduct, price: e.target.value })}
+                  placeholder="$99"
+                  data-testid="input-quick-product-price"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="quick-product-desc">Description</Label>
+                <Input
+                  id="quick-product-desc"
+                  value={quickProduct.description}
+                  onChange={(e) => setQuickProduct({ ...quickProduct, description: e.target.value })}
+                  placeholder="Product description"
+                  data-testid="input-quick-product-desc"
+                />
+              </div>
               <Button 
-                className="w-full justify-start" 
-                variant="outline"
-                onClick={() => {
-                  const eventsTab = document.querySelector('[data-testid="tab-events"]') as HTMLElement;
-                  eventsTab?.click();
-                }}
-                data-testid="button-trigger-events"
+                onClick={() => productMutation.mutate()}
+                disabled={productMutation.isPending}
+                className="w-full"
+                data-testid="button-send-quick-product"
               >
                 <Zap className="w-4 h-4 mr-2" />
-                Trigger Events
+                {productMutation.isPending ? 'Sending...' : 'Send Product Event'}
               </Button>
-            </Link>
-            <Link href={`#components`}>
+            </TabsContent>
+
+            <TabsContent value="poll" className="space-y-4 mt-4">
+              <div className="space-y-2">
+                <Label htmlFor="quick-poll-question">Question</Label>
+                <Input
+                  id="quick-poll-question"
+                  value={quickPoll.question}
+                  onChange={(e) => setQuickPoll({ ...quickPoll, question: e.target.value })}
+                  placeholder="What do you think?"
+                  data-testid="input-quick-poll-question"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div className="space-y-2">
+                  <Label htmlFor="quick-poll-opt1">Option 1</Label>
+                  <Input
+                    id="quick-poll-opt1"
+                    value={quickPoll.option1}
+                    onChange={(e) => setQuickPoll({ ...quickPoll, option1: e.target.value })}
+                    placeholder="Option A"
+                    data-testid="input-quick-poll-opt1"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="quick-poll-opt2">Option 2</Label>
+                  <Input
+                    id="quick-poll-opt2"
+                    value={quickPoll.option2}
+                    onChange={(e) => setQuickPoll({ ...quickPoll, option2: e.target.value })}
+                    placeholder="Option B"
+                    data-testid="input-quick-poll-opt2"
+                  />
+                </div>
+              </div>
               <Button 
-                className="w-full justify-start" 
-                variant="outline"
-                onClick={() => {
-                  const componentsTab = document.querySelector('[data-testid="tab-components"]') as HTMLElement;
-                  componentsTab?.click();
-                }}
-                data-testid="button-manage-components"
+                onClick={() => pollMutation.mutate()}
+                disabled={pollMutation.isPending}
+                className="w-full"
+                data-testid="button-send-quick-poll"
               >
-                <Activity className="w-4 h-4 mr-2" />
-                Manage Components
+                <Zap className="w-4 h-4 mr-2" />
+                {pollMutation.isPending ? 'Sending...' : 'Send Poll Event'}
               </Button>
-            </Link>
-            <Link href={`#scheduled`}>
+            </TabsContent>
+
+            <TabsContent value="contest" className="space-y-4 mt-4">
+              <div className="space-y-2">
+                <Label htmlFor="quick-contest-name">Contest Name</Label>
+                <Input
+                  id="quick-contest-name"
+                  value={quickContest.name}
+                  onChange={(e) => setQuickContest({ ...quickContest, name: e.target.value })}
+                  placeholder="Grand Prize Contest"
+                  data-testid="input-quick-contest-name"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="quick-contest-prize">Prize</Label>
+                <Input
+                  id="quick-contest-prize"
+                  value={quickContest.prize}
+                  onChange={(e) => setQuickContest({ ...quickContest, prize: e.target.value })}
+                  placeholder="Amazing prizes!"
+                  data-testid="input-quick-contest-prize"
+                />
+              </div>
               <Button 
-                className="w-full justify-start" 
-                variant="outline"
-                onClick={() => {
-                  const scheduledTab = document.querySelector('[data-testid="tab-scheduled"]') as HTMLElement;
-                  scheduledTab?.click();
-                }}
-                data-testid="button-view-schedule"
+                onClick={() => contestMutation.mutate()}
+                disabled={contestMutation.isPending}
+                className="w-full"
+                data-testid="button-send-quick-contest"
               >
-                <Calendar className="w-4 h-4 mr-2" />
-                View Schedule
+                <Zap className="w-4 h-4 mr-2" />
+                {contestMutation.isPending ? 'Sending...' : 'Send Contest Event'}
               </Button>
-            </Link>
-          </div>
+            </TabsContent>
+          </Tabs>
         </CardContent>
       </Card>
 

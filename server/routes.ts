@@ -203,6 +203,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Get events for a specific campaign (RESTful route)
+  app.get('/api/events/:campaignId', async (req, res) => {
+    try {
+      const campaignId = parseInt(req.params.campaignId);
+      
+      if (isNaN(campaignId)) {
+        return res.status(400).json({ message: 'Invalid campaign ID' });
+      }
+      
+      // Get events for specific campaign from database
+      const dbEvents = await storage.getCampaignEvents(campaignId);
+      // Convert DB events to WebSocket events format
+      const events = dbEvents.map(dbEvent => ({
+        type: dbEvent.type,
+        data: dbEvent.data,
+        campaignLogo: dbEvent.campaignLogo || undefined,
+        timestamp: new Date(dbEvent.timestamp).getTime()
+      }));
+      res.json(events);
+    } catch (error) {
+      console.error('Error fetching campaign events:', error);
+      res.status(500).json({ message: 'Error fetching events' });
+    }
+  });
+
   // Get connection status
   app.get('/api/status', (req, res) => {
     res.json({
@@ -402,6 +427,88 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error('Error sending contest event:', error);
       res.status(400).json({ message: 'Error sending contest event' });
+    }
+  });
+
+  // Generic event endpoint for campaign (RESTful route)
+  app.post('/api/events/:campaignId', async (req, res) => {
+    try {
+      const campaignId = parseInt(req.params.campaignId);
+      
+      if (isNaN(campaignId)) {
+        return res.status(400).json({ message: 'Invalid campaign ID' });
+      }
+      
+      // Validate campaign exists
+      const campaign = await storage.getCampaign(campaignId);
+      if (!campaign) {
+        return res.status(404).json({ message: 'Campaign not found' });
+      }
+      
+      const { type, data } = req.body;
+      
+      if (!type || !data) {
+        return res.status(400).json({ message: 'Event type and data are required' });
+      }
+
+      // Create event based on type
+      let event: WebSocketEvent;
+      
+      if (type === 'product') {
+        event = {
+          type: 'product',
+          data: {
+            id: `prod_${randomUUID()}`,
+            ...data
+          },
+          campaignLogo: campaign.logo || undefined,
+          timestamp: Date.now()
+        };
+      } else if (type === 'poll') {
+        event = {
+          type: 'poll',
+          data: {
+            id: `poll_${randomUUID()}`,
+            ...data
+          },
+          campaignLogo: campaign.logo || undefined,
+          timestamp: Date.now()
+        };
+      } else if (type === 'contest') {
+        event = {
+          type: 'contest',
+          data: {
+            id: `contest_${randomUUID()}`,
+            ...data
+          },
+          campaignLogo: campaign.logo || undefined,
+          timestamp: Date.now()
+        };
+      } else {
+        return res.status(400).json({ message: 'Invalid event type' });
+      }
+
+      // Validate the event
+      webSocketEventSchema.parse(event);
+
+      // Store in memory for legacy compatibility
+      await storage.addEvent(event);
+
+      // Store the event in database
+      await storage.addCampaignEvent({
+        campaignId,
+        type: event.type,
+        data: event.data,
+        campaignLogo: event.campaignLogo || null
+      });
+      
+      // Broadcast to specific campaign
+      broadcastToCampaignImpl(campaignId, JSON.stringify(event));
+
+      res.json({ success: true, event });
+    } catch (error) {
+      console.error('Error sending campaign event:', error);
+      res.status(400).json({ message: 'Error sending event' });
     }
   });
 
