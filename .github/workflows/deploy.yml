@@ -106,7 +106,7 @@ jobs:
       - name: Azure CLI Login
         uses: azure/login@v2
         with:
-          creds: ${{ toJSON({ "clientId": env.SV_APP_ID_PROD, "clientSecret": env.SV_PASSWORD_PROD, "tenantId": env.SV_TENANT_ID_PROD}) }}
+          creds: '${{ toJSON({ "clientId": env.SV_APP_ID_PROD, "clientSecret": env.SV_PASSWORD_PROD, "tenantId": env.SV_TENANT_ID_PROD}) }}'
           subscription-id: ${{ secrets.SV_SUBSCRIPTION_ID }}
           auth-type: service_principal
 
