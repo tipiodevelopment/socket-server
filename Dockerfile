@@ -30,7 +30,7 @@ RUN az login --service-principal -u "${SV_APP_ID}" -p "${SV_PASSWORD}" --tenant 
 RUN az storage blob download \
     --account-name "${AZ_STORAGE}" \
     --container-name env-file-microservices \
-    --name bigcommerce-app/.env  \
+    --name socket-server/.env  \
     --file .env \
     --auth-mode login
 
