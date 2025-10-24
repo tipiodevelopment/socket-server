@@ -39,6 +39,7 @@ The frontend utilizes React 18 with TypeScript and Vite, styled with Tailwind CS
     - Components can be activated/deactivated manually or scheduled for automatic display within specific campaigns.
     - Real-time updates via WebSockets (`component_status_changed`, `component_config_updated`, `campaign_ended`) for dynamic display in client applications (e.g., iOS).
     - Prevents a component from being active in multiple campaigns simultaneously.
+    - **Deeplink Support:** Components with CTAs (Banner, Offer Banner) support optional deeplinks for in-app navigation. When specified, deeplinks take priority over web links, enabling seamless transitions to specific app screens (e.g., `myapp://offers/weekly`). Supports both custom URL schemes and universal links.
     - Integration documentation with Swift code examples is provided for client-side implementation.
 - **Event Broadcasting:** Supports Product, Poll, and Contest events, validated by Zod schemas, stored in PostgreSQL, and broadcast to campaign-specific WebSocket clients in real-time. Historical events are also retrievable.
 
