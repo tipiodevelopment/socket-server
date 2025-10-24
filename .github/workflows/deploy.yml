@@ -107,8 +107,9 @@ jobs:
         uses: azure/cli@v2
         with:
           inlineScript: |
-            sudo apt-get update
-            sudo apt-get install -y tar
+            tdnf makecache
+            tdnf install -y tar
+            
             # 1. LOGIN
             az login --service-principal --username "${{ env.SV_APP_ID_PROD }}" --password "${{ env.SV_PASSWORD_PROD }}" --tenant "${{ env.SV_TENANT_ID_PROD }}"
             az account set --subscription "${{ secrets.SV_SUBSCRIPTION_ID }}"
