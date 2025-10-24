@@ -105,11 +105,10 @@ jobs:
 
       - name: Azure CLI Login
         uses: azure/login@v2
-        env:
-          AZ_CLIENT_ID: ${{ env.SV_APP_ID_PROD }}
-          AZ_TENANT_ID: ${{ env.SV_TENANT_ID_PROD }}
-          AZ_CLIENT_SECRET: ${{ env.SV_PASSWORD_PROD }}
         with:
+          client-id: $SV_APP_ID_PROD
+          tenant-id: $SV_TENANT_ID_PROD
+          client-secret: $SV_PASSWORD_PROD
           subscription-id: ${{ secrets.SV_SUBSCRIPTION_ID }}
 
       - name: Configure AKS
