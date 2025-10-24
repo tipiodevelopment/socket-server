@@ -906,12 +906,10 @@ function DynamicComponentsTab({
                 })
               }
               onRevertToDefault={() => {
-                if (confirm('Revert to the original template configuration? Your customizations will be lost.')) {
-                  updateConfigMutation.mutate({ 
-                    componentId: editingConfigFor.componentId, 
-                    customConfig: null 
-                  });
-                }
+                updateConfigMutation.mutate({ 
+                  componentId: editingConfigFor.componentId, 
+                  customConfig: null 
+                });
               }}
               onCancel={() => setEditingConfigFor(null)}
               isLoading={updateConfigMutation.isPending}
