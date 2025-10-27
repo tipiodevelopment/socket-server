@@ -140,6 +140,12 @@ export const insertCampaignSchema = createInsertSchema(campaigns).omit({
   createdAt: true 
 });
 
+// Update schema for campaign - accepts ISO date strings instead of Date objects
+export const updateCampaignSchema = insertCampaignSchema.partial().extend({
+  startDate: z.string().datetime().nullable().optional(),
+  endDate: z.string().datetime().nullable().optional()
+});
+
 export const insertEventSchema = createInsertSchema(events).omit({ 
   id: true,
   timestamp: true 
@@ -170,6 +176,7 @@ export type User = typeof users.$inferSelect;
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type Campaign = typeof campaigns.$inferSelect;
 export type InsertCampaign = z.infer<typeof insertCampaignSchema>;
+export type UpdateCampaign = z.infer<typeof updateCampaignSchema>;
 export type Event = typeof events.$inferSelect;
 export type InsertEvent = z.infer<typeof insertEventSchema>;
 export type CampaignFormState = typeof campaignFormState.$inferSelect;

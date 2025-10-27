@@ -17,7 +17,7 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { Settings, Trash2, Upload } from "lucide-react";
-import { Campaign } from "@shared/schema";
+import { Campaign, UpdateCampaign } from "@shared/schema";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { ImageUploadWithPreview } from "@/components/ImageUploadWithPreview";
@@ -42,7 +42,7 @@ export function SettingsTab({ campaignId, campaign }: SettingsTabProps) {
   const [logo, setLogo] = useState(campaign.logo || '');
 
   const updateCampaignMutation = useMutation({
-    mutationFn: async (data: Partial<Campaign>) => {
+    mutationFn: async (data: UpdateCampaign) => {
       return await apiRequest('PUT', `/api/campaigns/${campaignId}`, data);
     },
     onSuccess: () => {
@@ -96,10 +96,10 @@ export function SettingsTab({ campaignId, campaign }: SettingsTabProps) {
     
     // Always include both dates in the update
     // Send as ISO strings (the backend will convert them to Date objects)
-    const updates = {
+    const updates: UpdateCampaign = {
       startDate: startDate ? new Date(startDate).toISOString() : null,
       endDate: endDate ? new Date(endDate).toISOString() : null
-    } as Partial<Campaign>;
+    };
     
     updateCampaignMutation.mutate(updates);
   };

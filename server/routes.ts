@@ -2,7 +2,12 @@ import type { Express, Request } from "express";
 import { createServer, type Server } from "http";
 import { WebSocketServer, WebSocket } from "ws";
 import { storage } from "./storage";
-import { webSocketEventSchema, type WebSocketEvent, type InsertScheduledComponent } from "@shared/schema";
+import { 
+  webSocketEventSchema, 
+  updateCampaignSchema,
+  type WebSocketEvent, 
+  type InsertScheduledComponent 
+} from "@shared/schema";
 import { randomUUID } from "crypto";
 import {
   ObjectStorageService,
@@ -728,38 +733,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Update campaign
   app.put('/api/campaigns/:id', async (req, res) => {
     try {
-      console.log('=== UPDATE CAMPAIGN REQUEST ===');
-      console.log('Campaign ID:', req.params.id);
-      console.log('Request body:', JSON.stringify(req.body, null, 2));
+      // Validate request body with updateCampaignSchema
+      const validatedData = updateCampaignSchema.parse(req.body);
       
-      // Convert date strings to Date objects if present
-      const updateData = { ...req.body };
+      // Convert ISO date strings to Date objects if present
+      const updateData: any = { ...validatedData };
       if (updateData.startDate !== undefined) {
-        console.log('Converting startDate:', updateData.startDate);
         updateData.startDate = updateData.startDate ? new Date(updateData.startDate) : null;
-        console.log('Converted startDate:', updateData.startDate);
       }
       if (updateData.endDate !== undefined) {
-        console.log('Converting endDate:', updateData.endDate);
         updateData.endDate = updateData.endDate ? new Date(updateData.endDate) : null;
-        console.log('Converted endDate:', updateData.endDate);
       }
-      
-      console.log('Update data to send:', JSON.stringify(updateData, null, 2));
       
       const campaign = await storage.updateCampaign(parseInt(req.params.id), updateData);
       if (!campaign) {
-        console.error('Campaign not found');
         return res.status(404).json({ message: 'Campaign not found' });
       }
       
-      console.log('Campaign updated successfully');
       res.json(campaign);
     } catch (error) {
-      console.error('=== ERROR UPDATING CAMPAIGN ===');
-      console.error('Error:', error);
-      console.error('Error message:', error instanceof Error ? error.message : String(error));
-      console.error('Error stack:', error instanceof Error ? error.stack : 'No stack');
+      console.error('Error updating campaign:', error);
       res.status(400).json({ 
         message: 'Error updating campaign',
         error: error instanceof Error ? error.message : String(error)
