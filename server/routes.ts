@@ -728,7 +728,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Update campaign
   app.put('/api/campaigns/:id', async (req, res) => {
     try {
-      const campaign = await storage.updateCampaign(parseInt(req.params.id), req.body);
+      // Convert date strings to Date objects if present
+      const updateData = { ...req.body };
+      if (updateData.startDate !== undefined) {
+        updateData.startDate = updateData.startDate ? new Date(updateData.startDate) : null;
+      }
+      if (updateData.endDate !== undefined) {
+        updateData.endDate = updateData.endDate ? new Date(updateData.endDate) : null;
+      }
+      
+      const campaign = await storage.updateCampaign(parseInt(req.params.id), updateData);
       if (!campaign) {
         return res.status(404).json({ message: 'Campaign not found' });
       }

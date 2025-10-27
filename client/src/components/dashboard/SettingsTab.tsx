@@ -95,11 +95,11 @@ export function SettingsTab({ campaignId, campaign }: SettingsTabProps) {
     e.preventDefault();
     
     // Always include both dates in the update
-    // Send as ISO strings (or null) instead of Date objects
-    const updates: { startDate: string | null; endDate: string | null } = {
+    // Send as ISO strings (the backend will convert them to Date objects)
+    const updates = {
       startDate: startDate ? new Date(startDate).toISOString() : null,
       endDate: endDate ? new Date(endDate).toISOString() : null
-    };
+    } as Partial<Campaign>;
     
     updateCampaignMutation.mutate(updates);
   };
