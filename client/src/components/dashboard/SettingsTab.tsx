@@ -93,13 +93,13 @@ export function SettingsTab({ campaignId, campaign }: SettingsTabProps) {
 
   const handleSaveDates = (e: React.FormEvent) => {
     e.preventDefault();
-    const updates: { startDate?: Date | null; endDate?: Date | null } = {};
-    if (startDate) {
-      updates.startDate = new Date(startDate);
-    }
-    if (endDate) {
-      updates.endDate = new Date(endDate);
-    }
+    
+    // Always include both dates in the update
+    const updates: { startDate: Date | null; endDate: Date | null } = {
+      startDate: startDate ? new Date(startDate) : null,
+      endDate: endDate ? new Date(endDate) : null
+    };
+    
     updateCampaignMutation.mutate(updates);
   };
 
