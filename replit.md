@@ -8,6 +8,15 @@ This project is a real-time event broadcasting application designed for multi-ca
 
 Preferred communication style: Simple, everyday language.
 
+## Deployment
+
+**Production Recommendation:** Use Reserved VM deployment for reliable WebSocket performance and 99.9% uptime. Autoscale deployments are not suitable for persistent WebSocket connections due to 15-minute idle timeout. See `DEPLOYMENT.md` for detailed deployment guide.
+
+**Required Environment Variables:**
+- `DATABASE_URL`: PostgreSQL connection string (auto-configured with Replit PostgreSQL)
+- `SESSION_SECRET`: Random secret for session encryption
+- `PORT`: Server port (auto-configured by Replit, defaults to 5000)
+
 ## System Architecture
 
 ### UI/UX Decisions

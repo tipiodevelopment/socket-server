@@ -41,29 +41,40 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
   // Store campaign ID for each WebSocket
   const clientCampaigns = new WeakMap<WebSocket, number>();
+  
+  // Store ping interval for each WebSocket
+  const clientPingIntervals = new WeakMap<WebSocket, NodeJS.Timeout>();
+  
+  // Track if client is alive (responded to last ping)
+  const clientAlive = new WeakMap<WebSocket, boolean>();
 
   // Handle WebSocket upgrade requests
   httpServer.on('upgrade', (request, socket, head) => {
-    const url = new URL(request.url || '', `http://${request.headers.host}`);
-    
-    // Extract campaign ID from path like /ws/123
-    const pathMatch = url.pathname.match(/^\/ws\/(\d+)$/);
-    
-    if (pathMatch) {
-      // Campaign-specific WebSocket
-      const campaignId = parseInt(pathMatch[1], 10);
+    try {
+      const url = new URL(request.url || '', `http://${request.headers.host}`);
       
-      wss.handleUpgrade(request, socket, head, (ws) => {
-        clientCampaigns.set(ws, campaignId);
-        wss.emit('connection', ws, request, campaignId);
-      });
-    } else if (url.pathname === '/ws') {
-      // Legacy WebSocket (no campaign ID) - use campaign ID 0 for backwards compatibility
-      wss.handleUpgrade(request, socket, head, (ws) => {
-        clientCampaigns.set(ws, 0);
-        wss.emit('connection', ws, request, 0);
-      });
-    } else {
+      // Extract campaign ID from path like /ws/123
+      const pathMatch = url.pathname.match(/^\/ws\/(\d+)$/);
+      
+      if (pathMatch) {
+        // Campaign-specific WebSocket
+        const campaignId = parseInt(pathMatch[1], 10);
+        
+        wss.handleUpgrade(request, socket, head, (ws) => {
+          clientCampaigns.set(ws, campaignId);
+          wss.emit('connection', ws, request, campaignId);
+        });
+      } else if (url.pathname === '/ws') {
+        // Legacy WebSocket (no campaign ID) - use campaign ID 0 for backwards compatibility
+        wss.handleUpgrade(request, socket, head, (ws) => {
+          clientCampaigns.set(ws, 0);
+          wss.emit('connection', ws, request, 0);
+        });
+      } else {
+        socket.destroy();
+      }
+    } catch (error) {
+      console.error('Error handling WebSocket upgrade:', error);
       socket.destroy();
     }
   });
@@ -77,6 +88,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
     campaignClients.get(campaignId)!.add(ws);
     
     console.log(`Client connected to campaign ${campaignId}`);
+
+    // Mark client as alive initially
+    clientAlive.set(ws, true);
+
+    // Setup heartbeat to keep connection alive and detect zombies (check every 30 seconds)
+    const pingInterval = setInterval(() => {
+      // Check if client responded to last ping
+      if (clientAlive.get(ws) === false) {
+        // Client didn't respond to last ping, terminate connection
+        console.log(`Terminating zombie WebSocket connection for campaign ${campaignId}`);
+        ws.terminate();
+        return;
+      }
+      
+      // Mark as potentially dead, will be set to true if pong received
+      clientAlive.set(ws, false);
+      
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.ping();
+      }
+    }, 30000);
+    
+    clientPingIntervals.set(ws, pingInterval);
 
     // Check if campaign is inactive and immediately notify
     if (campaignId !== 0) {
@@ -98,7 +132,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
     }
 
+    ws.on('pong', () => {
+      // Client responded to ping, mark as alive
+      clientAlive.set(ws, true);
+    });
+
     ws.on('close', () => {
+      // Clear ping interval
+      const interval = clientPingIntervals.get(ws);
+      if (interval) {
+        clearInterval(interval);
+        clientPingIntervals.delete(ws);
+      }
+      
       const clients = campaignClients.get(campaignId);
       if (clients) {
         clients.delete(ws);
@@ -110,7 +156,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
     });
 
     ws.on('error', (error) => {
-      console.error('WebSocket error:', error);
+      console.error(`WebSocket error for campaign ${campaignId}:`, error);
+      
+      // Clear ping interval
+      const interval = clientPingIntervals.get(ws);
+      if (interval) {
+        clearInterval(interval);
+        clientPingIntervals.delete(ws);
+      }
+      
       const clients = campaignClients.get(campaignId);
       if (clients) {
         clients.delete(ws);
