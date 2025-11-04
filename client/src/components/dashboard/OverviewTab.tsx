@@ -34,7 +34,15 @@ export function OverviewTab({ campaignId, campaign }: OverviewTabProps) {
   const { toast } = useToast();
   const { data: campaignComponents = [] } = useQuery<Array<CampaignComponent & { component: Component }>>({
     queryKey: ['/api/campaigns', campaignId, 'components'],
+    refetchInterval: 5000, // Auto-refresh every 5 seconds to keep UI in sync
   });
+
+  // Debug: Log component statuses
+  console.log('[OverviewTab] Campaign components:', campaignComponents.map(cc => ({
+    name: cc.component.name,
+    status: cc.status,
+    id: cc.id
+  })));
 
   const { data: recentEvents = [] } = useQuery<WebSocketEvent[]>({
     queryKey: ['/api/events', campaignId],
