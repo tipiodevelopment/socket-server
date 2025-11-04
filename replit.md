@@ -49,6 +49,11 @@ The frontend utilizes React 18 with TypeScript and Vite, styled with Tailwind CS
 
 ### Feature Specifications
 - **Campaign Management:** Administrators can create, manage, and delete campaigns. Each campaign can have associated integrations (Reachu.io, Tipio). Campaigns have a lifecycle defined by `startDate` and `endDate`.
+    - **Campaign Lifecycle:** All components automatically respect campaign start and end dates. System broadcasts `campaign_started` and `campaign_ended` WebSocket events to notify clients.
+        - **Before startDate:** Components cannot activate, even if manually toggled
+        - **During campaign (startDate ≤ now < endDate):** Components can be activated/deactivated via manual toggle or scheduling
+        - **After endDate:** All components automatically hidden
+    - **Manual Toggle:** Admins can activate/deactivate components anytime during the active campaign period
 - **WebSocket Architecture:** Each campaign (`/ws/:campaignId`) has an isolated WebSocket channel, ensuring events are broadcast only to relevant clients, managed by a `Map<campaignId, Set<WebSocket>>`.
 - **Dynamic Component Management:**
     - A library of reusable UI components (e.g., Banner, Countdown, Carousel, Product Spotlight, Offer Badge, Offer Banner) configurable via a REST API.
@@ -63,7 +68,7 @@ The frontend utilizes React 18 with TypeScript and Vite, styled with Tailwind CS
         - **Revert Functionality:** "Revert to Original" button sets customConfig to null, restoring template defaults
         - **Field Pre-population:** Dialog pre-fills with current values (customConfig || template.config)
         - **Immediate Updates:** Changes reflect in UI immediately after successful mutation
-    - Real-time updates via WebSockets (`component_status_changed`, `component_config_updated`, `campaign_ended`) for dynamic display in client applications (e.g., iOS).
+    - Real-time updates via WebSockets (`campaign_started`, `campaign_ended`, `component_status_changed`, `component_config_updated`) for dynamic display in client applications (e.g., iOS).
     - Prevents a component from being active in multiple campaigns simultaneously.
     - **Deeplink Support:** Components with CTAs (Banner, Offer Banner) support optional deeplinks for in-app navigation. When specified, deeplinks take priority over web links, enabling seamless transitions to specific app screens (e.g., `myapp://offers/weekly`). Supports both custom URL schemes and universal links.
     - Integration documentation with Swift code examples is provided for client-side implementation.

@@ -13,7 +13,7 @@ import {
   ObjectStorageService,
   ObjectNotFoundError,
 } from "./objectStorage";
-import { isCampaignActive, normalizeUrls } from "./utils";
+import { isCampaignActive, hasCampaignEnded, isCampaignUpcoming, normalizeUrls } from "./utils";
 
 // Helper function to convert relative paths to absolute URLs
 function toAbsoluteUrl(pathOrUrl: string | undefined, req: Request): string | undefined {
@@ -117,20 +117,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
     
     clientPingIntervals.set(ws, pingInterval);
 
-    // Check if campaign is inactive and immediately notify
+    // Check campaign status and immediately notify client
     if (campaignId !== 0) {
       try {
         const campaign = await storage.getCampaign(campaignId);
-        if (campaign && !isCampaignActive(campaign)) {
-          // Campaign has already ended, notify client immediately
-          if (ws.readyState === WebSocket.OPEN) {
-            ws.send(JSON.stringify({
-              type: 'campaign_ended',
-              campaignId: campaign.id,
-              endDate: campaign.endDate
-            }));
-            console.log(`Sent campaign_ended notification to new client for campaign ${campaignId}`);
+        if (campaign) {
+          if (hasCampaignEnded(campaign)) {
+            // Campaign has ended (endDate in the past), notify client immediately
+            if (ws.readyState === WebSocket.OPEN) {
+              ws.send(JSON.stringify({
+                type: 'campaign_ended',
+                campaignId: campaign.id,
+                endDate: campaign.endDate
+              }));
+              console.log(`Sent campaign_ended notification to new client for campaign ${campaignId}`);
+            }
+          } else if (isCampaignUpcoming(campaign)) {
+            // Campaign hasn't started yet (startDate in the future)
+            // Don't send any event - components won't activate until campaign starts
+            console.log(`Client connected to upcoming campaign ${campaignId} (starts: ${campaign.startDate})`);
           }
+          // else: campaign is active or has no dates (always active) - no immediate event needed
         }
       } catch (error) {
         console.error('Error checking campaign status on connection:', error);
@@ -230,8 +237,37 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   }
 
-  // Check every 30 seconds for ended campaigns
+  // Check for started campaigns and broadcast campaign_started events
+  async function checkAndNotifyStartedCampaigns() {
+    try {
+      const campaigns = await storage.getAllCampaigns();
+      const now = new Date();
+      
+      for (const campaign of campaigns) {
+        if (campaign.startDate) {
+          const startDate = new Date(campaign.startDate);
+          // Check if campaign just started (within last minute)
+          const timeDiff = now.getTime() - startDate.getTime();
+          if (timeDiff >= 0 && timeDiff < 60000) {
+            // Campaign just started, broadcast to all connected clients
+            broadcastToCampaignImpl(campaign.id, JSON.stringify({
+              type: 'campaign_started',
+              campaignId: campaign.id,
+              startDate: campaign.startDate,
+              endDate: campaign.endDate
+            }));
+            console.log(`Campaign ${campaign.id} (${campaign.name}) has started`);
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Error checking started campaigns:', error);
+    }
+  }
+
+  // Check every 30 seconds for campaign lifecycle events
   setInterval(checkAndNotifyEndedCampaigns, 30000);
+  setInterval(checkAndNotifyStartedCampaigns, 30000);
 
   // HTTP API endpoints
   

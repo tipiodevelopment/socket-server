@@ -91,6 +91,9 @@ class WebSocketManager: NSObject, URLSessionWebSocketDelegate {
         case "contest":
             let event = try JSONDecoder().decode(ContestEvent.self, from: data)
             handleContestEvent(event)
+        case "campaign_started":
+            // Campaign has started, show all active components
+            handleCampaignStarted(json)
         case "campaign_ended":
             // Campaign has ended, hide all components immediately
             handleCampaignEnded(json)
@@ -105,6 +108,15 @@ class WebSocketManager: NSObject, URLSessionWebSocketDelegate {
         }
     } catch {
         print("Error decoding event: \\(error)")
+    }
+}
+
+private func handleCampaignStarted(_ json: [String: Any]) {
+    DispatchQueue.main.async {
+        // Campaign has started, prepare to show components
+        // You can optionally fetch and display active components
+        print("Campaign started, ready to display components")
+        self.loadActiveComponents()
     }
 }
 
@@ -528,6 +540,86 @@ wsManager.connect()
                 <pre className="bg-background border-0 rounded-lg p-3 overflow-x-auto code-block text-xs">
                   <code className="text-green-400">{contestJSON}</code>
                 </pre>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Campaign Lifecycle */}
+        <Card className="border-0">
+          <CardHeader>
+            <CardTitle className="flex items-center space-x-2">
+              <svg className="w-6 h-6 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+              </svg>
+              <span>Campaign Lifecycle</span>
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-muted-foreground mb-4">
+              All components automatically respect campaign start and end dates. The system broadcasts lifecycle events to notify your app when campaigns start or end.
+            </p>
+            
+            <div className="space-y-4">
+              <div className="bg-blue-500/10 border-0 rounded-lg p-4">
+                <h4 className="font-semibold mb-2 text-blue-400 flex items-center space-x-2">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M14 5l7 7m0 0l-7 7m7-7H3"></path>
+                  </svg>
+                  <span>campaign_started Event</span>
+                </h4>
+                <p className="text-sm text-muted-foreground mb-3">
+                  Sent when a campaign's start date is reached. Use this to prepare your UI and load active components.
+                </p>
+                <pre className="bg-background rounded p-3 overflow-x-auto text-xs">
+                  <code className="text-green-400">{`{
+  "type": "campaign_started",
+  "campaignId": 10,
+  "startDate": "2024-12-25T10:00:00Z",
+  "endDate": "2024-12-31T23:59:59Z"
+}`}</code>
+                </pre>
+              </div>
+
+              <div className="bg-red-500/10 border-0 rounded-lg p-4">
+                <h4 className="font-semibold mb-2 text-red-400 flex items-center space-x-2">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path>
+                  </svg>
+                  <span>campaign_ended Event</span>
+                </h4>
+                <p className="text-sm text-muted-foreground mb-3">
+                  Sent when a campaign's end date is reached. Hide all campaign components immediately when this event is received.
+                </p>
+                <pre className="bg-background rounded p-3 overflow-x-auto text-xs">
+                  <code className="text-green-400">{`{
+  "type": "campaign_ended",
+  "campaignId": 10,
+  "endDate": "2024-12-31T23:59:59Z"
+}`}</code>
+                </pre>
+              </div>
+
+              <div className="bg-purple-500/10 border-0 rounded-lg p-4">
+                <h4 className="font-semibold mb-2 text-purple-400">Component Behavior</h4>
+                <ul className="text-sm space-y-2 text-muted-foreground">
+                  <li className="flex items-start space-x-2">
+                    <span className="text-purple-400 mt-1">•</span>
+                    <span><strong>Before start date:</strong> Components will not activate, even if manually toggled</span>
+                  </li>
+                  <li className="flex items-start space-x-2">
+                    <span className="text-purple-400 mt-1">•</span>
+                    <span><strong>During campaign:</strong> Components can be activated/deactivated via manual toggle or scheduling</span>
+                  </li>
+                  <li className="flex items-start space-x-2">
+                    <span className="text-purple-400 mt-1">•</span>
+                    <span><strong>After end date:</strong> All components are automatically hidden</span>
+                  </li>
+                  <li className="flex items-start space-x-2">
+                    <span className="text-purple-400 mt-1">•</span>
+                    <span><strong>Manual toggle:</strong> Admins can activate/deactivate components anytime during the active campaign period</span>
+                  </li>
+                </ul>
               </div>
             </div>
           </CardContent>
