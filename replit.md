@@ -89,7 +89,7 @@ The frontend utilizes React 18 with TypeScript and Vite, styled with Tailwind CS
     - **Campaigns Page:** Dashboard listing all campaigns with "Manage Campaign" button for each.
     - **New Campaign Page:** Form for campaign creation.
     - **Campaign Dashboard:** Unified command center with 6 tabs (replaces previous Admin/Advanced split):
-        - **Overview Tab:** Campaign status, quick stats (active/scheduled components, events), upcoming scheduled components, recent events, and Quick Event Trigger section for instant Product/Poll/Contest broadcasting without switching to Events tab
+        - **Overview Tab:** Campaign status with duration display (start/end dates), quick stats (active/scheduled components, events), Components section with individual toggles and master toggle controls ("Activate All" / "Deactivate All"), upcoming scheduled components, recent events, and Quick Event Trigger section for instant Product/Poll/Contest broadcasting without switching to Events tab. Master toggle uses Promise.allSettled for reliable partial-failure handling.
         - **Events Tab:** Real-time event broadcasting interface with Product/Poll/Contest forms, WebSocket connection status, event history log, and form auto-save
         - **Scheduled Tab:** Timeline view of scheduled components with "Trigger Now" button for manual activation before scheduled time
         - **Components Tab:** Dynamic component management with toggle switches for activation/deactivation, customization dialogs, add/remove functionality
