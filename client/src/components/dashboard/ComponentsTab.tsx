@@ -61,11 +61,18 @@ export function ComponentsTab({ campaignId }: ComponentsTabProps) {
     mutationFn: async ({ componentId, status }: { componentId: string; status: 'active' | 'inactive' }) => {
       return await apiRequest('PATCH', `/api/campaigns/${campaignId}/components/${componentId}`, { status });
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/campaigns', campaignId, 'components'] });
+    onSuccess: async () => {
+      // Show toast immediately for responsive UI
       toast({
         title: 'Status Updated',
         description: 'The component status has been updated.',
+      });
+      
+      // Invalidate to trigger refetch (provides fallback if WebSocket fails)
+      // In React Query v5, invalidateQueries automatically refetches active queries
+      await queryClient.invalidateQueries({ 
+        queryKey: ['/api/campaigns', campaignId, 'components'],
+        refetchType: 'active'
       });
     },
     onError: (error: any) => {

@@ -165,11 +165,18 @@ export function OverviewTab({ campaignId, campaign }: OverviewTabProps) {
     mutationFn: async ({ componentId, status }: { componentId: string; status: 'active' | 'inactive' }) => {
       return await apiRequest('PATCH', `/api/campaigns/${campaignId}/components/${componentId}`, { status });
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/campaigns', campaignId, 'components'] });
+    onSuccess: async () => {
+      // Show toast immediately for responsive UI
       toast({
         title: 'Status Updated',
         description: 'Component status has been updated.',
+      });
+      
+      // Invalidate to trigger refetch (provides fallback if WebSocket fails)
+      // In React Query v5, invalidateQueries automatically refetches active queries
+      await queryClient.invalidateQueries({ 
+        queryKey: ['/api/campaigns', campaignId, 'components'],
+        refetchType: 'active'
       });
     },
     onError: (error: any) => {
@@ -204,10 +211,8 @@ export function OverviewTab({ campaignId, campaign }: OverviewTabProps) {
       
       return { succeeded, failed, total: componentsToToggle.length };
     },
-    onSuccess: (result, targetStatus) => {
-      // Always invalidate cache to show current state
-      queryClient.invalidateQueries({ queryKey: ['/api/campaigns', campaignId, 'components'] });
-      
+    onSuccess: async (result, targetStatus) => {
+      // Show toast immediately for responsive UI
       if (result.failed === 0) {
         toast({
           title: targetStatus === 'active' ? 'All Components Activated' : 'All Components Deactivated',
@@ -226,14 +231,25 @@ export function OverviewTab({ campaignId, campaign }: OverviewTabProps) {
           variant: 'destructive',
         });
       }
+      
+      // Invalidate to trigger refetch (provides fallback if WebSocket fails)
+      // In React Query v5, invalidateQueries automatically refetches active queries
+      await queryClient.invalidateQueries({ 
+        queryKey: ['/api/campaigns', campaignId, 'components'],
+        refetchType: 'active'
+      });
     },
-    onError: (error: any) => {
-      // Always invalidate cache even on error
-      queryClient.invalidateQueries({ queryKey: ['/api/campaigns', campaignId, 'components'] });
+    onError: async (error: any) => {
       toast({
         title: 'Error',
         description: error.message || 'Failed to toggle components.',
         variant: 'destructive',
+      });
+      
+      // Always invalidate even on error to show actual state
+      await queryClient.invalidateQueries({ 
+        queryKey: ['/api/campaigns', campaignId, 'components'],
+        refetchType: 'active'
       });
     },
   });
