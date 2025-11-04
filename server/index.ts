@@ -1,10 +1,19 @@
 import express, { type Request, Response, NextFunction } from "express";
+import cors from "cors";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
 import { detectAndCacheBaseUrl } from "./utils";
 import { startScheduler } from "./scheduler";
 
 const app = express();
+
+// Enable CORS for iOS/external API access
+app.use(cors({
+  origin: '*', // Allow all origins (you can restrict this in production)
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'Accept'],
+  credentials: false
+}));
 
 declare module 'http' {
   interface IncomingMessage {
