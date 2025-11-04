@@ -694,7 +694,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Create campaign
   app.post('/api/campaigns', async (req, res) => {
     try {
-      const campaign = await storage.createCampaign(req.body);
+      // Ensure there's a default user - use userId = 1
+      // In a real app, this would come from authentication
+      const campaignData = {
+        ...req.body,
+        userId: 1 // Default user ID for development
+      };
+      
+      const campaign = await storage.createCampaign(campaignData);
       res.status(201).json(campaign);
     } catch (error) {
       console.error('Error creating campaign:', error);
