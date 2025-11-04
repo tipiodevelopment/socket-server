@@ -283,6 +283,35 @@ export function OverviewTab({ campaignId, campaign }: OverviewTabProps) {
     },
   });
 
+  // Re-broadcast event mutation
+  const rebroadcastEventMutation = useMutation({
+    mutationFn: async (event: WebSocketEvent) => {
+      return await apiRequest('POST', `/api/events/${campaignId}`, {
+        type: event.type,
+        data: event.data
+      });
+    },
+    onSuccess: (_, event) => {
+      queryClient.invalidateQueries({ queryKey: ['/api/events', campaignId] });
+      const eventNames: Record<string, string> = {
+        product: '🛍️ Product',
+        poll: '📊 Poll',
+        contest: '🏆 Contest'
+      };
+      toast({
+        title: `${eventNames[event.type] || event.type} Re-broadcasted!`,
+        description: 'Event sent to all viewers',
+      });
+    },
+    onError: () => {
+      toast({
+        title: 'Error',
+        description: 'Failed to re-broadcast event',
+        variant: 'destructive',
+      });
+    }
+  });
+
   const getComponentTypeLabel = (type: string) => {
     const labels: Record<string, string> = {
       banner: 'Banner',
@@ -292,8 +321,25 @@ export function OverviewTab({ campaignId, campaign }: OverviewTabProps) {
       product_spotlight: 'Product Spotlight',
       offer_badge: 'Offer Badge',
       offer_banner: 'Offer Banner',
+      product_carousel: 'Product Carousel',
+      product_banner: 'Product Banner',
+      product_store: 'Product Store',
     };
     return labels[type] || type;
+  };
+
+  const getEventTitle = (event: WebSocketEvent) => {
+    if (event.type === 'product' && event.data.name) return event.data.name;
+    if (event.type === 'poll' && event.data.question) return event.data.question;
+    if (event.type === 'contest' && event.data.name) return event.data.name;
+    return event.type;
+  };
+
+  const getEventIcon = (type: string) => {
+    if (type === 'product') return <ShoppingBag className="w-4 h-4" />;
+    if (type === 'poll') return <BarChart2 className="w-4 h-4" />;
+    if (type === 'contest') return <Trophy className="w-4 h-4" />;
+    return <Zap className="w-4 h-4" />;
   };
 
   const isPaused = campaign.isPaused === 'true';
@@ -303,78 +349,50 @@ export function OverviewTab({ campaignId, campaign }: OverviewTabProps) {
       {/* Campaign Control Panel */}
       <Card className="border-0 bg-gradient-to-r from-primary/10 to-primary/5">
         <CardContent className="p-6">
-          <div className="flex flex-col gap-6">
+          <div className="flex flex-col gap-4">
             {/* Campaign Toggle - Primary Control */}
             <div className="flex items-center justify-between p-4 rounded-lg bg-background/50 border">
-              <div className="flex items-center gap-4">
-                <div className={`flex items-center justify-center w-12 h-12 rounded-full ${
+              <div className="flex items-center gap-3">
+                <div className={`flex items-center justify-center w-10 h-10 rounded-full ${
                   isPaused ? 'bg-yellow-500/20' : 'bg-green-500/20'
                 }`}>
                   {isPaused ? (
-                    <ToggleLeft className="w-6 h-6 text-yellow-400" />
+                    <ToggleLeft className="w-5 h-5 text-yellow-400" />
                   ) : (
-                    <ToggleRight className="w-6 h-6 text-green-400" />
+                    <ToggleRight className="w-5 h-5 text-green-400" />
                   )}
                 </div>
                 <div>
-                  <h3 className="text-lg font-semibold flex items-center gap-2">
-                    Campaign Master Control
-                    <Badge variant={isPaused ? "secondary" : "default"}>
-                      {isPaused ? "⏸️ Paused" : "▶️ Active"}
+                  <h3 className="text-base font-semibold flex items-center gap-2">
+                    Campaign
+                    <Badge variant={isPaused ? "secondary" : "default"} className="text-xs">
+                      {isPaused ? "Paused" : "Active"}
                     </Badge>
                   </h3>
-                  <p className="text-sm text-muted-foreground">
-                    {isPaused 
-                      ? 'Campaign is paused - all components hidden from viewers' 
-                      : 'Campaign is broadcasting - components visible to viewers'}
+                  <p className="text-xs text-muted-foreground">
+                    {campaign.startDate && `${format(new Date(campaign.startDate), 'MMM d')} - ${campaign.endDate ? format(new Date(campaign.endDate), 'MMM d, yyyy') : 'Ongoing'}`}
                   </p>
                 </div>
               </div>
-              <Button
-                size="lg"
-                variant={isPaused ? "default" : "outline"}
-                onClick={() => toggleCampaignPauseMutation.mutate()}
-                disabled={toggleCampaignPauseMutation.isPending}
-                className={isPaused 
-                  ? 'bg-green-600 hover:bg-green-700 text-white' 
-                  : 'border-yellow-500/50 text-yellow-400 hover:bg-yellow-950 hover:text-yellow-300'}
-                data-testid="button-toggle-campaign"
-              >
-                {isPaused ? (
-                  <>
-                    <ToggleRight className="w-5 h-5 mr-2" />
-                    Resume Campaign
-                  </>
-                ) : (
-                  <>
-                    <ToggleLeft className="w-5 h-5 mr-2" />
-                    Pause Campaign
-                  </>
-                )}
-              </Button>
-            </div>
-
-            {/* Campaign Status Info */}
-            <div className="flex items-center justify-between">
-              <div className="space-y-1">
-                <div className="flex items-center gap-2">
-                  <h3 className="text-sm font-medium text-muted-foreground">Lifecycle Status</h3>
-                  <Badge variant={isCampaignActive() ? "default" : "secondary"} className="text-xs">
-                    {isCampaignActive() ? "Within Active Period" : "Outside Active Period"}
-                  </Badge>
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  {campaign.startDate && `Started: ${format(new Date(campaign.startDate), 'PPP')}`}
-                  {campaign.endDate && ` • Ends: ${format(new Date(campaign.endDate), 'PPP')}`}
-                  {!campaign.startDate && !campaign.endDate && 'No lifecycle dates set'}
-                </p>
-              </div>
-              <Link href={`/campaign/${campaign.name}/${campaign.id}`}>
-                <Button variant="outline" size="sm" data-testid="button-view-live-overview">
-                  <ExternalLink className="w-4 h-4 mr-2" />
-                  View Live
+              <div className="flex gap-2">
+                <Link href={`/campaign/${campaign.name}/${campaign.id}`}>
+                  <Button variant="ghost" size="sm" data-testid="button-view-live-overview">
+                    <ExternalLink className="w-4 h-4" />
+                  </Button>
+                </Link>
+                <Button
+                  size="sm"
+                  variant={isPaused ? "default" : "outline"}
+                  onClick={() => toggleCampaignPauseMutation.mutate()}
+                  disabled={toggleCampaignPauseMutation.isPending}
+                  className={isPaused 
+                    ? 'bg-green-600 hover:bg-green-700' 
+                    : 'border-yellow-500/50 text-yellow-400 hover:bg-yellow-950'}
+                  data-testid="button-toggle-campaign"
+                >
+                  {isPaused ? 'Resume' : 'Pause'}
                 </Button>
-              </Link>
+              </div>
             </div>
           </div>
         </CardContent>
@@ -412,172 +430,22 @@ export function OverviewTab({ campaignId, campaign }: OverviewTabProps) {
         />
       </div>
 
-      {/* Quick Event Trigger */}
-      <Card className="border-0">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Zap className="w-5 h-5" />
-            Quick Event Trigger
-          </CardTitle>
-          <CardDescription>Send events instantly to your viewers</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Tabs defaultValue="product" className="w-full">
-            <TabsList className="grid w-full grid-cols-3">
-              <TabsTrigger value="product" data-testid="quick-tab-product">
-                <ShoppingBag className="w-4 h-4 mr-2" />
-                Product
-              </TabsTrigger>
-              <TabsTrigger value="poll" data-testid="quick-tab-poll">
-                <BarChart2 className="w-4 h-4 mr-2" />
-                Poll
-              </TabsTrigger>
-              <TabsTrigger value="contest" data-testid="quick-tab-contest">
-                <Trophy className="w-4 h-4 mr-2" />
-                Contest
-              </TabsTrigger>
-            </TabsList>
-
-            <TabsContent value="product" className="space-y-4 mt-4">
-              <div className="space-y-2">
-                <Label htmlFor="quick-product-name">Product Name</Label>
-                <Input
-                  id="quick-product-name"
-                  value={quickProduct.name}
-                  onChange={(e) => setQuickProduct({ ...quickProduct, name: e.target.value })}
-                  placeholder="Product name"
-                  data-testid="input-quick-product-name"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="quick-product-price">Price</Label>
-                <Input
-                  id="quick-product-price"
-                  value={quickProduct.price}
-                  onChange={(e) => setQuickProduct({ ...quickProduct, price: e.target.value })}
-                  placeholder="$99"
-                  data-testid="input-quick-product-price"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="quick-product-desc">Description</Label>
-                <Input
-                  id="quick-product-desc"
-                  value={quickProduct.description}
-                  onChange={(e) => setQuickProduct({ ...quickProduct, description: e.target.value })}
-                  placeholder="Product description"
-                  data-testid="input-quick-product-desc"
-                />
-              </div>
-              <Button 
-                onClick={() => productMutation.mutate()}
-                disabled={productMutation.isPending}
-                className="w-full"
-                data-testid="button-send-quick-product"
-              >
-                <Zap className="w-4 h-4 mr-2" />
-                {productMutation.isPending ? 'Sending...' : 'Send Product Event'}
-              </Button>
-            </TabsContent>
-
-            <TabsContent value="poll" className="space-y-4 mt-4">
-              <div className="space-y-2">
-                <Label htmlFor="quick-poll-question">Question</Label>
-                <Input
-                  id="quick-poll-question"
-                  value={quickPoll.question}
-                  onChange={(e) => setQuickPoll({ ...quickPoll, question: e.target.value })}
-                  placeholder="What do you think?"
-                  data-testid="input-quick-poll-question"
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-2">
-                <div className="space-y-2">
-                  <Label htmlFor="quick-poll-opt1">Option 1</Label>
-                  <Input
-                    id="quick-poll-opt1"
-                    value={quickPoll.option1}
-                    onChange={(e) => setQuickPoll({ ...quickPoll, option1: e.target.value })}
-                    placeholder="Option A"
-                    data-testid="input-quick-poll-opt1"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="quick-poll-opt2">Option 2</Label>
-                  <Input
-                    id="quick-poll-opt2"
-                    value={quickPoll.option2}
-                    onChange={(e) => setQuickPoll({ ...quickPoll, option2: e.target.value })}
-                    placeholder="Option B"
-                    data-testid="input-quick-poll-opt2"
-                  />
-                </div>
-              </div>
-              <Button 
-                onClick={() => pollMutation.mutate()}
-                disabled={pollMutation.isPending}
-                className="w-full"
-                data-testid="button-send-quick-poll"
-              >
-                <Zap className="w-4 h-4 mr-2" />
-                {pollMutation.isPending ? 'Sending...' : 'Send Poll Event'}
-              </Button>
-            </TabsContent>
-
-            <TabsContent value="contest" className="space-y-4 mt-4">
-              <div className="space-y-2">
-                <Label htmlFor="quick-contest-name">Contest Name</Label>
-                <Input
-                  id="quick-contest-name"
-                  value={quickContest.name}
-                  onChange={(e) => setQuickContest({ ...quickContest, name: e.target.value })}
-                  placeholder="Grand Prize Contest"
-                  data-testid="input-quick-contest-name"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="quick-contest-prize">Prize</Label>
-                <Input
-                  id="quick-contest-prize"
-                  value={quickContest.prize}
-                  onChange={(e) => setQuickContest({ ...quickContest, prize: e.target.value })}
-                  placeholder="Amazing prizes!"
-                  data-testid="input-quick-contest-prize"
-                />
-              </div>
-              <Button 
-                onClick={() => contestMutation.mutate()}
-                disabled={contestMutation.isPending}
-                className="w-full"
-                data-testid="button-send-quick-contest"
-              >
-                <Zap className="w-4 h-4 mr-2" />
-                {contestMutation.isPending ? 'Sending...' : 'Send Contest Event'}
-              </Button>
-            </TabsContent>
-          </Tabs>
-        </CardContent>
-      </Card>
-
       {/* Active Components with Toggle */}
       <Card className="border-0">
         <CardHeader>
           <div className="flex items-center justify-between">
-            <div>
-              <CardTitle className="flex items-center gap-2">
-                <Activity className="w-5 h-5" />
-                Components
-              </CardTitle>
-              <CardDescription>Toggle components on/off for real-time control</CardDescription>
-            </div>
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Activity className="w-4 h-4" />
+              Components
+            </CardTitle>
             {campaignComponents.length > 0 && (
               <div className="flex gap-2">
                 <Button
-                  variant="outline"
+                  variant="ghost"
                   size="sm"
                   onClick={() => toggleAllMutation.mutate('active')}
                   disabled={toggleAllMutation.isPending || !isCampaignActive() || isPaused || activeComponents.length === campaignComponents.length}
-                  className="text-green-400 hover:text-green-300 hover:bg-green-950"
+                  className="text-green-400 hover:text-green-300 hover:bg-green-950 h-8 px-2"
                   data-testid="button-activate-all"
                   title={
                     isPaused
@@ -587,15 +455,15 @@ export function OverviewTab({ campaignId, campaign }: OverviewTabProps) {
                       : 'Activate all components'
                   }
                 >
-                  <ToggleRight className="w-4 h-4 mr-2" />
-                  Activate All
+                  <ToggleRight className="w-3 h-3 mr-1" />
+                  All On
                 </Button>
                 <Button
-                  variant="outline"
+                  variant="ghost"
                   size="sm"
                   onClick={() => toggleAllMutation.mutate('inactive')}
                   disabled={toggleAllMutation.isPending || isPaused || activeComponents.length === 0}
-                  className="text-yellow-400 hover:text-yellow-300 hover:bg-yellow-950"
+                  className="text-yellow-400 hover:text-yellow-300 hover:bg-yellow-950 h-8 px-2"
                   data-testid="button-deactivate-all"
                   title={
                     isPaused
@@ -603,8 +471,8 @@ export function OverviewTab({ campaignId, campaign }: OverviewTabProps) {
                       : 'Deactivate all components'
                   }
                 >
-                  <ToggleLeft className="w-4 h-4 mr-2" />
-                  Deactivate All
+                  <ToggleLeft className="w-3 h-3 mr-1" />
+                  All Off
                 </Button>
               </div>
             )}
@@ -612,71 +480,58 @@ export function OverviewTab({ campaignId, campaign }: OverviewTabProps) {
         </CardHeader>
         <CardContent>
           {campaignComponents.length === 0 ? (
-            <div className="text-center py-8 text-muted-foreground">
-              <Activity className="w-12 h-12 mx-auto mb-4 opacity-50" />
-              <p>No components added yet</p>
-              <p className="text-sm mt-2">Add components from the Components tab</p>
+            <div className="text-center py-6 text-muted-foreground">
+              <Activity className="w-8 h-8 mx-auto mb-2 opacity-50" />
+              <p className="text-sm">No components added yet</p>
             </div>
           ) : (
-            <div className="space-y-3">
+            <div className="space-y-2">
               {campaignComponents.map((cc) => (
                 <div
                   key={cc.id}
-                  className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 p-4 rounded-lg bg-muted/50 border"
+                  className="flex items-center justify-between p-3 rounded-lg bg-muted/50 border"
                   data-testid={`overview-component-${cc.id}`}
                 >
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2 mb-1">
-                      <Badge
-                        variant={cc.status === 'active' ? 'default' : 'secondary'}
-                        data-testid={`overview-status-${cc.id}`}
-                      >
-                        {cc.status}
-                      </Badge>
-                      <span className="font-medium">{cc.component.name}</span>
-                      <Badge variant="outline">
-                        {getComponentTypeLabel(cc.component.type)}
-                      </Badge>
-                    </div>
-                    {cc.scheduledTime && (
-                      <p className="text-xs text-muted-foreground">
-                        Scheduled: {format(new Date(cc.scheduledTime), 'PPp')}
-                        {cc.endTime && ` - ${format(new Date(cc.endTime), 'p')}`}
-                      </p>
-                    )}
-                  </div>
-                  <div className="flex gap-2">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() =>
-                        toggleStatusMutation.mutate({
-                          componentId: cc.componentId,
-                          status: cc.status === 'active' ? 'inactive' : 'active',
-                        })
-                      }
-                      disabled={toggleStatusMutation.isPending || !isCampaignActive() || isPaused}
-                      className={`${
-                        cc.status === 'active'
-                          ? 'text-yellow-400 hover:text-yellow-300 hover:bg-yellow-950'
-                          : 'text-green-400 hover:text-green-300 hover:bg-green-950'
-                      }`}
-                      data-testid={`overview-toggle-${cc.id}`}
-                      title={
-                        isPaused 
-                          ? 'Campaign is paused - resume to toggle components' 
-                          : !isCampaignActive() 
-                          ? 'Campaign is not active' 
-                          : cc.status === 'active' ? 'Deactivate' : 'Activate'
-                      }
+                  <div className="flex items-center gap-2 flex-1 min-w-0">
+                    <Badge
+                      variant={cc.status === 'active' ? 'default' : 'secondary'}
+                      className="text-xs"
+                      data-testid={`overview-status-${cc.id}`}
                     >
-                      {cc.status === 'active' ? (
-                        <ToggleRight className="w-4 h-4" />
-                      ) : (
-                        <ToggleLeft className="w-4 h-4" />
-                      )}
-                    </Button>
+                      {cc.status}
+                    </Badge>
+                    <span className="font-medium text-sm truncate">{cc.component.name}</span>
                   </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() =>
+                      toggleStatusMutation.mutate({
+                        componentId: cc.componentId,
+                        status: cc.status === 'active' ? 'inactive' : 'active',
+                      })
+                    }
+                    disabled={toggleStatusMutation.isPending || !isCampaignActive() || isPaused}
+                    className={`h-8 px-2 ${
+                      cc.status === 'active'
+                        ? 'text-yellow-400 hover:text-yellow-300 hover:bg-yellow-950'
+                        : 'text-green-400 hover:text-green-300 hover:bg-green-950'
+                    }`}
+                    data-testid={`overview-toggle-${cc.id}`}
+                    title={
+                      isPaused 
+                        ? 'Campaign is paused - resume to toggle components' 
+                        : !isCampaignActive() 
+                        ? 'Campaign is not active' 
+                        : cc.status === 'active' ? 'Deactivate' : 'Activate'
+                    }
+                  >
+                    {cc.status === 'active' ? (
+                      <ToggleRight className="w-4 h-4" />
+                    ) : (
+                      <ToggleLeft className="w-4 h-4" />
+                    )}
+                  </Button>
                 </div>
               ))}
             </div>
@@ -684,79 +539,205 @@ export function OverviewTab({ campaignId, campaign }: OverviewTabProps) {
         </CardContent>
       </Card>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Upcoming Scheduled Components */}
+      {/* Saved Events - Re-broadcast */}
+      {recentEvents.length > 0 && (
         <Card className="border-0">
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Clock className="w-5 h-5" />
-              Upcoming Scheduled
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Zap className="w-4 h-4" />
+              Saved Events
             </CardTitle>
-            <CardDescription>Components scheduled to activate soon</CardDescription>
+            <CardDescription>Re-broadcast events to viewers</CardDescription>
           </CardHeader>
           <CardContent>
-            {upcomingScheduled.length === 0 ? (
-              <p className="text-sm text-muted-foreground text-center py-8">
-                No upcoming scheduled components
-              </p>
-            ) : (
-              <div className="space-y-3">
-                {upcomingScheduled.map((cc) => (
-                  <div 
-                    key={cc.id} 
-                    className="flex items-center justify-between p-3 rounded-lg bg-muted/50"
-                    data-testid={`upcoming-component-${cc.id}`}
-                  >
-                    <div className="flex-1">
-                      <p className="font-medium text-sm">{cc.component.name}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {format(new Date(cc.scheduledTime!), 'PPp')}
-                      </p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              {recentEvents.map((event, index) => (
+                <div
+                  key={index}
+                  className="p-4 rounded-lg bg-muted/50 border flex flex-col gap-3"
+                  data-testid={`saved-event-${index}`}
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex items-center gap-2 flex-1 min-w-0">
+                      {getEventIcon(event.type)}
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium text-sm truncate">{getEventTitle(event)}</p>
+                        <p className="text-xs text-muted-foreground capitalize">{event.type}</p>
+                      </div>
                     </div>
-                    <Badge variant="outline">{cc.component.type}</Badge>
                   </div>
-                ))}
-              </div>
-            )}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => rebroadcastEventMutation.mutate(event)}
+                    disabled={rebroadcastEventMutation.isPending}
+                    className="w-full h-8"
+                    data-testid={`button-rebroadcast-${index}`}
+                  >
+                    <Zap className="w-3 h-3 mr-1" />
+                    {rebroadcastEventMutation.isPending ? 'Sending...' : 'Broadcast'}
+                  </Button>
+                </div>
+              ))}
+            </div>
           </CardContent>
         </Card>
+      )}
 
-        {/* Recent Events */}
-        <Card className="border-0">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Zap className="w-5 h-5" />
-              Recent Events
-            </CardTitle>
-            <CardDescription>Latest events broadcasted</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {recentEvents.length === 0 ? (
-              <p className="text-sm text-muted-foreground text-center py-8">
-                No events yet
-              </p>
-            ) : (
-              <div className="space-y-3">
-                {recentEvents.slice(0, 5).map((event, index) => (
-                  <div 
-                    key={index} 
-                    className="flex items-center justify-between p-3 rounded-lg bg-muted/50"
-                    data-testid={`recent-event-${index}`}
-                  >
-                    <div className="flex-1">
-                      <p className="font-medium text-sm capitalize">{event.type}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {event.timestamp ? format(new Date(event.timestamp), 'PPp') : 'Just now'}
-                      </p>
-                    </div>
-                    <Badge variant="secondary">{event.type}</Badge>
-                  </div>
-                ))}
+      {/* Quick Event Trigger - Moved to bottom */}
+      <Card className="border-0">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-base">
+            <Zap className="w-4 h-4" />
+            Create New Event
+          </CardTitle>
+          <CardDescription>Create and send new events</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Tabs defaultValue="product" className="w-full">
+            <TabsList className="grid w-full grid-cols-3">
+              <TabsTrigger value="product" data-testid="quick-tab-product" className="text-xs">
+                <ShoppingBag className="w-3 h-3 mr-1" />
+                Product
+              </TabsTrigger>
+              <TabsTrigger value="poll" data-testid="quick-tab-poll" className="text-xs">
+                <BarChart2 className="w-3 h-3 mr-1" />
+                Poll
+              </TabsTrigger>
+              <TabsTrigger value="contest" data-testid="quick-tab-contest" className="text-xs">
+                <Trophy className="w-3 h-3 mr-1" />
+                Contest
+              </TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="product" className="space-y-3 mt-4">
+              <div className="space-y-1.5">
+                <Label htmlFor="quick-product-name" className="text-xs">Product Name</Label>
+                <Input
+                  id="quick-product-name"
+                  value={quickProduct.name}
+                  onChange={(e) => setQuickProduct({ ...quickProduct, name: e.target.value })}
+                  placeholder="Product name"
+                  className="h-8"
+                  data-testid="input-quick-product-name"
+                />
               </div>
-            )}
-          </CardContent>
-        </Card>
-      </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="quick-product-price" className="text-xs">Price</Label>
+                <Input
+                  id="quick-product-price"
+                  value={quickProduct.price}
+                  onChange={(e) => setQuickProduct({ ...quickProduct, price: e.target.value })}
+                  placeholder="$99"
+                  className="h-8"
+                  data-testid="input-quick-product-price"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="quick-product-desc" className="text-xs">Description</Label>
+                <Input
+                  id="quick-product-desc"
+                  value={quickProduct.description}
+                  onChange={(e) => setQuickProduct({ ...quickProduct, description: e.target.value })}
+                  placeholder="Product description"
+                  className="h-8"
+                  data-testid="input-quick-product-desc"
+                />
+              </div>
+              <Button 
+                onClick={() => productMutation.mutate()}
+                disabled={productMutation.isPending}
+                className="w-full h-8"
+                data-testid="button-send-quick-product"
+              >
+                <Zap className="w-3 h-3 mr-1" />
+                {productMutation.isPending ? 'Sending...' : 'Send Event'}
+              </Button>
+            </TabsContent>
+
+            <TabsContent value="poll" className="space-y-3 mt-4">
+              <div className="space-y-1.5">
+                <Label htmlFor="quick-poll-question" className="text-xs">Question</Label>
+                <Input
+                  id="quick-poll-question"
+                  value={quickPoll.question}
+                  onChange={(e) => setQuickPoll({ ...quickPoll, question: e.target.value })}
+                  placeholder="What do you think?"
+                  className="h-8"
+                  data-testid="input-quick-poll-question"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div className="space-y-1.5">
+                  <Label htmlFor="quick-poll-opt1" className="text-xs">Option 1</Label>
+                  <Input
+                    id="quick-poll-opt1"
+                    value={quickPoll.option1}
+                    onChange={(e) => setQuickPoll({ ...quickPoll, option1: e.target.value })}
+                    placeholder="Option A"
+                    className="h-8"
+                    data-testid="input-quick-poll-opt1"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="quick-poll-opt2" className="text-xs">Option 2</Label>
+                  <Input
+                    id="quick-poll-opt2"
+                    value={quickPoll.option2}
+                    onChange={(e) => setQuickPoll({ ...quickPoll, option2: e.target.value })}
+                    placeholder="Option B"
+                    className="h-8"
+                    data-testid="input-quick-poll-opt2"
+                  />
+                </div>
+              </div>
+              <Button 
+                onClick={() => pollMutation.mutate()}
+                disabled={pollMutation.isPending}
+                className="w-full h-8"
+                data-testid="button-send-quick-poll"
+              >
+                <Zap className="w-3 h-3 mr-1" />
+                {pollMutation.isPending ? 'Sending...' : 'Send Event'}
+              </Button>
+            </TabsContent>
+
+            <TabsContent value="contest" className="space-y-3 mt-4">
+              <div className="space-y-1.5">
+                <Label htmlFor="quick-contest-name" className="text-xs">Contest Name</Label>
+                <Input
+                  id="quick-contest-name"
+                  value={quickContest.name}
+                  onChange={(e) => setQuickContest({ ...quickContest, name: e.target.value })}
+                  placeholder="Grand Prize Contest"
+                  className="h-8"
+                  data-testid="input-quick-contest-name"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="quick-contest-prize" className="text-xs">Prize</Label>
+                <Input
+                  id="quick-contest-prize"
+                  value={quickContest.prize}
+                  onChange={(e) => setQuickContest({ ...quickContest, prize: e.target.value })}
+                  placeholder="Amazing prizes!"
+                  className="h-8"
+                  data-testid="input-quick-contest-prize"
+                />
+              </div>
+              <Button 
+                onClick={() => contestMutation.mutate()}
+                disabled={contestMutation.isPending}
+                className="w-full h-8"
+                data-testid="button-send-quick-contest"
+              >
+                <Zap className="w-3 h-3 mr-1" />
+                {contestMutation.isPending ? 'Sending...' : 'Send Event'}
+              </Button>
+            </TabsContent>
+          </Tabs>
+        </CardContent>
+      </Card>
     </div>
   );
 }

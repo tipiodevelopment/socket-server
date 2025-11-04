@@ -61,13 +61,18 @@ The frontend utilizes React 18 with TypeScript and Vite, styled with Tailwind CS
     - **Manual Component Toggle:** Admins can activate/deactivate individual components during active campaign (disabled when paused)
 - **WebSocket Architecture:** Each campaign (`/ws/:campaignId`) has an isolated WebSocket channel, ensuring events are broadcast only to relevant clients, managed by a `Map<campaignId, Set<WebSocket>>`.
 - **Dynamic Component Management:**
-    - A library of reusable UI components (e.g., Banner, Countdown, Carousel, Product Spotlight, Offer Badge, Offer Banner) configurable via a REST API.
+    - A library of reusable UI components configurable via a REST API, including:
+        - **Standard Components:** Banner, Countdown, Carousel, Product Spotlight, Offer Badge, Offer Banner
+        - **Reachu Product Components (NEW):**
+            - `product_carousel`: Horizontal product slider with auto-play support (stores productIds, SDK fetches from Reachu API)
+            - `product_banner`: Featured product promotional banner with custom background, title, CTA, and deeplink
+            - `product_store`: Full catalog or filtered product grid/list view (supports "all" or "filtered" modes)
     - Components can be activated/deactivated manually or scheduled for automatic display within specific campaigns.
     - **Component Type Uniqueness:** Only ONE component of each type can be active at any given time within a campaign. This ensures iOS apps can reliably import components by type without ambiguity (e.g., `activeComponents.first { $0.type == "banner" }` is guaranteed to return at most one result).
         - **Dynamic Components:** Backend validates that no other component of the same type is active before allowing activation
         - **Scheduled Components:** Backend validates that no other component of the same type has overlapping time ranges before allowing creation/update
         - **Error Handling:** Returns 409 Conflict with clear English error messages specifying the conflicting component/schedule
-    - **Campaign-Specific Customization:** Each campaign can personalize component configurations (texts, images, links) without affecting the original template or other campaigns. Custom configurations are stored per campaign in `campaignComponents.customConfig`.
+    - **Campaign-Specific Customization:** Each campaign can personalize component configurations (texts, images, links, product IDs) without affecting the original template or other campaigns. Custom configurations are stored per campaign in `campaignComponents.customConfig`.
         - **UI Controls:** Purple "Customize" button (pencil icon) opens a dialog with all configurable fields
         - **Visual Indicators:** "Customized" badge (purple) appears on components with custom configurations
         - **Revert Functionality:** "Revert to Original" button sets customConfig to null, restoring template defaults
@@ -75,8 +80,8 @@ The frontend utilizes React 18 with TypeScript and Vite, styled with Tailwind CS
         - **Immediate Updates:** Changes reflect in UI immediately after successful mutation
     - Real-time updates via WebSockets (`campaign_started`, `campaign_ended`, `campaign_paused`, `campaign_resumed`, `component_status_changed`, `component_config_updated`) for dynamic display in client applications (e.g., iOS).
     - Prevents a component from being active in multiple campaigns simultaneously.
-    - **Deeplink Support:** Components with CTAs (Banner, Offer Banner) support optional deeplinks for in-app navigation. When specified, deeplinks take priority over web links, enabling seamless transitions to specific app screens (e.g., `myapp://offers/weekly`). Supports both custom URL schemes and universal links.
-    - Integration documentation with Swift code examples is provided for client-side implementation.
+    - **Deeplink Support:** Components with CTAs (Banner, Offer Banner, Product Banner) support optional deeplinks for in-app navigation. When specified, deeplinks take priority over web links, enabling seamless transitions to specific app screens (e.g., `myapp://offers/weekly` or `pregnancy://product/408841`). Supports both custom URL schemes and universal links.
+    - Integration documentation with Swift code examples is provided for client-side implementation in `CAMPAIGN_LIFECYCLE.md`.
 - **Event Broadcasting:** Supports Product, Poll, and Contest events, validated by Zod schemas, stored in PostgreSQL, and broadcast to campaign-specific WebSocket clients in real-time. Historical events are also retrievable.
 
 ### System Design Choices
@@ -94,7 +99,7 @@ The frontend utilizes React 18 with TypeScript and Vite, styled with Tailwind CS
     - **Campaigns Page:** Dashboard listing all campaigns with "Manage Campaign" button for each.
     - **New Campaign Page:** Form for campaign creation.
     - **Campaign Dashboard:** Unified command center with 6 tabs (replaces previous Admin/Advanced split):
-        - **Overview Tab:** Campaign Master Control toggle (pause/resume entire campaign), campaign status with duration display (start/end dates and lifecycle status), quick stats (active/scheduled components, events), Components section with individual toggles and master toggle controls ("Activate All" / "Deactivate All"), upcoming scheduled components, recent events, and Quick Event Trigger section for instant Product/Poll/Contest broadcasting without switching to Events tab. Master toggle uses Promise.allSettled for reliable partial-failure handling. Component toggles are disabled when campaign is paused.
+        - **Overview Tab (REDESIGNED - Minimalista):** Compact campaign control with pause/resume toggle, lifecycle status (dates), quick stats grid (active/scheduled components, total events), Components section with individual toggles and master controls ("All On" / "All Off"), **Saved Events section** with cards and one-click "Broadcast" buttons to re-send previously created events, and "Create New Event" section moved to bottom for creating fresh Product/Poll/Contest events. Master toggle uses Promise.allSettled for reliable partial-failure handling. Component toggles disabled when campaign paused. Design optimized for mobile with smaller buttons, compact spacing, and responsive grid layouts.
         - **Events Tab:** Real-time event broadcasting interface with Product/Poll/Contest forms, WebSocket connection status, event history log, and form auto-save
         - **Scheduled Tab:** Timeline view of scheduled components with "Trigger Now" button for manual activation before scheduled time
         - **Components Tab:** Dynamic component management with toggle switches for activation/deactivation, customization dialogs, add/remove functionality
