@@ -19,6 +19,7 @@ export const campaigns = pgTable("campaigns", {
   description: text("description"),
   startDate: timestamp("start_date"),
   endDate: timestamp("end_date"),
+  isPaused: varchar("is_paused", { length: 10 }).notNull().default('false'),
   reachuChannelId: varchar("reachu_channel_id", { length: 255 }),
   reachuApiKey: text("reachu_api_key"),
   tipioLiveshowId: varchar("tipio_liveshow_id", { length: 255 }),

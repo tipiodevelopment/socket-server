@@ -814,6 +814,43 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Toggle campaign pause/resume
+  app.patch('/api/campaigns/:id/toggle-pause', async (req, res) => {
+    try {
+      const campaignId = parseInt(req.params.id);
+      const campaign = await storage.getCampaign(campaignId);
+      
+      if (!campaign) {
+        return res.status(404).json({ message: 'Campaign not found' });
+      }
+
+      // Toggle isPaused state
+      const newPausedState = campaign.isPaused === 'true' ? 'false' : 'true';
+      const updatedCampaign = await storage.updateCampaign(campaignId, {
+        isPaused: newPausedState
+      });
+
+      // Broadcast campaign state change to all connected clients
+      const eventType = newPausedState === 'true' ? 'campaign_paused' : 'campaign_resumed';
+      const wsEvent = {
+        type: eventType,
+        campaignId: campaignId,
+        timestamp: new Date().toISOString()
+      };
+
+      broadcastToCampaign(campaignId, JSON.stringify(wsEvent));
+      console.log(`[Campaign ${campaignId}] ${eventType}`);
+
+      res.json(updatedCampaign);
+    } catch (error) {
+      console.error('Error toggling campaign pause:', error);
+      res.status(500).json({ 
+        message: 'Error toggling campaign pause',
+        error: error instanceof Error ? error.message : String(error)
+      });
+    }
+  });
+
   // Get campaign events
   app.get('/api/campaigns/:id/events', async (req, res) => {
     try {
