@@ -21,6 +21,9 @@ const componentTypes: { value: ComponentType; label: string }[] = [
   { value: 'product_spotlight', label: 'Product Spotlight' },
   { value: 'offer_badge', label: 'Offer Badge' },
   { value: 'offer_banner', label: 'Offer Banner (XXL)' },
+  { value: 'product_carousel', label: 'Product Carousel' },
+  { value: 'product_banner', label: 'Product Banner' },
+  { value: 'product_store', label: 'Product Store' },
 ];
 
 export function ComponentLibraryTab() {
@@ -241,6 +244,21 @@ export function ComponentLibraryTab() {
                                     return null;
                                   }
                                 })()}
+                              </>
+                            )}
+                            {component.type === 'product_carousel' && config?.productIds?.length && (
+                              <div>Products: <span className="text-gray-300">{config.productIds.length} items</span></div>
+                            )}
+                            {component.type === 'product_banner' && getConfigValue('productId') && (
+                              <div>Product: <span className="text-gray-300">{getConfigValue('productId')}</span></div>
+                            )}
+                            {component.type === 'product_store' && (
+                              <>
+                                <div>Mode: <span className="text-gray-300">{getConfigValue('mode') === 'all' ? 'All Products' : 'Filtered'}</span></div>
+                                {config?.mode === 'filtered' && config?.productIds?.length && (
+                                  <div>Products: <span className="text-gray-300">{config.productIds.length} items</span></div>
+                                )}
+                                <div>Layout: <span className="text-gray-300">{getConfigValue('displayType') || 'grid'}</span></div>
                               </>
                             )}
                           </div>
@@ -695,6 +713,208 @@ function ComponentForm({
                 className="bg-gray-700 border-0 text-white"
               />
             </div>
+          </>
+        );
+      case 'product_carousel':
+        return (
+          <>
+            <div className="space-y-2">
+              <Label htmlFor="productIds" className="text-gray-300">Product IDs (comma-separated)</Label>
+              <Textarea
+                id="productIds"
+                placeholder="408841, 408842, 408843"
+                value={config.productIds?.join(', ') || ''}
+                onChange={(e) => setConfig({ 
+                  ...config, 
+                  productIds: e.target.value.split(',').map(id => id.trim()).filter(id => id) 
+                })}
+                data-testid="input-productIds"
+                className="bg-gray-700 border-0 text-white"
+                rows={3}
+              />
+              <p className="text-xs text-gray-400">Enter Reachu product IDs separated by commas. The SDK will fetch product details automatically.</p>
+            </div>
+            <div className="space-y-2">
+              <Label className="text-gray-300 flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={config.autoPlay || false}
+                  onChange={(e) => setConfig({ ...config, autoPlay: e.target.checked })}
+                  data-testid="checkbox-autoPlay"
+                  className="rounded"
+                />
+                Auto Play
+              </Label>
+            </div>
+            {config.autoPlay && (
+              <div className="space-y-2">
+                <Label htmlFor="interval" className="text-gray-300">Interval (milliseconds)</Label>
+                <Input
+                  id="interval"
+                  type="number"
+                  placeholder="3000"
+                  value={config.interval || 3000}
+                  onChange={(e) => setConfig({ ...config, interval: parseInt(e.target.value) })}
+                  data-testid="input-interval"
+                  className="bg-gray-700 border-0 text-white"
+                />
+              </div>
+            )}
+          </>
+        );
+      case 'product_banner':
+        return (
+          <>
+            <div className="space-y-2">
+              <Label htmlFor="productId" className="text-gray-300">Product ID</Label>
+              <Input
+                id="productId"
+                placeholder="408841"
+                value={config.productId || ''}
+                onChange={(e) => setConfig({ ...config, productId: e.target.value })}
+                data-testid="input-productId"
+                className="bg-gray-700 border-0 text-white"
+                required
+              />
+              <p className="text-xs text-gray-400">Reachu product ID. The SDK will fetch product details.</p>
+            </div>
+            <ImageUploadWithPreview
+              label="Background Image"
+              value={config.backgroundImageUrl || ''}
+              onChange={(url) => setConfig({ ...config, backgroundImageUrl: url })}
+              placeholder="Upload banner background image"
+              testId="input-backgroundImageUrl"
+            />
+            <div className="space-y-2">
+              <Label htmlFor="title" className="text-gray-300">Title (Optional)</Label>
+              <Input
+                id="title"
+                placeholder="Producto Destacado"
+                value={config.title || ''}
+                onChange={(e) => setConfig({ ...config, title: e.target.value })}
+                data-testid="input-title"
+                className="bg-gray-700 border-0 text-white"
+              />
+              <p className="text-xs text-gray-400">Leave empty to use product name</p>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="subtitle" className="text-gray-300">Subtitle (Optional)</Label>
+              <Input
+                id="subtitle"
+                placeholder="40% OFF"
+                value={config.subtitle || ''}
+                onChange={(e) => setConfig({ ...config, subtitle: e.target.value })}
+                data-testid="input-subtitle"
+                className="bg-gray-700 border-0 text-white"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="ctaText" className="text-gray-300">Button Text (Optional)</Label>
+              <Input
+                id="ctaText"
+                placeholder="Ver producto"
+                value={config.ctaText || 'Ver producto'}
+                onChange={(e) => setConfig({ ...config, ctaText: e.target.value })}
+                data-testid="input-ctaText"
+                className="bg-gray-700 border-0 text-white"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="ctaLink" className="text-gray-300">Button Link (Optional)</Label>
+              <Input
+                id="ctaLink"
+                placeholder="https://tienda.com/producto/408841"
+                value={config.ctaLink || ''}
+                onChange={(e) => setConfig({ ...config, ctaLink: e.target.value })}
+                data-testid="input-ctaLink"
+                className="bg-gray-700 border-0 text-white"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="deeplink" className="text-gray-300">Deeplink (Optional)</Label>
+              <Input
+                id="deeplink"
+                placeholder="myapp://product/408841"
+                value={config.deeplink || ''}
+                onChange={(e) => setConfig({ ...config, deeplink: e.target.value })}
+                data-testid="input-deeplink"
+                className="bg-gray-700 border-0 text-white"
+              />
+              <p className="text-xs text-gray-400">If provided, takes priority over Button Link</p>
+            </div>
+          </>
+        );
+      case 'product_store':
+        return (
+          <>
+            <div className="space-y-2">
+              <Label htmlFor="mode" className="text-gray-300">Display Mode</Label>
+              <Select
+                value={config.mode || 'all'}
+                onValueChange={(value) => setConfig({ ...config, mode: value })}
+              >
+                <SelectTrigger className="bg-gray-700 border-0 text-white" data-testid="select-mode">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent className="bg-gray-800 border-gray-700">
+                  <SelectItem value="all">All Products (from Channel)</SelectItem>
+                  <SelectItem value="filtered">Filtered Products (specific IDs)</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-gray-400">
+                {config.mode === 'all' 
+                  ? 'Shows all products from the campaign\'s Reachu channel' 
+                  : 'Shows only specified product IDs'}
+              </p>
+            </div>
+            {config.mode === 'filtered' && (
+              <div className="space-y-2">
+                <Label htmlFor="productIds" className="text-gray-300">Product IDs (comma-separated)</Label>
+                <Textarea
+                  id="productIds"
+                  placeholder="408841, 408842, 408843"
+                  value={config.productIds?.join(', ') || ''}
+                  onChange={(e) => setConfig({ 
+                    ...config, 
+                    productIds: e.target.value.split(',').map(id => id.trim()).filter(id => id) 
+                  })}
+                  data-testid="input-productIds"
+                  className="bg-gray-700 border-0 text-white"
+                  rows={4}
+                />
+              </div>
+            )}
+            <div className="space-y-2">
+              <Label htmlFor="displayType" className="text-gray-300">Layout</Label>
+              <Select
+                value={config.displayType || 'grid'}
+                onValueChange={(value) => setConfig({ ...config, displayType: value })}
+              >
+                <SelectTrigger className="bg-gray-700 border-0 text-white" data-testid="select-displayType">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent className="bg-gray-800 border-gray-700">
+                  <SelectItem value="grid">Grid</SelectItem>
+                  <SelectItem value="list">List</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            {config.displayType === 'grid' && (
+              <div className="space-y-2">
+                <Label htmlFor="columns" className="text-gray-300">Grid Columns</Label>
+                <Input
+                  id="columns"
+                  type="number"
+                  min="1"
+                  max="4"
+                  placeholder="2"
+                  value={config.columns || 2}
+                  onChange={(e) => setConfig({ ...config, columns: parseInt(e.target.value) })}
+                  data-testid="input-columns"
+                  className="bg-gray-700 border-0 text-white"
+                />
+              </div>
+            )}
           </>
         );
       default:

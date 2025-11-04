@@ -374,6 +374,29 @@ export const offerBannerConfigSchema = z.object({
   overlayOpacity: z.number().min(0).max(1).default(0.4).optional()
 });
 
+export const productCarouselConfigSchema = z.object({
+  productIds: z.array(z.string()),
+  autoPlay: z.boolean().default(false),
+  interval: z.number().default(3000)
+});
+
+export const productBannerConfigSchema = z.object({
+  productId: z.string(),
+  backgroundImageUrl: z.string().url(),
+  title: z.string().optional(),
+  subtitle: z.string().optional(),
+  ctaText: z.string().optional(),
+  ctaLink: z.string().url().optional(),
+  deeplink: z.string().optional()
+});
+
+export const productStoreConfigSchema = z.object({
+  mode: z.enum(["all", "filtered"]).default("all"),
+  productIds: z.array(z.string()).optional(),
+  displayType: z.enum(["grid", "list"]).default("grid"),
+  columns: z.number().default(2)
+});
+
 export const componentConfigSchema = z.union([
   bannerComponentConfigSchema,
   countdownComponentConfigSchema,
@@ -381,7 +404,10 @@ export const componentConfigSchema = z.union([
   carouselManualComponentConfigSchema,
   productSpotlightConfigSchema,
   offerBadgeConfigSchema,
-  offerBannerConfigSchema
+  offerBannerConfigSchema,
+  productCarouselConfigSchema,
+  productBannerConfigSchema,
+  productStoreConfigSchema
 ]);
 
 // Dynamic Component Config Types
@@ -392,6 +418,9 @@ export type CarouselManualComponentConfig = z.infer<typeof carouselManualCompone
 export type ProductSpotlightConfig = z.infer<typeof productSpotlightConfigSchema>;
 export type OfferBadgeConfig = z.infer<typeof offerBadgeConfigSchema>;
 export type OfferBannerConfig = z.infer<typeof offerBannerConfigSchema>;
+export type ProductCarouselConfig = z.infer<typeof productCarouselConfigSchema>;
+export type ProductBannerConfig = z.infer<typeof productBannerConfigSchema>;
+export type ProductStoreConfig = z.infer<typeof productStoreConfigSchema>;
 export type ComponentConfig = z.infer<typeof componentConfigSchema>;
 
 // Component types enum for validation
@@ -402,7 +431,10 @@ export const componentTypes = [
   'carousel_manual',
   'product_spotlight',
   'offer_badge',
-  'offer_banner'
+  'offer_banner',
+  'product_carousel',
+  'product_banner',
+  'product_store'
 ] as const;
 
 export type ComponentType = typeof componentTypes[number];

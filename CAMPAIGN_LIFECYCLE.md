@@ -652,3 +652,356 @@ The backend automatically manages campaign lifecycle. Your iOS app just needs to
 - ✅ Show/hide components based on events
 - ✅ Respect campaign dates
 - ✅ Handle edge cases (no dates, network errors, etc.)
+
+## Reachu Product Components
+
+The system now supports three new product-focused components that integrate with Reachu.io. Each component is designed to be self-contained in the iOS SDK, handling its own data fetching and rendering logic.
+
+### Component Types
+
+#### 1. Product Carousel (`product_carousel`)
+
+A horizontal scrollable carousel displaying multiple Reachu products.
+
+**JSON Structure:**
+```json
+{
+  "type": "product_carousel",
+  "name": "Black Friday Products",
+  "config": {
+    "productIds": ["408841", "408842", "408843", "408844"],
+    "autoPlay": true,
+    "interval": 3000
+  }
+}
+```
+
+**Config Fields:**
+- `productIds` (string[], required): Array of Reachu product IDs in display order
+- `autoPlay` (boolean, optional): Enable auto-scroll (default: false)
+- `interval` (number, optional): Milliseconds between slides when autoPlay is enabled (default: 3000)
+
+**Swift Implementation:**
+```swift
+struct ProductCarouselView: View {
+    let config: [String: Any]
+    @State private var products: [ReachuProduct] = []
+    @State private var isLoading = false
+    
+    var body: some View {
+        let productIds = config["productIds"] as? [String] ?? []
+        let autoPlay = config["autoPlay"] as? Bool ?? false
+        let interval = config["interval"] as? Int ?? 3000
+        
+        if isLoading {
+            ProgressView()
+        } else {
+            RProductSlider(
+                products: products,
+                autoPlay: autoPlay,
+                interval: TimeInterval(interval / 1000)
+            )
+            .onAppear {
+                loadProducts(ids: productIds)
+            }
+        }
+    }
+    
+    private func loadProducts(ids: [String]) {
+        isLoading = true
+        Task {
+            do {
+                // Call Reachu API with product IDs
+                let fetchedProducts = try await ReachuAPI.shared.getProducts(ids: ids)
+                DispatchQueue.main.async {
+                    self.products = fetchedProducts
+                    self.isLoading = false
+                }
+            } catch {
+                print("Error loading products: \(error)")
+                isLoading = false
+            }
+        }
+    }
+}
+```
+
+#### 2. Product Banner (`product_banner`)
+
+A promotional banner featuring a single product with custom background image and text.
+
+**JSON Structure:**
+```json
+{
+  "type": "product_banner",
+  "name": "Featured Product Banner",
+  "config": {
+    "productId": "408841",
+    "backgroundImageUrl": "https://cdn.example.com/banner-bg.jpg",
+    "title": "Producto de la Semana",
+    "subtitle": "Hasta 40% de descuento",
+    "ctaText": "Ver producto",
+    "ctaLink": "https://tienda.com/producto/408841",
+    "deeplink": "myapp://product/408841"
+  }
+}
+```
+
+**Config Fields:**
+- `productId` (string, required): Reachu product ID
+- `backgroundImageUrl` (string, required): URL of banner background image
+- `title` (string, optional): Custom title (uses product name if empty)
+- `subtitle` (string, optional): Additional promotional text
+- `ctaText` (string, optional): Button text (default: "Ver producto")
+- `ctaLink` (string, optional): Web URL for the product
+- `deeplink` (string, optional): App deeplink. Takes priority over ctaLink when present
+
+**Swift Implementation:**
+```swift
+struct ProductBannerView: View {
+    let config: [String: Any]
+    @State private var product: ReachuProduct?
+    @State private var isLoading = false
+    
+    var body: some View {
+        let productId = config["productId"] as? String ?? ""
+        let backgroundUrl = config["backgroundImageUrl"] as? String
+        let title = config["title"] as? String
+        let subtitle = config["subtitle"] as? String
+        let ctaText = config["ctaText"] as? String ?? "Ver producto"
+        let deeplink = config["deeplink"] as? String
+        let ctaLink = config["ctaLink"] as? String
+        
+        ZStack {
+            // Background image
+            AsyncImage(url: URL(string: backgroundUrl ?? "")) { image in
+                image.resizable().aspectRatio(contentMode: .fill)
+            } placeholder: {
+                Color.gray
+            }
+            
+            // Overlay content
+            VStack(spacing: 12) {
+                Text(title ?? product?.name ?? "")
+                    .font(.title2)
+                    .fontWeight(.bold)
+                
+                if let subtitle = subtitle {
+                    Text(subtitle)
+                        .font(.subheadline)
+                }
+                
+                Button(ctaText) {
+                    if let deeplink = deeplink {
+                        openDeeplink(deeplink)
+                    } else if let link = ctaLink ?? product?.url {
+                        openURL(link)
+                    }
+                }
+                .buttonStyle(.borderedProminent)
+            }
+            .padding()
+        }
+        .frame(height: 200)
+        .cornerRadius(16)
+        .onAppear {
+            loadProduct(id: productId)
+        }
+    }
+    
+    private func loadProduct(id: String) {
+        isLoading = true
+        Task {
+            do {
+                let fetchedProduct = try await ReachuAPI.shared.getProduct(id: id)
+                DispatchQueue.main.async {
+                    self.product = fetchedProduct
+                    self.isLoading = false
+                }
+            } catch {
+                print("Error loading product: \(error)")
+                isLoading = false
+            }
+        }
+    }
+    
+    private func openDeeplink(_ deeplink: String) {
+        guard let url = URL(string: deeplink) else { return }
+        UIApplication.shared.open(url)
+    }
+    
+    private func openURL(_ urlString: String) {
+        guard let url = URL(string: urlString) else { return }
+        UIApplication.shared.open(url)
+    }
+}
+```
+
+#### 3. Product Store (`product_store`)
+
+A grid or list display of products, either all from the channel or a filtered selection.
+
+**JSON Structure (All Products Mode):**
+```json
+{
+  "type": "product_store",
+  "name": "Tienda Completa",
+  "config": {
+    "mode": "all",
+    "displayType": "grid",
+    "columns": 2
+  }
+}
+```
+
+**JSON Structure (Filtered Mode):**
+```json
+{
+  "type": "product_store",
+  "name": "Ofertas Seleccionadas",
+  "config": {
+    "mode": "filtered",
+    "productIds": ["408841", "408842", "408843", "408844", "408845"],
+    "displayType": "list",
+    "columns": 2
+  }
+}
+```
+
+**Config Fields:**
+- `mode` (string, required): `"all"` (all channel products) or `"filtered"` (specific IDs)
+- `productIds` (string[], required if mode="filtered"): Array of product IDs to display
+- `displayType` (string, optional): `"grid"` or `"list"` (default: "grid")
+- `columns` (number, optional): Grid columns (only for grid mode, default: 2)
+
+**Swift Implementation:**
+```swift
+struct ProductStoreView: View {
+    let config: [String: Any]
+    let campaignChannelId: String  // From campaign configuration
+    
+    @State private var products: [ReachuProduct] = []
+    @State private var isLoading = false
+    @State private var searchText = ""
+    
+    var filteredProducts: [ReachuProduct] {
+        if searchText.isEmpty {
+            return products
+        }
+        return products.filter { product in
+            product.name.localizedCaseInsensitiveContains(searchText)
+        }
+    }
+    
+    var body: some View {
+        let mode = config["mode"] as? String ?? "all"
+        let displayType = config["displayType"] as? String ?? "grid"
+        let columns = config["columns"] as? Int ?? 2
+        let productIds = config["productIds"] as? [String]
+        
+        VStack {
+            // Search bar (SDK handles this)
+            SearchBar(text: $searchText)
+                .padding()
+            
+            if isLoading {
+                ProgressView()
+            } else {
+                if displayType == "grid" {
+                    LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: columns)) {
+                        ForEach(filteredProducts) { product in
+                            ProductCard(product: product)
+                        }
+                    }
+                } else {
+                    List(filteredProducts) { product in
+                        ProductRow(product: product)
+                    }
+                }
+            }
+        }
+        .onAppear {
+            if mode == "all" {
+                loadAllProducts()
+            } else if let ids = productIds {
+                loadFilteredProducts(ids: ids)
+            }
+        }
+    }
+    
+    private func loadAllProducts() {
+        isLoading = true
+        Task {
+            do {
+                // Fetch all products from campaign's Reachu channel
+                let fetchedProducts = try await ReachuAPI.shared.getChannelProducts(
+                    channelId: campaignChannelId
+                )
+                DispatchQueue.main.async {
+                    self.products = fetchedProducts
+                    self.isLoading = false
+                }
+            } catch {
+                print("Error loading products: \(error)")
+                isLoading = false
+            }
+        }
+    }
+    
+    private func loadFilteredProducts(ids: [String]) {
+        isLoading = true
+        Task {
+            do {
+                let fetchedProducts = try await ReachuAPI.shared.getProducts(ids: ids)
+                DispatchQueue.main.async {
+                    self.products = fetchedProducts
+                    self.isLoading = false
+                }
+            } catch {
+                print("Error loading products: \(error)")
+                isLoading = false
+            }
+        }
+    }
+}
+```
+
+### Component Rendering
+
+Each component should render itself based on its `type`:
+
+```swift
+func renderComponent(_ component: Component) -> some View {
+    switch component.type {
+    case "product_carousel":
+        ProductCarouselView(config: component.config)
+    case "product_banner":
+        ProductBannerView(config: component.config)
+    case "product_store":
+        ProductStoreView(
+            config: component.config,
+            campaignChannelId: campaign.reachuChannelId ?? ""
+        )
+    case "banner":
+        BannerView(config: component.config)
+    // ... other component types
+    default:
+        EmptyView()
+    }
+}
+```
+
+### Placement Guidelines
+
+**Overlay Components (ZStack):**
+- `banner`
+- `offer_banner`
+- `product_banner`
+
+**Inline Components (within ScrollView/VStack):**
+- `product_carousel`
+- `product_store`
+- `product_spotlight`
+- `carousel_auto`
+- `carousel_manual`
+
