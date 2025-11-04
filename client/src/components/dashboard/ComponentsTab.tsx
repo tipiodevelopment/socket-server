@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Plus, ToggleLeft, ToggleRight, Pencil, Trash2, ExternalLink, Activity } from "lucide-react";
-import { CampaignComponent, Component } from "@shared/schema";
+import { CampaignComponent, Component, Campaign } from "@shared/schema";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useState } from "react";
@@ -23,6 +23,10 @@ export function ComponentsTab({ campaignId }: ComponentsTabProps) {
   const [selectedComponentId, setSelectedComponentId] = useState<string>('');
   const [editingConfigFor, setEditingConfigFor] = useState<(CampaignComponent & { component: Component }) | null>(null);
 
+  const { data: campaign } = useQuery<Campaign>({
+    queryKey: ['/api/campaigns', campaignId],
+  });
+
   const { data: campaignComponents = [], isLoading } = useQuery<Array<CampaignComponent & { component: Component }>>({
     queryKey: ['/api/campaigns', campaignId, 'components'],
   });
@@ -30,6 +34,8 @@ export function ComponentsTab({ campaignId }: ComponentsTabProps) {
   const { data: allComponents = [] } = useQuery<Component[]>({
     queryKey: ['/api/components'],
   });
+
+  const isPaused = campaign?.isPaused === 'true';
 
   const addComponentMutation = useMutation({
     mutationFn: async (componentId: string) => {
@@ -298,7 +304,8 @@ export function ComponentsTab({ campaignId }: ComponentsTabProps) {
                           status: cc.status === 'active' ? 'inactive' : 'active',
                         })
                       }
-                      disabled={toggleStatusMutation.isPending}
+                      disabled={toggleStatusMutation.isPending || isPaused}
+                      title={isPaused ? 'Campaign is paused - resume to toggle components' : cc.status === 'active' ? 'Deactivate' : 'Activate'}
                       data-testid={`button-toggle-${cc.id}`}
                     >
                       {cc.status === 'active' ? (

@@ -254,6 +254,35 @@ export function OverviewTab({ campaignId, campaign }: OverviewTabProps) {
     },
   });
 
+  // Campaign pause/resume toggle mutation
+  const toggleCampaignPauseMutation = useMutation({
+    mutationFn: async () => {
+      return await apiRequest('PATCH', `/api/campaigns/${campaignId}/toggle-pause`, {});
+    },
+    onSuccess: async (data) => {
+      const isPaused = data.isPaused === 'true';
+      toast({
+        title: isPaused ? '⏸️ Campaign Paused' : '▶️ Campaign Resumed',
+        description: isPaused 
+          ? 'All components are now hidden from viewers'
+          : 'Campaign is now active and broadcasting',
+      });
+      
+      // Invalidate campaign query to update UI
+      await queryClient.invalidateQueries({ 
+        queryKey: ['/api/campaigns', campaignId],
+        refetchType: 'active'
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: 'Error',
+        description: error.message || 'Failed to toggle campaign state.',
+        variant: 'destructive',
+      });
+    },
+  });
+
   const getComponentTypeLabel = (type: string) => {
     const labels: Record<string, string> = {
       banner: 'Banner',
@@ -267,30 +296,86 @@ export function OverviewTab({ campaignId, campaign }: OverviewTabProps) {
     return labels[type] || type;
   };
 
+  const isPaused = campaign.isPaused === 'true';
+
   return (
     <div className="space-y-6">
-      {/* Campaign Status Banner */}
+      {/* Campaign Control Panel */}
       <Card className="border-0 bg-gradient-to-r from-primary/10 to-primary/5">
         <CardContent className="p-6">
-          <div className="flex items-center justify-between">
-            <div className="space-y-1">
-              <div className="flex items-center gap-2">
-                <h3 className="text-lg font-semibold">Campaign Status</h3>
-                <Badge variant={isCampaignActive() ? "default" : "secondary"}>
-                  {isCampaignActive() ? "Active" : "Inactive"}
-                </Badge>
+          <div className="flex flex-col gap-6">
+            {/* Campaign Toggle - Primary Control */}
+            <div className="flex items-center justify-between p-4 rounded-lg bg-background/50 border">
+              <div className="flex items-center gap-4">
+                <div className={`flex items-center justify-center w-12 h-12 rounded-full ${
+                  isPaused ? 'bg-yellow-500/20' : 'bg-green-500/20'
+                }`}>
+                  {isPaused ? (
+                    <ToggleLeft className="w-6 h-6 text-yellow-400" />
+                  ) : (
+                    <ToggleRight className="w-6 h-6 text-green-400" />
+                  )}
+                </div>
+                <div>
+                  <h3 className="text-lg font-semibold flex items-center gap-2">
+                    Campaign Master Control
+                    <Badge variant={isPaused ? "secondary" : "default"}>
+                      {isPaused ? "⏸️ Paused" : "▶️ Active"}
+                    </Badge>
+                  </h3>
+                  <p className="text-sm text-muted-foreground">
+                    {isPaused 
+                      ? 'Campaign is paused - all components hidden from viewers' 
+                      : 'Campaign is broadcasting - components visible to viewers'}
+                  </p>
+                </div>
               </div>
-              <p className="text-sm text-muted-foreground">
-                {campaign.startDate && `Started: ${format(new Date(campaign.startDate), 'PPP')}`}
-                {campaign.endDate && ` • Ends: ${format(new Date(campaign.endDate), 'PPP')}`}
-              </p>
-            </div>
-            <Link href={`/campaign/${campaign.name}/${campaign.id}`}>
-              <Button variant="outline" data-testid="button-view-live-overview">
-                <ExternalLink className="w-4 h-4 mr-2" />
-                View Live
+              <Button
+                size="lg"
+                variant={isPaused ? "default" : "outline"}
+                onClick={() => toggleCampaignPauseMutation.mutate()}
+                disabled={toggleCampaignPauseMutation.isPending}
+                className={isPaused 
+                  ? 'bg-green-600 hover:bg-green-700 text-white' 
+                  : 'border-yellow-500/50 text-yellow-400 hover:bg-yellow-950 hover:text-yellow-300'}
+                data-testid="button-toggle-campaign"
+              >
+                {isPaused ? (
+                  <>
+                    <ToggleRight className="w-5 h-5 mr-2" />
+                    Resume Campaign
+                  </>
+                ) : (
+                  <>
+                    <ToggleLeft className="w-5 h-5 mr-2" />
+                    Pause Campaign
+                  </>
+                )}
               </Button>
-            </Link>
+            </div>
+
+            {/* Campaign Status Info */}
+            <div className="flex items-center justify-between">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <h3 className="text-sm font-medium text-muted-foreground">Lifecycle Status</h3>
+                  <Badge variant={isCampaignActive() ? "default" : "secondary"} className="text-xs">
+                    {isCampaignActive() ? "Within Active Period" : "Outside Active Period"}
+                  </Badge>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  {campaign.startDate && `Started: ${format(new Date(campaign.startDate), 'PPP')}`}
+                  {campaign.endDate && ` • Ends: ${format(new Date(campaign.endDate), 'PPP')}`}
+                  {!campaign.startDate && !campaign.endDate && 'No lifecycle dates set'}
+                </p>
+              </div>
+              <Link href={`/campaign/${campaign.name}/${campaign.id}`}>
+                <Button variant="outline" size="sm" data-testid="button-view-live-overview">
+                  <ExternalLink className="w-4 h-4 mr-2" />
+                  View Live
+                </Button>
+              </Link>
+            </div>
           </div>
         </CardContent>
       </Card>
@@ -491,10 +576,16 @@ export function OverviewTab({ campaignId, campaign }: OverviewTabProps) {
                   variant="outline"
                   size="sm"
                   onClick={() => toggleAllMutation.mutate('active')}
-                  disabled={toggleAllMutation.isPending || !isCampaignActive() || activeComponents.length === campaignComponents.length}
+                  disabled={toggleAllMutation.isPending || !isCampaignActive() || isPaused || activeComponents.length === campaignComponents.length}
                   className="text-green-400 hover:text-green-300 hover:bg-green-950"
                   data-testid="button-activate-all"
-                  title={!isCampaignActive() ? 'Campaign is not active' : 'Activate all components'}
+                  title={
+                    isPaused
+                      ? 'Campaign is paused - resume to toggle components'
+                      : !isCampaignActive() 
+                      ? 'Campaign is not active' 
+                      : 'Activate all components'
+                  }
                 >
                   <ToggleRight className="w-4 h-4 mr-2" />
                   Activate All
@@ -503,10 +594,14 @@ export function OverviewTab({ campaignId, campaign }: OverviewTabProps) {
                   variant="outline"
                   size="sm"
                   onClick={() => toggleAllMutation.mutate('inactive')}
-                  disabled={toggleAllMutation.isPending || activeComponents.length === 0}
+                  disabled={toggleAllMutation.isPending || isPaused || activeComponents.length === 0}
                   className="text-yellow-400 hover:text-yellow-300 hover:bg-yellow-950"
                   data-testid="button-deactivate-all"
-                  title="Deactivate all components"
+                  title={
+                    isPaused
+                      ? 'Campaign is paused - resume to toggle components'
+                      : 'Deactivate all components'
+                  }
                 >
                   <ToggleLeft className="w-4 h-4 mr-2" />
                   Deactivate All
@@ -560,14 +655,20 @@ export function OverviewTab({ campaignId, campaign }: OverviewTabProps) {
                           status: cc.status === 'active' ? 'inactive' : 'active',
                         })
                       }
-                      disabled={toggleStatusMutation.isPending || !isCampaignActive()}
+                      disabled={toggleStatusMutation.isPending || !isCampaignActive() || isPaused}
                       className={`${
                         cc.status === 'active'
                           ? 'text-yellow-400 hover:text-yellow-300 hover:bg-yellow-950'
                           : 'text-green-400 hover:text-green-300 hover:bg-green-950'
                       }`}
                       data-testid={`overview-toggle-${cc.id}`}
-                      title={!isCampaignActive() ? 'Campaign is not active' : cc.status === 'active' ? 'Deactivate' : 'Activate'}
+                      title={
+                        isPaused 
+                          ? 'Campaign is paused - resume to toggle components' 
+                          : !isCampaignActive() 
+                          ? 'Campaign is not active' 
+                          : cc.status === 'active' ? 'Deactivate' : 'Activate'
+                      }
                     >
                       {cc.status === 'active' ? (
                         <ToggleRight className="w-4 h-4" />

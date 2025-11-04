@@ -7,12 +7,17 @@ import { Campaign } from "@shared/schema";
 let cachedBaseUrl: string | null = null;
 
 /**
- * Check if a campaign is currently active based on its startDate and endDate
+ * Check if a campaign is currently active based on its startDate, endDate, and isPaused state
  * @param campaign The campaign to check
- * @returns true if campaign is active (within startDate and endDate range)
+ * @returns true if campaign is active (within startDate and endDate range AND not paused)
  */
 export function isCampaignActive(campaign: Campaign): boolean {
   const now = new Date();
+  
+  // Check if campaign is manually paused
+  if (campaign.isPaused === 'true') {
+    return false; // Campaign is paused
+  }
   
   // Check if campaign has started
   if (campaign.startDate) {
@@ -30,7 +35,7 @@ export function isCampaignActive(campaign: Campaign): boolean {
     }
   }
   
-  // Campaign is active if it has started and not ended
+  // Campaign is active if it has started, not ended, and not paused
   return true;
 }
 
