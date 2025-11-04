@@ -8,30 +8,49 @@ This document explains how the campaign lifecycle system works and how to integr
 
 ### Campaign States
 
-A campaign can be in one of three states based on its `startDate` and `endDate`:
+A campaign can be in one of four states based on its lifecycle dates (`startDate`/`endDate`) and manual control (`isPaused`):
 
-1. **Upcoming** (before `startDate`)
+1. **Paused** (manually paused by administrator)
+   - Campaign has been manually paused using the master control
+   - ALL components are hidden, regardless of lifecycle dates
+   - Scheduler stops activating components
+   - Overrides all other states (highest priority)
+   - Can be resumed at any time by administrator
+
+2. **Upcoming** (before `startDate`)
    - Campaign hasn't started yet
    - Components CANNOT be activated, even manually
    - No events are broadcast
+   - Waiting for `startDate` to be reached
 
-2. **Active** (between `startDate` and `endDate`)
+3. **Active** (between `startDate` and `endDate` AND not paused)
    - Campaign is currently running
    - Components can be activated/deactivated via:
      - Manual toggle by administrators
      - Automatic scheduling
    - All component events are broadcast normally
 
-3. **Ended** (after `endDate`)
+4. **Ended** (after `endDate`)
    - Campaign has finished
    - All components are automatically hidden
    - `campaign_ended` event is broadcast to all connected clients
+   - Cannot be reactivated (lifecycle complete)
+
+### State Priority
+
+The system checks campaign state in this order:
+
+1. **Is paused?** → If yes, campaign is INACTIVE (manual control overrides everything)
+2. **Has started?** → If no (upcoming), campaign is INACTIVE
+3. **Has ended?** → If yes, campaign is INACTIVE
+4. **Otherwise** → Campaign is ACTIVE
 
 ### Special Cases
 
-- **No dates set**: Campaign is always active (legacy behavior)
-- **Only startDate**: Campaign becomes active after start, never ends
-- **Only endDate**: Campaign is active until end date
+- **No dates set**: Campaign is always active (unless manually paused)
+- **Only startDate**: Campaign becomes active after start, never ends (unless paused)
+- **Only endDate**: Campaign is active until end date (unless paused)
+- **Paused state persists**: When you pause a campaign, it stays paused even after server restart
 
 ## WebSocket Events
 
@@ -41,9 +60,12 @@ When your iOS app connects to a campaign's WebSocket (`wss://your-domain/ws/{cam
 
 | Campaign State | What Happens |
 |---------------|--------------|
+| Paused | No immediate event sent, but components should be hidden |
 | Ended | Immediately receives `campaign_ended` event |
 | Upcoming | No event sent, waits for `campaign_started` |
 | Active | No event sent, can fetch and display active components |
+
+**Important:** Always fetch campaign status from API on connection to determine if campaign is paused.
 
 ### Event Types
 
@@ -84,7 +106,45 @@ Sent when a campaign's end date is reached.
 - Clear any cached component data
 - Update UI to show "campaign ended" state
 
-#### 3. `component_status_changed`
+#### 3. `campaign_paused`
+
+Sent when an administrator manually pauses the campaign using the master control.
+
+**Payload:**
+```json
+{
+  "type": "campaign_paused",
+  "campaignId": 10,
+  "timestamp": "2024-12-26T14:30:00Z"
+}
+```
+
+**What to do:**
+- Immediately hide ALL campaign components
+- Store paused state locally
+- Show "campaign paused" indicator in UI
+- Components remain paused until `campaign_resumed` event
+
+#### 4. `campaign_resumed`
+
+Sent when an administrator resumes a paused campaign.
+
+**Payload:**
+```json
+{
+  "type": "campaign_resumed",
+  "campaignId": 10,
+  "timestamp": "2024-12-26T15:00:00Z"
+}
+```
+
+**What to do:**
+- Clear paused state
+- Fetch active components from API
+- Re-display components according to their status
+- Resume normal component display logic
+
+#### 5. `component_status_changed`
 
 Sent when a component is manually activated or deactivated during an active campaign.
 
@@ -115,7 +175,7 @@ Sent when a component is manually activated or deactivated during an active camp
 - If `status === "inactive"`: Hide the component
 - Use `component.type` to determine which UI component to display
 
-#### 4. `component_config_updated`
+#### 6. `component_config_updated`
 
 Sent when a component's configuration is updated.
 
@@ -215,6 +275,12 @@ private func handleMessage(_ text: String) {
         case "campaign_ended":
             handleCampaignEnded(json)
             
+        case "campaign_paused":
+            handleCampaignPaused(json)
+            
+        case "campaign_resumed":
+            handleCampaignResumed(json)
+            
         case "component_status_changed":
             handleComponentStatusChanged(json)
             
@@ -264,6 +330,42 @@ private func handleCampaignEnded(_ json: [String: Any]) {
         )
         
         print("Campaign ended, all components hidden")
+    }
+}
+
+private func handleCampaignPaused(_ json: [String: Any]) {
+    DispatchQueue.main.async {
+        self.isCampaignActive = false
+        
+        // Hide ALL components immediately
+        self.activeComponents.removeAll()
+        
+        // Update UI to show paused state
+        NotificationCenter.default.post(
+            name: .campaignPaused, 
+            object: nil
+        )
+        
+        print("Campaign paused by administrator, all components hidden")
+    }
+}
+
+private func handleCampaignResumed(_ json: [String: Any]) {
+    DispatchQueue.main.async {
+        self.isCampaignActive = true
+        
+        // Fetch active components from API
+        Task {
+            await self.loadActiveComponents()
+        }
+        
+        // Update UI
+        NotificationCenter.default.post(
+            name: .campaignResumed, 
+            object: nil
+        )
+        
+        print("Campaign resumed, loading components...")
     }
 }
 
