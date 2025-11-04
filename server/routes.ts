@@ -838,8 +838,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         timestamp: new Date().toISOString()
       };
 
+      // Log before broadcasting
+      console.log(`🔔 [WebSocket] Broadcasting ${eventType} to campaign ${campaignId}`);
       broadcastToCampaign(campaignId, JSON.stringify(wsEvent));
-      console.log(`[Campaign ${campaignId}] ${eventType}`);
+      console.log(`✅ [WebSocket] Event sent: ${JSON.stringify(wsEvent)}`);
 
       res.json(updatedCampaign);
     } catch (error) {
