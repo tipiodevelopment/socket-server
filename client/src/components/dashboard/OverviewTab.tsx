@@ -14,7 +14,9 @@ import {
   ExternalLink,
   ShoppingBag,
   BarChart2,
-  Trophy
+  Trophy,
+  ToggleLeft,
+  ToggleRight
 } from "lucide-react";
 import { Campaign, CampaignComponent, Component, WebSocketEvent } from "@shared/schema";
 import { Link } from "wouter";
@@ -157,6 +159,40 @@ export function OverviewTab({ campaignId, campaign }: OverviewTabProps) {
       });
     }
   });
+
+  // Toggle component mutation
+  const toggleStatusMutation = useMutation({
+    mutationFn: async ({ componentId, status }: { componentId: string; status: 'active' | 'inactive' }) => {
+      return await apiRequest('PATCH', `/api/campaigns/${campaignId}/components/${componentId}`, { status });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/campaigns', campaignId, 'components'] });
+      toast({
+        title: 'Status Updated',
+        description: 'Component status has been updated.',
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: 'Error',
+        description: error.message || 'Failed to update component status.',
+        variant: 'destructive',
+      });
+    },
+  });
+
+  const getComponentTypeLabel = (type: string) => {
+    const labels: Record<string, string> = {
+      banner: 'Banner',
+      countdown: 'Countdown',
+      carousel_auto: 'Auto Carousel',
+      carousel_manual: 'Manual Carousel',
+      product_spotlight: 'Product Spotlight',
+      offer_badge: 'Offer Badge',
+      offer_banner: 'Offer Banner',
+    };
+    return labels[type] || type;
+  };
 
   return (
     <div className="space-y-6">
@@ -362,6 +398,83 @@ export function OverviewTab({ campaignId, campaign }: OverviewTabProps) {
               </Button>
             </TabsContent>
           </Tabs>
+        </CardContent>
+      </Card>
+
+      {/* Active Components with Toggle */}
+      <Card className="border-0">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Activity className="w-5 h-5" />
+            Components
+          </CardTitle>
+          <CardDescription>Toggle components on/off for real-time control</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {campaignComponents.length === 0 ? (
+            <div className="text-center py-8 text-muted-foreground">
+              <Activity className="w-12 h-12 mx-auto mb-4 opacity-50" />
+              <p>No components added yet</p>
+              <p className="text-sm mt-2">Add components from the Components tab</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {campaignComponents.map((cc) => (
+                <div
+                  key={cc.id}
+                  className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 p-4 rounded-lg bg-muted/50 border"
+                  data-testid={`overview-component-${cc.id}`}
+                >
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2 mb-1">
+                      <Badge
+                        variant={cc.status === 'active' ? 'default' : 'secondary'}
+                        data-testid={`overview-status-${cc.id}`}
+                      >
+                        {cc.status}
+                      </Badge>
+                      <span className="font-medium">{cc.component.name}</span>
+                      <Badge variant="outline">
+                        {getComponentTypeLabel(cc.component.type)}
+                      </Badge>
+                    </div>
+                    {cc.scheduledTime && (
+                      <p className="text-xs text-muted-foreground">
+                        Scheduled: {format(new Date(cc.scheduledTime), 'PPp')}
+                        {cc.endTime && ` - ${format(new Date(cc.endTime), 'p')}`}
+                      </p>
+                    )}
+                  </div>
+                  <div className="flex gap-2">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() =>
+                        toggleStatusMutation.mutate({
+                          componentId: cc.componentId,
+                          status: cc.status === 'active' ? 'inactive' : 'active',
+                        })
+                      }
+                      disabled={toggleStatusMutation.isPending || !isCampaignActive()}
+                      className={`${
+                        cc.status === 'active'
+                          ? 'text-yellow-400 hover:text-yellow-300 hover:bg-yellow-950'
+                          : 'text-green-400 hover:text-green-300 hover:bg-green-950'
+                      }`}
+                      data-testid={`overview-toggle-${cc.id}`}
+                      title={!isCampaignActive() ? 'Campaign is not active' : cc.status === 'active' ? 'Deactivate' : 'Activate'}
+                    >
+                      {cc.status === 'active' ? (
+                        <ToggleRight className="w-4 h-4" />
+                      ) : (
+                        <ToggleLeft className="w-4 h-4" />
+                      )}
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </CardContent>
       </Card>
 
