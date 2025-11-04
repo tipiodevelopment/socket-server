@@ -181,6 +181,63 @@ export function OverviewTab({ campaignId, campaign }: OverviewTabProps) {
     },
   });
 
+  // Master toggle mutation - activate/deactivate all components
+  const toggleAllMutation = useMutation({
+    mutationFn: async (targetStatus: 'active' | 'inactive') => {
+      // Filter components that need status change
+      const componentsToToggle = campaignComponents.filter(cc => cc.status !== targetStatus);
+      
+      if (componentsToToggle.length === 0) {
+        return { succeeded: 0, failed: 0, total: 0 };
+      }
+
+      // Toggle all components to target status using Promise.allSettled
+      const promises = componentsToToggle.map(cc => 
+        apiRequest('PATCH', `/api/campaigns/${campaignId}/components/${cc.componentId}`, { 
+          status: targetStatus 
+        })
+      );
+      const results = await Promise.allSettled(promises);
+      
+      const succeeded = results.filter(r => r.status === 'fulfilled').length;
+      const failed = results.filter(r => r.status === 'rejected').length;
+      
+      return { succeeded, failed, total: componentsToToggle.length };
+    },
+    onSuccess: (result, targetStatus) => {
+      // Always invalidate cache to show current state
+      queryClient.invalidateQueries({ queryKey: ['/api/campaigns', campaignId, 'components'] });
+      
+      if (result.failed === 0) {
+        toast({
+          title: targetStatus === 'active' ? 'All Components Activated' : 'All Components Deactivated',
+          description: `${result.succeeded} component(s) updated successfully.`,
+        });
+      } else if (result.succeeded > 0) {
+        toast({
+          title: 'Partial Success',
+          description: `${result.succeeded} succeeded, ${result.failed} failed. Check campaign lifecycle.`,
+          variant: 'default',
+        });
+      } else {
+        toast({
+          title: 'Failed',
+          description: `Failed to update ${result.failed} component(s). Campaign may not be active.`,
+          variant: 'destructive',
+        });
+      }
+    },
+    onError: (error: any) => {
+      // Always invalidate cache even on error
+      queryClient.invalidateQueries({ queryKey: ['/api/campaigns', campaignId, 'components'] });
+      toast({
+        title: 'Error',
+        description: error.message || 'Failed to toggle components.',
+        variant: 'destructive',
+      });
+    },
+  });
+
   const getComponentTypeLabel = (type: string) => {
     const labels: Record<string, string> = {
       banner: 'Banner',
@@ -404,11 +461,43 @@ export function OverviewTab({ campaignId, campaign }: OverviewTabProps) {
       {/* Active Components with Toggle */}
       <Card className="border-0">
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Activity className="w-5 h-5" />
-            Components
-          </CardTitle>
-          <CardDescription>Toggle components on/off for real-time control</CardDescription>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle className="flex items-center gap-2">
+                <Activity className="w-5 h-5" />
+                Components
+              </CardTitle>
+              <CardDescription>Toggle components on/off for real-time control</CardDescription>
+            </div>
+            {campaignComponents.length > 0 && (
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => toggleAllMutation.mutate('active')}
+                  disabled={toggleAllMutation.isPending || !isCampaignActive() || activeComponents.length === campaignComponents.length}
+                  className="text-green-400 hover:text-green-300 hover:bg-green-950"
+                  data-testid="button-activate-all"
+                  title={!isCampaignActive() ? 'Campaign is not active' : 'Activate all components'}
+                >
+                  <ToggleRight className="w-4 h-4 mr-2" />
+                  Activate All
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => toggleAllMutation.mutate('inactive')}
+                  disabled={toggleAllMutation.isPending || activeComponents.length === 0}
+                  className="text-yellow-400 hover:text-yellow-300 hover:bg-yellow-950"
+                  data-testid="button-deactivate-all"
+                  title="Deactivate all components"
+                >
+                  <ToggleLeft className="w-4 h-4 mr-2" />
+                  Deactivate All
+                </Button>
+              </div>
+            )}
+          </div>
         </CardHeader>
         <CardContent>
           {campaignComponents.length === 0 ? (
