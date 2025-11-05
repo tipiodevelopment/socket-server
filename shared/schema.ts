@@ -396,6 +396,7 @@ export const productBannerConfigSchema = z.object({
   subtitleColor: z.string().default("#F0F0F0").optional(),
   buttonBackgroundColor: z.string().default("#007AFF").optional(), // iOS blue
   buttonTextColor: z.string().default("#FFFFFF").optional(),
+  backgroundColor: z.string().default("rgba(0, 0, 0, 0.3)").optional(), // Background color with alpha
   
   // Layout
   overlayOpacity: z.number().min(0).max(1).default(0.5).optional(),
