@@ -1012,7 +1012,17 @@ function ComponentForm({
 
                   {/* Background Color with Alpha */}
                   <div className="space-y-3 pt-4 border-t border-gray-700">
-                    <Label className="text-gray-300 text-sm">Background Color with Transparency</Label>
+                    <div className="flex justify-between items-center">
+                      <Label className="text-gray-300 text-sm">Background Color with Transparency</Label>
+                      <button
+                        type="button"
+                        onClick={() => setConfig({ ...config, backgroundColor: 'rgba(0, 0, 0, 0)' })}
+                        className="text-xs text-purple-400 hover:text-purple-300 underline"
+                        data-testid="button-remove-background"
+                      >
+                        Quitar color de fondo
+                      </button>
+                    </div>
                     <div className="grid grid-cols-2 gap-4">
                       <div className="space-y-2">
                         <Label htmlFor="bgColor" className="text-gray-300 text-xs">Color</Label>

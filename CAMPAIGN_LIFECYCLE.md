@@ -793,7 +793,9 @@ Full customization:
 - `subtitleColor` (string): Subtitle text color (default: "#F0F0F0")
 - `buttonBackgroundColor` (string): Button background color (default: "#007AFF" - iOS blue)
 - `buttonTextColor` (string): Button text color (default: "#FFFFFF")
-- `backgroundColor` (string): Background color with alpha (RGBA format, default: "rgba(0, 0, 0, 0.3)")
+- `backgroundColor` (string): Background color with alpha transparency (RGBA format, default: "rgba(0, 0, 0, 0.3)")
+  - Set alpha to 0 to remove background completely: `"rgba(0, 0, 0, 0)"`
+  - Use the "Remove Background" button in the UI for quick removal
 
 *Layout (Optional, with defaults):*
 - `overlayOpacity` (number): Background overlay darkness, 0.0-1.0 (default: 0.5)
