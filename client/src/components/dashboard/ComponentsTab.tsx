@@ -496,6 +496,53 @@ function CampaignComponentConfigForm({
           </>
         );
 
+      case 'product_carousel':
+        return (
+          <>
+            <div className="space-y-2">
+              <Label htmlFor="productIds">Product IDs (comma-separated)</Label>
+              <Input
+                id="productIds"
+                value={config.productIds?.join(', ') || ''}
+                onChange={(e) => setConfig({ 
+                  ...config, 
+                  productIds: e.target.value.split(',').map((id: string) => id.trim()).filter((id: string) => id) 
+                })}
+                placeholder="408727, 408728, 408729"
+                data-testid="input-productIds"
+              />
+              <p className="text-xs text-muted-foreground">Enter Reachu product IDs separated by commas</p>
+            </div>
+            <div className="space-y-2 flex items-center gap-2">
+              <input
+                type="checkbox"
+                id="autoPlay"
+                checked={config.autoPlay || false}
+                onChange={(e) => setConfig({ ...config, autoPlay: e.target.checked })}
+                data-testid="checkbox-autoPlay"
+                className="rounded"
+              />
+              <Label htmlFor="autoPlay">Auto Play</Label>
+            </div>
+            {config.autoPlay && (
+              <div className="space-y-2">
+                <Label htmlFor="interval">Interval (milliseconds)</Label>
+                <Input
+                  id="interval"
+                  type="number"
+                  value={config.interval || 3000}
+                  onChange={(e) => setConfig({ ...config, interval: parseInt(e.target.value) || 3000 })}
+                  min={1000}
+                  max={10000}
+                  step={500}
+                  data-testid="input-interval"
+                />
+                <p className="text-xs text-muted-foreground">Time between slides when auto-play is enabled (default: 3000ms)</p>
+              </div>
+            )}
+          </>
+        );
+
       default:
         return (
           <div className="text-sm text-muted-foreground">
