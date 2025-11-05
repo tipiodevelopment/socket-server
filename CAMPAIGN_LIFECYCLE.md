@@ -793,6 +793,7 @@ Full customization:
 - `subtitleColor` (string): Subtitle text color (default: "#F0F0F0")
 - `buttonBackgroundColor` (string): Button background color (default: "#007AFF" - iOS blue)
 - `buttonTextColor` (string): Button text color (default: "#FFFFFF")
+- `backgroundColor` (string): Background color with alpha (RGBA format, default: "rgba(0, 0, 0, 0.3)")
 
 *Layout (Optional, with defaults):*
 - `overlayOpacity` (number): Background overlay darkness, 0.0-1.0 (default: 0.5)
@@ -822,6 +823,7 @@ struct ProductBannerConfig: Codable {
     let subtitleColor: String?
     let buttonBackgroundColor: String?
     let buttonTextColor: String?
+    let backgroundColor: String?
     
     // Layout (with defaults)
     let overlayOpacity: Double?
@@ -857,6 +859,10 @@ struct ProductBannerView: View {
         Color(hex: config.buttonTextColor ?? "#FFFFFF")
     }
     
+    private var backgroundColor: Color {
+        Color(rgba: config.backgroundColor ?? "rgba(0, 0, 0, 0.3)")
+    }
+    
     private var horizontalAlignment: HorizontalAlignment {
         switch config.textAlignment ?? "center" {
         case "left": return .leading
@@ -887,7 +893,7 @@ struct ProductBannerView: View {
                 Color.black.opacity(config.overlayOpacity ?? 0.5)
             )
             
-            // Content
+            // Content with background color
             VStack(alignment: horizontalAlignment, spacing: 8) {
                 Text(config.title ?? product?.name ?? "")
                     .font(.system(size: config.titleFontSize ?? 24, weight: .bold))
@@ -912,6 +918,7 @@ struct ProductBannerView: View {
                 }
             }
             .padding()
+            .background(backgroundColor)
         }
         .frame(height: config.bannerHeight ?? 200)
         .clipped()
@@ -963,8 +970,9 @@ struct ProductBannerView: View {
     }
 }
 
-// Helper extension for hex color conversion
+// Helper extensions for color conversion
 extension Color {
+    // Hex color conversion
     init(hex: String) {
         let hex = hex.trimmingCharacters(in: CharacterSet.alphanumerics.inverted)
         var int: UInt64 = 0
@@ -986,6 +994,31 @@ extension Color {
             green: Double(g) / 255,
             blue:  Double(b) / 255,
             opacity: Double(a) / 255
+        )
+    }
+    
+    // RGBA color conversion - parses "rgba(r, g, b, a)" format
+    init(rgba: String) {
+        let pattern = #"rgba?\((\d+),\s*(\d+),\s*(\d+),?\s*([\d.]+)?\)"#
+        guard let regex = try? NSRegularExpression(pattern: pattern),
+              let match = regex.firstMatch(in: rgba, range: NSRange(rgba.startIndex..., in: rgba)) else {
+            self.init(.sRGB, red: 0, green: 0, blue: 0, opacity: 0.3)
+            return
+        }
+        
+        let r = (rgba as NSString).substring(with: match.range(at: 1))
+        let g = (rgba as NSString).substring(with: match.range(at: 2))
+        let b = (rgba as NSString).substring(with: match.range(at: 3))
+        let a = match.range(at: 4).location != NSNotFound 
+            ? (rgba as NSString).substring(with: match.range(at: 4)) 
+            : "1.0"
+        
+        self.init(
+            .sRGB,
+            red: Double(r) ?? 0 / 255,
+            green: Double(g) ?? 0 / 255,
+            blue: Double(b) ?? 0 / 255,
+            opacity: Double(a) ?? 1.0
         )
     }
 }
