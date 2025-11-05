@@ -795,6 +795,7 @@ function ComponentForm({
                     justifyContent: config.contentVerticalAlignment === 'top' ? 'flex-start' : config.contentVerticalAlignment === 'bottom' ? 'flex-end' : 'center',
                     alignItems: config.textAlignment === 'left' ? 'flex-start' : config.textAlignment === 'right' ? 'flex-end' : 'center',
                     textAlign: config.textAlignment || 'center',
+                    backgroundColor: config.backgroundColor || 'rgba(0, 0, 0, 0.3)',
                   }}
                 >
                   {(config.title || 'Product Title') && (
@@ -1007,6 +1008,87 @@ function ComponentForm({
                         />
                       </div>
                     </div>
+                  </div>
+
+                  {/* Background Color with Alpha */}
+                  <div className="space-y-3 pt-4 border-t border-gray-700">
+                    <Label className="text-gray-300 text-sm">Background Color with Transparency</Label>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="bgColor" className="text-gray-300 text-xs">Color</Label>
+                        <div className="flex gap-2">
+                          <Input
+                            id="bgColor"
+                            type="color"
+                            value={(() => {
+                              const rgba = config.backgroundColor || 'rgba(0, 0, 0, 0.3)';
+                              const match = rgba.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
+                              if (match) {
+                                const r = parseInt(match[1]);
+                                const g = parseInt(match[2]);
+                                const b = parseInt(match[3]);
+                                return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
+                              }
+                              return '#000000';
+                            })()}
+                            onChange={(e) => {
+                              const hex = e.target.value;
+                              const r = parseInt(hex.slice(1, 3), 16);
+                              const g = parseInt(hex.slice(3, 5), 16);
+                              const b = parseInt(hex.slice(5, 7), 16);
+                              const currentAlpha = (() => {
+                                const rgba = config.backgroundColor || 'rgba(0, 0, 0, 0.3)';
+                                const match = rgba.match(/,\s*([\d.]+)\)$/);
+                                return match ? parseFloat(match[1]) : 0.3;
+                              })();
+                              setConfig({ ...config, backgroundColor: `rgba(${r}, ${g}, ${b}, ${currentAlpha})` });
+                            }}
+                            className="w-12 h-10 p-1 bg-gray-700 border-0"
+                          />
+                          <Input
+                            value={config.backgroundColor || 'rgba(0, 0, 0, 0.3)'}
+                            onChange={(e) => setConfig({ ...config, backgroundColor: e.target.value })}
+                            placeholder="rgba(0, 0, 0, 0.3)"
+                            className="flex-1 bg-gray-700 border-0 text-white text-xs"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="space-y-2">
+                        <div className="flex justify-between">
+                          <Label className="text-gray-300 text-xs">Transparency</Label>
+                          <span className="text-xs text-gray-400">
+                            {Math.round(((() => {
+                              const rgba = config.backgroundColor || 'rgba(0, 0, 0, 0.3)';
+                              const match = rgba.match(/,\s*([\d.]+)\)$/);
+                              return match ? parseFloat(match[1]) : 0.3;
+                            })()) * 100)}%
+                          </span>
+                        </div>
+                        <Slider
+                          value={[((() => {
+                            const rgba = config.backgroundColor || 'rgba(0, 0, 0, 0.3)';
+                            const match = rgba.match(/,\s*([\d.]+)\)$/);
+                            return match ? parseFloat(match[1]) * 100 : 30;
+                          })())]}
+                          onValueChange={([value]) => {
+                            const rgba = config.backgroundColor || 'rgba(0, 0, 0, 0.3)';
+                            const match = rgba.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
+                            if (match) {
+                              const r = parseInt(match[1]);
+                              const g = parseInt(match[2]);
+                              const b = parseInt(match[3]);
+                              setConfig({ ...config, backgroundColor: `rgba(${r}, ${g}, ${b}, ${value / 100})` });
+                            }
+                          }}
+                          min={0}
+                          max={100}
+                          step={5}
+                          className="w-full mt-2"
+                        />
+                      </div>
+                    </div>
+                    <p className="text-xs text-gray-400">Color de fondo del contenido con transparencia (overlays sobre la imagen)</p>
                   </div>
                 </AccordionContent>
               </AccordionItem>
