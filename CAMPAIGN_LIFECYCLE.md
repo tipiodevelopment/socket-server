@@ -728,9 +728,26 @@ struct ProductCarouselView: View {
 
 #### 2. Product Banner (`product_banner`)
 
-A promotional banner featuring a single product with custom background image and text.
+A promotional banner featuring a single product with full visual customization support including colors, sizes, alignment, and overlay effects.
 
 **JSON Structure:**
+
+Minimal (uses all defaults):
+```json
+{
+  "type": "product_banner",
+  "name": "Featured Product Banner",
+  "config": {
+    "productId": "408841",
+    "backgroundImageUrl": "https://cdn.example.com/banner-bg.jpg",
+    "title": "Producto de la Semana",
+    "subtitle": "Hasta 40% de descuento",
+    "ctaText": "Ver producto"
+  }
+}
+```
+
+Full customization:
 ```json
 {
   "type": "product_banner",
@@ -742,84 +759,194 @@ A promotional banner featuring a single product with custom background image and
     "subtitle": "Hasta 40% de descuento",
     "ctaText": "Ver producto",
     "ctaLink": "https://tienda.com/producto/408841",
-    "deeplink": "myapp://product/408841"
+    "deeplink": "pregnancy://product/408841",
+    "titleColor": "#FFFFFF",
+    "subtitleColor": "#F0F0F0",
+    "buttonBackgroundColor": "#007AFF",
+    "buttonTextColor": "#FFFFFF",
+    "overlayOpacity": 0.6,
+    "bannerHeight": 220,
+    "titleFontSize": 26,
+    "subtitleFontSize": 17,
+    "buttonFontSize": 15,
+    "textAlignment": "center",
+    "contentVerticalAlignment": "center"
   }
 }
 ```
 
 **Config Fields:**
-- `productId` (string, required): Reachu product ID
-- `backgroundImageUrl` (string, required): URL of banner background image
-- `title` (string, optional): Custom title (uses product name if empty)
-- `subtitle` (string, optional): Additional promotional text
-- `ctaText` (string, optional): Button text (default: "Ver producto")
-- `ctaLink` (string, optional): Web URL for the product
-- `deeplink` (string, optional): App deeplink. Takes priority over ctaLink when present
+
+*Content (Required):*
+- `productId` (string): Reachu product ID
+- `backgroundImageUrl` (string): URL of banner background image
+
+*Content (Optional):*
+- `title` (string): Custom title (uses product name if empty)
+- `subtitle` (string): Additional promotional text
+- `ctaText` (string): Button text
+- `ctaLink` (string): Web URL for the product
+- `deeplink` (string): App deeplink. Takes priority over ctaLink when present
+
+*Colors (Optional, with defaults):*
+- `titleColor` (string): Title text color (default: "#FFFFFF")
+- `subtitleColor` (string): Subtitle text color (default: "#F0F0F0")
+- `buttonBackgroundColor` (string): Button background color (default: "#007AFF" - iOS blue)
+- `buttonTextColor` (string): Button text color (default: "#FFFFFF")
+
+*Layout (Optional, with defaults):*
+- `overlayOpacity` (number): Background overlay darkness, 0.0-1.0 (default: 0.5)
+- `bannerHeight` (number): Banner height in points (default: 200)
+- `titleFontSize` (number): Title font size (default: 24)
+- `subtitleFontSize` (number): Subtitle font size (default: 16)
+- `buttonFontSize` (number): Button font size (default: 14)
+
+*Alignment (Optional, with defaults):*
+- `textAlignment` (string): Horizontal alignment - "left", "center", "right" (default: "center")
+- `contentVerticalAlignment` (string): Vertical positioning - "top", "center", "bottom" (default: "center")
 
 **Swift Implementation:**
 ```swift
+struct ProductBannerConfig: Codable {
+    // Content
+    let productId: String
+    let backgroundImageUrl: String
+    let title: String?
+    let subtitle: String?
+    let ctaText: String?
+    let ctaLink: String?
+    let deeplink: String?
+    
+    // Colors (with defaults)
+    let titleColor: String?
+    let subtitleColor: String?
+    let buttonBackgroundColor: String?
+    let buttonTextColor: String?
+    
+    // Layout (with defaults)
+    let overlayOpacity: Double?
+    let bannerHeight: Double?
+    let titleFontSize: Double?
+    let subtitleFontSize: Double?
+    let buttonFontSize: Double?
+    
+    // Alignment (with defaults)
+    let textAlignment: String?
+    let contentVerticalAlignment: String?
+}
+
 struct ProductBannerView: View {
-    let config: [String: Any]
+    let config: ProductBannerConfig
     @State private var product: ReachuProduct?
     @State private var isLoading = false
     
-    var body: some View {
-        let productId = config["productId"] as? String ?? ""
-        let backgroundUrl = config["backgroundImageUrl"] as? String
-        let title = config["title"] as? String
-        let subtitle = config["subtitle"] as? String
-        let ctaText = config["ctaText"] as? String ?? "Ver producto"
-        let deeplink = config["deeplink"] as? String
-        let ctaLink = config["ctaLink"] as? String
-        
-        ZStack {
-            // Background image
-            AsyncImage(url: URL(string: backgroundUrl ?? "")) { image in
-                image.resizable().aspectRatio(contentMode: .fill)
-            } placeholder: {
-                Color.gray
-            }
-            
-            // Overlay content
-            VStack(spacing: 12) {
-                Text(title ?? product?.name ?? "")
-                    .font(.title2)
-                    .fontWeight(.bold)
-                
-                if let subtitle = subtitle {
-                    Text(subtitle)
-                        .font(.subheadline)
-                }
-                
-                Button(ctaText) {
-                    if let deeplink = deeplink {
-                        openDeeplink(deeplink)
-                    } else if let link = ctaLink ?? product?.url {
-                        openURL(link)
-                    }
-                }
-                .buttonStyle(.borderedProminent)
-            }
-            .padding()
-        }
-        .frame(height: 200)
-        .cornerRadius(16)
-        .onAppear {
-            loadProduct(id: productId)
+    // Computed properties with defaults
+    private var titleColor: Color {
+        Color(hex: config.titleColor ?? "#FFFFFF")
+    }
+    
+    private var subtitleColor: Color {
+        Color(hex: config.subtitleColor ?? "#F0F0F0")
+    }
+    
+    private var buttonBgColor: Color {
+        Color(hex: config.buttonBackgroundColor ?? "#007AFF")
+    }
+    
+    private var buttonTextColor: Color {
+        Color(hex: config.buttonTextColor ?? "#FFFFFF")
+    }
+    
+    private var horizontalAlignment: HorizontalAlignment {
+        switch config.textAlignment ?? "center" {
+        case "left": return .leading
+        case "right": return .trailing
+        default: return .center
         }
     }
     
-    private func loadProduct(id: String) {
-        isLoading = true
-        Task {
-            do {
-                let fetchedProduct = try await ReachuAPI.shared.getProduct(id: id)
-                DispatchQueue.main.async {
-                    self.product = fetchedProduct
-                    self.isLoading = false
+    private var verticalAlignment: Alignment {
+        switch config.contentVerticalAlignment ?? "center" {
+        case "top": return .top
+        case "bottom": return .bottom
+        default: return .center
+        }
+    }
+    
+    var body: some View {
+        ZStack(alignment: verticalAlignment) {
+            // Background image with overlay
+            AsyncImage(url: URL(string: config.backgroundImageUrl)) { image in
+                image
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+            } placeholder: {
+                Color.gray
+            }
+            .overlay(
+                Color.black.opacity(config.overlayOpacity ?? 0.5)
+            )
+            
+            // Content
+            VStack(alignment: horizontalAlignment, spacing: 8) {
+                Text(config.title ?? product?.name ?? "")
+                    .font(.system(size: config.titleFontSize ?? 24, weight: .bold))
+                    .foregroundColor(titleColor)
+                    .multilineTextAlignment(textAlignmentMode)
+                
+                if let subtitle = config.subtitle {
+                    Text(subtitle)
+                        .font(.system(size: config.subtitleFontSize ?? 16))
+                        .foregroundColor(subtitleColor)
+                        .multilineTextAlignment(textAlignmentMode)
                 }
-            } catch {
-                print("Error loading product: \(error)")
+                
+                Button(action: handleTap) {
+                    Text(config.ctaText ?? "Ver producto")
+                        .font(.system(size: config.buttonFontSize ?? 14, weight: .medium))
+                        .foregroundColor(buttonTextColor)
+                        .padding(.horizontal, 20)
+                        .padding(.vertical, 10)
+                        .background(buttonBgColor)
+                        .cornerRadius(8)
+                }
+            }
+            .padding()
+        }
+        .frame(height: config.bannerHeight ?? 200)
+        .clipped()
+        .task {
+            await loadProduct()
+        }
+    }
+    
+    private var textAlignmentMode: TextAlignment {
+        switch config.textAlignment ?? "center" {
+        case "left": return .leading
+        case "right": return .trailing
+        default: return .center
+        }
+    }
+    
+    private func handleTap() {
+        if let deeplink = config.deeplink {
+            openDeeplink(deeplink)
+        } else if let link = config.ctaLink ?? product?.url {
+            openURL(link)
+        }
+    }
+    
+    private func loadProduct() async {
+        isLoading = true
+        do {
+            let fetchedProduct = try await ReachuAPI.shared.getProduct(id: config.productId)
+            await MainActor.run {
+                self.product = fetchedProduct
+                self.isLoading = false
+            }
+        } catch {
+            print("Error loading product: \(error)")
+            await MainActor.run {
                 isLoading = false
             }
         }
@@ -833,6 +960,33 @@ struct ProductBannerView: View {
     private func openURL(_ urlString: String) {
         guard let url = URL(string: urlString) else { return }
         UIApplication.shared.open(url)
+    }
+}
+
+// Helper extension for hex color conversion
+extension Color {
+    init(hex: String) {
+        let hex = hex.trimmingCharacters(in: CharacterSet.alphanumerics.inverted)
+        var int: UInt64 = 0
+        Scanner(string: hex).scanHexInt64(&int)
+        let a, r, g, b: UInt64
+        switch hex.count {
+        case 3: // RGB (12-bit)
+            (a, r, g, b) = (255, (int >> 8) * 17, (int >> 4 & 0xF) * 17, (int & 0xF) * 17)
+        case 6: // RGB (24-bit)
+            (a, r, g, b) = (255, int >> 16, int >> 8 & 0xFF, int & 0xFF)
+        case 8: // ARGB (32-bit)
+            (a, r, g, b) = (int >> 24, int >> 16 & 0xFF, int >> 8 & 0xFF, int & 0xFF)
+        default:
+            (a, r, g, b) = (255, 0, 0, 0)
+        }
+        self.init(
+            .sRGB,
+            red: Double(r) / 255,
+            green: Double(g) / 255,
+            blue:  Double(b) / 255,
+            opacity: Double(a) / 255
+        )
     }
 }
 ```

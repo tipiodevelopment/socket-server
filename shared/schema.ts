@@ -381,13 +381,32 @@ export const productCarouselConfigSchema = z.object({
 });
 
 export const productBannerConfigSchema = z.object({
+  // Content
   productId: z.string(),
   backgroundImageUrl: z.string().url(),
   title: z.string().optional(),
   subtitle: z.string().optional(),
   ctaText: z.string().optional(),
   ctaLink: z.string().url().optional(),
-  deeplink: z.string().optional()
+  deeplink: z.string().optional(),
+  
+  // Visual Customization (all optional with defaults)
+  // Colors
+  titleColor: z.string().default("#FFFFFF").optional(),
+  subtitleColor: z.string().default("#F0F0F0").optional(),
+  buttonBackgroundColor: z.string().default("#007AFF").optional(), // iOS blue
+  buttonTextColor: z.string().default("#FFFFFF").optional(),
+  
+  // Layout
+  overlayOpacity: z.number().min(0).max(1).default(0.5).optional(),
+  bannerHeight: z.number().default(200).optional(),
+  titleFontSize: z.number().default(24).optional(),
+  subtitleFontSize: z.number().default(16).optional(),
+  buttonFontSize: z.number().default(14).optional(),
+  
+  // Alignment
+  textAlignment: z.enum(["left", "center", "right"]).default("center").optional(),
+  contentVerticalAlignment: z.enum(["top", "center", "bottom"]).default("center").optional()
 });
 
 export const productStoreConfigSchema = z.object({

@@ -6,11 +6,13 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
+import { Slider } from '@/components/ui/slider';
 import { useToast } from '@/hooks/use-toast';
 import { queryClient, apiRequest } from '@/lib/queryClient';
 import { ImageUploadWithPreview } from '@/components/ImageUploadWithPreview';
 import type { Component, ComponentType } from '@shared/schema';
-import { Plus, Code, Trash2, Edit, Copy, Check } from 'lucide-react';
+import { Plus, Code, Trash2, Edit, Copy, Check, Palette, LayoutGrid } from 'lucide-react';
 import { useState } from 'react';
 
 const componentTypes: { value: ComponentType; label: string }[] = [
@@ -765,83 +767,378 @@ function ComponentForm({
       case 'product_banner':
         return (
           <>
-            <div className="space-y-2">
-              <Label htmlFor="productId" className="text-gray-300">Product ID</Label>
-              <Input
-                id="productId"
-                placeholder="408841"
-                value={config.productId || ''}
-                onChange={(e) => setConfig({ ...config, productId: e.target.value })}
-                data-testid="input-productId"
-                className="bg-gray-700 border-0 text-white"
-                required
-              />
-              <p className="text-xs text-gray-400">Reachu product ID. The SDK will fetch product details.</p>
+            {/* Live Preview */}
+            <div className="space-y-2 mb-6">
+              <Label className="text-gray-300 flex items-center gap-2">
+                <LayoutGrid className="w-4 h-4" />
+                Live Preview
+              </Label>
+              <div 
+                className="relative rounded-lg overflow-hidden border border-gray-700"
+                style={{
+                  height: `${config.bannerHeight || 200}px`,
+                  backgroundImage: config.backgroundImageUrl ? `url(${config.backgroundImageUrl})` : 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                  backgroundSize: 'cover',
+                  backgroundPosition: 'center',
+                }}
+              >
+                {/* Overlay */}
+                <div 
+                  className="absolute inset-0 bg-black transition-opacity"
+                  style={{ opacity: config.overlayOpacity ?? 0.5 }}
+                />
+                
+                {/* Content */}
+                <div 
+                  className="relative h-full flex flex-col px-6 py-4"
+                  style={{
+                    justifyContent: config.contentVerticalAlignment === 'top' ? 'flex-start' : config.contentVerticalAlignment === 'bottom' ? 'flex-end' : 'center',
+                    alignItems: config.textAlignment === 'left' ? 'flex-start' : config.textAlignment === 'right' ? 'flex-end' : 'center',
+                    textAlign: config.textAlignment || 'center',
+                  }}
+                >
+                  {(config.title || 'Product Title') && (
+                    <h3 
+                      className="font-bold mb-1"
+                      style={{ 
+                        color: config.titleColor || '#FFFFFF',
+                        fontSize: `${config.titleFontSize || 24}px`,
+                      }}
+                    >
+                      {config.title || 'Product Title'}
+                    </h3>
+                  )}
+                  {(config.subtitle || 'Special offer description') && (
+                    <p 
+                      className="mb-3"
+                      style={{ 
+                        color: config.subtitleColor || '#F0F0F0',
+                        fontSize: `${config.subtitleFontSize || 16}px`,
+                      }}
+                    >
+                      {config.subtitle || 'Special offer description'}
+                    </p>
+                  )}
+                  <button
+                    className="px-4 py-2 rounded-lg font-medium"
+                    style={{
+                      backgroundColor: config.buttonBackgroundColor || '#007AFF',
+                      color: config.buttonTextColor || '#FFFFFF',
+                      fontSize: `${config.buttonFontSize || 14}px`,
+                    }}
+                  >
+                    {config.ctaText || 'Ver producto'}
+                  </button>
+                </div>
+              </div>
             </div>
-            <ImageUploadWithPreview
-              label="Background Image"
-              value={config.backgroundImageUrl || ''}
-              onChange={(url) => setConfig({ ...config, backgroundImageUrl: url })}
-              placeholder="Upload banner background image"
-              testId="input-backgroundImageUrl"
-            />
-            <div className="space-y-2">
-              <Label htmlFor="title" className="text-gray-300">Title (Optional)</Label>
-              <Input
-                id="title"
-                placeholder="Producto Destacado"
-                value={config.title || ''}
-                onChange={(e) => setConfig({ ...config, title: e.target.value })}
-                data-testid="input-title"
-                className="bg-gray-700 border-0 text-white"
+
+            {/* Content Fields */}
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="productId" className="text-gray-300">Product ID</Label>
+                <Input
+                  id="productId"
+                  placeholder="408841"
+                  value={config.productId || ''}
+                  onChange={(e) => setConfig({ ...config, productId: e.target.value })}
+                  data-testid="input-productId"
+                  className="bg-gray-700 border-0 text-white"
+                  required
+                />
+                <p className="text-xs text-gray-400">Reachu product ID. The SDK will fetch product details.</p>
+              </div>
+
+              <ImageUploadWithPreview
+                label="Background Image"
+                value={config.backgroundImageUrl || ''}
+                onChange={(url) => setConfig({ ...config, backgroundImageUrl: url })}
+                placeholder="Upload banner background image"
+                testId="input-backgroundImageUrl"
               />
-              <p className="text-xs text-gray-400">Leave empty to use product name</p>
+
+              <div className="space-y-2">
+                <Label htmlFor="title" className="text-gray-300">Title (Optional)</Label>
+                <Input
+                  id="title"
+                  placeholder="Producto Destacado"
+                  value={config.title || ''}
+                  onChange={(e) => setConfig({ ...config, title: e.target.value })}
+                  data-testid="input-title"
+                  className="bg-gray-700 border-0 text-white"
+                />
+                <p className="text-xs text-gray-400">Leave empty to use product name</p>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="subtitle" className="text-gray-300">Subtitle (Optional)</Label>
+                <Input
+                  id="subtitle"
+                  placeholder="40% OFF"
+                  value={config.subtitle || ''}
+                  onChange={(e) => setConfig({ ...config, subtitle: e.target.value })}
+                  data-testid="input-subtitle"
+                  className="bg-gray-700 border-0 text-white"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="ctaText" className="text-gray-300">Button Text</Label>
+                <Input
+                  id="ctaText"
+                  placeholder="Ver producto"
+                  value={config.ctaText || ''}
+                  onChange={(e) => setConfig({ ...config, ctaText: e.target.value })}
+                  data-testid="input-ctaText"
+                  className="bg-gray-700 border-0 text-white"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="ctaLink" className="text-gray-300">Button Link (Optional)</Label>
+                <Input
+                  id="ctaLink"
+                  placeholder="https://tienda.com/producto/408841"
+                  value={config.ctaLink || ''}
+                  onChange={(e) => setConfig({ ...config, ctaLink: e.target.value })}
+                  data-testid="input-ctaLink"
+                  className="bg-gray-700 border-0 text-white"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="deeplink" className="text-gray-300">Deeplink (Optional)</Label>
+                <Input
+                  id="deeplink"
+                  placeholder="pregnancy://product/408841"
+                  value={config.deeplink || ''}
+                  onChange={(e) => setConfig({ ...config, deeplink: e.target.value })}
+                  data-testid="input-deeplink"
+                  className="bg-gray-700 border-0 text-white"
+                />
+                <p className="text-xs text-gray-400">If provided, takes priority over Button Link</p>
+              </div>
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="subtitle" className="text-gray-300">Subtitle (Optional)</Label>
-              <Input
-                id="subtitle"
-                placeholder="40% OFF"
-                value={config.subtitle || ''}
-                onChange={(e) => setConfig({ ...config, subtitle: e.target.value })}
-                data-testid="input-subtitle"
-                className="bg-gray-700 border-0 text-white"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="ctaText" className="text-gray-300">Button Text (Optional)</Label>
-              <Input
-                id="ctaText"
-                placeholder="Ver producto"
-                value={config.ctaText || 'Ver producto'}
-                onChange={(e) => setConfig({ ...config, ctaText: e.target.value })}
-                data-testid="input-ctaText"
-                className="bg-gray-700 border-0 text-white"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="ctaLink" className="text-gray-300">Button Link (Optional)</Label>
-              <Input
-                id="ctaLink"
-                placeholder="https://tienda.com/producto/408841"
-                value={config.ctaLink || ''}
-                onChange={(e) => setConfig({ ...config, ctaLink: e.target.value })}
-                data-testid="input-ctaLink"
-                className="bg-gray-700 border-0 text-white"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="deeplink" className="text-gray-300">Deeplink (Optional)</Label>
-              <Input
-                id="deeplink"
-                placeholder="myapp://product/408841"
-                value={config.deeplink || ''}
-                onChange={(e) => setConfig({ ...config, deeplink: e.target.value })}
-                data-testid="input-deeplink"
-                className="bg-gray-700 border-0 text-white"
-              />
-              <p className="text-xs text-gray-400">If provided, takes priority over Button Link</p>
-            </div>
+
+            {/* Visual Customization - Collapsible Sections */}
+            <Accordion type="multiple" className="w-full mt-6">
+              {/* Colors Section */}
+              <AccordionItem value="colors" className="border-gray-700">
+                <AccordionTrigger className="text-gray-300 hover:text-white">
+                  <span className="flex items-center gap-2">
+                    <Palette className="w-4 h-4" />
+                    Colors & Styling
+                  </span>
+                </AccordionTrigger>
+                <AccordionContent className="space-y-4 pt-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="titleColor" className="text-gray-300 text-xs">Title Color</Label>
+                      <div className="flex gap-2">
+                        <Input
+                          id="titleColor"
+                          type="color"
+                          value={config.titleColor || '#FFFFFF'}
+                          onChange={(e) => setConfig({ ...config, titleColor: e.target.value })}
+                          className="w-12 h-10 p-1 bg-gray-700 border-0"
+                        />
+                        <Input
+                          value={config.titleColor || '#FFFFFF'}
+                          onChange={(e) => setConfig({ ...config, titleColor: e.target.value })}
+                          placeholder="#FFFFFF"
+                          className="flex-1 bg-gray-700 border-0 text-white text-xs"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="subtitleColor" className="text-gray-300 text-xs">Subtitle Color</Label>
+                      <div className="flex gap-2">
+                        <Input
+                          id="subtitleColor"
+                          type="color"
+                          value={config.subtitleColor || '#F0F0F0'}
+                          onChange={(e) => setConfig({ ...config, subtitleColor: e.target.value })}
+                          className="w-12 h-10 p-1 bg-gray-700 border-0"
+                        />
+                        <Input
+                          value={config.subtitleColor || '#F0F0F0'}
+                          onChange={(e) => setConfig({ ...config, subtitleColor: e.target.value })}
+                          placeholder="#F0F0F0"
+                          className="flex-1 bg-gray-700 border-0 text-white text-xs"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="buttonBackgroundColor" className="text-gray-300 text-xs">Button Background</Label>
+                      <div className="flex gap-2">
+                        <Input
+                          id="buttonBackgroundColor"
+                          type="color"
+                          value={config.buttonBackgroundColor || '#007AFF'}
+                          onChange={(e) => setConfig({ ...config, buttonBackgroundColor: e.target.value })}
+                          className="w-12 h-10 p-1 bg-gray-700 border-0"
+                        />
+                        <Input
+                          value={config.buttonBackgroundColor || '#007AFF'}
+                          onChange={(e) => setConfig({ ...config, buttonBackgroundColor: e.target.value })}
+                          placeholder="#007AFF"
+                          className="flex-1 bg-gray-700 border-0 text-white text-xs"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="buttonTextColor" className="text-gray-300 text-xs">Button Text</Label>
+                      <div className="flex gap-2">
+                        <Input
+                          id="buttonTextColor"
+                          type="color"
+                          value={config.buttonTextColor || '#FFFFFF'}
+                          onChange={(e) => setConfig({ ...config, buttonTextColor: e.target.value })}
+                          className="w-12 h-10 p-1 bg-gray-700 border-0"
+                        />
+                        <Input
+                          value={config.buttonTextColor || '#FFFFFF'}
+                          onChange={(e) => setConfig({ ...config, buttonTextColor: e.target.value })}
+                          placeholder="#FFFFFF"
+                          className="flex-1 bg-gray-700 border-0 text-white text-xs"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </AccordionContent>
+              </AccordionItem>
+
+              {/* Layout Section */}
+              <AccordionItem value="layout" className="border-gray-700">
+                <AccordionTrigger className="text-gray-300 hover:text-white">
+                  <span className="flex items-center gap-2">
+                    <LayoutGrid className="w-4 h-4" />
+                    Layout & Sizing
+                  </span>
+                </AccordionTrigger>
+                <AccordionContent className="space-y-4 pt-4">
+                  {/* Banner Height */}
+                  <div className="space-y-2">
+                    <div className="flex justify-between">
+                      <Label className="text-gray-300 text-xs">Banner Height</Label>
+                      <span className="text-xs text-gray-400">{config.bannerHeight || 200}px</span>
+                    </div>
+                    <Slider
+                      value={[config.bannerHeight || 200]}
+                      onValueChange={([value]) => setConfig({ ...config, bannerHeight: value })}
+                      min={120}
+                      max={400}
+                      step={10}
+                      className="w-full"
+                    />
+                  </div>
+
+                  {/* Overlay Opacity */}
+                  <div className="space-y-2">
+                    <div className="flex justify-between">
+                      <Label className="text-gray-300 text-xs">Overlay Opacity</Label>
+                      <span className="text-xs text-gray-400">{Math.round((config.overlayOpacity ?? 0.5) * 100)}%</span>
+                    </div>
+                    <Slider
+                      value={[(config.overlayOpacity ?? 0.5) * 100]}
+                      onValueChange={([value]) => setConfig({ ...config, overlayOpacity: value / 100 })}
+                      min={0}
+                      max={100}
+                      step={5}
+                      className="w-full"
+                    />
+                  </div>
+
+                  {/* Font Sizes */}
+                  <div className="grid grid-cols-3 gap-4">
+                    <div className="space-y-2">
+                      <div className="flex flex-col">
+                        <Label className="text-gray-300 text-xs">Title Size</Label>
+                        <span className="text-xs text-gray-400">{config.titleFontSize || 24}px</span>
+                      </div>
+                      <Slider
+                        value={[config.titleFontSize || 24]}
+                        onValueChange={([value]) => setConfig({ ...config, titleFontSize: value })}
+                        min={16}
+                        max={40}
+                        step={2}
+                        className="w-full"
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <div className="flex flex-col">
+                        <Label className="text-gray-300 text-xs">Subtitle Size</Label>
+                        <span className="text-xs text-gray-400">{config.subtitleFontSize || 16}px</span>
+                      </div>
+                      <Slider
+                        value={[config.subtitleFontSize || 16]}
+                        onValueChange={([value]) => setConfig({ ...config, subtitleFontSize: value })}
+                        min={12}
+                        max={24}
+                        step={1}
+                        className="w-full"
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <div className="flex flex-col">
+                        <Label className="text-gray-300 text-xs">Button Size</Label>
+                        <span className="text-xs text-gray-400">{config.buttonFontSize || 14}px</span>
+                      </div>
+                      <Slider
+                        value={[config.buttonFontSize || 14]}
+                        onValueChange={([value]) => setConfig({ ...config, buttonFontSize: value })}
+                        min={12}
+                        max={20}
+                        step={1}
+                        className="w-full"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Alignment */}
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label className="text-gray-300 text-xs">Text Alignment</Label>
+                      <Select
+                        value={config.textAlignment || 'center'}
+                        onValueChange={(value) => setConfig({ ...config, textAlignment: value })}
+                      >
+                        <SelectTrigger className="bg-gray-700 border-0 text-white">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent className="bg-gray-800 border-gray-700">
+                          <SelectItem value="left">Left</SelectItem>
+                          <SelectItem value="center">Center</SelectItem>
+                          <SelectItem value="right">Right</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label className="text-gray-300 text-xs">Vertical Position</Label>
+                      <Select
+                        value={config.contentVerticalAlignment || 'center'}
+                        onValueChange={(value) => setConfig({ ...config, contentVerticalAlignment: value })}
+                      >
+                        <SelectTrigger className="bg-gray-700 border-0 text-white">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent className="bg-gray-800 border-gray-700">
+                          <SelectItem value="top">Top</SelectItem>
+                          <SelectItem value="center">Center</SelectItem>
+                          <SelectItem value="bottom">Bottom</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                </AccordionContent>
+              </AccordionItem>
+            </Accordion>
           </>
         );
       case 'product_store':
