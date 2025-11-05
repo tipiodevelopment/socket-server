@@ -752,6 +752,92 @@ struct ProductCarouselView: View {
 }
 ```
 
+**API Examples:**
+
+*GET Request (Filtered Mode):*
+```bash
+GET /api/campaigns/14/components
+```
+
+*Response with Specific Product IDs:*
+```json
+[
+  {
+    "id": "21",
+    "type": "product_carousel",
+    "name": "Black Friday Products",
+    "status": "active",
+    "config": {
+      "productIds": ["408727", "408728"],
+      "autoPlay": true,
+      "interval": 3000
+    },
+    "customConfig": null
+  }
+]
+```
+
+*Response with All Channel Products:*
+```json
+[
+  {
+    "id": "21",
+    "type": "product_carousel",
+    "name": "All Channel Products",
+    "status": "active",
+    "config": {
+      "autoPlay": true,
+      "interval": 3000
+    },
+    "customConfig": null
+  }
+]
+```
+
+*WebSocket Event (Component Config Updated - Filtered Mode):*
+```json
+{
+  "type": "component_config_updated",
+  "data": {
+    "component": {
+      "id": "21",
+      "type": "product_carousel",
+      "name": "Black Friday Products",
+      "status": "active",
+      "config": {
+        "productIds": ["408727", "408728"],
+        "autoPlay": true,
+        "interval": 3000
+      }
+    }
+  }
+}
+```
+
+*WebSocket Event (Component Config Updated - All Mode):*
+```json
+{
+  "type": "component_config_updated",
+  "data": {
+    "component": {
+      "id": "21",
+      "type": "product_carousel",
+      "name": "All Channel Products",
+      "status": "active",
+      "config": {
+        "autoPlay": true,
+        "interval": 3000
+      }
+    }
+  }
+}
+```
+
+**Implementation Notes:**
+- When `productIds` is present and not empty → SDK fetches specific products
+- When `productIds` is absent or empty → SDK fetches all channel products
+- Your iOS app should check: `if let ids = config["productIds"] as? [String], !ids.isEmpty`
+
 #### 2. Product Banner (`product_banner`)
 
 A promotional banner featuring a single product with full visual customization support including colors, sizes, alignment, and overlay effects.
