@@ -1014,14 +1014,29 @@ function ComponentForm({
                   <div className="space-y-3 pt-4 border-t border-gray-700">
                     <div className="flex justify-between items-center">
                       <Label className="text-gray-300 text-sm">Background Color with Transparency</Label>
-                      <button
-                        type="button"
-                        onClick={() => setConfig({ ...config, backgroundColor: 'rgba(0, 0, 0, 0)' })}
-                        className="text-xs text-purple-400 hover:text-purple-300 underline"
-                        data-testid="button-remove-background"
-                      >
-                        Quitar color de fondo
-                      </button>
+                      <div className="flex items-center gap-2">
+                        {(() => {
+                          const rgba = config.backgroundColor || 'rgba(0, 0, 0, 0.3)';
+                          const match = rgba.match(/,\s*([\d.]+)\)$/);
+                          const alpha = match ? parseFloat(match[1]) : 0.3;
+                          return alpha === 0 && (
+                            <span className="text-xs text-green-400 px-2 py-0.5 bg-green-400/10 rounded">
+                              Transparente
+                            </span>
+                          );
+                        })()}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            console.log('Removiendo color de fondo...');
+                            setConfig({ ...config, backgroundColor: 'rgba(0, 0, 0, 0)' });
+                          }}
+                          className="text-xs text-purple-400 hover:text-purple-300 underline"
+                          data-testid="button-remove-background"
+                        >
+                          Quitar color de fondo
+                        </button>
+                      </div>
                     </div>
                     <div className="grid grid-cols-2 gap-4">
                       <div className="space-y-2">
