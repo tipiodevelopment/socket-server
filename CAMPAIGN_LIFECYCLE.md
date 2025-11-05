@@ -661,15 +661,27 @@ The system now supports three new product-focused components that integrate with
 
 #### 1. Product Carousel (`product_carousel`)
 
-A horizontal scrollable carousel displaying multiple Reachu products.
+A horizontal scrollable carousel displaying multiple Reachu products. Supports two modes: **filtered** (specific product IDs) or **all** (all channel products).
 
-**JSON Structure:**
+**JSON Structure (Filtered Mode - Specific Products):**
 ```json
 {
   "type": "product_carousel",
   "name": "Black Friday Products",
   "config": {
-    "productIds": ["408841", "408842", "408843", "408844"],
+    "productIds": ["408727", "408728", "408729"],
+    "autoPlay": true,
+    "interval": 3000
+  }
+}
+```
+
+**JSON Structure (All Mode - All Channel Products):**
+```json
+{
+  "type": "product_carousel",
+  "name": "All Channel Products",
+  "config": {
     "autoPlay": true,
     "interval": 3000
   }
@@ -677,7 +689,9 @@ A horizontal scrollable carousel displaying multiple Reachu products.
 ```
 
 **Config Fields:**
-- `productIds` (string[], required): Array of Reachu product IDs in display order
+- `productIds` (string[], optional): 
+  - **With IDs**: Array of Reachu product IDs in display order (e.g., `["408727", "408728"]`)
+  - **Empty/Undefined**: SDK will fetch ALL products from your Reachu channel
 - `autoPlay` (boolean, optional): Enable auto-scroll (default: false)
 - `interval` (number, optional): Milliseconds between slides when autoPlay is enabled (default: 3000)
 
@@ -689,7 +703,7 @@ struct ProductCarouselView: View {
     @State private var isLoading = false
     
     var body: some View {
-        let productIds = config["productIds"] as? [String] ?? []
+        let productIds = config["productIds"] as? [String] // Optional, can be nil
         let autoPlay = config["autoPlay"] as? Bool ?? false
         let interval = config["interval"] as? Int ?? 3000
         
@@ -707,18 +721,30 @@ struct ProductCarouselView: View {
         }
     }
     
-    private func loadProducts(ids: [String]) {
+    private func loadProducts(ids: [String]?) {
         isLoading = true
         Task {
             do {
-                // Call Reachu API with product IDs
-                let fetchedProducts = try await ReachuAPI.shared.getProducts(ids: ids)
+                // Call Reachu API
+                let fetchedProducts: [ReachuProduct]
+                
+                if let ids = ids, !ids.isEmpty {
+                    // Filtered mode: Fetch specific products by IDs
+                    print("[ProductCarousel] Fetching \(ids.count) specific products")
+                    fetchedProducts = try await ReachuAPI.shared.getProducts(ids: ids)
+                } else {
+                    // All mode: Fetch all channel products
+                    print("[ProductCarousel] Fetching all channel products")
+                    fetchedProducts = try await ReachuAPI.shared.getAllChannelProducts()
+                }
+                
                 DispatchQueue.main.async {
                     self.products = fetchedProducts
                     self.isLoading = false
+                    print("[ProductCarousel] Loaded \(fetchedProducts.count) products")
                 }
             } catch {
-                print("Error loading products: \(error)")
+                print("[ProductCarousel] Error loading products: \(error)")
                 isLoading = false
             }
         }
