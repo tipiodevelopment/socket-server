@@ -375,7 +375,7 @@ export const offerBannerConfigSchema = z.object({
 });
 
 export const productCarouselConfigSchema = z.object({
-  productIds: z.array(z.string()),
+  productIds: z.array(z.string()).optional(), // Optional: if empty/undefined, SDK fetches all channel products
   autoPlay: z.boolean().default(false),
   interval: z.number().default(3000)
 });

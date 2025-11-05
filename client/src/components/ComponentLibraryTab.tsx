@@ -721,20 +721,27 @@ function ComponentForm({
         return (
           <>
             <div className="space-y-2">
-              <Label htmlFor="productIds" className="text-gray-300">Product IDs (comma-separated)</Label>
+              <Label htmlFor="productIds" className="text-gray-300">Product IDs (optional, comma-separated)</Label>
               <Textarea
                 id="productIds"
-                placeholder="408841, 408842, 408843"
+                placeholder="Leave empty for all channel products, or: 408727, 408728, 408729"
                 value={config.productIds?.join(', ') || ''}
-                onChange={(e) => setConfig({ 
-                  ...config, 
-                  productIds: e.target.value.split(',').map(id => id.trim()).filter(id => id) 
-                })}
+                onChange={(e) => {
+                  const ids = e.target.value.split(',').map(id => id.trim()).filter(id => id);
+                  setConfig({ 
+                    ...config, 
+                    productIds: ids.length > 0 ? ids : undefined
+                  });
+                }}
                 data-testid="input-productIds"
                 className="bg-gray-700 border-0 text-white"
                 rows={3}
               />
-              <p className="text-xs text-gray-400">Enter Reachu product IDs separated by commas. The SDK will fetch product details automatically.</p>
+              <p className="text-xs text-gray-400">
+                {config.productIds && config.productIds.length > 0 
+                  ? `Showing ${config.productIds.length} specific products. The SDK will fetch details for these IDs.`
+                  : "Empty = SDK will fetch ALL products from your Reachu channel."}
+              </p>
             </div>
             <div className="space-y-2">
               <Label className="text-gray-300 flex items-center gap-2">

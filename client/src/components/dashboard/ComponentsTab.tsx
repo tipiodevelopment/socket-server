@@ -500,18 +500,25 @@ function CampaignComponentConfigForm({
         return (
           <>
             <div className="space-y-2">
-              <Label htmlFor="productIds">Product IDs (comma-separated)</Label>
+              <Label htmlFor="productIds">Product IDs (optional, comma-separated)</Label>
               <Input
                 id="productIds"
                 value={config.productIds?.join(', ') || ''}
-                onChange={(e) => setConfig({ 
-                  ...config, 
-                  productIds: e.target.value.split(',').map((id: string) => id.trim()).filter((id: string) => id) 
-                })}
-                placeholder="408727, 408728, 408729"
+                onChange={(e) => {
+                  const ids = e.target.value.split(',').map((id: string) => id.trim()).filter((id: string) => id);
+                  setConfig({ 
+                    ...config, 
+                    productIds: ids.length > 0 ? ids : undefined
+                  });
+                }}
+                placeholder="Leave empty for all channel products, or: 408727, 408728"
                 data-testid="input-productIds"
               />
-              <p className="text-xs text-muted-foreground">Enter Reachu product IDs separated by commas</p>
+              <p className="text-xs text-muted-foreground">
+                {config.productIds && config.productIds.length > 0 
+                  ? `Showing ${config.productIds.length} specific products`
+                  : "Will display all products from Reachu channel"}
+              </p>
             </div>
             <div className="space-y-2 flex items-center gap-2">
               <input
