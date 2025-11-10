@@ -12,6 +12,7 @@ import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useState } from "react";
 import { Link } from "wouter";
+import { ImageUploadWithPreview } from "@/components/ImageUploadWithPreview";
 
 interface ComponentsTabProps {
   campaignId: number;
@@ -427,15 +428,13 @@ export function CampaignComponentConfigForm({
                 data-testid="input-subtitle"
               />
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="imageUrl">Image URL</Label>
-              <Input
-                id="imageUrl"
-                value={config.imageUrl || ''}
-                onChange={(e) => setConfig({ ...config, imageUrl: e.target.value })}
-                data-testid="input-imageUrl"
-              />
-            </div>
+            <ImageUploadWithPreview
+              label="Banner Image"
+              value={config.imageUrl || ''}
+              onChange={(url) => setConfig({ ...config, imageUrl: url })}
+              placeholder="https://example.com/banner.jpg"
+              testId="input-imageUrl"
+            />
           </>
         );
 
@@ -458,10 +457,19 @@ export function CampaignComponentConfigForm({
               <Input
                 id="endDate"
                 type="datetime-local"
-                value={config.endDate ? new Date(config.endDate).toISOString().slice(0, 16) : ''}
-                onChange={(e) => setConfig({ ...config, endDate: e.target.value })}
+                value={config.endDate ? (() => {
+                  const date = new Date(config.endDate);
+                  const offset = date.getTimezoneOffset();
+                  const localDate = new Date(date.getTime() - offset * 60 * 1000);
+                  return localDate.toISOString().slice(0, 16);
+                })() : ''}
+                onChange={(e) => {
+                  const dateValue = e.target.value ? new Date(e.target.value).toISOString() : '';
+                  setConfig({ ...config, endDate: dateValue });
+                }}
                 data-testid="input-endDate"
               />
+              <p className="text-xs text-muted-foreground">Select date and time in your local timezone</p>
             </div>
 
             {/* Visual Fields */}
@@ -469,16 +477,13 @@ export function CampaignComponentConfigForm({
               <h4 className="text-sm font-semibold mb-3">Visual Customization (Optional)</h4>
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="logoUrl">Logo URL</Label>
-              <Input
-                id="logoUrl"
-                value={config.logoUrl || ''}
-                onChange={(e) => setConfig({ ...config, logoUrl: e.target.value })}
-                placeholder="https://example.com/logo.png"
-                data-testid="input-logoUrl"
-              />
-            </div>
+            <ImageUploadWithPreview
+              label="Logo URL"
+              value={config.logoUrl || ''}
+              onChange={(url) => setConfig({ ...config, logoUrl: url })}
+              placeholder="https://example.com/logo.png"
+              testId="input-logoUrl"
+            />
 
             <div className="space-y-2">
               <Label htmlFor="subtitle">Subtitle</Label>
@@ -491,16 +496,13 @@ export function CampaignComponentConfigForm({
               />
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="backgroundImageUrl">Background Image URL</Label>
-              <Input
-                id="backgroundImageUrl"
-                value={config.backgroundImageUrl || ''}
-                onChange={(e) => setConfig({ ...config, backgroundImageUrl: e.target.value })}
-                placeholder="https://example.com/background.jpg"
-                data-testid="input-backgroundImageUrl"
-              />
-            </div>
+            <ImageUploadWithPreview
+              label="Background Image URL"
+              value={config.backgroundImageUrl || ''}
+              onChange={(url) => setConfig({ ...config, backgroundImageUrl: url })}
+              placeholder="https://example.com/background.jpg"
+              testId="input-backgroundImageUrl"
+            />
 
             <div className="space-y-2">
               <Label htmlFor="backgroundColor">Background Color (hex)</Label>
@@ -670,17 +672,13 @@ export function CampaignComponentConfigForm({
         return (
           <>
             {/* Required Fields */}
-            <div className="space-y-2">
-              <Label htmlFor="logoUrl">Logo URL *</Label>
-              <Input
-                id="logoUrl"
-                value={config.logoUrl || ''}
-                onChange={(e) => setConfig({ ...config, logoUrl: e.target.value })}
-                placeholder="/objects/uploads/... or https://..."
-                data-testid="input-logoUrl"
-              />
-              <p className="text-xs text-muted-foreground">Upload to Object Storage and paste the URL here</p>
-            </div>
+            <ImageUploadWithPreview
+              label="Logo URL *"
+              value={config.logoUrl || ''}
+              onChange={(url) => setConfig({ ...config, logoUrl: url })}
+              placeholder="/objects/uploads/... or https://..."
+              testId="input-logoUrl"
+            />
 
             <div className="space-y-2">
               <Label htmlFor="title">Title *</Label>
@@ -693,17 +691,13 @@ export function CampaignComponentConfigForm({
               />
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="backgroundImageUrl">Background Image URL *</Label>
-              <Input
-                id="backgroundImageUrl"
-                value={config.backgroundImageUrl || ''}
-                onChange={(e) => setConfig({ ...config, backgroundImageUrl: e.target.value })}
-                placeholder="/objects/uploads/... or https://..."
-                data-testid="input-backgroundImageUrl"
-              />
-              <p className="text-xs text-muted-foreground">Upload to Object Storage and paste the URL here</p>
-            </div>
+            <ImageUploadWithPreview
+              label="Background Image URL *"
+              value={config.backgroundImageUrl || ''}
+              onChange={(url) => setConfig({ ...config, backgroundImageUrl: url })}
+              placeholder="/objects/uploads/... or https://..."
+              testId="input-backgroundImageUrl"
+            />
 
             <div className="space-y-2">
               <Label htmlFor="countdownEndDate">Countdown End Date *</Label>
