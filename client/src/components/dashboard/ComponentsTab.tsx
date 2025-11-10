@@ -492,17 +492,6 @@ function CampaignComponentConfigForm({
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="discountBadgeText">Discount Badge Text</Label>
-              <Input
-                id="discountBadgeText"
-                value={config.discountBadgeText || ''}
-                onChange={(e) => setConfig({ ...config, discountBadgeText: e.target.value })}
-                placeholder="20% OFF"
-                data-testid="input-discountBadgeText"
-              />
-            </div>
-
-            <div className="space-y-2">
               <Label htmlFor="backgroundImageUrl">Background Image URL</Label>
               <Input
                 id="backgroundImageUrl"

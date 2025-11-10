@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { 
   Calendar, 
   Activity, 
@@ -16,7 +17,8 @@ import {
   BarChart2,
   Trophy,
   ToggleLeft,
-  ToggleRight
+  ToggleRight,
+  Pencil
 } from "lucide-react";
 import { Campaign, CampaignComponent, Component, WebSocketEvent } from "@shared/schema";
 import { Link } from "wouter";
@@ -24,6 +26,7 @@ import { format } from "date-fns";
 import { useState } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { CampaignComponentConfigForm } from "./ComponentsTab";
 
 interface OverviewTabProps {
   campaignId: number;
@@ -32,6 +35,8 @@ interface OverviewTabProps {
 
 export function OverviewTab({ campaignId, campaign }: OverviewTabProps) {
   const { toast } = useToast();
+  const [editingConfigFor, setEditingConfigFor] = useState<(CampaignComponent & { component: Component }) | null>(null);
+
   const { data: campaignComponents = [] } = useQuery<Array<CampaignComponent & { component: Component }>>({
     queryKey: ['/api/campaigns', campaignId, 'components'],
     refetchInterval: 5000, // Auto-refresh every 5 seconds to keep UI in sync
@@ -267,7 +272,7 @@ export function OverviewTab({ campaignId, campaign }: OverviewTabProps) {
     mutationFn: async () => {
       return await apiRequest('PATCH', `/api/campaigns/${campaignId}/toggle-pause`, {});
     },
-    onSuccess: async (data) => {
+    onSuccess: async (data: any) => {
       const isPaused = data.isPaused === 'true';
       toast({
         title: isPaused ? '⏸️ Campaign Paused' : '▶️ Campaign Resumed',
