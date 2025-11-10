@@ -201,6 +201,28 @@ export function OverviewTab({ campaignId, campaign }: OverviewTabProps) {
     },
   });
 
+  // Update component configuration mutation
+  const updateConfigMutation = useMutation({
+    mutationFn: async ({ componentId, customConfig }: { componentId: string; customConfig: any }) => {
+      return await apiRequest('PATCH', `/api/campaigns/${campaignId}/components/${componentId}/config`, { customConfig });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/campaigns', campaignId, 'components'] });
+      setEditingConfigFor(null);
+      toast({
+        title: 'Configuration Updated',
+        description: 'The component configuration has been personalized for this campaign.',
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: 'Error',
+        description: error.message || 'Failed to update component configuration.',
+        variant: 'destructive',
+      });
+    },
+  });
+
   // Master toggle mutation - activate/deactivate all components
   const toggleAllMutation = useMutation({
     mutationFn: async (targetStatus: 'active' | 'inactive') => {
@@ -515,36 +537,48 @@ export function OverviewTab({ campaignId, campaign }: OverviewTabProps) {
                     </Badge>
                     <span className="font-medium text-sm truncate">{cc.component.name}</span>
                   </div>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() =>
-                      toggleStatusMutation.mutate({
-                        componentId: cc.componentId,
-                        status: cc.status === 'active' ? 'inactive' : 'active',
-                      })
-                    }
-                    disabled={toggleStatusMutation.isPending || !isCampaignActive() || isPaused}
-                    className={`h-8 px-2 ${
-                      cc.status === 'active'
-                        ? 'text-yellow-400 hover:text-yellow-300 hover:bg-yellow-950'
-                        : 'text-green-400 hover:text-green-300 hover:bg-green-950'
-                    }`}
-                    data-testid={`overview-toggle-${cc.id}`}
-                    title={
-                      isPaused 
-                        ? 'Campaign is paused - resume to toggle components' 
-                        : !isCampaignActive() 
-                        ? 'Campaign is not active' 
-                        : cc.status === 'active' ? 'Deactivate' : 'Activate'
-                    }
-                  >
-                    {cc.status === 'active' ? (
-                      <ToggleRight className="w-4 h-4" />
-                    ) : (
-                      <ToggleLeft className="w-4 h-4" />
-                    )}
-                  </Button>
+                  <div className="flex gap-1">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setEditingConfigFor(cc)}
+                      className="h-8 px-2 text-purple-400 hover:text-purple-300 hover:bg-purple-950"
+                      data-testid={`overview-customize-${cc.id}`}
+                      title="Customize for this campaign"
+                    >
+                      <Pencil className="w-3 h-3" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() =>
+                        toggleStatusMutation.mutate({
+                          componentId: cc.componentId,
+                          status: cc.status === 'active' ? 'inactive' : 'active',
+                        })
+                      }
+                      disabled={toggleStatusMutation.isPending || !isCampaignActive() || isPaused}
+                      className={`h-8 px-2 ${
+                        cc.status === 'active'
+                          ? 'text-yellow-400 hover:text-yellow-300 hover:bg-yellow-950'
+                          : 'text-green-400 hover:text-green-300 hover:bg-green-950'
+                      }`}
+                      data-testid={`overview-toggle-${cc.id}`}
+                      title={
+                        isPaused 
+                          ? 'Campaign is paused - resume to toggle components' 
+                          : !isCampaignActive() 
+                          ? 'Campaign is not active' 
+                          : cc.status === 'active' ? 'Deactivate' : 'Activate'
+                      }
+                    >
+                      {cc.status === 'active' ? (
+                        <ToggleRight className="w-4 h-4" />
+                      ) : (
+                        <ToggleLeft className="w-4 h-4" />
+                      )}
+                    </Button>
+                  </div>
                 </div>
               ))}
             </div>
@@ -751,6 +785,37 @@ export function OverviewTab({ campaignId, campaign }: OverviewTabProps) {
           </Tabs>
         </CardContent>
       </Card>
+
+      {/* Customize Config Dialog */}
+      <Dialog open={!!editingConfigFor} onOpenChange={(open) => !open && setEditingConfigFor(null)}>
+        <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Customize Component</DialogTitle>
+            <DialogDescription>
+              Edit this component's configuration for this campaign. Changes broadcast in real-time via WebSocket.
+            </DialogDescription>
+          </DialogHeader>
+          {editingConfigFor && (
+            <CampaignComponentConfigForm
+              campaignComponent={editingConfigFor}
+              onSubmit={(customConfig) =>
+                updateConfigMutation.mutate({ 
+                  componentId: editingConfigFor.componentId, 
+                  customConfig 
+                })
+              }
+              onRevertToDefault={() => {
+                updateConfigMutation.mutate({ 
+                  componentId: editingConfigFor.componentId, 
+                  customConfig: null 
+                });
+              }}
+              onCancel={() => setEditingConfigFor(null)}
+              isLoading={updateConfigMutation.isPending}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

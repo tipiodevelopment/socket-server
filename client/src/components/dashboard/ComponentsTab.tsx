@@ -379,7 +379,7 @@ export function ComponentsTab({ campaignId }: ComponentsTabProps) {
   );
 }
 
-interface CampaignComponentConfigFormProps {
+export interface CampaignComponentConfigFormProps {
   campaignComponent: CampaignComponent & { component: Component };
   onSubmit: (customConfig: any) => void;
   onRevertToDefault: () => void;
@@ -387,7 +387,7 @@ interface CampaignComponentConfigFormProps {
   isLoading: boolean;
 }
 
-function CampaignComponentConfigForm({ 
+export function CampaignComponentConfigForm({ 
   campaignComponent, 
   onSubmit, 
   onRevertToDefault,
