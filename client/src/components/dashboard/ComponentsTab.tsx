@@ -677,6 +677,146 @@ function CampaignComponentConfigForm({
           </>
         );
 
+      case 'offer_banner':
+        return (
+          <>
+            {/* Required Fields */}
+            <div className="space-y-2">
+              <Label htmlFor="logoUrl">Logo URL *</Label>
+              <Input
+                id="logoUrl"
+                value={config.logoUrl || ''}
+                onChange={(e) => setConfig({ ...config, logoUrl: e.target.value })}
+                placeholder="/objects/uploads/... or https://..."
+                data-testid="input-logoUrl"
+              />
+              <p className="text-xs text-muted-foreground">Upload to Object Storage and paste the URL here</p>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="title">Title *</Label>
+              <Input
+                id="title"
+                value={config.title || ''}
+                onChange={(e) => setConfig({ ...config, title: e.target.value })}
+                placeholder="Black Friday Sale"
+                data-testid="input-title"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="backgroundImageUrl">Background Image URL *</Label>
+              <Input
+                id="backgroundImageUrl"
+                value={config.backgroundImageUrl || ''}
+                onChange={(e) => setConfig({ ...config, backgroundImageUrl: e.target.value })}
+                placeholder="/objects/uploads/... or https://..."
+                data-testid="input-backgroundImageUrl"
+              />
+              <p className="text-xs text-muted-foreground">Upload to Object Storage and paste the URL here</p>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="countdownEndDate">Countdown End Date *</Label>
+              <Input
+                id="countdownEndDate"
+                type="datetime-local"
+                value={config.countdownEndDate ? (() => {
+                  const date = new Date(config.countdownEndDate);
+                  const offset = date.getTimezoneOffset();
+                  const localDate = new Date(date.getTime() - offset * 60 * 1000);
+                  return localDate.toISOString().slice(0, 16);
+                })() : ''}
+                onChange={(e) => {
+                  const dateValue = e.target.value ? new Date(e.target.value).toISOString() : '';
+                  setConfig({ ...config, countdownEndDate: dateValue });
+                }}
+                data-testid="input-countdownEndDate"
+              />
+              <p className="text-xs text-muted-foreground">Select date and time in your local timezone</p>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="discountBadgeText">Discount Badge Text *</Label>
+              <Input
+                id="discountBadgeText"
+                value={config.discountBadgeText || ''}
+                onChange={(e) => setConfig({ ...config, discountBadgeText: e.target.value })}
+                placeholder="50% OFF"
+                data-testid="input-discountBadgeText"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="ctaText">CTA Button Text *</Label>
+              <Input
+                id="ctaText"
+                value={config.ctaText || ''}
+                onChange={(e) => setConfig({ ...config, ctaText: e.target.value })}
+                placeholder="Shop Now"
+                data-testid="input-ctaText"
+              />
+            </div>
+
+            {/* Optional Fields */}
+            <div className="pt-4 border-t">
+              <h4 className="text-sm font-semibold mb-3">Optional Fields</h4>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="subtitle">Subtitle</Label>
+              <Input
+                id="subtitle"
+                value={config.subtitle || ''}
+                onChange={(e) => setConfig({ ...config, subtitle: e.target.value })}
+                placeholder="Up to 50% off on selected products"
+                data-testid="input-subtitle"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="ctaLink">CTA Link (URL)</Label>
+              <Input
+                id="ctaLink"
+                value={config.ctaLink || ''}
+                onChange={(e) => setConfig({ ...config, ctaLink: e.target.value })}
+                placeholder="https://example.com/black-friday"
+                data-testid="input-ctaLink"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="overlayOpacity">Overlay Opacity (0-1)</Label>
+              <Input
+                id="overlayOpacity"
+                type="number"
+                step="0.1"
+                min="0"
+                max="1"
+                value={config.overlayOpacity ?? 0.4}
+                onChange={(e) => {
+                  const val = e.target.value === '' ? undefined : parseFloat(e.target.value);
+                  setConfig({ ...config, overlayOpacity: val !== undefined && !isNaN(val) ? val : 0.4 });
+                }}
+                data-testid="input-overlayOpacity"
+              />
+              <p className="text-xs text-muted-foreground">Dark overlay on background image. Default: 0.4</p>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="backgroundColor">Background Color (hex)</Label>
+              <Input
+                id="backgroundColor"
+                value={config.backgroundColor || '#FF6F61'}
+                onChange={(e) => setConfig({ ...config, backgroundColor: e.target.value })}
+                placeholder="#FF6F61"
+                data-testid="input-backgroundColor"
+              />
+              <p className="text-xs text-muted-foreground">Fallback color if image fails to load</p>
+            </div>
+          </>
+        );
+
       default:
         return (
           <div className="text-sm text-muted-foreground">
