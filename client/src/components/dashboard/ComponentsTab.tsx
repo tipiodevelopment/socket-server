@@ -800,6 +800,186 @@ export function CampaignComponentConfigForm({
           </>
         );
 
+      case 'product_banner':
+        return (
+          <>
+            {/* Required Fields */}
+            <div className="space-y-2">
+              <Label htmlFor="productId">Product ID *</Label>
+              <Input
+                id="productId"
+                value={config.productId || ''}
+                onChange={(e) => setConfig({ ...config, productId: e.target.value })}
+                placeholder="408841"
+                data-testid="input-productId"
+              />
+              <p className="text-xs text-muted-foreground">Reachu product ID. The SDK will fetch product details.</p>
+            </div>
+
+            <ImageUploadWithPreview
+              label="Background Image"
+              value={config.backgroundImageUrl || ''}
+              onChange={(url) => setConfig({ ...config, backgroundImageUrl: url })}
+              placeholder="Upload banner background image"
+              testId="input-backgroundImageUrl"
+            />
+
+            <div className="space-y-2">
+              <Label htmlFor="title">Title (Optional)</Label>
+              <Input
+                id="title"
+                value={config.title || ''}
+                onChange={(e) => setConfig({ ...config, title: e.target.value })}
+                placeholder="Producto Destacado"
+                data-testid="input-title"
+              />
+              <p className="text-xs text-muted-foreground">Leave empty to use product name</p>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="subtitle">Subtitle (Optional)</Label>
+              <Input
+                id="subtitle"
+                value={config.subtitle || ''}
+                onChange={(e) => setConfig({ ...config, subtitle: e.target.value })}
+                placeholder="40% OFF"
+                data-testid="input-subtitle"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="ctaText">Button Text</Label>
+              <Input
+                id="ctaText"
+                value={config.ctaText || ''}
+                onChange={(e) => setConfig({ ...config, ctaText: e.target.value })}
+                placeholder="Ver producto"
+                data-testid="input-ctaText"
+              />
+            </div>
+
+            {/* Optional Fields */}
+            <div className="pt-4 border-t">
+              <h4 className="text-sm font-semibold mb-3">Optional Fields</h4>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="ctaLink">Button Link (URL)</Label>
+              <Input
+                id="ctaLink"
+                value={config.ctaLink || ''}
+                onChange={(e) => setConfig({ ...config, ctaLink: e.target.value })}
+                placeholder="https://tienda.com/producto/408841"
+                data-testid="input-ctaLink"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="deeplink">Deeplink (optional, takes priority)</Label>
+              <Input
+                id="deeplink"
+                value={config.deeplink || ''}
+                onChange={(e) => setConfig({ ...config, deeplink: e.target.value })}
+                placeholder="pregnancy://product/408841"
+                data-testid="input-deeplink"
+              />
+              <p className="text-xs text-muted-foreground">For in-app navigation. Takes priority over Button Link.</p>
+            </div>
+
+            {/* Visual Customization */}
+            <div className="pt-4 border-t">
+              <h4 className="text-sm font-semibold mb-3">Visual Customization (Optional)</h4>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="titleColor">Title Color (hex)</Label>
+              <Input
+                id="titleColor"
+                value={config.titleColor || '#FFFFFF'}
+                onChange={(e) => setConfig({ ...config, titleColor: e.target.value })}
+                placeholder="#FFFFFF"
+                data-testid="input-titleColor"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="subtitleColor">Subtitle Color (hex)</Label>
+              <Input
+                id="subtitleColor"
+                value={config.subtitleColor || '#F0F0F0'}
+                onChange={(e) => setConfig({ ...config, subtitleColor: e.target.value })}
+                placeholder="#F0F0F0"
+                data-testid="input-subtitleColor"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="buttonBackgroundColor">Button Background Color (hex)</Label>
+              <Input
+                id="buttonBackgroundColor"
+                value={config.buttonBackgroundColor || '#007AFF'}
+                onChange={(e) => setConfig({ ...config, buttonBackgroundColor: e.target.value })}
+                placeholder="#007AFF"
+                data-testid="input-buttonBackgroundColor"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="buttonTextColor">Button Text Color (hex)</Label>
+              <Input
+                id="buttonTextColor"
+                value={config.buttonTextColor || '#FFFFFF'}
+                onChange={(e) => setConfig({ ...config, buttonTextColor: e.target.value })}
+                placeholder="#FFFFFF"
+                data-testid="input-buttonTextColor"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="overlayOpacity">Overlay Opacity (0-1)</Label>
+              <Input
+                id="overlayOpacity"
+                type="number"
+                step="0.1"
+                min="0"
+                max="1"
+                value={config.overlayOpacity ?? 0.5}
+                onChange={(e) => {
+                  const val = e.target.value === '' ? undefined : parseFloat(e.target.value);
+                  setConfig({ ...config, overlayOpacity: val !== undefined && !isNaN(val) ? val : 0.5 });
+                }}
+                data-testid="input-overlayOpacity"
+              />
+              <p className="text-xs text-muted-foreground">Dark overlay on background image. Default: 0.5</p>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="backgroundColor">Background Color (rgba)</Label>
+              <Input
+                id="backgroundColor"
+                value={config.backgroundColor || 'rgba(0, 0, 0, 0.3)'}
+                onChange={(e) => setConfig({ ...config, backgroundColor: e.target.value })}
+                placeholder="rgba(0, 0, 0, 0.3)"
+                data-testid="input-backgroundColor"
+              />
+              <p className="text-xs text-muted-foreground">Content area background with transparency</p>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="bannerHeight">Banner Height (px)</Label>
+              <Input
+                id="bannerHeight"
+                type="number"
+                value={config.bannerHeight || 200}
+                onChange={(e) => setConfig({ ...config, bannerHeight: parseInt(e.target.value) || 200 })}
+                placeholder="200"
+                data-testid="input-bannerHeight"
+              />
+              <p className="text-xs text-muted-foreground">Height in pixels. Default: 200</p>
+            </div>
+          </>
+        );
+
       default:
         return (
           <div className="text-sm text-muted-foreground">
