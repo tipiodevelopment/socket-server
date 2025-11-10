@@ -1267,6 +1267,360 @@ struct ProductStoreView: View {
 }
 ```
 
+#### 4. Countdown Banner (`countdown`)
+
+A visual promotional banner with an integrated countdown timer. Supports full customization of colors, backgrounds, badges, CTA buttons, and deeplinks.
+
+**Minimal Configuration (Required Fields Only):**
+```json
+{
+  "type": "countdown",
+  "name": "Black Friday Countdown",
+  "config": {
+    "endDate": "2025-11-30T23:59:59.000Z",
+    "title": "Black Friday Ends In:"
+  }
+}
+```
+
+**Full Configuration (All Optional Fields):**
+```json
+{
+  "type": "countdown",
+  "name": "Black Friday Countdown",
+  "config": {
+    "endDate": "2025-11-30T23:59:59.000Z",
+    "title": "Black Friday Ends In:",
+    "logoUrl": "https://example.com/logo.png",
+    "subtitle": "Get 20% off on all products",
+    "backgroundImageUrl": "https://example.com/background.jpg",
+    "backgroundColor": "#FF6F61",
+    "discountBadgeText": "20% OFF",
+    "ctaText": "Shop Now",
+    "ctaLink": "https://example.com/shop",
+    "deeplink": "pregnancy://offers/black-friday",
+    "overlayOpacity": 0.6,
+    "buttonColor": "#FFFFFF"
+  }
+}
+```
+
+**Config Fields:**
+
+*Required:*
+- `endDate` (string): ISO 8601 timestamp for countdown end date
+- `title` (string): Main countdown title text
+
+*Optional - Visual Elements:*
+- `logoUrl` (string): URL to logo image displayed at top
+- `subtitle` (string): Secondary promotional text
+- `discountBadgeText` (string): Badge text (e.g., "20% OFF")
+- `ctaText` (string): Call-to-action button text
+- `ctaLink` (string): Web URL for CTA button
+- `deeplink` (string): App deeplink (takes priority over ctaLink)
+
+*Optional - Colors & Styling:*
+- `backgroundImageUrl` (string): Banner background image URL
+- `backgroundColor` (string): Hex color for solid background (default: "#FF6F61")
+- `overlayOpacity` (number): Dark overlay opacity 0.0-1.0 (default: 0.6)
+- `buttonColor` (string): CTA button text color hex (default: "#FFFFFF")
+
+**Behavior:**
+- If no `logoUrl` → Logo section hidden
+- If no `subtitle` → Subtitle hidden
+- If no `discountBadgeText` → Badge hidden
+- If no `ctaText` → CTA button hidden
+- If `backgroundImageUrl` provided → Uses image, ignores backgroundColor
+- If no `backgroundImageUrl` → Uses backgroundColor
+- If `deeplink` provided → Takes priority over `ctaLink` for navigation
+
+**Swift Implementation:**
+
+```swift
+import SwiftUI
+
+struct CountdownConfig: Codable {
+    // Required
+    let endDate: String
+    let title: String
+    
+    // Optional
+    let logoUrl: String?
+    let subtitle: String?
+    let backgroundImageUrl: String?
+    let backgroundColor: String?
+    let discountBadgeText: String?
+    let ctaText: String?
+    let ctaLink: String?
+    let deeplink: String?
+    let overlayOpacity: Double?
+    let buttonColor: String?
+}
+
+struct RCountdownBanner: View {
+    let config: CountdownConfig
+    let onCTAPressed: (() -> Void)?
+    
+    @State private var timeRemaining: TimeInterval = 0
+    @State private var timer: Timer?
+    
+    var body: some View {
+        ZStack {
+            // Background (image or color)
+            backgroundView
+            
+            // Dark overlay
+            Color.black.opacity(config.overlayOpacity ?? 0.6)
+            
+            // Content
+            VStack(spacing: 16) {
+                // Logo (optional)
+                if let logoUrl = config.logoUrl {
+                    AsyncImage(url: URL(string: logoUrl)) { image in
+                        image.resizable().scaledToFit().frame(height: 50)
+                    } placeholder: {
+                        ProgressView()
+                    }
+                }
+                
+                // Discount Badge (optional)
+                if let badgeText = config.discountBadgeText {
+                    Text(badgeText)
+                        .font(.headline)
+                        .fontWeight(.bold)
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 8)
+                        .background(Color.red)
+                        .cornerRadius(8)
+                }
+                
+                // Title
+                Text(config.title)
+                    .font(.title2)
+                    .fontWeight(.semibold)
+                    .foregroundColor(.white)
+                    .multilineTextAlignment(.center)
+                
+                // Subtitle (optional)
+                if let subtitle = config.subtitle {
+                    Text(subtitle)
+                        .font(.subheadline)
+                        .foregroundColor(.white.opacity(0.9))
+                        .multilineTextAlignment(.center)
+                }
+                
+                // Countdown Timer
+                countdownTimerView.padding(.top, 8)
+                
+                // CTA Button (optional)
+                if let ctaText = config.ctaText {
+                    Button(action: { handleCTAPress() }) {
+                        Text(ctaText)
+                            .font(.headline)
+                            .foregroundColor(Color(hex: config.buttonColor ?? "#000000"))
+                            .frame(maxWidth: .infinity)
+                            .padding()
+                            .background(Color.white)
+                            .cornerRadius(12)
+                    }
+                    .padding(.horizontal, 32)
+                }
+            }
+            .padding(24)
+        }
+        .frame(height: 400)
+        .cornerRadius(16)
+        .shadow(radius: 10)
+        .onAppear { startCountdown() }
+        .onDisappear { timer?.invalidate() }
+    }
+    
+    // MARK: - Background
+    
+    @ViewBuilder
+    private var backgroundView: some View {
+        if let imageUrl = config.backgroundImageUrl {
+            AsyncImage(url: URL(string: imageUrl)) { image in
+                image.resizable().scaledToFill()
+            } placeholder: {
+                backgroundColorView
+            }
+        } else {
+            backgroundColorView
+        }
+    }
+    
+    private var backgroundColorView: some View {
+        Color(hex: config.backgroundColor ?? "#FF6F61")
+    }
+    
+    // MARK: - Countdown Timer
+    
+    private var countdownTimerView: some View {
+        HStack(spacing: 12) {
+            TimeUnitView(value: days, unit: "Days")
+            Text(":").font(.largeTitle).foregroundColor(.white)
+            TimeUnitView(value: hours, unit: "Hours")
+            Text(":").font(.largeTitle).foregroundColor(.white)
+            TimeUnitView(value: minutes, unit: "Min")
+            Text(":").font(.largeTitle).foregroundColor(.white)
+            TimeUnitView(value: seconds, unit: "Sec")
+        }
+    }
+    
+    private var days: Int { Int(timeRemaining) / 86400 }
+    private var hours: Int { (Int(timeRemaining) % 86400) / 3600 }
+    private var minutes: Int { (Int(timeRemaining) % 3600) / 60 }
+    private var seconds: Int { Int(timeRemaining) % 60 }
+    
+    // MARK: - Actions
+    
+    private func startCountdown() {
+        let formatter = ISO8601DateFormatter()
+        guard let endDate = formatter.date(from: config.endDate) else {
+            print("❌ [Countdown] Invalid endDate: \(config.endDate)")
+            return
+        }
+        
+        timeRemaining = endDate.timeIntervalSinceNow
+        timer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { _ in
+            timeRemaining = max(0, endDate.timeIntervalSinceNow)
+            if timeRemaining <= 0 {
+                timer?.invalidate()
+                print("⏰ [Countdown] Timer expired!")
+            }
+        }
+    }
+    
+    private func handleCTAPress() {
+        // Priority: deeplink > ctaLink > callback
+        if let deeplink = config.deeplink, let url = URL(string: deeplink) {
+            print("🔗 [Countdown] Opening deeplink: \(deeplink)")
+            UIApplication.shared.open(url)
+        } else if let ctaLink = config.ctaLink, let url = URL(string: ctaLink) {
+            print("🌐 [Countdown] Opening web link: \(ctaLink)")
+            UIApplication.shared.open(url)
+        } else {
+            onCTAPressed?()
+        }
+    }
+}
+
+struct TimeUnitView: View {
+    let value: Int
+    let unit: String
+    
+    var body: some View {
+        VStack(spacing: 4) {
+            Text("\(value)")
+                .font(.system(size: 28, weight: .bold, design: .rounded))
+                .foregroundColor(.white)
+                .frame(width: 55, height: 55)
+                .background(Color.white.opacity(0.2))
+                .cornerRadius(8)
+            
+            Text(unit)
+                .font(.caption2)
+                .foregroundColor(.white.opacity(0.8))
+        }
+    }
+}
+
+// Color extension for hex support
+extension Color {
+    init(hex: String) {
+        let hex = hex.trimmingCharacters(in: CharacterSet.alphanumerics.inverted)
+        var int: UInt64 = 0
+        Scanner(string: hex).scanHexInt64(&int)
+        let a, r, g, b: UInt64
+        switch hex.count {
+        case 3: (a, r, g, b) = (255, (int >> 8) * 17, (int >> 4 & 0xF) * 17, (int & 0xF) * 17)
+        case 6: (a, r, g, b) = (255, int >> 16, int >> 8 & 0xFF, int & 0xFF)
+        case 8: (a, r, g, b) = (int >> 24, int >> 16 & 0xFF, int >> 8 & 0xFF, int & 0xFF)
+        default: (a, r, g, b) = (255, 0, 0, 0)
+        }
+        self.init(.sRGB, red: Double(r)/255, green: Double(g)/255, blue: Double(b)/255, opacity: Double(a)/255)
+    }
+}
+```
+
+**API Examples:**
+
+*GET Request:*
+```bash
+GET /api/campaigns/14/components
+```
+
+*Response (Minimal):*
+```json
+[
+  {
+    "id": "31",
+    "type": "countdown",
+    "name": "Black Friday Countdown",
+    "status": "active",
+    "config": {
+      "endDate": "2025-11-30T23:59:59.000Z",
+      "title": "Black Friday Ends In:"
+    }
+  }
+]
+```
+
+*Response (Full):*
+```json
+[
+  {
+    "id": "31",
+    "type": "countdown",
+    "name": "Black Friday Countdown",
+    "status": "active",
+    "config": {
+      "endDate": "2025-11-30T23:59:59.000Z",
+      "title": "Black Friday Ends In:",
+      "logoUrl": "https://example.com/logo.png",
+      "subtitle": "Get 20% off on all products",
+      "backgroundImageUrl": "https://example.com/bg.jpg",
+      "backgroundColor": "#FF6F61",
+      "discountBadgeText": "20% OFF",
+      "ctaText": "Shop Now",
+      "ctaLink": "https://example.com/shop",
+      "deeplink": "pregnancy://offers/black-friday",
+      "overlayOpacity": 0.6,
+      "buttonColor": "#FFFFFF"
+    }
+  }
+]
+```
+
+*WebSocket Event:*
+```json
+{
+  "type": "component_status_changed",
+  "data": {
+    "component": {
+      "id": "31",
+      "type": "countdown",
+      "status": "active",
+      "config": {
+        "endDate": "2025-11-30T23:59:59.000Z",
+        "title": "Black Friday Ends In:",
+        "logoUrl": "https://example.com/logo.png",
+        "subtitle": "Get 20% off on all products",
+        "backgroundImageUrl": "https://example.com/bg.jpg",
+        "backgroundColor": "#FF6F61",
+        "discountBadgeText": "20% OFF",
+        "ctaText": "Shop Now",
+        "deeplink": "pregnancy://offers/black-friday",
+        "overlayOpacity": 0.6,
+        "buttonColor": "#FFFFFF"
+      }
+    }
+  }
+}
+```
+
 ### Component Rendering
 
 Each component should render itself based on its `type`:

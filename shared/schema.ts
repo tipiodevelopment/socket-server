@@ -337,9 +337,21 @@ export const bannerComponentConfigSchema = z.object({
 });
 
 export const countdownComponentConfigSchema = z.object({
+  // Core (requeridos)
   endDate: z.string(), // ISO timestamp
   title: z.string(),
-  style: z.enum(["minimal", "full"]).default("full")
+  
+  // Visuales (opcionales)
+  logoUrl: z.string().url().optional(),
+  subtitle: z.string().optional(),
+  backgroundImageUrl: z.string().url().optional(),
+  backgroundColor: z.string().default("#FF6F61").optional(), // Default coral color
+  discountBadgeText: z.string().optional(),
+  ctaText: z.string().optional(),
+  ctaLink: z.string().url().optional(),
+  deeplink: z.string().optional(), // Priority over ctaLink for in-app navigation
+  overlayOpacity: z.number().min(0).max(1).default(0.6).optional(),
+  buttonColor: z.string().default("#FFFFFF").optional() // Default white
 });
 
 export const carouselAutoComponentConfigSchema = z.object({

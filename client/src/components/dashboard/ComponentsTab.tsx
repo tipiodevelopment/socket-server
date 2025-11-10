@@ -442,17 +442,19 @@ function CampaignComponentConfigForm({
       case 'countdown':
         return (
           <>
+            {/* Core Fields */}
             <div className="space-y-2">
-              <Label htmlFor="title">Title</Label>
+              <Label htmlFor="title">Title *</Label>
               <Input
                 id="title"
                 value={config.title || ''}
                 onChange={(e) => setConfig({ ...config, title: e.target.value })}
+                placeholder="Black Friday Ends In:"
                 data-testid="input-title"
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="endDate">End Date</Label>
+              <Label htmlFor="endDate">End Date *</Label>
               <Input
                 id="endDate"
                 type="datetime-local"
@@ -460,6 +462,131 @@ function CampaignComponentConfigForm({
                 onChange={(e) => setConfig({ ...config, endDate: e.target.value })}
                 data-testid="input-endDate"
               />
+            </div>
+
+            {/* Visual Fields */}
+            <div className="pt-4 border-t">
+              <h4 className="text-sm font-semibold mb-3">Visual Customization (Optional)</h4>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="logoUrl">Logo URL</Label>
+              <Input
+                id="logoUrl"
+                value={config.logoUrl || ''}
+                onChange={(e) => setConfig({ ...config, logoUrl: e.target.value })}
+                placeholder="https://example.com/logo.png"
+                data-testid="input-logoUrl"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="subtitle">Subtitle</Label>
+              <Input
+                id="subtitle"
+                value={config.subtitle || ''}
+                onChange={(e) => setConfig({ ...config, subtitle: e.target.value })}
+                placeholder="Get 20% off on all products"
+                data-testid="input-subtitle"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="discountBadgeText">Discount Badge Text</Label>
+              <Input
+                id="discountBadgeText"
+                value={config.discountBadgeText || ''}
+                onChange={(e) => setConfig({ ...config, discountBadgeText: e.target.value })}
+                placeholder="20% OFF"
+                data-testid="input-discountBadgeText"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="backgroundImageUrl">Background Image URL</Label>
+              <Input
+                id="backgroundImageUrl"
+                value={config.backgroundImageUrl || ''}
+                onChange={(e) => setConfig({ ...config, backgroundImageUrl: e.target.value })}
+                placeholder="https://example.com/background.jpg"
+                data-testid="input-backgroundImageUrl"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="backgroundColor">Background Color (hex)</Label>
+              <Input
+                id="backgroundColor"
+                value={config.backgroundColor || '#FF6F61'}
+                onChange={(e) => setConfig({ ...config, backgroundColor: e.target.value })}
+                placeholder="#FF6F61"
+                data-testid="input-backgroundColor"
+              />
+              <p className="text-xs text-muted-foreground">Used if no background image. Default: #FF6F61</p>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="overlayOpacity">Overlay Opacity (0-1)</Label>
+              <Input
+                id="overlayOpacity"
+                type="number"
+                step="0.1"
+                min="0"
+                max="1"
+                value={config.overlayOpacity ?? 0.6}
+                onChange={(e) => {
+                  const val = e.target.value === '' ? undefined : parseFloat(e.target.value);
+                  setConfig({ ...config, overlayOpacity: val !== undefined && !isNaN(val) ? val : undefined });
+                }}
+                data-testid="input-overlayOpacity"
+              />
+              <p className="text-xs text-muted-foreground">Dark overlay opacity. Default: 0.6</p>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="ctaText">CTA Button Text</Label>
+              <Input
+                id="ctaText"
+                value={config.ctaText || ''}
+                onChange={(e) => setConfig({ ...config, ctaText: e.target.value })}
+                placeholder="Shop Now"
+                data-testid="input-ctaText"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="ctaLink">CTA Link (URL)</Label>
+              <Input
+                id="ctaLink"
+                value={config.ctaLink || ''}
+                onChange={(e) => setConfig({ ...config, ctaLink: e.target.value })}
+                placeholder="https://example.com/shop"
+                data-testid="input-ctaLink"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="deeplink">Deeplink (optional, takes priority)</Label>
+              <Input
+                id="deeplink"
+                value={config.deeplink || ''}
+                onChange={(e) => setConfig({ ...config, deeplink: e.target.value })}
+                placeholder="pregnancy://offers/black-friday"
+                data-testid="input-deeplink"
+              />
+              <p className="text-xs text-muted-foreground">For in-app navigation. Takes priority over CTA Link.</p>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="buttonColor">Button Color (hex)</Label>
+              <Input
+                id="buttonColor"
+                value={config.buttonColor || '#FFFFFF'}
+                onChange={(e) => setConfig({ ...config, buttonColor: e.target.value })}
+                placeholder="#FFFFFF"
+                data-testid="input-buttonColor"
+              />
+              <p className="text-xs text-muted-foreground">Button text color. Default: #FFFFFF</p>
             </div>
           </>
         );

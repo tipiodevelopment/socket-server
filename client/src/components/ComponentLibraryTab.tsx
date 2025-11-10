@@ -459,8 +459,20 @@ function ComponentForm({
       case 'countdown':
         return (
           <>
+            {/* Core Fields */}
             <div className="space-y-2">
-              <Label htmlFor="endDate" className="text-gray-300">End Date</Label>
+              <Label htmlFor="title" className="text-gray-300">Title *</Label>
+              <Input
+                id="title"
+                placeholder="Black Friday Ends In:"
+                value={config.title || ''}
+                onChange={(e) => setConfig({ ...config, title: e.target.value })}
+                data-testid="input-title"
+                className="bg-gray-700 border-0 text-white"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="endDate" className="text-gray-300">End Date *</Label>
               <Input
                 id="endDate"
                 type="datetime-local"
@@ -470,31 +482,142 @@ function ComponentForm({
                 className="bg-gray-700 border-0 text-white"
               />
             </div>
+
+            {/* Visual Fields */}
+            <div className="pt-4 border-t border-gray-600">
+              <h4 className="text-sm font-semibold mb-3 text-gray-200">Visual Customization (Optional)</h4>
+            </div>
+
             <div className="space-y-2">
-              <Label htmlFor="title" className="text-gray-300">Title</Label>
+              <Label htmlFor="logoUrl" className="text-gray-300">Logo URL</Label>
               <Input
-                id="title"
-                placeholder="Sale Ends In"
-                value={config.title || ''}
-                onChange={(e) => setConfig({ ...config, title: e.target.value })}
-                data-testid="input-title"
+                id="logoUrl"
+                placeholder="https://example.com/logo.png"
+                value={config.logoUrl || ''}
+                onChange={(e) => setConfig({ ...config, logoUrl: e.target.value })}
+                data-testid="input-logoUrl"
                 className="bg-gray-700 border-0 text-white"
               />
             </div>
+
             <div className="space-y-2">
-              <Label htmlFor="style" className="text-gray-300">Style</Label>
-              <Select
-                value={config.style || 'full'}
-                onValueChange={(value) => setConfig({ ...config, style: value })}
-              >
-                <SelectTrigger data-testid="select-style" className="bg-gray-700 border-0 text-white">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent className="bg-gray-800 border-gray-700">
-                  <SelectItem value="minimal">Minimal</SelectItem>
-                  <SelectItem value="full">Full</SelectItem>
-                </SelectContent>
-              </Select>
+              <Label htmlFor="subtitle" className="text-gray-300">Subtitle</Label>
+              <Textarea
+                id="subtitle"
+                placeholder="Get 20% off on all products"
+                value={config.subtitle || ''}
+                onChange={(e) => setConfig({ ...config, subtitle: e.target.value })}
+                data-testid="input-subtitle"
+                className="bg-gray-700 border-0 text-white"
+                rows={2}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="discountBadgeText" className="text-gray-300">Discount Badge Text</Label>
+              <Input
+                id="discountBadgeText"
+                placeholder="20% OFF"
+                value={config.discountBadgeText || ''}
+                onChange={(e) => setConfig({ ...config, discountBadgeText: e.target.value })}
+                data-testid="input-discountBadgeText"
+                className="bg-gray-700 border-0 text-white"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="backgroundImageUrl" className="text-gray-300">Background Image URL</Label>
+              <Input
+                id="backgroundImageUrl"
+                placeholder="https://example.com/background.jpg"
+                value={config.backgroundImageUrl || ''}
+                onChange={(e) => setConfig({ ...config, backgroundImageUrl: e.target.value })}
+                data-testid="input-backgroundImageUrl"
+                className="bg-gray-700 border-0 text-white"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="backgroundColor" className="text-gray-300">Background Color (hex)</Label>
+              <Input
+                id="backgroundColor"
+                placeholder="#FF6F61"
+                value={config.backgroundColor || '#FF6F61'}
+                onChange={(e) => setConfig({ ...config, backgroundColor: e.target.value })}
+                data-testid="input-backgroundColor"
+                className="bg-gray-700 border-0 text-white"
+              />
+              <p className="text-xs text-gray-400">Used if no background image. Default: #FF6F61</p>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="overlayOpacity" className="text-gray-300">Overlay Opacity (0-1)</Label>
+              <Input
+                id="overlayOpacity"
+                type="number"
+                step="0.1"
+                min="0"
+                max="1"
+                placeholder="0.6"
+                value={config.overlayOpacity ?? 0.6}
+                onChange={(e) => {
+                  const val = e.target.value === '' ? undefined : parseFloat(e.target.value);
+                  setConfig({ ...config, overlayOpacity: val !== undefined && !isNaN(val) ? val : undefined });
+                }}
+                data-testid="input-overlayOpacity"
+                className="bg-gray-700 border-0 text-white"
+              />
+              <p className="text-xs text-gray-400">Dark overlay opacity. Default: 0.6</p>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="ctaText" className="text-gray-300">CTA Button Text</Label>
+              <Input
+                id="ctaText"
+                placeholder="Shop Now"
+                value={config.ctaText || ''}
+                onChange={(e) => setConfig({ ...config, ctaText: e.target.value })}
+                data-testid="input-ctaText"
+                className="bg-gray-700 border-0 text-white"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="ctaLink" className="text-gray-300">CTA Link (URL)</Label>
+              <Input
+                id="ctaLink"
+                placeholder="https://example.com/shop"
+                value={config.ctaLink || ''}
+                onChange={(e) => setConfig({ ...config, ctaLink: e.target.value })}
+                data-testid="input-ctaLink"
+                className="bg-gray-700 border-0 text-white"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="deeplink" className="text-gray-300">Deeplink (optional, takes priority)</Label>
+              <Input
+                id="deeplink"
+                placeholder="pregnancy://offers/black-friday"
+                value={config.deeplink || ''}
+                onChange={(e) => setConfig({ ...config, deeplink: e.target.value })}
+                data-testid="input-deeplink"
+                className="bg-gray-700 border-0 text-white"
+              />
+              <p className="text-xs text-gray-400">For in-app navigation. Takes priority over CTA Link.</p>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="buttonColor" className="text-gray-300">Button Color (hex)</Label>
+              <Input
+                id="buttonColor"
+                placeholder="#FFFFFF"
+                value={config.buttonColor || '#FFFFFF'}
+                onChange={(e) => setConfig({ ...config, buttonColor: e.target.value })}
+                data-testid="input-buttonColor"
+                className="bg-gray-700 border-0 text-white"
+              />
+              <p className="text-xs text-gray-400">Button text color. Default: #FFFFFF</p>
             </div>
           </>
         );
