@@ -68,10 +68,10 @@ The frontend utilizes React 18 with TypeScript and Vite, styled with Tailwind CS
             - `product_banner`: Featured product promotional banner with custom background, title, CTA, and deeplink
             - `product_store`: Full catalog or filtered product grid/list view (supports "all" or "filtered" modes)
     - Components can be activated/deactivated manually or scheduled for automatic display within specific campaigns.
-    - **Component Type Uniqueness:** Only ONE component of each type can be active at any given time within a campaign. This ensures iOS apps can reliably import components by type without ambiguity (e.g., `activeComponents.first { $0.type == "banner" }` is guaranteed to return at most one result).
-        - **Dynamic Components:** Backend validates that no other component of the same type is active before allowing activation
-        - **Scheduled Components:** Backend validates that no other component of the same type has overlapping time ranges before allowing creation/update
-        - **Error Handling:** Returns 409 Conflict with clear English error messages specifying the conflicting component/schedule
+    - **Component Duplication:** Templates can be duplicated via "Duplicate" button in Component Library, creating independent copies with "(Copy)" suffix. Enables multiple instances of the same component type (e.g., multiple product carousels with different products) within a single campaign.
+        - **API Endpoint:** POST `/api/components/:id/duplicate` creates a new component with identical config
+        - **UI Integration:** Copy button in ComponentLibraryTab triggers duplication mutation with cache invalidation
+        - **Multiple Active Instances:** Multiple components of the same type can now be active simultaneously in one campaign (restriction removed in Nov 2024)
     - **Campaign-Specific Customization:** Each campaign can personalize component configurations (texts, images, links, product IDs) without affecting the original template or other campaigns. Custom configurations are stored per campaign in `campaignComponents.customConfig`.
         - **UI Controls:** Purple "Customize" button (pencil icon) opens a dialog with all configurable fields
         - **Visual Indicators:** "Customized" badge (purple) appears on components with custom configurations

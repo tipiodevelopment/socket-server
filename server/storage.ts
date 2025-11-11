@@ -44,6 +44,7 @@ export interface IStorage {
   getComponentById(id: string): Promise<Component | undefined>;
   updateComponent(id: string, component: Partial<InsertComponent>): Promise<Component | undefined>;
   deleteComponent(id: string): Promise<void>;
+  duplicateComponent(id: string): Promise<Component>;
   getComponentUsage(): Promise<Record<string, Array<{ campaignId: number; campaignName: string }>>>;
   
   // Campaign component methods
@@ -257,6 +258,21 @@ export class MemStorage implements IStorage {
 
   async deleteComponent(id: string): Promise<void> {
     await db.delete(components).where(eq(components.id, id));
+  }
+
+  async duplicateComponent(id: string): Promise<Component> {
+    const original = await this.getComponentById(id);
+    if (!original) {
+      throw new Error('Component not found');
+    }
+    
+    const duplicate: InsertComponent = {
+      type: original.type,
+      name: `${original.name} (Copy)`,
+      config: original.config as any
+    };
+    
+    return await this.createComponent(duplicate);
   }
 
   async getComponentUsage(): Promise<Record<string, Array<{ campaignId: number; campaignName: string }>>> {

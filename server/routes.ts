@@ -1250,6 +1250,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Duplicate component
+  app.post('/api/components/:id/duplicate', async (req, res) => {
+    try {
+      const duplicate = await storage.duplicateComponent(req.params.id);
+      res.status(201).json(duplicate);
+    } catch (error) {
+      console.error('Error duplicating component:', error);
+      if (error instanceof Error && error.message === 'Component not found') {
+        return res.status(404).json({ message: 'Component not found' });
+      }
+      res.status(500).json({ message: 'Error duplicating component' });
+    }
+  });
+
   // Update component
   app.patch('/api/components/:id', async (req, res) => {
     try {
@@ -1387,23 +1401,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
             activeCampaignId: availability.activeCampaignId
           });
         }
-
-        // Check if another component of the same type is already active in this campaign
-        const existingComponents = await storage.getCampaignComponents(campaignId);
-        const sameTypeActive = existingComponents.find(
-          cc => cc.status === 'active' && cc.component.type === component.type && cc.componentId !== componentId
-        );
-        
-        if (sameTypeActive) {
-          return res.status(409).json({ 
-            message: `Another ${component.type} component is already active in this campaign. Only one component of each type can be active at a time.`,
-            conflictingComponent: {
-              id: sameTypeActive.component.id,
-              name: sameTypeActive.component.name,
-              type: sameTypeActive.component.type
-            }
-          });
-        }
       }
 
       const campaignComponent = await storage.addComponentToCampaign({
@@ -1443,23 +1440,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
           return res.status(409).json({ 
             message: 'Component is already active in another campaign',
             activeCampaignId: availability.activeCampaignId
-          });
-        }
-
-        // Check if another component of the same type is already active in this campaign
-        const existingComponents = await storage.getCampaignComponents(campaignId);
-        const sameTypeActive = existingComponents.find(
-          cc => cc.status === 'active' && cc.component.type === component.type && cc.componentId !== componentId
-        );
-        
-        if (sameTypeActive) {
-          return res.status(409).json({ 
-            message: `Another ${component.type} component is already active in this campaign. Only one component of each type can be active at a time.`,
-            conflictingComponent: {
-              id: sameTypeActive.component.id,
-              name: sameTypeActive.component.name,
-              type: sameTypeActive.component.type
-            }
           });
         }
       }
