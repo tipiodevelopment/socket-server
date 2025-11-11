@@ -66,10 +66,12 @@ export const components = pgTable("components", {
 
 // Campaign Components - Links components to campaigns with status and custom config
 // Can be manual toggle OR scheduled OR both
+// Supports multiple instances of the same component template with different instanceNames
 export const campaignComponents = pgTable("campaign_components", {
   id: serial("id").primaryKey(),
   campaignId: integer("campaign_id").notNull().references(() => campaigns.id, { onDelete: 'cascade' }),
   componentId: varchar("component_id", { length: 50 }).notNull().references(() => components.id, { onDelete: 'cascade' }),
+  instanceName: varchar("instance_name", { length: 255 }), // Optional: Name for this instance (e.g., "Vitamins Carousel", "Omega-3 Banner")
   status: varchar("status", { length: 20 }).notNull().default('inactive'), // active, inactive
   customConfig: json("custom_config"), // Campaign-specific config override (optional)
   scheduledTime: timestamp("scheduled_time"), // Optional: auto-activate at this time (null = manual toggle only)

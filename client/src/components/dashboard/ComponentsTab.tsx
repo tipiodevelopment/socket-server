@@ -22,6 +22,7 @@ export function ComponentsTab({ campaignId }: ComponentsTabProps) {
   const { toast } = useToast();
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [selectedComponentId, setSelectedComponentId] = useState<string>('');
+  const [instanceName, setInstanceName] = useState<string>('');
   const [editingConfigFor, setEditingConfigFor] = useState<(CampaignComponent & { component: Component }) | null>(null);
 
   const { data: campaign } = useQuery<Campaign>({
@@ -39,9 +40,10 @@ export function ComponentsTab({ campaignId }: ComponentsTabProps) {
   const isPaused = campaign?.isPaused === 'true';
 
   const addComponentMutation = useMutation({
-    mutationFn: async (componentId: string) => {
+    mutationFn: async ({ componentId, instanceName }: { componentId: string; instanceName?: string }) => {
       return await apiRequest('POST', `/api/campaigns/${campaignId}/components`, {
         componentId,
+        instanceName: instanceName || undefined,
         status: 'inactive',
       });
     },
@@ -50,6 +52,7 @@ export function ComponentsTab({ campaignId }: ComponentsTabProps) {
       queryClient.invalidateQueries({ queryKey: ['/api/components/usage'] });
       setIsAddDialogOpen(false);
       setSelectedComponentId('');
+      setInstanceName('');
       toast({
         title: 'Component Added',
         description: 'The component has been added to this campaign.',
@@ -211,8 +214,21 @@ export function ComponentsTab({ campaignId }: ComponentsTabProps) {
                           </SelectContent>
                         </Select>
                       </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="instance-name">Instance Name (Optional)</Label>
+                        <Input
+                          id="instance-name"
+                          placeholder="e.g., RProductCarousel 1"
+                          value={instanceName}
+                          onChange={(e) => setInstanceName(e.target.value)}
+                          data-testid="input-instance-name"
+                        />
+                        <p className="text-xs text-muted-foreground">
+                          Leave empty to auto-generate a name using SDK conventions
+                        </p>
+                      </div>
                       <Button
-                        onClick={() => selectedComponentId && addComponentMutation.mutate(selectedComponentId)}
+                        onClick={() => selectedComponentId && addComponentMutation.mutate({ componentId: selectedComponentId, instanceName: instanceName.trim() || undefined })}
                         disabled={!selectedComponentId || addComponentMutation.isPending}
                         className="w-full"
                         data-testid="button-confirm-add"
@@ -250,7 +266,7 @@ export function ComponentsTab({ campaignId }: ComponentsTabProps) {
                         {cc.status}
                       </Badge>
                       <span className="font-medium" data-testid={`name-${cc.id}`}>
-                        {cc.component.name}
+                        {cc.instanceName || cc.component.name}
                       </span>
                       <Badge variant="outline" data-testid={`type-${cc.id}`}>
                         {getComponentTypeLabel(cc.component.type)}

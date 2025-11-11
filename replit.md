@@ -68,12 +68,13 @@ The frontend utilizes React 18 with TypeScript and Vite, styled with Tailwind CS
             - `product_banner`: Featured product promotional banner with custom background, title, CTA, and deeplink
             - `product_store`: Full catalog or filtered product grid/list view (supports "all" or "filtered" modes)
     - Components can be activated/deactivated manually or scheduled for automatic display within specific campaigns.
-    - **Component Duplication:** Templates can be duplicated via "Duplicate" button in Component Library, creating independent copies with SDK-based sequential naming (e.g., "RProductCarousel 1", "RProductCarousel 2"). Enables multiple instances of the same component type (e.g., multiple product carousels with different products) within a single campaign.
-        - **API Endpoint:** POST `/api/components/:id/duplicate` creates a new component with identical config and SDK-based name
-        - **SDK Naming Convention:** Uses Swift SDK names (RProductBanner, RProductCarousel, ROfferBannerDynamic, RProductSpotlight, RProductStore, etc.) with sequential numbering
-        - **Smart Numbering:** Automatically finds the highest existing SDK number and increments it; starts at 1 for first duplicate; ignores legacy-named components
-        - **UI Integration:** Copy button in ComponentLibraryTab triggers duplication mutation with cache invalidation
-        - **Multiple Active Instances:** Multiple components of the same type can now be active simultaneously in one campaign (restriction removed in Nov 2024)
+    - **Campaign-Specific Component Instances:** Each campaign can add the same component template multiple times with unique instance names. Component Library maintains ONLY base templates (no clutter), while campaigns create instances via the "Add Component" dialog.
+        - **Instance Naming:** When adding a component to a campaign, users can provide a custom `instanceName` or leave it empty for auto-generation
+        - **Auto-Generation Logic:** Uses SDK naming conventions (RProductBanner, RProductCarousel, ROfferBannerDynamic, RProductSpotlight, RProductStore, etc.) with sequential numbering. System finds the highest existing number for that SDK component type and increments it.
+        - **User Control:** "Add Component to Campaign" dialog includes optional "Instance Name" input field with helper text "Leave empty to auto-generate a name using SDK conventions"
+        - **Display Priority:** UI displays `instanceName || component.name` throughout ComponentsTab and OverviewTab
+        - **Architecture Benefits:** Component Library stays clean with only base templates; campaigns can have multiple instances of same template (e.g., "Winter Sale Carousel", "Summer Sale Carousel", or auto-generated "RProductCarousel 1", "RProductCarousel 2")
+        - **Multiple Active Instances:** Multiple instances of the same component type can be active simultaneously in one campaign
     - **Campaign-Specific Customization:** Each campaign can personalize component configurations (texts, images, links, product IDs) without affecting the original template or other campaigns. Custom configurations are stored per campaign in `campaignComponents.customConfig`.
         - **UI Controls:** Purple "Customize" button (pencil icon) opens a dialog with all configurable fields
         - **Visual Indicators:** "Customized" badge (purple) appears on components with custom configurations
@@ -95,6 +96,7 @@ The frontend utilizes React 18 with TypeScript and Vite, styled with Tailwind CS
         - `status`: Current activation state ('active' or 'inactive')
         - `scheduledTime` (nullable): Optional ISO timestamp for automatic activation
         - `endTime` (nullable): Optional ISO timestamp for automatic deactivation
+        - `instanceName` (varchar 255, nullable): Campaign-specific name for this component instance. When null, displays template name; when set, displays instanceName. Enables multiple instances of same template with unique identifiers.
         - `customConfig` (JSON, nullable): Campaign-specific configuration overrides. When null, uses the template's default config; when set, takes priority over template config.
         - Supports both manual toggle controls and automatic scheduler-based display in a unified table structure.
 - **Page Structure:**

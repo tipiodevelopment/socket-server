@@ -5,6 +5,7 @@ import { storage } from "./storage";
 import { 
   webSocketEventSchema, 
   updateCampaignSchema,
+  componentSDKNames,
   type WebSocketEvent, 
   type InsertScheduledComponent 
 } from "@shared/schema";
@@ -1250,20 +1251,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Duplicate component
-  app.post('/api/components/:id/duplicate', async (req, res) => {
-    try {
-      const duplicate = await storage.duplicateComponent(req.params.id);
-      res.status(201).json(duplicate);
-    } catch (error) {
-      console.error('Error duplicating component:', error);
-      if (error instanceof Error && error.message === 'Component not found') {
-        return res.status(404).json({ message: 'Component not found' });
-      }
-      res.status(500).json({ message: 'Error duplicating component' });
-    }
-  });
-
   // Update component
   app.patch('/api/components/:id', async (req, res) => {
     try {
@@ -1380,16 +1367,40 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post('/api/campaigns/:id/components', async (req, res) => {
     try {
       const campaignId = parseInt(req.params.id);
-      const { componentId, status } = req.body;
+      const { componentId, status, instanceName } = req.body;
       
       if (!componentId) {
         return res.status(400).json({ message: 'Missing required field: componentId' });
       }
 
-      // Get component details to check type
+      // Get component details
       const component = await storage.getComponentById(componentId);
       if (!component) {
         return res.status(404).json({ message: 'Component not found' });
+      }
+
+      // Generate default instanceName if not provided
+      let finalInstanceName = instanceName;
+      if (!finalInstanceName) {
+        const existingComponents = await storage.getCampaignComponents(campaignId);
+        const sameTemplateInstances = existingComponents.filter(cc => cc.componentId === componentId);
+        const sdkName = componentSDKNames[component.type as keyof typeof componentSDKNames] || component.name;
+        
+        // Find highest number in existing instance names
+        const instancePattern = new RegExp(`^${sdkName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} (\\d+)$`);
+        let maxNumber = 0;
+        
+        for (const instance of sameTemplateInstances) {
+          if (!instance.instanceName) continue;
+          const match = instance.instanceName.match(instancePattern);
+          if (match) {
+            const num = parseInt(match[1], 10);
+            if (num > maxNumber) maxNumber = num;
+          }
+        }
+        
+        // Generate next sequential name
+        finalInstanceName = `${sdkName} ${maxNumber + 1}`;
       }
 
       // Validate component availability if status is active
@@ -1406,6 +1417,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const campaignComponent = await storage.addComponentToCampaign({
         campaignId,
         componentId,
+        instanceName: finalInstanceName,
         status: status || 'inactive'
       });
       

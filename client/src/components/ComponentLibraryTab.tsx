@@ -107,27 +107,6 @@ export function ComponentLibraryTab() {
     },
   });
 
-  const duplicateMutation = useMutation({
-    mutationFn: async (id: string) => {
-      return await apiRequest('POST', `/api/components/${id}/duplicate`);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/components'] });
-      queryClient.invalidateQueries({ queryKey: ['/api/components/usage'] });
-      toast({
-        title: 'Component Duplicated',
-        description: 'A copy of the component has been created.',
-      });
-    },
-    onError: () => {
-      toast({
-        title: 'Error',
-        description: 'Failed to duplicate component.',
-        variant: 'destructive',
-      });
-    },
-  });
-
   const copyToClipboard = (componentId: string) => {
     const code = `ReachuComponent(componentId: "${componentId}")`;
     navigator.clipboard.writeText(code);
@@ -362,17 +341,6 @@ export function ComponentLibraryTab() {
                         )}
                       </DialogContent>
                     </Dialog>
-
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => duplicateMutation.mutate(component.id)}
-                      data-testid={`button-duplicate-${component.id}`}
-                      className="border-gray-600 text-gray-300 hover:bg-gray-600"
-                      disabled={duplicateMutation.isPending}
-                    >
-                      <Copy className="w-3 h-3" />
-                    </Button>
 
                     <Button
                       variant="outline"

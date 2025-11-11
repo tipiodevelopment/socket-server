@@ -44,7 +44,7 @@ export function OverviewTab({ campaignId, campaign }: OverviewTabProps) {
 
   // Debug: Log component statuses
   console.log('[OverviewTab] Campaign components:', campaignComponents.map(cc => ({
-    name: cc.component.name,
+    name: cc.instanceName || cc.component.name,
     status: cc.status,
     id: cc.id
   })));
@@ -535,7 +535,7 @@ export function OverviewTab({ campaignId, campaign }: OverviewTabProps) {
                     >
                       {cc.status}
                     </Badge>
-                    <span className="font-medium text-sm truncate">{cc.component.name}</span>
+                    <span className="font-medium text-sm truncate">{cc.instanceName || cc.component.name}</span>
                   </div>
                   <div className="flex gap-1">
                     <Button

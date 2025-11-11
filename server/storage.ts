@@ -44,7 +44,6 @@ export interface IStorage {
   getComponentById(id: string): Promise<Component | undefined>;
   updateComponent(id: string, component: Partial<InsertComponent>): Promise<Component | undefined>;
   deleteComponent(id: string): Promise<void>;
-  duplicateComponent(id: string): Promise<Component>;
   getComponentUsage(): Promise<Record<string, Array<{ campaignId: number; campaignName: string }>>>;
   
   // Campaign component methods
@@ -258,49 +257,6 @@ export class MemStorage implements IStorage {
 
   async deleteComponent(id: string): Promise<void> {
     await db.delete(components).where(eq(components.id, id));
-  }
-
-  async duplicateComponent(id: string): Promise<Component> {
-    const original = await this.getComponentById(id);
-    if (!original) {
-      throw new Error('Component not found');
-    }
-    
-    // Get all components of the same type to determine the next sequential number
-    const allComponents = await this.getComponents();
-    const sameTypeComponents = allComponents.filter(c => c.type === original.type);
-    
-    // Generate SDK-based name with sequential number
-    const { componentSDKNames } = await import('../shared/schema.js');
-    const sdkName = componentSDKNames[original.type as keyof typeof componentSDKNames];
-    
-    if (!sdkName) {
-      throw new Error(`No SDK name mapping found for component type: ${original.type}`);
-    }
-    
-    // Find the highest number in existing SDK-named components
-    const sdkPattern = new RegExp(`^${sdkName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} (\\d+)$`);
-    let maxNumber = 0;
-    
-    for (const component of sameTypeComponents) {
-      const match = component.name.match(sdkPattern);
-      if (match) {
-        const num = parseInt(match[1], 10);
-        if (num > maxNumber) {
-          maxNumber = num;
-        }
-      }
-    }
-    
-    const nextNumber = maxNumber + 1;
-    
-    const duplicate: InsertComponent = {
-      type: original.type,
-      name: `${sdkName} ${nextNumber}`,
-      config: original.config as any
-    };
-    
-    return await this.createComponent(duplicate);
   }
 
   async getComponentUsage(): Promise<Record<string, Array<{ campaignId: number; campaignName: string }>>> {
