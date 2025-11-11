@@ -273,7 +273,26 @@ export class MemStorage implements IStorage {
     // Generate SDK-based name with sequential number
     const { componentSDKNames } = await import('../shared/schema.js');
     const sdkName = componentSDKNames[original.type as keyof typeof componentSDKNames];
-    const nextNumber = sameTypeComponents.length + 1;
+    
+    if (!sdkName) {
+      throw new Error(`No SDK name mapping found for component type: ${original.type}`);
+    }
+    
+    // Find the highest number in existing SDK-named components
+    const sdkPattern = new RegExp(`^${sdkName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} (\\d+)$`);
+    let maxNumber = 0;
+    
+    for (const component of sameTypeComponents) {
+      const match = component.name.match(sdkPattern);
+      if (match) {
+        const num = parseInt(match[1], 10);
+        if (num > maxNumber) {
+          maxNumber = num;
+        }
+      }
+    }
+    
+    const nextNumber = maxNumber + 1;
     
     const duplicate: InsertComponent = {
       type: original.type,
