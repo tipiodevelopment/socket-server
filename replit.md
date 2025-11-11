@@ -68,8 +68,10 @@ The frontend utilizes React 18 with TypeScript and Vite, styled with Tailwind CS
             - `product_banner`: Featured product promotional banner with custom background, title, CTA, and deeplink
             - `product_store`: Full catalog or filtered product grid/list view (supports "all" or "filtered" modes)
     - Components can be activated/deactivated manually or scheduled for automatic display within specific campaigns.
-    - **Component Duplication:** Templates can be duplicated via "Duplicate" button in Component Library, creating independent copies with "(Copy)" suffix. Enables multiple instances of the same component type (e.g., multiple product carousels with different products) within a single campaign.
-        - **API Endpoint:** POST `/api/components/:id/duplicate` creates a new component with identical config
+    - **Component Duplication:** Templates can be duplicated via "Duplicate" button in Component Library, creating independent copies with SDK-based sequential naming (e.g., "RProductCarousel 1", "RProductCarousel 2"). Enables multiple instances of the same component type (e.g., multiple product carousels with different products) within a single campaign.
+        - **API Endpoint:** POST `/api/components/:id/duplicate` creates a new component with identical config and SDK-based name
+        - **SDK Naming Convention:** Uses Swift SDK names (RProductBanner, RProductCarousel, ROfferBannerDynamic, RProductSpotlight, RProductStore, etc.) with sequential numbering
+        - **Smart Numbering:** Automatically finds the highest existing SDK number and increments it; starts at 1 for first duplicate; ignores legacy-named components
         - **UI Integration:** Copy button in ComponentLibraryTab triggers duplication mutation with cache invalidation
         - **Multiple Active Instances:** Multiple components of the same type can now be active simultaneously in one campaign (restriction removed in Nov 2024)
     - **Campaign-Specific Customization:** Each campaign can personalize component configurations (texts, images, links, product IDs) without affecting the original template or other campaigns. Custom configurations are stored per campaign in `campaignComponents.customConfig`.
