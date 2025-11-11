@@ -266,9 +266,18 @@ export class MemStorage implements IStorage {
       throw new Error('Component not found');
     }
     
+    // Get all components of the same type to determine the next sequential number
+    const allComponents = await this.getComponents();
+    const sameTypeComponents = allComponents.filter(c => c.type === original.type);
+    
+    // Generate SDK-based name with sequential number
+    const { componentSDKNames } = await import('../shared/schema.js');
+    const sdkName = componentSDKNames[original.type as keyof typeof componentSDKNames];
+    const nextNumber = sameTypeComponents.length + 1;
+    
     const duplicate: InsertComponent = {
       type: original.type,
-      name: `${original.name} (Copy)`,
+      name: `${sdkName} ${nextNumber}`,
       config: original.config as any
     };
     

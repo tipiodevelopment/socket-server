@@ -470,3 +470,17 @@ export const componentTypes = [
 ] as const;
 
 export type ComponentType = typeof componentTypes[number];
+
+// SDK component name mapping for UI display
+export const componentSDKNames: Record<ComponentType, string> = {
+  'banner': 'RBanner',
+  'countdown': 'RCountdown',
+  'carousel_auto': 'RCarousel',
+  'carousel_manual': 'RCarousel',
+  'product_spotlight': 'RProductSpotlight',
+  'offer_badge': 'ROfferBadge',
+  'offer_banner': 'ROfferBannerDynamic',
+  'product_carousel': 'RProductCarousel',
+  'product_banner': 'RProductBanner',
+  'product_store': 'RProductStore'
+};
