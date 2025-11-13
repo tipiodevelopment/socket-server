@@ -38,6 +38,13 @@ The frontend uses React 18 with TypeScript and Vite, styled with Tailwind CSS, a
     - Real-time updates via WebSockets for dynamic display.
     - Deeplink support for CTAs in components.
 - **Event Broadcasting:** Supports Product, Poll, and Contest events, validated by Zod, stored in PostgreSQL, and broadcast to campaign-specific WebSocket clients.
+    - **Saved Events with Smart Deduplication (Nov 2025):** The "Saved Events" section in OverviewTab displays previously created events for easy re-broadcasting. To prevent visual clutter from duplicate event names, the system implements hybrid deduplication:
+        - **Default Behavior:** GET `/api/events/:campaignId` groups events by (type + event name/question) and returns only the most recent version of each unique combination
+        - **Full History Access:** Optional `?includeAll=true` query parameter bypasses deduplication to return complete event history
+        - **Performance:** Reduces UI payload from 50+ duplicate cards to ~9 unique events for typical campaigns
+        - **Data Integrity:** All events remain in database for audit trail; deduplication is view-only
+        - **React Best Practices:** Events use stable `event.id` as React keys instead of array index
+        - **Example:** Campaign with 50 "Producto Persistente" broadcasts displays only the latest version in Saved Events section
 
 ### System Design Choices
 - **Database Schema:**
