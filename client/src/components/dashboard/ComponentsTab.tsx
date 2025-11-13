@@ -137,7 +137,7 @@ export function ComponentsTab({ campaignId }: ComponentsTabProps) {
   });
 
   const availableComponents = allComponents.filter(
-    (comp) => !campaignComponents.some((cc) => cc.componentId === comp.id)
+    (comp) => comp.isTemplate === 'true' && !campaignComponents.some((cc) => cc.componentId === comp.id)
   );
 
   const getComponentTypeLabel = (type: string) => {

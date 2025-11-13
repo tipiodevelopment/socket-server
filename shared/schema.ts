@@ -61,6 +61,7 @@ export const components = pgTable("components", {
   type: varchar("type", { length: 50 }).notNull(), // banner, countdown, carousel_auto, carousel_manual, product_spotlight, offer_badge
   name: varchar("name", { length: 255 }).notNull(),
   config: json("config").notNull(), // Type-specific configuration
+  isTemplate: varchar("is_template", { length: 10 }).notNull().default('false'), // 'true' = base template, 'false' = regular component
   createdAt: timestamp("created_at").defaultNow().notNull()
 });
 
