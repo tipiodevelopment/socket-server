@@ -598,11 +598,11 @@ export function OverviewTab({ campaignId, campaign }: OverviewTabProps) {
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-              {recentEvents.map((event, index) => (
+              {recentEvents.map((event) => (
                 <div
-                  key={index}
+                  key={event.id || `${event.type}-${event.timestamp}`}
                   className="p-4 rounded-lg bg-muted/50 border flex flex-col gap-3"
-                  data-testid={`saved-event-${index}`}
+                  data-testid={`saved-event-${event.id || event.timestamp}`}
                 >
                   <div className="flex items-start justify-between gap-2">
                     <div className="flex items-center gap-2 flex-1 min-w-0">
@@ -619,7 +619,7 @@ export function OverviewTab({ campaignId, campaign }: OverviewTabProps) {
                     onClick={() => rebroadcastEventMutation.mutate(event)}
                     disabled={rebroadcastEventMutation.isPending}
                     className="w-full h-8"
-                    data-testid={`button-rebroadcast-${index}`}
+                    data-testid={`button-rebroadcast-${event.id || event.timestamp}`}
                   >
                     <Zap className="w-3 h-3 mr-1" />
                     {rebroadcastEventMutation.isPending ? 'Sending...' : 'Broadcast'}

@@ -194,6 +194,7 @@ export type InsertCampaignComponent = z.infer<typeof insertCampaignComponentSche
 
 // Event schemas
 export const productEventSchema = z.object({
+  id: z.number().optional(),
   type: z.literal("product"),
   data: z.object({
     id: z.string(),
@@ -214,6 +215,7 @@ export const pollOptionSchema = z.object({
 });
 
 export const pollEventSchema = z.object({
+  id: z.number().optional(),
   type: z.literal("poll"),
   data: z.object({
     id: z.string(),
@@ -227,6 +229,7 @@ export const pollEventSchema = z.object({
 });
 
 export const contestEventSchema = z.object({
+  id: z.number().optional(),
   type: z.literal("contest"),
   data: z.object({
     id: z.string(),

@@ -310,14 +310,50 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       // Get events for specific campaign from database
       const dbEvents = await storage.getCampaignEvents(campaignId);
+      
       // Convert DB events to WebSocket events format
       const events = dbEvents.map(dbEvent => ({
+        id: dbEvent.id,
         type: dbEvent.type,
         data: dbEvent.data,
         campaignLogo: dbEvent.campaignLogo || undefined,
         timestamp: new Date(dbEvent.timestamp).getTime()
       }));
-      res.json(events);
+      
+      // Optional deduplication - show only most recent event per unique name
+      const includeAll = req.query.includeAll === 'true';
+      if (!includeAll) {
+        // Group events by type and name, keep only most recent
+        const eventMap = new Map<string, typeof events[0]>();
+        
+        for (const event of events) {
+          // Create unique key based on type and event name/question
+          let eventName = '';
+          if (event.type === 'product' && typeof event.data === 'object' && event.data !== null && 'name' in event.data) {
+            eventName = String(event.data.name || '');
+          } else if (event.type === 'poll' && typeof event.data === 'object' && event.data !== null && 'question' in event.data) {
+            eventName = String(event.data.question || '');
+          } else if (event.type === 'contest' && typeof event.data === 'object' && event.data !== null && 'name' in event.data) {
+            eventName = String(event.data.name || '');
+          }
+          
+          const key = `${event.type}:${eventName}`;
+          const existing = eventMap.get(key);
+          
+          // Keep the one with the latest timestamp
+          if (!existing || event.timestamp > existing.timestamp) {
+            eventMap.set(key, event);
+          }
+        }
+        
+        // Convert map back to array and sort by timestamp desc
+        const dedupedEvents = Array.from(eventMap.values())
+          .sort((a, b) => b.timestamp - a.timestamp);
+        
+        res.json(dedupedEvents);
+      } else {
+        res.json(events);
+      }
     } catch (error) {
       console.error('Error fetching campaign events:', error);
       res.status(500).json({ message: 'Error fetching events' });
