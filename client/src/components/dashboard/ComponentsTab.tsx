@@ -136,8 +136,10 @@ export function ComponentsTab({ campaignId }: ComponentsTabProps) {
     },
   });
 
+  // Show all template components, allowing multiple instances of the same template
+  // (e.g., Countdown 1, Countdown 2, etc. with different instanceNames)
   const availableComponents = allComponents.filter(
-    (comp) => comp.isTemplate === 'true' && !campaignComponents.some((cc) => cc.componentId === comp.id)
+    (comp) => comp.isTemplate === 'true'
   );
 
   const getComponentTypeLabel = (type: string) => {
