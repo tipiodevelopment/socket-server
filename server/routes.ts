@@ -1441,7 +1441,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Validate component availability if status is active
       if (status === 'active') {
-        const availability = await storage.validateComponentAvailability(componentId, campaignId);
+        const availability = await storage.validateComponentAvailability(componentId, component.isTemplate === 'true', campaignId);
         if (!availability.available) {
           return res.status(409).json({ 
             message: 'Component is already active in another campaign',
@@ -1483,7 +1483,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Validate component availability if activating
       if (status === 'active') {
-        const availability = await storage.validateComponentAvailability(componentId, campaignId);
+        const availability = await storage.validateComponentAvailability(componentId, component.isTemplate === 'true', campaignId);
         if (!availability.available) {
           return res.status(409).json({ 
             message: 'Component is already active in another campaign',
@@ -1595,7 +1595,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const componentId = req.params.id;
       const campaignId = req.query.campaignId ? parseInt(req.query.campaignId as string) : undefined;
       
-      const availability = await storage.validateComponentAvailability(componentId, campaignId);
+      // Verify component exists before checking availability
+      const component = await storage.getComponentById(componentId);
+      if (!component) {
+        return res.status(404).json({ message: 'Component not found' });
+      }
+      
+      const availability = await storage.validateComponentAvailability(componentId, component.isTemplate === 'true', campaignId);
       res.json(availability);
     } catch (error) {
       console.error('Error validating component availability:', error);

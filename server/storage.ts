@@ -52,7 +52,7 @@ export interface IStorage {
   updateCampaignComponentStatus(campaignId: number, componentId: string, status: 'active' | 'inactive'): Promise<CampaignComponent | undefined>;
   updateCampaignComponentConfig(campaignId: number, componentId: string, customConfig: any): Promise<CampaignComponent | undefined>;
   removeComponentFromCampaign(campaignId: number, componentId: string): Promise<void>;
-  validateComponentAvailability(componentId: string, campaignId?: number): Promise<{ available: boolean; activeCampaignId?: number }>;
+  validateComponentAvailability(componentId: string, isTemplate: boolean, campaignId?: number): Promise<{ available: boolean; activeCampaignId?: number }>;
 }
 
 export class MemStorage implements IStorage {
@@ -351,8 +351,29 @@ export class MemStorage implements IStorage {
       );
   }
 
-  async validateComponentAvailability(componentId: string, campaignId?: number): Promise<{ available: boolean; activeCampaignId?: number }> {
-    // Check if component is active in any other campaign
+  /**
+   * Validates if a component is available to be activated in a campaign.
+   * 
+   * Preconditions:
+   * - Caller must provide the true isTemplate value from the component
+   * - Caller is responsible for verifying component exists before calling this
+   * 
+   * Rules:
+   * - Template components (isTemplate=true) can be active in multiple campaigns simultaneously
+   * - Regular components (isTemplate=false) can only be active in one campaign at a time
+   * 
+   * @param componentId - ID of the component to validate
+   * @param isTemplate - Whether the component is a template (must be truthful value from component.isTemplate === 'true')
+   * @param campaignId - Optional campaign ID to exclude from the check (when updating existing component)
+   * @returns Object with available flag and optional activeCampaignId if not available
+   */
+  async validateComponentAvailability(componentId: string, isTemplate: boolean, campaignId?: number): Promise<{ available: boolean; activeCampaignId?: number }> {
+    // Templates can be used in multiple campaigns - always available
+    if (isTemplate) {
+      return { available: true };
+    }
+    
+    // Regular components: check if active in any other campaign
     const conditions = [
       eq(campaignComponents.componentId, componentId),
       eq(campaignComponents.status, 'active')
