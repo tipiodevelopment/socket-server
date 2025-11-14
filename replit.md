@@ -45,6 +45,13 @@ The frontend uses React 18 with TypeScript and Vite, styled with Tailwind CSS, a
         - **Data Integrity:** All events remain in database for audit trail; deduplication is view-only
         - **React Best Practices:** Events use stable `event.id` as React keys instead of array index
         - **Example:** Campaign with 50 "Producto Persistente" broadcasts displays only the latest version in Saved Events section
+    - **Template Component Multi-Campaign Support (Nov 2025):** Template components (isTemplate='true') can now be added to multiple campaigns simultaneously:
+        - **Architecture:** `validateComponentAvailability(componentId, isTemplate, campaignId?)` accepts componentId + isTemplate boolean
+        - **Template Behavior:** Returns `{available: true}` immediately for templates, bypassing multi-campaign restriction
+        - **Regular Component Behavior:** Non-template components (isTemplate='false') remain restricted to single campaign
+        - **Security:** Callers extract isTemplate from fetched component, preventing object mutation/tampering
+        - **Performance:** Zero redundant database lookups (component fetched once by caller)
+        - **Example:** "Product Banner" template can be added to Campaign 3, Campaign 19, and Campaign 20 without 409 conflicts
 
 ### System Design Choices
 - **Database Schema:**
