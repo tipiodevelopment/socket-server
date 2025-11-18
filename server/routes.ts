@@ -25,9 +25,14 @@ function toAbsoluteUrl(pathOrUrl: string | undefined, req: Request): string | un
     return pathOrUrl;
   }
   
-  // Convert relative path to absolute URL
-  const protocol = req.protocol || 'https';
+  // Detect protocol: check X-Forwarded-Proto header (set by reverse proxies) or use req.protocol
+  // In production (Replit), X-Forwarded-Proto will be 'https'
+  // In local dev, it will fall back to req.protocol which is 'http'
+  // Handle comma-separated values from multiple proxies by taking the first one
+  const forwardedProto = req.get('x-forwarded-proto');
+  const protocol = forwardedProto?.split(',')[0].trim() || req.protocol || 'https';
   const host = req.get('host') || 'localhost:5000';
+  
   return `${protocol}://${host}${pathOrUrl.startsWith('/') ? pathOrUrl : '/' + pathOrUrl}`;
 }
 
@@ -391,7 +396,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           description: req.body.description,
           price: String(req.body.price),
           currency: req.body.currency || 'USD',
-          imageUrl: req.body.imageUrl
+          imageUrl: toAbsoluteUrl(req.body.imageUrl, req)
         },
         campaignLogo: toAbsoluteUrl(req.body.campaignLogo, req),
         timestamp: Date.now()

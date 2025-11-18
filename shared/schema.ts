@@ -203,7 +203,7 @@ export const productEventSchema = z.object({
     description: z.string(),
     price: z.string(),
     currency: z.string().default("USD"),
-    imageUrl: z.string().url()
+    imageUrl: z.string().url().optional()
   }),
   campaignLogo: z.string().optional(),
   timestamp: z.number()
