@@ -1,0 +1,199 @@
+You are helping me design and implement the BACKEND for a product called ReachU.
+
+IMPORTANT: The iOS Swift SDK and client-facing integration (UI components, App.swift, etc.) will be handled separately in another tool (Cursor). Here in Replit, you are ONLY responsible for the backend side: APIs, data models, services, and optionally WebSocket support.
+
+---
+
+## High-level product description
+
+ReachU is a platform that apps (airlines, marketplaces, ski resorts, etc.) integrate to:
+
+- Show shoppable product placements (like "ads" but directly purchasable).
+- Fetch offers/campaigns from the ReachU backend.
+- Send tracking & commerce events (views, clicks, add-to-cart, purchase, etc.).
+- Optionally support realtime/live shopping behavior via WebSockets.
+
+The Swift SDK in the client will:
+
+- Load a base configuration from a JSON file (`reachu-config.json`).
+- Optionally use Firebase Remote Config to override some config values (like environment and channel).
+- Call the ReachU backend via HTTP for offers and events.
+- Optionally connect to a WebSocket endpoint for realtime updates.
+
+You do NOT implement Firebase Remote Config here. That is entirely on the client side.  
+You just need to define backend APIs that are compatible with this model.
+
+---
+
+## Architecture Requirements (Backend)
+
+We want the backend to support three layers conceptually:
+
+1. **Configuration & Context via HTTP parameters/headers**
+2. **HTTP API (mandatory core)**
+3. **WebSocket layer (optional, “realtime mode”)**
+
+### 1) Configuration and Context
+
+The client SDK will send:
+
+- `environment` → typically `sandbox` or `production`
+- `channelId` (or equivalent) → identifies a channel or campaign group
+- User/context info, e.g.:
+  - country / locale
+  - appId / clientId
+  - placementId (e.g. "home_banner", "post_checkout")
+  - trip/destination info (for travel apps)
+  - userId or sessionId (if available)
+
+Backend must interpret this context to decide:
+
+- Which campaigns are active for this channel.
+- Which products to return.
+- Which rules/filters apply (availability, targeting, etc.).
+
+You can assume:
+- Different environments can be modeled either as separate databases, schemas, or just flags on records.
+- `channelId` is the main key used by the SDK to map a host app’s integration to a campaign setup.
+
+---
+
+### 2) HTTP API (mandatory)
+
+The ReachU backend MUST expose HTTP endpoints for:
+
+1. **Fetch offers for a placement**
+   - Method: `GET` or `POST` (your choice, but keep it RESTful and practical)
+   - Path example: `/v1/offers` or `/v1/placements/{placementId}/offers`
+   - Input:
+     - environment (from client)
+     - channelId
+     - placementId (e.g. "home_banner", "home_carousel", "post_checkout")
+     - context (country, language, destination, dates, etc.)
+   - Output:
+     - list of offers/products with:
+       - id, title, description
+       - image URL(s)
+       - price, currency
+       - CTA URL or action type
+       - tracking ids / impression/click keys
+       - any layout hints if necessary
+
+2. **Track events**
+   - Path example: `/v1/events`
+   - Events to support:
+     - `impression`
+     - `click`
+     - `product_view`
+     - `add_to_cart`
+     - `remove_from_cart`
+     - `checkout_started`
+     - `purchase_completed`
+   - Each event should include:
+     - eventType
+     - timestamp
+     - environment
+     - channelId
+     - placementId (if relevant)
+     - offerId / productId
+     - user/session identifiers
+     - metadata (free-form JSON)
+
+3. **(Optional but useful) Orders endpoint**
+   - For confirmed purchases, optionally:
+     - `/v1/orders` to record order details, status, items, etc.
+
+We want:
+
+- Clear, versioned endpoints (e.g. `/v1/...`).
+- JSON request/response.
+- Proper error handling (HTTP codes + JSON error body).
+
+Assume:
+- Node.js + TypeScript + Express (or Fastify) is okay as a tech stack.
+- PostgreSQL as the main database.
+- You are free to suggest a clean structure (folders/modules).
+
+---
+
+### 3) WebSocket layer (optional, “Realtime mode”)
+
+The WebSocket server is OPTIONAL and should be designed for advanced use cases:
+
+Use WebSockets for:
+
+- Live shopping sessions.
+- Realtime updates to placements while the user is on screen:
+  - flash offers starting/ending,
+  - stock changes (“2 left” → “1 left”),
+  - dynamic price changes,
+  - server-initiated “close this block” updates.
+- Pushing messages from backend → client.
+
+The design should:
+
+- Allow the SDK to connect to something like: `wss://api.reachu.io/realtime`.
+- Use a simple protocol (for example JSON messages with a `type` field):
+  - `session_init`, `offers_update`, `stock_update`, `campaign_closed`, etc.
+- Use authentication or tokens consistent with the HTTP layer (e.g. same API key / clientId / environment).
+
+Important constraints:
+
+- The system must work perfectly **without WebSockets**:
+  - Host apps can use only HTTP endpoints and still fetch offers + send events.
+- WebSocket is an opt-in addon, not required for basic adoption.
+
+---
+
+## Data modeling (database side)
+
+We need at least these conceptual entities:
+
+- `ClientApp` or `Partner`:
+  - id, name, apiKey, etc.
+- `Channel`:
+  - id, name, clientAppId, environment (sandbox/prod), configuration.
+- `Campaign`:
+  - id, channelId, name, priority, start/end dates, targeting rules.
+- `Placement`:
+  - id, key (e.g. "home_banner"), description.
+- `Offer` or `CampaignItem`:
+  - id, campaignId, productId, creative data, price, etc.
+- `Product`:
+  - id, title, description, image, base price, supplier info.
+- `Event`:
+  - id, type, timestamps, channelId, placementId, offerId, etc.
+- (Optional) `Order` and `OrderItem`.
+
+You should propose practical schemas/tables for PostgreSQL and how they relate.
+
+---
+
+## What I want you to do in Replit
+
+1. Propose and refine a clean backend architecture for ReachU:
+   - Project structure (folders, modules).
+   - Core entities and TypeScript interfaces/models.
+   - API surface (routes, request/response shapes).
+   - How environments + channels are handled.
+
+2. Implement:
+   - A minimal but realistic HTTP API in Node.js/TypeScript:
+     - `/v1/offers` (or similar) to fetch offers for a placement.
+     - `/v1/events` to receive tracking events.
+   - Basic database models (PostgreSQL; use an ORM like Prisma or Knex if you want).
+   - Stubs or simple in-memory logic where full implementation is too heavy.
+
+3. Optionally:
+   - Add a simple WebSocket server (e.g. using `ws` or Socket.IO) with a basic protocol for pushing offer updates.
+
+4. Keep the code:
+   - Idiomatic, readable, and production-minded enough (errors, types).
+   - But not over-engineered: we want something that can evolve, not a huge framework.
+
+Assume:
+- Node.js 20+
+- TypeScript
+- PostgreSQL (or in-memory first, then can be swapped to DB).
+
+Start by sketching the modules, data models, and endpoints, then implement them step-by-step.
