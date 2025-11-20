@@ -7,13 +7,34 @@ import { createInsertSchema } from "drizzle-zod";
 export const users = pgTable("users", {
   id: serial("id").primaryKey(),
   reachuUserId: varchar("reachu_user_id", { length: 255 }).notNull().unique(),
+  email: text("email"),
+  name: text("name"),
   firebaseToken: text("firebase_token"),
+  createdAt: timestamp("created_at").defaultNow().notNull()
+});
+
+export const clientApps = pgTable("client_apps", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull().references(() => users.id, { onDelete: 'cascade' }),
+  name: varchar("name", { length: 255 }).notNull(),
+  bundleId: varchar("bundle_id", { length: 255 }).notNull().unique(),
+  apiKey: text("api_key").notNull().unique(),
+  createdAt: timestamp("created_at").defaultNow().notNull()
+});
+
+export const channels = pgTable("channels", {
+  id: serial("id").primaryKey(),
+  clientAppId: integer("client_app_id").notNull().references(() => clientApps.id, { onDelete: 'cascade' }),
+  name: varchar("name", { length: 255 }).notNull(),
+  description: text("description"),
+  dynamicConfig: json("dynamic_config"),
   createdAt: timestamp("created_at").defaultNow().notNull()
 });
 
 export const campaigns = pgTable("campaigns", {
   id: serial("id").primaryKey(),
   userId: integer("user_id").notNull().references(() => users.id, { onDelete: 'cascade' }),
+  channelId: integer("channel_id").references(() => channels.id, { onDelete: 'cascade' }),
   name: varchar("name", { length: 255 }).notNull(),
   logo: text("logo"),
   description: text("description"),
@@ -83,6 +104,23 @@ export const campaignComponents = pgTable("campaign_components", {
 
 // Relations
 export const usersRelations = relations(users, ({ many }) => ({
+  campaigns: many(campaigns),
+  clientApps: many(clientApps)
+}));
+
+export const clientAppsRelations = relations(clientApps, ({ one, many }) => ({
+  user: one(users, {
+    fields: [clientApps.userId],
+    references: [users.id]
+  }),
+  channels: many(channels)
+}));
+
+export const channelsRelations = relations(channels, ({ one, many }) => ({
+  clientApp: one(clientApps, {
+    fields: [channels.clientAppId],
+    references: [clientApps.id]
+  }),
   campaigns: many(campaigns)
 }));
 
@@ -90,6 +128,10 @@ export const campaignsRelations = relations(campaigns, ({ one, many }) => ({
   user: one(users, {
     fields: [campaigns.userId],
     references: [users.id]
+  }),
+  channel: one(channels, {
+    fields: [campaigns.channelId],
+    references: [channels.id]
   }),
   events: many(events),
   formStates: many(campaignFormState),
@@ -139,6 +181,16 @@ export const insertUserSchema = createInsertSchema(users).omit({
   createdAt: true 
 });
 
+export const insertClientAppSchema = createInsertSchema(clientApps).omit({ 
+  id: true,
+  createdAt: true 
+});
+
+export const insertChannelSchema = createInsertSchema(channels).omit({ 
+  id: true,
+  createdAt: true 
+});
+
 export const insertCampaignSchema = createInsertSchema(campaigns).omit({ 
   id: true,
   createdAt: true 
@@ -178,6 +230,10 @@ export const insertCampaignComponentSchema = createInsertSchema(campaignComponen
 // Types
 export type User = typeof users.$inferSelect;
 export type InsertUser = z.infer<typeof insertUserSchema>;
+export type ClientApp = typeof clientApps.$inferSelect;
+export type InsertClientApp = z.infer<typeof insertClientAppSchema>;
+export type Channel = typeof channels.$inferSelect;
+export type InsertChannel = z.infer<typeof insertChannelSchema>;
 export type Campaign = typeof campaigns.$inferSelect;
 export type InsertCampaign = z.infer<typeof insertCampaignSchema>;
 export type UpdateCampaign = z.infer<typeof updateCampaignSchema>;

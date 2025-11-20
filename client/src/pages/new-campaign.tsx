@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link, useLocation } from 'wouter';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { apiRequest, queryClient } from '@/lib/queryClient';
@@ -13,14 +13,38 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import type { Campaign, ReachuChannel, TipioLivestream } from '@shared/schema';
 import { ArrowLeft, Rocket, ShoppingBag, Radio } from 'lucide-react';
 
+const USER_SESSION_KEY = "reachu_simulated_user_id";
+
 export default function NewCampaignPage() {
   const { toast } = useToast();
   const [, setLocation] = useLocation();
+  const [currentUserId, setCurrentUserId] = useState<number | null>(null);
   const [formData, setFormData] = useState({
     name: '',
     logo: '',
     description: ''
   });
+
+  // Load userId from localStorage for multi-tenant scoping
+  useEffect(() => {
+    const storedUserId = localStorage.getItem(USER_SESSION_KEY);
+    if (storedUserId) {
+      fetch('/api/users/ensure', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reachuUserId: storedUserId })
+      })
+        .then(res => res.json())
+        .then(user => setCurrentUserId(user.id))
+        .catch((err) => {
+          console.error('Failed to load user:', err);
+          setLocation('/user-session');
+        });
+    } else {
+      // No user session, redirect to user-session page
+      setLocation('/user-session');
+    }
+  }, [setLocation]);
 
   // Integration states
   const [enableReachu, setEnableReachu] = useState(false);
@@ -60,7 +84,10 @@ export default function NewCampaignPage() {
         title: "Campaign Created",
         description: "Your new campaign is ready to use",
       });
-      queryClient.invalidateQueries({ queryKey: ['/api/campaigns'] });
+      // Invalidate all campaign queries (including tenant-scoped ones)
+      queryClient.invalidateQueries({ 
+        predicate: (query) => query.queryKey[0] === '/api/campaigns'
+      });
       setLocation(`/campaign/${newCampaign.id}/admin`);
     },
     onError: () => {
@@ -75,8 +102,20 @@ export default function NewCampaignPage() {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     
+    // Require userId for multi-tenant scoping
+    if (!currentUserId) {
+      toast({
+        title: "Session Required",
+        description: "Please log in to create a campaign",
+        variant: "destructive",
+      });
+      setLocation('/user-session');
+      return;
+    }
+    
     const campaignData: any = {
       ...formData,
+      userId: currentUserId, // Required for multi-tenant scoping
       ...(enableReachu && {
         reachuChannelId: selectedChannelId,
         reachuApiKey: reachuApiKey

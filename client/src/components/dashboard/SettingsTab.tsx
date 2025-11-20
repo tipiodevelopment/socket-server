@@ -47,7 +47,10 @@ export function SettingsTab({ campaignId, campaign }: SettingsTabProps) {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/campaigns', campaignId] });
-      queryClient.invalidateQueries({ queryKey: ['/api/campaigns'] });
+      // Invalidate all campaign queries (including tenant-scoped ones)
+      queryClient.invalidateQueries({ 
+        predicate: (query) => query.queryKey[0] === '/api/campaigns'
+      });
       toast({
         title: 'Campaign Updated',
         description: 'Your changes have been saved successfully.',
@@ -67,7 +70,10 @@ export function SettingsTab({ campaignId, campaign }: SettingsTabProps) {
       return await apiRequest('DELETE', `/api/campaigns/${campaignId}`);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/campaigns'] });
+      // Invalidate all campaign queries (including tenant-scoped ones)
+      queryClient.invalidateQueries({ 
+        predicate: (query) => query.queryKey[0] === '/api/campaigns'
+      });
       toast({
         title: 'Campaign Deleted',
         description: 'The campaign has been permanently deleted.',

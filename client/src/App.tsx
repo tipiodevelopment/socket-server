@@ -12,11 +12,15 @@ import CampaignViewerPage from "@/pages/campaign-viewer";
 import AdvancedCampaignPage from "@/pages/advanced-campaign";
 import ComponentsPage from "@/pages/components";
 import CampaignDashboard from "@/pages/campaign-dashboard";
+import UserSessionPage from "@/pages/user-session";
 import NotFound from "@/pages/not-found";
 
 function Router() {
   return (
     <Switch>
+      {/* User session simulation */}
+      <Route path="/user-session" component={UserSessionPage} />
+      
       {/* Main page - campaign management */}
       <Route path="/" component={CampaignsPage} />
       <Route path="/campaigns" component={CampaignsPage} />

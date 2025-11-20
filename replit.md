@@ -54,11 +54,27 @@ The frontend uses React 18 with TypeScript and Vite, styled with Tailwind CSS, a
         - **Example:** "Product Banner" template can be added to Campaign 3, Campaign 19, and Campaign 20 without 409 conflicts
 
 ### System Design Choices
+- **Multi-Tenant SaaS Architecture (Nov 2025):**
+    - **Four-Level Hierarchy:** Users → Client Apps → Channels → Campaigns
+    - **Isolation:** Complete data isolation between users (agencies/brands) and their client apps
+    - **Performance:** Indexed foreign keys (user_id, client_app_id, channel_id) for optimized queries
+    - **Session Simulation:** localStorage-based userId (`reachu_simulated_user_id`) until Reachu authentication integration
+    - **Scoped Queries:** All campaign endpoints filter by userId for proper multi-tenant isolation
+    
 - **Database Schema:**
-    - `Users`: Stores user information.
-    - `Campaigns`: Stores campaign details, scheduling, and pause state.
+    - `Users`: Stores user info (id, reachuUserId, email?, name?). Represents agencies/brands managing multiple apps.
+    - `Client Apps`: Mobile/web applications owned by users (id, userId, name, bundleId, apiKey). Example: "XXL", "VG", "Pregnancy App".
+    - `Channels`: Marketing channels within client apps (id, clientAppId, name, description). Example: "XXL Home", "XXL Category".
+    - `Campaigns`: Event campaigns within channels (id, channelId, userId, name, scheduling, pause state). Links to Components and Events.
     - `Components`: Reusable UI component library with `isTemplate` flag.
     - `Campaign Components`: Links `Components` to `Campaigns`, managing activation status, scheduled times, `instanceName`, and `customConfig`.
+    
+- **SDK Integration Endpoints:**
+    - **GET /v1/sdk/config?apiKey=xxx&channelId=yyy:** Returns campaign config (components, deeplinks, branding) for Swift SDK
+    - **GET /v1/offers?apiKey=xxx&channelId=yyy:** Returns active product offers for campaign viewer
+    - **Authentication:** API key-based authentication via `client_apps.api_key`
+    - **Response Format:** Includes channelId, channelName, campaignId, campaignName for client-side routing
+    - **HTTPS URLs:** All asset URLs (logos, images) enforced as HTTPS for iOS security requirements
 - **Page Structure:**
     - **Campaigns Page:** Lists all campaigns.
     - **Campaign Dashboard:** Unified command center with tabs for Overview (campaign control, stats, saved events, create new event), Events (broadcasting interface), Scheduled (timeline), Components (management), Integrations (view only), and Settings.

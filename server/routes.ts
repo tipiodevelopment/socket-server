@@ -738,6 +738,37 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Ensure user exists (create if not, return if exists) - for multi-tenant session simulation
+  app.post('/api/users/ensure', async (req, res) => {
+    try {
+      const { reachuUserId, email, name } = req.body;
+      
+      if (!reachuUserId) {
+        return res.status(400).json({ message: 'reachuUserId is required' });
+      }
+      
+      // Try to find existing user
+      let user = await storage.getUserByReachuId(reachuUserId);
+      
+      // If not found, create new user
+      if (!user) {
+        user = await storage.createUser({
+          reachuUserId,
+          email: email || null,
+          name: name || null
+        });
+      }
+      
+      res.json(user);
+    } catch (error) {
+      console.error('Error ensuring user exists:', error);
+      res.status(500).json({ 
+        message: 'Error ensuring user exists',
+        error: error instanceof Error ? error.message : String(error)
+      });
+    }
+  });
+
   // Create user
   app.post('/api/users', async (req, res) => {
     try {
@@ -769,17 +800,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Campaign CRUD endpoints
   
-  // Create campaign
+  // Create campaign (requires userId for multi-tenant scoping)
   app.post('/api/campaigns', async (req, res) => {
     try {
-      // Ensure there's a default user - use userId = 1
-      // In a real app, this would come from authentication
-      const campaignData = {
-        ...req.body,
-        userId: 1 // Default user ID for development
-      };
+      const { userId } = req.body;
       
-      const campaign = await storage.createCampaign(campaignData);
+      // Require userId for multi-tenant scoping
+      if (!userId) {
+        return res.status(400).json({ 
+          message: 'userId is required in request body for multi-tenant scoping' 
+        });
+      }
+      
+      if (typeof userId !== 'number' || isNaN(userId)) {
+        return res.status(400).json({ message: 'Invalid userId - must be a number' });
+      }
+      
+      const campaign = await storage.createCampaign(req.body);
       res.status(201).json(campaign);
     } catch (error) {
       console.error('Error creating campaign:', error);
@@ -790,10 +827,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Get all campaigns
+  // Get campaigns (requires userId for multi-tenant isolation)
   app.get('/api/campaigns', async (req, res) => {
     try {
-      const campaigns = await storage.getAllCampaigns();
+      const userIdParam = req.query.userId as string | undefined;
+      
+      if (!userIdParam) {
+        return res.status(400).json({ 
+          message: 'userId query parameter is required for multi-tenant scoping' 
+        });
+      }
+      
+      const userId = parseInt(userIdParam);
+      if (isNaN(userId)) {
+        return res.status(400).json({ message: 'Invalid userId parameter' });
+      }
+      
+      const campaigns = await storage.getUserCampaigns(userId);
       res.json(campaigns);
     } catch (error) {
       console.error('Error fetching campaigns:', error);
@@ -1611,6 +1661,184 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error('Error validating component availability:', error);
       res.status(500).json({ message: 'Error validating component availability' });
+    }
+  });
+
+  // ========================================
+  // SDK Endpoints (v1)
+  // ========================================
+
+  // Middleware to validate API key for SDK requests
+  const validateApiKey = async (req: Request, res: any, next: any) => {
+    try {
+      const apiKey = req.query.apiKey as string || req.headers['x-api-key'] as string;
+      
+      if (!apiKey) {
+        return res.status(401).json({ message: 'API key required' });
+      }
+
+      const clientApp = await storage.getClientAppByApiKey(apiKey);
+      
+      if (!clientApp) {
+        return res.status(401).json({ message: 'Invalid API key' });
+      }
+
+      // Attach client app context to request for use in route handlers
+      (req as any).clientApp = clientApp;
+      next();
+    } catch (error) {
+      console.error('Error validating API key:', error);
+      res.status(500).json({ message: 'Error validating API key' });
+    }
+  };
+
+  // GET /v1/sdk/config - Get dynamic SDK configuration
+  app.get('/v1/sdk/config', validateApiKey, async (req, res) => {
+    try {
+      const clientApp = (req as any).clientApp;
+      const channelIdParam = req.query.channelId as string | undefined;
+      
+      // Require channelId for proper channel-level scoping
+      if (!channelIdParam) {
+        const channels = await storage.getClientAppChannels(clientApp.id);
+        return res.status(400).json({ 
+          message: 'channelId query parameter is required',
+          availableChannels: channels.map(c => ({ id: c.id, name: c.name }))
+        });
+      }
+      
+      const requestedChannelId = parseInt(channelIdParam);
+      if (isNaN(requestedChannelId)) {
+        return res.status(400).json({ message: 'Invalid channelId parameter' });
+      }
+      
+      // Get channels for this client app
+      const channels = await storage.getClientAppChannels(clientApp.id);
+      
+      if (channels.length === 0) {
+        return res.status(404).json({ message: 'No channel configured for this API key' });
+      }
+
+      // Find the requested channel
+      const channel = channels.find(c => c.id === requestedChannelId);
+      
+      if (!channel) {
+        return res.status(404).json({ 
+          message: 'Channel not found',
+          availableChannels: channels.map(c => ({ id: c.id, name: c.name }))
+        });
+      }
+
+      // Get campaigns for this channel
+      const campaigns = await storage.getChannelCampaigns(channel.id);
+      const activeCampaign = campaigns.find(c => isCampaignActive(c));
+
+      const dynamicConfig = channel.dynamicConfig as any || {};
+
+      const config = {
+        channelId: channel.id,
+        channelName: channel.name,
+        campaignId: activeCampaign?.id || null,
+        environment: dynamicConfig.environment || 'production',
+        campaigns: {
+          webSocketBaseURL: dynamicConfig.webSocketBaseURL || `${req.protocol}://${req.get('host')}`,
+          restAPIBaseURL: dynamicConfig.restAPIBaseURL || `${req.protocol}://${req.get('host')}`
+        },
+        marketFallback: dynamicConfig.marketFallback || {
+          countryCode: 'US',
+          currencyCode: 'USD',
+          currencySymbol: '$',
+          phoneCode: '+1'
+        },
+        features: dynamicConfig.features || {
+          enableWebSocket: true,
+          enableGuestCheckout: true
+        }
+      };
+
+      res.json(config);
+    } catch (error) {
+      console.error('Error fetching SDK config:', error);
+      res.status(500).json({ message: 'Error fetching SDK config' });
+    }
+  });
+
+  // GET /v1/offers - Get offers/products for a placement
+  app.get('/v1/offers', validateApiKey, async (req, res) => {
+    try {
+      const clientApp = (req as any).clientApp;
+      const placement = req.query.placement as string;
+      const channelIdParam = req.query.channelId as string | undefined;
+      
+      // Require channelId for proper channel-level scoping
+      if (!channelIdParam) {
+        const channels = await storage.getClientAppChannels(clientApp.id);
+        return res.status(400).json({ 
+          message: 'channelId query parameter is required',
+          availableChannels: channels.map(c => ({ id: c.id, name: c.name }))
+        });
+      }
+      
+      const requestedChannelId = parseInt(channelIdParam);
+      if (isNaN(requestedChannelId)) {
+        return res.status(400).json({ message: 'Invalid channelId parameter' });
+      }
+      
+      // Get channels for this client app
+      const channels = await storage.getClientAppChannels(clientApp.id);
+      
+      if (channels.length === 0) {
+        return res.status(404).json({ message: 'No channel configured for this API key' });
+      }
+
+      // Find the requested channel
+      const channel = channels.find(c => c.id === requestedChannelId);
+      
+      if (!channel) {
+        return res.status(404).json({ 
+          message: 'Channel not found',
+          availableChannels: channels.map(c => ({ id: c.id, name: c.name }))
+        });
+      }
+
+      // Get active campaigns for this channel
+      const campaigns = await storage.getChannelCampaigns(channel.id);
+      const activeCampaigns = campaigns.filter(c => isCampaignActive(c));
+
+      if (activeCampaigns.length === 0) {
+        return res.json({ 
+          channelId: channel.id,
+          channelName: channel.name,
+          offers: [] 
+        });
+      }
+
+      // For now, use first active campaign
+      const campaign = activeCampaigns[0];
+
+      // Get active components for this campaign
+      const components = await storage.getCampaignComponents(campaign.id);
+      const activeComponents = components.filter(c => c.status === 'active');
+
+      // Transform components to offers format
+      const offers = activeComponents.map(cc => ({
+        id: cc.componentId,
+        type: cc.component.type,
+        name: cc.instanceName || cc.component.name,
+        config: normalizeUrls(cc.customConfig || cc.component.config, req.protocol, req.get('host')),
+        placement: placement || 'default'
+      }));
+
+      res.json({
+        channelId: channel.id,
+        channelName: channel.name,
+        campaignId: campaign.id,
+        campaignName: campaign.name,
+        offers
+      });
+    } catch (error) {
+      console.error('Error fetching offers:', error);
+      res.status(500).json({ message: 'Error fetching offers' });
     }
   });
 

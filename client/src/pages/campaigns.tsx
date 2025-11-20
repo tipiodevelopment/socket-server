@@ -5,15 +5,50 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { useToast } from '@/hooks/use-toast';
 import { queryClient, apiRequest } from '@/lib/queryClient';
-import type { Campaign } from '@shared/schema';
-import { Plus, Rocket, Calendar, Settings, Trash2, ShoppingBag } from 'lucide-react';
+import type { Campaign, User } from '@shared/schema';
+import { Plus, Rocket, Calendar, Settings, Trash2, ShoppingBag, User as UserIcon } from 'lucide-react';
+import { useState, useEffect } from 'react';
+
+const USER_SESSION_KEY = "reachu_simulated_user_id";
 
 export default function CampaignsPage() {
   const { toast } = useToast();
+  const [currentUserId, setCurrentUserId] = useState<number | null>(null);
+  const [currentUserData, setCurrentUserData] = useState<User | null>(null);
+
+  // Load userId from localStorage
+  useEffect(() => {
+    const storedUserId = localStorage.getItem(USER_SESSION_KEY);
+    if (storedUserId) {
+      // Ensure user exists (create if not, return if exists)
+      fetch('/api/users/ensure', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reachuUserId: storedUserId })
+      })
+        .then(res => res.json())
+        .then(user => {
+          setCurrentUserId(user.id);
+          setCurrentUserData(user);
+        })
+        .catch(() => {
+          // Failed to create/fetch user, clear localStorage
+          localStorage.removeItem(USER_SESSION_KEY);
+        });
+    }
+  }, []);
   
-  // Fetch campaigns
+  // Fetch campaigns (filtered by userId if logged in)
+  // IMPORTANT: Only fetch when we have a userId to ensure proper multi-tenant scoping
   const { data: campaigns = [], isLoading } = useQuery<Campaign[]>({
-    queryKey: ['/api/campaigns'],
+    queryKey: ['/api/campaigns', currentUserId],
+    queryFn: async () => {
+      const url = `/api/campaigns?userId=${currentUserId}`;
+      const res = await fetch(url);
+      if (!res.ok) throw new Error('Failed to fetch campaigns');
+      return res.json();
+    },
+    enabled: !!currentUserId // Only fetch when userId is loaded from localStorage
   });
 
   // Delete campaign mutation
@@ -22,7 +57,8 @@ export default function CampaignsPage() {
       return await apiRequest('DELETE', `/api/campaigns/${id}`);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/campaigns'] });
+      // Invalidate tenant-scoped cache to refresh campaigns list
+      queryClient.invalidateQueries({ queryKey: ['/api/campaigns', currentUserId] });
       toast({
         title: 'Campaign Deleted',
         description: 'The campaign has been deleted successfully.',
@@ -89,7 +125,23 @@ export default function CampaignsPage() {
         </div>
 
         {/* Campaigns Grid */}
-        {isLoading ? (
+        {!currentUserId ? (
+          <Card className="border-0">
+            <CardContent className="flex flex-col items-center justify-center py-12">
+              <UserIcon className="w-12 h-12 text-muted-foreground mb-4" />
+              <h3 className="text-lg font-semibold mb-2">User Session Required</h3>
+              <p className="text-muted-foreground mb-4 text-center max-w-md">
+                Please select a user to view campaigns. This simulates multi-tenant isolation until full authentication is integrated.
+              </p>
+              <Link href="/user-session">
+                <Button data-testid="button-goto-user-session">
+                  <UserIcon className="w-4 h-4 mr-2" />
+                  Select User Session
+                </Button>
+              </Link>
+            </CardContent>
+          </Card>
+        ) : isLoading ? (
           <div className="text-center py-12">
             <p className="text-muted-foreground">Loading campaigns...</p>
           </div>

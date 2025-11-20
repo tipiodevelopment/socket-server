@@ -1,6 +1,6 @@
-import { WebSocketEvent, Campaign, InsertCampaign, Event, InsertEvent, CampaignFormState, InsertFormState, ScheduledComponent, InsertScheduledComponent, Component, InsertComponent, CampaignComponent, InsertCampaignComponent, User, InsertUser } from "@shared/schema";
+import { WebSocketEvent, Campaign, InsertCampaign, Event, InsertEvent, CampaignFormState, InsertFormState, ScheduledComponent, InsertScheduledComponent, Component, InsertComponent, CampaignComponent, InsertCampaignComponent, User, InsertUser, ClientApp, InsertClientApp, Channel, InsertChannel } from "@shared/schema";
 import { db } from "./db";
-import { campaigns, events, campaignFormState, scheduledComponents, components, campaignComponents, users } from "@shared/schema";
+import { campaigns, events, campaignFormState, scheduledComponents, components, campaignComponents, users, clientApps, channels } from "@shared/schema";
 import { eq, desc, and, gte, ne } from "drizzle-orm";
 
 export interface IStorage {
@@ -14,10 +14,29 @@ export interface IStorage {
   getAllUsers(): Promise<User[]>;
   updateUser(id: number, user: Partial<InsertUser>): Promise<User | undefined>;
   
+  // Client App methods
+  createClientApp(clientApp: InsertClientApp): Promise<ClientApp>;
+  getClientApp(id: number): Promise<ClientApp | undefined>;
+  getClientAppByApiKey(apiKey: string): Promise<ClientApp | undefined>;
+  getUserClientApps(userId: number): Promise<ClientApp[]>;
+  getAllClientApps(): Promise<ClientApp[]>;
+  updateClientApp(id: number, clientApp: Partial<InsertClientApp>): Promise<ClientApp | undefined>;
+  deleteClientApp(id: number): Promise<void>;
+  
+  // Channel methods
+  createChannel(channel: InsertChannel): Promise<Channel>;
+  getChannel(id: number): Promise<Channel | undefined>;
+  getClientAppChannels(clientAppId: number): Promise<Channel[]>;
+  getAllChannels(): Promise<Channel[]>;
+  updateChannel(id: number, channel: Partial<InsertChannel>): Promise<Channel | undefined>;
+  deleteChannel(id: number): Promise<void>;
+  
   // Campaign methods
   createCampaign(campaign: InsertCampaign): Promise<Campaign>;
   getCampaign(id: number): Promise<Campaign | undefined>;
   getAllCampaigns(): Promise<Campaign[]>;
+  getChannelCampaigns(channelId: number): Promise<Campaign[]>;
+  getUserCampaigns(userId: number): Promise<Campaign[]>;
   updateCampaign(id: number, campaign: Partial<InsertCampaign>): Promise<Campaign | undefined>;
   deleteCampaign(id: number): Promise<void>;
   
@@ -98,6 +117,77 @@ export class MemStorage implements IStorage {
     return updated || undefined;
   }
 
+  // Client App methods (database-backed)
+  async createClientApp(clientApp: InsertClientApp): Promise<ClientApp> {
+    const [newClientApp] = await db.insert(clientApps).values(clientApp).returning();
+    return newClientApp;
+  }
+
+  async getClientApp(id: number): Promise<ClientApp | undefined> {
+    const [clientApp] = await db.select().from(clientApps).where(eq(clientApps.id, id));
+    return clientApp || undefined;
+  }
+
+  async getClientAppByApiKey(apiKey: string): Promise<ClientApp | undefined> {
+    const [clientApp] = await db.select().from(clientApps).where(eq(clientApps.apiKey, apiKey));
+    return clientApp || undefined;
+  }
+
+  async getUserClientApps(userId: number): Promise<ClientApp[]> {
+    return await db.select().from(clientApps)
+      .where(eq(clientApps.userId, userId))
+      .orderBy(desc(clientApps.createdAt));
+  }
+
+  async getAllClientApps(): Promise<ClientApp[]> {
+    return await db.select().from(clientApps).orderBy(desc(clientApps.createdAt));
+  }
+
+  async updateClientApp(id: number, clientApp: Partial<InsertClientApp>): Promise<ClientApp | undefined> {
+    const [updated] = await db.update(clientApps)
+      .set(clientApp)
+      .where(eq(clientApps.id, id))
+      .returning();
+    return updated || undefined;
+  }
+
+  async deleteClientApp(id: number): Promise<void> {
+    await db.delete(clientApps).where(eq(clientApps.id, id));
+  }
+
+  // Channel methods (database-backed)
+  async createChannel(channel: InsertChannel): Promise<Channel> {
+    const [newChannel] = await db.insert(channels).values(channel).returning();
+    return newChannel;
+  }
+
+  async getChannel(id: number): Promise<Channel | undefined> {
+    const [channel] = await db.select().from(channels).where(eq(channels.id, id));
+    return channel || undefined;
+  }
+
+  async getClientAppChannels(clientAppId: number): Promise<Channel[]> {
+    return await db.select().from(channels)
+      .where(eq(channels.clientAppId, clientAppId))
+      .orderBy(desc(channels.createdAt));
+  }
+
+  async getAllChannels(): Promise<Channel[]> {
+    return await db.select().from(channels).orderBy(desc(channels.createdAt));
+  }
+
+  async updateChannel(id: number, channel: Partial<InsertChannel>): Promise<Channel | undefined> {
+    const [updated] = await db.update(channels)
+      .set(channel)
+      .where(eq(channels.id, id))
+      .returning();
+    return updated || undefined;
+  }
+
+  async deleteChannel(id: number): Promise<void> {
+    await db.delete(channels).where(eq(channels.id, id));
+  }
+
   // Campaign methods (database-backed)
   async createCampaign(campaign: InsertCampaign): Promise<Campaign> {
     const [newCampaign] = await db.insert(campaigns).values(campaign).returning();
@@ -111,6 +201,18 @@ export class MemStorage implements IStorage {
 
   async getAllCampaigns(): Promise<Campaign[]> {
     return await db.select().from(campaigns).orderBy(desc(campaigns.createdAt));
+  }
+
+  async getChannelCampaigns(channelId: number): Promise<Campaign[]> {
+    return await db.select().from(campaigns)
+      .where(eq(campaigns.channelId, channelId))
+      .orderBy(desc(campaigns.createdAt));
+  }
+
+  async getUserCampaigns(userId: number): Promise<Campaign[]> {
+    return await db.select().from(campaigns)
+      .where(eq(campaigns.userId, userId))
+      .orderBy(desc(campaigns.createdAt));
   }
 
   async updateCampaign(id: number, campaign: Partial<InsertCampaign>): Promise<Campaign | undefined> {
