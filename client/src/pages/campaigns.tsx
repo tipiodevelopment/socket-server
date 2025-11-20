@@ -1,4 +1,4 @@
-import { Link } from 'wouter';
+import { Link, useLocation } from 'wouter';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -6,13 +6,14 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { useToast } from '@/hooks/use-toast';
 import { queryClient, apiRequest } from '@/lib/queryClient';
 import type { Campaign, User } from '@shared/schema';
-import { Plus, Rocket, Calendar, Settings, Trash2, ShoppingBag, User as UserIcon } from 'lucide-react';
+import { Plus, Rocket, Calendar, Settings, Trash2, ShoppingBag, User as UserIcon, LogOut } from 'lucide-react';
 import { useState, useEffect } from 'react';
 
 const USER_SESSION_KEY = "reachu_simulated_user_id";
 
 export default function CampaignsPage() {
   const { toast } = useToast();
+  const [, setLocation] = useLocation();
   const [currentUserId, setCurrentUserId] = useState<number | null>(null);
   const [currentUserData, setCurrentUserData] = useState<User | null>(null);
 
@@ -73,6 +74,18 @@ export default function CampaignsPage() {
     },
   });
 
+  // Logout function
+  const handleLogout = () => {
+    localStorage.removeItem(USER_SESSION_KEY);
+    setCurrentUserId(null);
+    setCurrentUserData(null);
+    toast({
+      title: 'Logged Out',
+      description: 'You have been logged out successfully.',
+    });
+    setLocation('/user-session');
+  };
+
   return (
     <div className="min-h-screen bg-background text-foreground">
       {/* Header */}
@@ -101,6 +114,18 @@ export default function CampaignsPage() {
                   Docs
                 </Button>
               </Link>
+              {currentUserId && (
+                <Button 
+                  variant="ghost" 
+                  size="sm" 
+                  onClick={handleLogout}
+                  data-testid="button-logout" 
+                  className="text-xs sm:text-sm gap-1.5"
+                >
+                  <LogOut className="w-3.5 h-3.5" />
+                  Logout
+                </Button>
+              )}
             </div>
           </div>
         </div>
