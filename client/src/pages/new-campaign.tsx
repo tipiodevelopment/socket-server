@@ -88,7 +88,7 @@ export default function NewCampaignPage() {
       queryClient.invalidateQueries({ 
         predicate: (query) => query.queryKey[0] === '/api/campaigns'
       });
-      setLocation(`/campaign/${newCampaign.id}/admin`);
+      setLocation(`/campaign/${newCampaign.id}/dashboard`);
     },
     onError: () => {
       toast({
