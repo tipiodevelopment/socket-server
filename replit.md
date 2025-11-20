@@ -70,10 +70,11 @@ The frontend uses React 18 with TypeScript and Vite, styled with Tailwind CSS, a
     - `Campaign Components`: Links `Components` to `Campaigns`, managing activation status, scheduled times, `instanceName`, and `customConfig`.
     
 - **SDK Integration Endpoints:**
-    - **GET /v1/sdk/config?apiKey=xxx&channelId=yyy:** Returns campaign config (components, deeplinks, branding) for Swift SDK
-    - **GET /v1/offers?apiKey=xxx&channelId=yyy:** Returns active product offers for campaign viewer
+    - **GET /v1/sdk/config?apiKey=xxx&campaignId=yyy:** Returns campaign config (components, deeplinks, branding) for Swift SDK
+    - **GET /v1/offers?apiKey=xxx&campaignId=yyy:** Returns active product offers for campaign viewer
     - **Authentication:** API key-based authentication via `client_apps.api_key`
-    - **Response Format:** Includes channelId, channelName, campaignId, campaignName for client-side routing
+    - **Scoping:** Campaign-level scoping (backend automatically resolves channel from campaignId)
+    - **Response Format:** Includes campaignId, campaignName, channelId, channelName for client-side routing
     - **HTTPS URLs:** All asset URLs (logos, images) enforced as HTTPS for iOS security requirements
 - **Page Structure:**
     - **Campaigns Page:** Lists all campaigns.

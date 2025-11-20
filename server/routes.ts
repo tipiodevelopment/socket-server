@@ -1696,49 +1696,45 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get('/v1/sdk/config', validateApiKey, async (req, res) => {
     try {
       const clientApp = (req as any).clientApp;
-      const channelIdParam = req.query.channelId as string | undefined;
+      const campaignIdParam = req.query.campaignId as string | undefined;
       
-      // Require channelId for proper channel-level scoping
-      if (!channelIdParam) {
-        const channels = await storage.getClientAppChannels(clientApp.id);
+      // Require campaignId for proper campaign-level scoping
+      if (!campaignIdParam) {
         return res.status(400).json({ 
-          message: 'channelId query parameter is required',
-          availableChannels: channels.map(c => ({ id: c.id, name: c.name }))
+          message: 'campaignId query parameter is required'
         });
       }
       
-      const requestedChannelId = parseInt(channelIdParam);
-      if (isNaN(requestedChannelId)) {
-        return res.status(400).json({ message: 'Invalid channelId parameter' });
+      const requestedCampaignId = parseInt(campaignIdParam);
+      if (isNaN(requestedCampaignId)) {
+        return res.status(400).json({ message: 'Invalid campaignId parameter' });
       }
       
-      // Get channels for this client app
-      const channels = await storage.getClientAppChannels(clientApp.id);
+      // Get the campaign
+      const campaign = await storage.getCampaign(requestedCampaignId);
       
-      if (channels.length === 0) {
-        return res.status(404).json({ message: 'No channel configured for this API key' });
-      }
-
-      // Find the requested channel
-      const channel = channels.find(c => c.id === requestedChannelId);
-      
-      if (!channel) {
-        return res.status(404).json({ 
-          message: 'Channel not found',
-          availableChannels: channels.map(c => ({ id: c.id, name: c.name }))
-        });
+      if (!campaign) {
+        return res.status(404).json({ message: 'Campaign not found' });
       }
 
-      // Get campaigns for this channel
-      const campaigns = await storage.getChannelCampaigns(channel.id);
-      const activeCampaign = campaigns.find(c => isCampaignActive(c));
+      // Verify campaign belongs to a channel of this client app
+      if (!campaign.channelId) {
+        return res.status(400).json({ message: 'Campaign has no channel assigned' });
+      }
+
+      const channel = await storage.getChannel(campaign.channelId);
+      
+      if (!channel || channel.clientAppId !== clientApp.id) {
+        return res.status(403).json({ message: 'Campaign does not belong to this API key' });
+      }
 
       const dynamicConfig = channel.dynamicConfig as any || {};
 
       const config = {
+        campaignId: campaign.id,
+        campaignName: campaign.name,
         channelId: channel.id,
         channelName: channel.name,
-        campaignId: activeCampaign?.id || null,
         environment: dynamicConfig.environment || 'production',
         campaigns: {
           webSocketBaseURL: dynamicConfig.webSocketBaseURL || `${req.protocol}://${req.get('host')}`,
@@ -1768,53 +1764,48 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const clientApp = (req as any).clientApp;
       const placement = req.query.placement as string;
-      const channelIdParam = req.query.channelId as string | undefined;
+      const campaignIdParam = req.query.campaignId as string | undefined;
       
-      // Require channelId for proper channel-level scoping
-      if (!channelIdParam) {
-        const channels = await storage.getClientAppChannels(clientApp.id);
+      // Require campaignId for proper campaign-level scoping
+      if (!campaignIdParam) {
         return res.status(400).json({ 
-          message: 'channelId query parameter is required',
-          availableChannels: channels.map(c => ({ id: c.id, name: c.name }))
+          message: 'campaignId query parameter is required'
         });
       }
       
-      const requestedChannelId = parseInt(channelIdParam);
-      if (isNaN(requestedChannelId)) {
-        return res.status(400).json({ message: 'Invalid channelId parameter' });
+      const requestedCampaignId = parseInt(campaignIdParam);
+      if (isNaN(requestedCampaignId)) {
+        return res.status(400).json({ message: 'Invalid campaignId parameter' });
       }
       
-      // Get channels for this client app
-      const channels = await storage.getClientAppChannels(clientApp.id);
+      // Get the campaign
+      const campaign = await storage.getCampaign(requestedCampaignId);
       
-      if (channels.length === 0) {
-        return res.status(404).json({ message: 'No channel configured for this API key' });
+      if (!campaign) {
+        return res.status(404).json({ message: 'Campaign not found' });
       }
 
-      // Find the requested channel
-      const channel = channels.find(c => c.id === requestedChannelId);
-      
-      if (!channel) {
-        return res.status(404).json({ 
-          message: 'Channel not found',
-          availableChannels: channels.map(c => ({ id: c.id, name: c.name }))
-        });
+      // Verify campaign belongs to a channel of this client app
+      if (!campaign.channelId) {
+        return res.status(400).json({ message: 'Campaign has no channel assigned' });
       }
 
-      // Get active campaigns for this channel
-      const campaigns = await storage.getChannelCampaigns(channel.id);
-      const activeCampaigns = campaigns.filter(c => isCampaignActive(c));
+      const channel = await storage.getChannel(campaign.channelId);
+      
+      if (!channel || channel.clientAppId !== clientApp.id) {
+        return res.status(403).json({ message: 'Campaign does not belong to this API key' });
+      }
 
-      if (activeCampaigns.length === 0) {
+      // Check if campaign is active
+      if (!isCampaignActive(campaign)) {
         return res.json({ 
+          campaignId: campaign.id,
+          campaignName: campaign.name,
           channelId: channel.id,
           channelName: channel.name,
           offers: [] 
         });
       }
-
-      // For now, use first active campaign
-      const campaign = activeCampaigns[0];
 
       // Get active components for this campaign
       const components = await storage.getCampaignComponents(campaign.id);
@@ -1830,10 +1821,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }));
 
       res.json({
-        channelId: channel.id,
-        channelName: channel.name,
         campaignId: campaign.id,
         campaignName: campaign.name,
+        channelId: channel.id,
+        channelName: channel.name,
         offers
       });
     } catch (error) {
