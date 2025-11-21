@@ -55,6 +55,7 @@ export function SettingsTab({ campaignId, campaign }: SettingsTabProps) {
   const { toast } = useToast();
   const [, setLocation] = useLocation();
   const [name, setName] = useState(campaign.name);
+  const [activeTab, setActiveTab] = useState('basic');
   const [description, setDescription] = useState(campaign.description || '');
   const [startDate, setStartDate] = useState(
     campaign.startDate ? new Date(campaign.startDate).toISOString().slice(0, 16) : ''
