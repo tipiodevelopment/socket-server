@@ -1007,6 +1007,125 @@ func openWebLink(_ link: String?) {
           </CardContent>
         </Card>
 
+        {/* Geographic Targeting & User Segmentation */}
+        <Card className="border-0 bg-gradient-to-br from-green-500/10 to-blue-500/10">
+          <CardHeader>
+            <CardTitle className="flex items-center space-x-2 text-2xl">
+              <svg className="w-8 h-8 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path>
+              </svg>
+              <span>Geographic Targeting & User Segmentation</span>
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            <div>
+              <h3 className="text-lg font-semibold mb-3 text-green-500">Overview</h3>
+              <p className="text-muted-foreground mb-4">
+                Target campaigns to specific users based on geography and user percentage. Perfect for A/B testing, regional campaigns, and market testing.
+              </p>
+            </div>
+
+            <div className="bg-background rounded-lg p-4">
+              <h4 className="font-semibold mb-2 text-green-400">Enable Segmentation in Campaign Settings</h4>
+              <p className="text-sm text-muted-foreground mb-3">
+                1. Go to Campaign Dashboard → Settings tab<br />
+                2. Find "Targeting & Segmentation" section<br />
+                3. Toggle "Enable segmentation for this campaign"<br />
+                4. Select countries and set user percentage<br />
+                5. Save settings
+              </p>
+            </div>
+
+            <div className="space-y-3">
+              <div className="bg-blue-500/10 border-0 rounded-lg p-4">
+                <h4 className="font-semibold mb-2 text-blue-400">🌍 Geographic Targeting</h4>
+                <p className="text-sm text-muted-foreground mb-2">
+                  Select which countries can see your campaign:
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Supported: US, MX, AR, CO, BR, ES, CA, DE, FR, GB, IT, JP, AU, NZ, SG, IN, KR, CN
+                </p>
+              </div>
+
+              <div className="bg-purple-500/10 border-0 rounded-lg p-4">
+                <h4 className="font-semibold mb-2 text-purple-400">📊 User Percentage (A/B Testing)</h4>
+                <p className="text-sm text-muted-foreground">
+                  Set 1-100% to control how many users see the campaign. Uses deterministic hashing to ensure the same user always gets the same result.
+                </p>
+              </div>
+            </div>
+
+            <div className="bg-background rounded-lg p-4">
+              <h4 className="font-semibold mb-2">How to Pass Targeting Data from iOS</h4>
+              <p className="text-sm text-muted-foreground mb-3">
+                Your app should pass userId and userCountry parameters when requesting offers:
+              </p>
+              <pre className="bg-gray-900 rounded p-3 overflow-x-auto text-xs mb-3">
+                <code className="text-green-400">{`// Swift Example
+let userId = UserDefaults.standard.string(forKey: "userId") ?? "user123"
+let userCountry = Locale.current.region?.identifier ?? "US" // "MX", "US", etc.
+
+let urlString = """
+${window.location.protocol}//${window.location.host}/v1/offers?\\
+apiKey=xxx&\\
+campaignId=14&\\
+userId=\\(userId)&\\
+userCountry=\\(userCountry)
+"""
+
+// Make request with these parameters
+let url = URL(string: urlString)!
+URLSession.shared.dataTask(with: url) { data, response, error in
+    // Handle response
+}.resume()`}</code>
+              </pre>
+              <p className="text-sm text-muted-foreground">
+                If the user doesn't match targeting criteria, the endpoint returns an empty offers array (graceful degradation).
+              </p>
+            </div>
+
+            <div className="space-y-3">
+              <h4 className="font-semibold">Use Cases</h4>
+              <div className="space-y-2">
+                <div className="bg-primary/5 rounded p-3">
+                  <p className="text-sm font-medium text-primary">A/B Testing</p>
+                  <p className="text-xs text-muted-foreground">Enable segmentation, set percentage to 50%, reach all countries</p>
+                </div>
+                <div className="bg-primary/5 rounded p-3">
+                  <p className="text-sm font-medium text-primary">Regional Campaign</p>
+                  <p className="text-xs text-muted-foreground">Enable segmentation, select Mexico (MX), set percentage to 100%</p>
+                </div>
+                <div className="bg-primary/5 rounded p-3">
+                  <p className="text-sm font-medium text-primary">Market Testing</p>
+                  <p className="text-xs text-muted-foreground">Enable segmentation, select multiple countries (BR, CO, AR), set percentage to 25%</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-amber-500/10 rounded-lg p-4">
+              <h4 className="font-semibold mb-2 text-amber-500">⚡ Important Notes</h4>
+              <ul className="text-sm space-y-2 text-muted-foreground">
+                <li className="flex items-start space-x-2">
+                  <span className="text-amber-500 mt-1">•</span>
+                  <span>When segmentation is disabled, all users see the campaign (no geographic or percentage restrictions)</span>
+                </li>
+                <li className="flex items-start space-x-2">
+                  <span className="text-amber-500 mt-1">•</span>
+                  <span>Deterministic hashing ensures the same user always gets consistent results</span>
+                </li>
+                <li className="flex items-start space-x-2">
+                  <span className="text-amber-500 mt-1">•</span>
+                  <span>Changes to targeting settings take effect immediately</span>
+                </li>
+                <li className="flex items-start space-x-2">
+                  <span className="text-amber-500 mt-1">•</span>
+                  <span>Missing userId or userCountry parameters result in empty offers (graceful degradation)</span>
+                </li>
+              </ul>
+            </div>
+          </CardContent>
+        </Card>
+
         {/* Footer Note */}
         <div className="text-center text-sm text-muted-foreground pt-8 border-0">
           <p>Need help? Check the <Link href="/"><Button variant="link" className="p-0 h-auto" data-testid="link-admin-footer">admin panel</Button></Link> to test events in real-time.</p>
