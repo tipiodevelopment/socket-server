@@ -52,6 +52,18 @@ The frontend uses React 18 with TypeScript and Vite, styled with Tailwind CSS, a
         - **Security:** Callers extract isTemplate from fetched component, preventing object mutation/tampering
         - **Performance:** Zero redundant database lookups (component fetched once by caller)
         - **Example:** "Product Banner" template can be added to Campaign 3, Campaign 19, and Campaign 20 without 409 conflicts
+    - **Geographic Targeting & User Segmentation (Nov 2025):** Server-side segmentation enables A/B testing and geographic restrictions:
+        - **Database Fields:** Added `isSegmented` (bool), `targetCountries` (array of ISO country codes), `targetPercentage` (1-100%)
+        - **Deterministic Hashing:** Uses SHA256(`userId:campaignId`) % 100 to ensure consistent user assignment (same user always sees/doesn't see a campaign)
+        - **Server-Side Filtering:** `/v1/offers` endpoint validates `userId`, `userCountry`, and campaign targeting before returning offers
+        - **Dashboard UI:** "Targeting & Segmentation" section in Campaign Settings with:
+          - Toggle to enable/disable segmentation
+          - Multi-select of 18 countries (US, MX, AR, CO, BR, ES, CA, DE, FR, GB, IT, JP, AU, NZ, SG, IN, KR, CN)
+          - Range slider + number input for user percentage (1-100%)
+          - Real-time country search and badge display
+        - **Query Parameters:** SDK passes `userId` and `userCountry` to endpoints: `GET /v1/offers?apiKey=xxx&campaignId=14&userId=user123&userCountry=MX`
+        - **Behavior:** If user doesn't match targeting, returns empty offers array (no error, graceful degradation)
+        - **Use Cases:** A/B testing (20% of users), regional campaigns (only Mexico), market testing
 
 ### System Design Choices
 - **Multi-Tenant SaaS Architecture (Nov 2025):**
@@ -71,10 +83,13 @@ The frontend uses React 18 with TypeScript and Vite, styled with Tailwind CSS, a
     
 - **SDK Integration Endpoints:**
     - **GET /v1/sdk/config?apiKey=xxx&campaignId=yyy:** Returns campaign config (components, deeplinks, branding) for Swift SDK
-    - **GET /v1/offers?apiKey=xxx&campaignId=yyy:** Returns active product offers for campaign viewer
+    - **GET /v1/offers?apiKey=xxx&campaignId=yyy&userId=user123&userCountry=MX:** Returns active product offers filtered by user targeting
     - **Authentication:** API key-based authentication via `client_apps.api_key`
     - **Scoping:** Campaign-level scoping (backend automatically resolves channel from campaignId)
-    - **Response Format:** Includes campaignId, campaignName, channelId, channelName for client-side routing
+    - **Targeting Parameters (Optional):**
+      - `userId` (string): Unique user identifier for deterministic segmentation
+      - `userCountry` (string): ISO country code (e.g., 'MX', 'US') for geographic targeting
+    - **Response Format:** Includes campaignId, campaignName, channelId, channelName for client-side routing; offers array filtered by user eligibility
     - **HTTPS URLs:** All asset URLs (logos, images) enforced as HTTPS for iOS security requirements
 - **Page Structure:**
     - **Campaigns Page:** Lists all campaigns.
