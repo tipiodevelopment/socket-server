@@ -1,6 +1,7 @@
 import type { Express, Request } from "express";
 import { createServer, type Server } from "http";
 import { WebSocketServer, WebSocket } from "ws";
+import { createHash } from "crypto";
 import { storage } from "./storage";
 import { 
   webSocketEventSchema, 
@@ -34,6 +35,53 @@ function toAbsoluteUrl(pathOrUrl: string | undefined, req: Request): string | un
   const host = req.get('host') || 'localhost:5000';
   
   return `${protocol}://${host}${pathOrUrl.startsWith('/') ? pathOrUrl : '/' + pathOrUrl}`;
+}
+
+// Helper function to calculate deterministic hash for user segmentation
+// Returns a value 0-99 that is consistent for the same userId + campaignId
+function calculateUserSegmentHash(userId: string, campaignId: number): number {
+  const combined = `${userId}:${campaignId}`;
+  const hash = createHash('sha256').update(combined).digest('hex');
+  // Convert first 8 hex chars to a number and get modulo 100
+  const hashValue = parseInt(hash.substring(0, 8), 16);
+  return hashValue % 100;
+}
+
+// Helper function to check if user is eligible for segmented campaign
+function isUserEligibleForCampaign(
+  userId: string | undefined,
+  userCountry: string | undefined,
+  campaignId: number,
+  isSegmented: string | undefined,
+  targetCountries: string[] | null,
+  targetPercentage: number | null
+): boolean {
+  // If campaign is not segmented, all users are eligible
+  if (isSegmented !== 'true') {
+    return true;
+  }
+
+  // If segmented, both userId and userCountry are required
+  if (!userId || !userCountry) {
+    return false;
+  }
+
+  // Check country eligibility
+  if (targetCountries && targetCountries.length > 0) {
+    if (!targetCountries.includes(userCountry.toUpperCase())) {
+      return false;
+    }
+  }
+
+  // Check percentage eligibility
+  if (targetPercentage && targetPercentage < 100) {
+    const userHash = calculateUserSegmentHash(userId, campaignId);
+    if (userHash >= targetPercentage) {
+      return false;
+    }
+  }
+
+  return true;
 }
 
 // Export broadcastToCampaign function (will be set during registerRoutes)
@@ -1765,6 +1813,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const clientApp = (req as any).clientApp;
       const placement = req.query.placement as string;
       const campaignIdParam = req.query.campaignId as string | undefined;
+      const userId = req.query.userId as string | undefined;
+      const userCountry = req.query.userCountry as string | undefined;
       
       // Require campaignId for proper campaign-level scoping
       if (!campaignIdParam) {
@@ -1794,6 +1844,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       if (!channel || channel.clientAppId !== clientApp.id) {
         return res.status(403).json({ message: 'Campaign does not belong to this API key' });
+      }
+
+      // Check segmentation eligibility
+      if (!isUserEligibleForCampaign(
+        userId,
+        userCountry,
+        campaign.id,
+        campaign.isSegmented,
+        campaign.targetCountries,
+        campaign.targetPercentage
+      )) {
+        // User is not eligible - return empty offers
+        return res.json({
+          campaignId: campaign.id,
+          campaignName: campaign.name,
+          channelId: channel.id,
+          channelName: channel.name,
+          offers: []
+        });
       }
 
       // Check if campaign is active

@@ -5,6 +5,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Badge } from "@/components/ui/badge";
 import { 
   AlertDialog,
   AlertDialogAction,
@@ -16,7 +18,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { Settings, Trash2, Upload } from "lucide-react";
+import { Settings, Trash2, Upload, X } from "lucide-react";
 import { Campaign, UpdateCampaign } from "@shared/schema";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
@@ -27,6 +29,27 @@ interface SettingsTabProps {
   campaignId: number;
   campaign: Campaign;
 }
+
+const COUNTRY_OPTIONS = [
+  { code: 'US', name: 'United States' },
+  { code: 'MX', name: 'Mexico' },
+  { code: 'AR', name: 'Argentina' },
+  { code: 'CO', name: 'Colombia' },
+  { code: 'BR', name: 'Brazil' },
+  { code: 'ES', name: 'Spain' },
+  { code: 'CA', name: 'Canada' },
+  { code: 'DE', name: 'Germany' },
+  { code: 'FR', name: 'France' },
+  { code: 'GB', name: 'United Kingdom' },
+  { code: 'IT', name: 'Italy' },
+  { code: 'JP', name: 'Japan' },
+  { code: 'AU', name: 'Australia' },
+  { code: 'NZ', name: 'New Zealand' },
+  { code: 'SG', name: 'Singapore' },
+  { code: 'IN', name: 'India' },
+  { code: 'KR', name: 'South Korea' },
+  { code: 'CN', name: 'China' },
+];
 
 export function SettingsTab({ campaignId, campaign }: SettingsTabProps) {
   const { toast } = useToast();
@@ -40,6 +63,10 @@ export function SettingsTab({ campaignId, campaign }: SettingsTabProps) {
     campaign.endDate ? new Date(campaign.endDate).toISOString().slice(0, 16) : ''
   );
   const [logo, setLogo] = useState(campaign.logo || '');
+  const [isSegmented, setIsSegmented] = useState(campaign.isSegmented === 'true');
+  const [targetCountries, setTargetCountries] = useState<string[]>(campaign.targetCountries || []);
+  const [targetPercentage, setTargetPercentage] = useState<number>(campaign.targetPercentage || 100);
+  const [countrySearch, setCountrySearch] = useState('');
 
   const updateCampaignMutation = useMutation({
     mutationFn: async (data: UpdateCampaign) => {
@@ -113,6 +140,36 @@ export function SettingsTab({ campaignId, campaign }: SettingsTabProps) {
   const handleSaveLogo = () => {
     updateCampaignMutation.mutate({ logo });
   };
+
+  const handleSaveSegmentation = (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (isSegmented && targetCountries.length === 0) {
+      toast({
+        title: 'Validation Error',
+        description: 'Please select at least one country for segmentation',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    updateCampaignMutation.mutate({
+      isSegmented: isSegmented ? 'true' : 'false',
+      targetCountries: isSegmented ? targetCountries : null,
+      targetPercentage: isSegmented ? targetPercentage : null,
+    });
+  };
+
+  const toggleCountry = (code: string) => {
+    setTargetCountries(prev =>
+      prev.includes(code) ? prev.filter(c => c !== code) : [...prev, code]
+    );
+  };
+
+  const filteredCountries = COUNTRY_OPTIONS.filter(country =>
+    country.code.includes(countrySearch.toUpperCase()) ||
+    country.name.toLowerCase().includes(countrySearch.toLowerCase())
+  );
 
   return (
     <div className="space-y-6">
@@ -230,6 +287,121 @@ export function SettingsTab({ campaignId, campaign }: SettingsTabProps) {
           >
             {updateCampaignMutation.isPending ? 'Saving...' : 'Save Logo'}
           </Button>
+        </CardContent>
+      </Card>
+
+      {/* Targeting & Segmentation */}
+      <Card className="border-0">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Settings className="w-5 h-5" />
+            Targeting & Segmentation
+          </CardTitle>
+          <CardDescription>
+            Restrict campaign visibility by country and user percentage
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={handleSaveSegmentation} className="space-y-4">
+            <div className="flex items-center space-x-2">
+              <Checkbox
+                id="enable-segmentation"
+                checked={isSegmented}
+                onCheckedChange={(checked) => setIsSegmented(checked as boolean)}
+                data-testid="checkbox-enable-segmentation"
+              />
+              <Label htmlFor="enable-segmentation" className="cursor-pointer">
+                Enable segmentation for this campaign
+              </Label>
+            </div>
+
+            {isSegmented && (
+              <>
+                <div className="space-y-2">
+                  <Label>Target Countries</Label>
+                  <p className="text-xs text-muted-foreground">
+                    Select which countries can see this campaign
+                  </p>
+                  <Input
+                    placeholder="Search countries..."
+                    value={countrySearch}
+                    onChange={(e) => setCountrySearch(e.target.value)}
+                    data-testid="input-country-search"
+                  />
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mt-3 max-h-60 overflow-y-auto border rounded-lg p-3">
+                    {filteredCountries.map(country => (
+                      <label key={country.code} className="flex items-center space-x-2 cursor-pointer hover:bg-accent p-2 rounded">
+                        <Checkbox
+                          checked={targetCountries.includes(country.code)}
+                          onCheckedChange={() => toggleCountry(country.code)}
+                          data-testid={`checkbox-country-${country.code}`}
+                        />
+                        <span className="text-sm">{country.code}</span>
+                      </label>
+                    ))}
+                  </div>
+                  <div className="flex flex-wrap gap-2 mt-3">
+                    {targetCountries.map(code => {
+                      const country = COUNTRY_OPTIONS.find(c => c.code === code);
+                      return (
+                        <Badge key={code} variant="secondary" className="flex items-center gap-1" data-testid={`badge-country-${code}`}>
+                          {country?.name || code}
+                          <button
+                            type="button"
+                            onClick={() => toggleCountry(code)}
+                            className="hover:text-destructive"
+                          >
+                            <X className="w-3 h-3" />
+                          </button>
+                        </Badge>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="target-percentage">
+                    User Percentage: {targetPercentage}%
+                  </Label>
+                  <p className="text-xs text-muted-foreground">
+                    Only show this campaign to this percentage of users (deterministic by user ID)
+                  </p>
+                  <Input
+                    id="target-percentage"
+                    type="range"
+                    min="1"
+                    max="100"
+                    value={targetPercentage}
+                    onChange={(e) => setTargetPercentage(parseInt(e.target.value))}
+                    data-testid="input-target-percentage"
+                  />
+                  <div className="flex gap-2">
+                    <Input
+                      type="number"
+                      min="1"
+                      max="100"
+                      value={targetPercentage}
+                      onChange={(e) => {
+                        const val = parseInt(e.target.value);
+                        if (val >= 1 && val <= 100) setTargetPercentage(val);
+                      }}
+                      className="w-20"
+                      data-testid="input-percentage-number"
+                    />
+                    <span className="text-sm text-muted-foreground">%</span>
+                  </div>
+                </div>
+              </>
+            )}
+
+            <Button 
+              type="submit" 
+              disabled={updateCampaignMutation.isPending}
+              data-testid="button-save-segmentation"
+            >
+              {updateCampaignMutation.isPending ? 'Saving...' : 'Save Targeting Settings'}
+            </Button>
+          </form>
         </CardContent>
       </Card>
 
