@@ -45,6 +45,9 @@ export const campaigns = pgTable("campaigns", {
   reachuApiKey: text("reachu_api_key"),
   tipioLiveshowId: varchar("tipio_liveshow_id", { length: 255 }),
   tipioLivestreamData: json("tipio_livestream_data"),
+  isSegmented: varchar("is_segmented", { length: 10 }).notNull().default('false'),
+  targetCountries: text("target_countries").array(),
+  targetPercentage: integer("target_percentage"),
   createdAt: timestamp("created_at").defaultNow().notNull()
 });
 
@@ -199,7 +202,10 @@ export const insertCampaignSchema = createInsertSchema(campaigns).omit({
 // Update schema for campaign - accepts ISO date strings instead of Date objects
 export const updateCampaignSchema = insertCampaignSchema.partial().extend({
   startDate: z.string().datetime().nullable().optional(),
-  endDate: z.string().datetime().nullable().optional()
+  endDate: z.string().datetime().nullable().optional(),
+  targetCountries: z.array(z.string()).nullable().optional(),
+  targetPercentage: z.number().min(1).max(100).nullable().optional(),
+  isSegmented: z.string().optional()
 });
 
 export const insertEventSchema = createInsertSchema(events).omit({ 
