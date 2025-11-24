@@ -818,6 +818,46 @@ export function CampaignComponentConfigForm({
           </>
         );
 
+      case 'product_spotlight':
+        return (
+          <>
+            <div className="space-y-2">
+              <Label htmlFor="productId">Product ID *</Label>
+              <Input
+                id="productId"
+                value={config.productId || ''}
+                onChange={(e) => setConfig({ ...config, productId: e.target.value })}
+                placeholder="408841"
+                data-testid="input-productId"
+              />
+              <p className="text-xs text-muted-foreground">Reachu product ID. The SDK will fetch product details.</p>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="highlightText">Highlight Text (Optional)</Label>
+              <Input
+                id="highlightText"
+                value={config.highlightText || ''}
+                onChange={(e) => setConfig({ ...config, highlightText: e.target.value })}
+                placeholder="e.g., Featured Product"
+                data-testid="input-highlightText"
+              />
+              <p className="text-xs text-muted-foreground">Text to highlight the product</p>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="durationSeconds">Display Duration (seconds)</Label>
+              <Input
+                id="durationSeconds"
+                type="number"
+                min="1"
+                value={config.durationSeconds || 30}
+                onChange={(e) => setConfig({ ...config, durationSeconds: parseInt(e.target.value) || 30 })}
+                data-testid="input-durationSeconds"
+              />
+              <p className="text-xs text-muted-foreground">How long to display the product spotlight (default: 30s)</p>
+            </div>
+          </>
+        );
+
       case 'product_banner':
         return (
           <>
