@@ -348,7 +348,7 @@ export function ComponentsTab({ campaignId }: ComponentsTabProps) {
                       size="sm"
                       onClick={() => {
                         if (confirm('Are you sure you want to remove this component from the campaign?')) {
-                          removeComponentMutation.mutate(cc.componentId);
+                          removeComponentMutation.mutate(cc.id.toString());
                         }
                       }}
                       disabled={removeComponentMutation.isPending}

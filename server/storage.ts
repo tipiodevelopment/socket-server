@@ -444,11 +444,12 @@ export class MemStorage implements IStorage {
   }
 
   async removeComponentFromCampaign(campaignId: number, componentId: string): Promise<void> {
+    // componentId is actually the campaign component instance ID (from campaignComponents.id)
     await db.delete(campaignComponents)
       .where(
         and(
           eq(campaignComponents.campaignId, campaignId),
-          eq(campaignComponents.componentId, componentId)
+          eq(campaignComponents.id, parseInt(componentId))
         )
       );
   }
