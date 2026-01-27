@@ -127,3 +127,14 @@ The frontend uses React 18 with TypeScript and Vite, styled with Tailwind CSS, a
 ### Database
 - **Neon Serverless PostgreSQL:** Configured via `@neondatabase/serverless`.
 - **Drizzle Kit:** Migrations and schema management.
+
+## Pending Tasks
+
+### API Key Management UI (Pending)
+- **Description:** Add a section in the dashboard to view and manage API Keys for Client Apps
+- **Location:** Could be in Client Apps settings or a dedicated "API Keys" section
+- **Features needed:**
+  - Display API Key for each Client App (with copy button)
+  - Option to regenerate API Key
+  - Show which campaigns/channels use each API Key
+- **Context:** Currently API Keys are only accessible via database. SDK developers need easy access to configure their apps.
