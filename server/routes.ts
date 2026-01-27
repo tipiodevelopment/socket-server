@@ -1781,6 +1781,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const config = {
         campaignId: campaign.id,
         campaignName: campaign.name,
+        campaignLogo: campaign.logo ? toAbsoluteUrl(campaign.logo, req) : null,
         channelId: channel.id,
         channelName: channel.name,
         environment: dynamicConfig.environment || 'production',
@@ -1859,6 +1860,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.json({
           campaignId: campaign.id,
           campaignName: campaign.name,
+          campaignLogo: campaign.logo ? toAbsoluteUrl(campaign.logo, req) : null,
           channelId: channel.id,
           channelName: channel.name,
           offers: []
@@ -1870,6 +1872,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.json({ 
           campaignId: campaign.id,
           campaignName: campaign.name,
+          campaignLogo: campaign.logo ? toAbsoluteUrl(campaign.logo, req) : null,
           channelId: channel.id,
           channelName: channel.name,
           offers: [] 
@@ -1892,6 +1895,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json({
         campaignId: campaign.id,
         campaignName: campaign.name,
+        campaignLogo: campaign.logo ? toAbsoluteUrl(campaign.logo, req) : null,
         channelId: channel.id,
         channelName: channel.name,
         offers
