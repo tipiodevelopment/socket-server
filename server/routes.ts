@@ -846,6 +846,200 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Client Apps CRUD endpoints
+
+  // Get all client apps for a user
+  app.get('/api/client-apps', async (req, res) => {
+    try {
+      const userIdParam = req.query.userId as string | undefined;
+      
+      if (!userIdParam) {
+        return res.status(400).json({ 
+          message: 'userId query parameter is required' 
+        });
+      }
+      
+      const userId = parseInt(userIdParam);
+      if (isNaN(userId)) {
+        return res.status(400).json({ message: 'Invalid userId parameter' });
+      }
+      
+      const apps = await storage.getUserClientApps(userId);
+      res.json(apps);
+    } catch (error) {
+      console.error('Error fetching client apps:', error);
+      res.status(500).json({ message: 'Error fetching client apps' });
+    }
+  });
+
+  // Get single client app (requires userId for ownership verification)
+  app.get('/api/client-apps/:id', async (req, res) => {
+    try {
+      const userIdParam = req.query.userId as string | undefined;
+      if (!userIdParam) {
+        return res.status(400).json({ message: 'userId query parameter is required' });
+      }
+      const userId = parseInt(userIdParam);
+      if (isNaN(userId)) {
+        return res.status(400).json({ message: 'Invalid userId parameter' });
+      }
+      
+      const app = await storage.getClientApp(parseInt(req.params.id));
+      if (!app) {
+        return res.status(404).json({ message: 'Client app not found' });
+      }
+      
+      // Verify ownership
+      if (app.userId !== userId) {
+        return res.status(403).json({ message: 'Access denied' });
+      }
+      
+      res.json(app);
+    } catch (error) {
+      console.error('Error fetching client app:', error);
+      res.status(500).json({ message: 'Error fetching client app' });
+    }
+  });
+
+  // Create client app
+  app.post('/api/client-apps', async (req, res) => {
+    try {
+      const { userId, name, bundleId } = req.body;
+      
+      if (!userId || !name || !bundleId) {
+        return res.status(400).json({ 
+          message: 'userId, name, and bundleId are required' 
+        });
+      }
+      
+      if (typeof userId !== 'number' || isNaN(userId)) {
+        return res.status(400).json({ message: 'Invalid userId - must be a number' });
+      }
+      
+      // Generate a unique API key
+      const apiKey = `${name.toLowerCase().replace(/\s+/g, '_')}_api_key_${randomUUID().replace(/-/g, '').substring(0, 16)}`;
+      
+      const app = await storage.createClientApp({
+        userId,
+        name,
+        bundleId,
+        apiKey
+      });
+      res.status(201).json(app);
+    } catch (error) {
+      console.error('Error creating client app:', error);
+      res.status(400).json({ 
+        message: 'Error creating client app',
+        error: error instanceof Error ? error.message : String(error)
+      });
+    }
+  });
+
+  // Update client app (requires userId for ownership verification)
+  app.patch('/api/client-apps/:id', async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const { userId, ...updateData } = req.body;
+      
+      if (!userId) {
+        return res.status(400).json({ message: 'userId is required in request body' });
+      }
+      
+      const existingApp = await storage.getClientApp(id);
+      if (!existingApp) {
+        return res.status(404).json({ message: 'Client app not found' });
+      }
+      
+      // Verify ownership
+      if (existingApp.userId !== userId) {
+        return res.status(403).json({ message: 'Access denied' });
+      }
+      
+      const app = await storage.updateClientApp(id, updateData);
+      res.json(app);
+    } catch (error) {
+      console.error('Error updating client app:', error);
+      res.status(500).json({ message: 'Error updating client app' });
+    }
+  });
+
+  // Regenerate API key for client app (requires userId for ownership verification)
+  app.post('/api/client-apps/:id/regenerate-key', async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const { userId } = req.body;
+      
+      if (!userId) {
+        return res.status(400).json({ message: 'userId is required in request body' });
+      }
+      
+      const existingApp = await storage.getClientApp(id);
+      
+      if (!existingApp) {
+        return res.status(404).json({ message: 'Client app not found' });
+      }
+      
+      // Verify ownership
+      if (existingApp.userId !== userId) {
+        return res.status(403).json({ message: 'Access denied' });
+      }
+      
+      // Generate a new unique API key
+      const newApiKey = `${existingApp.name.toLowerCase().replace(/\s+/g, '_')}_api_key_${randomUUID().replace(/-/g, '').substring(0, 16)}`;
+      
+      const app = await storage.updateClientApp(id, { apiKey: newApiKey });
+      res.json(app);
+    } catch (error) {
+      console.error('Error regenerating API key:', error);
+      res.status(500).json({ message: 'Error regenerating API key' });
+    }
+  });
+
+  // Delete client app (requires userId for ownership verification)
+  app.delete('/api/client-apps/:id', async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const userIdParam = req.query.userId as string | undefined;
+      
+      if (!userIdParam) {
+        return res.status(400).json({ message: 'userId query parameter is required' });
+      }
+      const userId = parseInt(userIdParam);
+      if (isNaN(userId)) {
+        return res.status(400).json({ message: 'Invalid userId parameter' });
+      }
+      
+      const app = await storage.getClientApp(id);
+      
+      if (!app) {
+        return res.status(404).json({ message: 'Client app not found' });
+      }
+      
+      // Verify ownership
+      if (app.userId !== userId) {
+        return res.status(403).json({ message: 'Access denied' });
+      }
+      
+      await storage.deleteClientApp(id);
+      res.json({ message: 'Client app deleted successfully' });
+    } catch (error) {
+      console.error('Error deleting client app:', error);
+      res.status(500).json({ message: 'Error deleting client app' });
+    }
+  });
+
+  // Get channels for a client app
+  app.get('/api/client-apps/:id/channels', async (req, res) => {
+    try {
+      const appId = parseInt(req.params.id);
+      const channels = await storage.getClientAppChannels(appId);
+      res.json(channels);
+    } catch (error) {
+      console.error('Error fetching channels:', error);
+      res.status(500).json({ message: 'Error fetching channels' });
+    }
+  });
+
   // Campaign CRUD endpoints
   
   // Create campaign (requires userId for multi-tenant scoping)

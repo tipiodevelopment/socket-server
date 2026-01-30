@@ -13,6 +13,7 @@ import AdvancedCampaignPage from "@/pages/advanced-campaign";
 import ComponentsPage from "@/pages/components";
 import CampaignDashboard from "@/pages/campaign-dashboard";
 import UserSessionPage from "@/pages/user-session";
+import ClientAppsPage from "@/pages/client-apps";
 import NotFound from "@/pages/not-found";
 
 function Router() {
@@ -25,6 +26,7 @@ function Router() {
       <Route path="/" component={CampaignsPage} />
       <Route path="/campaigns" component={CampaignsPage} />
       <Route path="/campaigns/new" component={NewCampaignPage} />
+      <Route path="/client-apps" component={ClientAppsPage} />
       <Route path="/components" component={ComponentsPage} />
       
       {/* Campaign-specific routes - more specific routes first */}

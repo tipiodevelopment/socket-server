@@ -130,17 +130,19 @@ The frontend uses React 18 with TypeScript and Vite, styled with Tailwind CSS, a
 
 ## Pending Tasks
 
-### API Key Management UI (Pending)
-- **Description:** Add a section in the dashboard to view and manage API Keys for Client Apps
-- **Location:** Could be in Client Apps settings or a dedicated "API Keys" section
-- **Features needed:**
+### API Key Management UI (Completed - Jan 2026)
+- **Description:** Added Client Apps page at `/client-apps` to view and manage API Keys
+- **Location:** `/client-apps` page accessible from user session and campaigns pages
+- **Features implemented:**
   - Display API Key for each Client App (with copy button)
-  - Option to regenerate API Key
-  - Show which campaigns/channels use each API Key
-- **Context:** Currently API Keys are only accessible via database. SDK developers need easy access to configure their apps.
+  - Toggle API Key visibility (show/hide)
+  - Regenerate API Key with confirmation dialog
+  - Create new Client Apps
+  - Delete Client Apps
+  - SDK configuration example code snippet
+- **API Endpoints:** GET/POST `/api/client-apps`, PATCH/DELETE `/api/client-apps/:id`, POST `/api/client-apps/:id/regenerate-key`
 
-### Campaign Logo Upload on Creation (Pending)
-- **Description:** Allow uploading campaign logo during campaign creation, not just in Settings afterward
-- **Current behavior:** Logo can only be uploaded after campaign is created, via Settings tab
-- **Expected behavior:** Add logo upload field to the "Create Campaign" form/dialog
-- **Location:** Campaign creation modal/form (wherever new campaigns are created)
+### Campaign Logo Upload on Creation (Completed - Jan 2026)
+- **Description:** Added image upload component to campaign creation form
+- **Location:** `/campaigns/new` page - uses `ImageUploadWithPreview` component
+- **Features:** Upload from file or paste URL, preview, remove uploaded image

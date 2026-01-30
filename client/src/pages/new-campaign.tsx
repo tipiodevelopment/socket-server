@@ -12,6 +12,7 @@ import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import type { Campaign, ReachuChannel, TipioLivestream } from '@shared/schema';
 import { ArrowLeft, Rocket, ShoppingBag, Radio } from 'lucide-react';
+import { ImageUploadWithPreview } from '@/components/ImageUploadWithPreview';
 
 const USER_SESSION_KEY = "reachu_simulated_user_id";
 
@@ -189,14 +190,12 @@ export default function NewCampaignPage() {
                 </div>
 
                 <div>
-                  <Label htmlFor="logo">Logo URL</Label>
-                  <Input
-                    id="logo"
+                  <ImageUploadWithPreview
+                    label="Campaign Logo"
                     value={formData.logo}
-                    onChange={(e) => setFormData({ ...formData, logo: e.target.value })}
+                    onChange={(url) => setFormData({ ...formData, logo: url })}
                     placeholder="https://example.com/logo.png"
-                    data-testid="input-campaign-logo"
-                    className="border-0 mt-2"
+                    testId="input-campaign-logo"
                   />
                   <p className="text-sm text-muted-foreground mt-1">
                     Optional: Add a logo to display on all events
