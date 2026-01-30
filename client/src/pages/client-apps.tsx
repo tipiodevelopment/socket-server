@@ -62,6 +62,7 @@ export default function ClientAppsPage() {
   const [expandedApps, setExpandedApps] = useState<Set<number>>(new Set());
   const [visibleApiKeys, setVisibleApiKeys] = useState<Set<number>>(new Set());
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const [editingReachuKey, setEditingReachuKey] = useState<Record<number, string>>({});
 
   const form = useForm<CreateClientAppForm>({
     resolver: zodResolver(createClientAppSchema),
@@ -156,6 +157,30 @@ export default function ClientAppsPage() {
       toast({
         title: 'Error',
         description: 'Failed to delete client app',
+        variant: 'destructive',
+      });
+    }
+  });
+
+  const updateReachuKeyMutation = useMutation({
+    mutationFn: async ({ id, reachuApiKey }: { id: number; reachuApiKey: string }) => {
+      const response = await apiRequest('PATCH', `/api/client-apps/${id}`, { 
+        userId: currentUserId,
+        reachuApiKey 
+      });
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/client-apps', currentUserId] });
+      toast({
+        title: 'Reachu API Key Updated',
+        description: 'The Reachu API key has been saved.',
+      });
+    },
+    onError: () => {
+      toast({
+        title: 'Error',
+        description: 'Failed to update Reachu API key',
         variant: 'destructive',
       });
     }
@@ -464,6 +489,35 @@ ReachuSDK.configure(
     environment: .production
 )`}
                           </pre>
+                        </div>
+                      </div>
+
+                      <div className="pt-4 border-t border-white/10">
+                        <Label className="text-muted-foreground text-sm">Reachu API Key</Label>
+                        <p className="text-xs text-muted-foreground mt-1 mb-2">
+                          External API key for Reachu integration (optional)
+                        </p>
+                        <div className="flex items-center gap-2 mt-1">
+                          <Input
+                            placeholder="Enter Reachu API key..."
+                            value={editingReachuKey[app.id] ?? app.reachuApiKey ?? ''}
+                            onChange={(e) => setEditingReachuKey(prev => ({ ...prev, [app.id]: e.target.value }))}
+                            className="flex-1 font-mono text-sm"
+                            data-testid={`input-reachu-key-${app.id}`}
+                          />
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="shrink-0"
+                            disabled={updateReachuKeyMutation.isPending}
+                            onClick={() => {
+                              const key = editingReachuKey[app.id] ?? app.reachuApiKey ?? '';
+                              updateReachuKeyMutation.mutate({ id: app.id, reachuApiKey: key });
+                            }}
+                            data-testid={`button-save-reachu-key-${app.id}`}
+                          >
+                            {updateReachuKeyMutation.isPending ? 'Saving...' : 'Save'}
+                          </Button>
                         </div>
                       </div>
 
