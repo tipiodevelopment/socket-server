@@ -138,3 +138,9 @@ The frontend uses React 18 with TypeScript and Vite, styled with Tailwind CSS, a
   - Option to regenerate API Key
   - Show which campaigns/channels use each API Key
 - **Context:** Currently API Keys are only accessible via database. SDK developers need easy access to configure their apps.
+
+### Campaign Logo Upload on Creation (Pending)
+- **Description:** Allow uploading campaign logo during campaign creation, not just in Settings afterward
+- **Current behavior:** Logo can only be uploaded after campaign is created, via Settings tab
+- **Expected behavior:** Add logo upload field to the "Create Campaign" form/dialog
+- **Location:** Campaign creation modal/form (wherever new campaigns are created)
