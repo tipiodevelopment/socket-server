@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -18,8 +18,9 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { Settings, Trash2, Upload, X } from "lucide-react";
-import { Campaign, UpdateCampaign } from "@shared/schema";
+import { Settings, Trash2, Upload, X, Link } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Campaign, UpdateCampaign, Channel } from "@shared/schema";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { ImageUploadWithPreview } from "@/components/ImageUploadWithPreview";
@@ -68,6 +69,11 @@ export function SettingsTab({ campaignId, campaign }: SettingsTabProps) {
   const [targetCountries, setTargetCountries] = useState<string[]>(campaign.targetCountries || []);
   const [targetPercentage, setTargetPercentage] = useState<number>(campaign.targetPercentage || 100);
   const [countrySearch, setCountrySearch] = useState('');
+  const [channelId, setChannelId] = useState<number | null>(campaign.channelId || null);
+
+  const { data: channels = [] } = useQuery<Channel[]>({
+    queryKey: ['/api/channels', { userId: campaign.userId }],
+  });
 
   const updateCampaignMutation = useMutation({
     mutationFn: async (data: UpdateCampaign) => {
@@ -140,6 +146,10 @@ export function SettingsTab({ campaignId, campaign }: SettingsTabProps) {
 
   const handleSaveLogo = () => {
     updateCampaignMutation.mutate({ logo });
+  };
+
+  const handleSaveChannel = () => {
+    updateCampaignMutation.mutate({ channelId });
   };
 
   const handleSaveSegmentation = (e: React.FormEvent) => {
@@ -217,6 +227,51 @@ export function SettingsTab({ campaignId, campaign }: SettingsTabProps) {
               {updateCampaignMutation.isPending ? 'Saving...' : 'Save Changes'}
             </Button>
           </form>
+        </CardContent>
+      </Card>
+
+      {/* Channel Assignment */}
+      <Card className="border-0">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Link className="w-5 h-5" />
+            Channel Assignment
+          </CardTitle>
+          <CardDescription>
+            Assign this campaign to a channel to enable SDK integration and get an API key
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="channel-select">Channel</Label>
+            <Select
+              value={channelId?.toString() || ""}
+              onValueChange={(value) => setChannelId(value ? parseInt(value) : null)}
+            >
+              <SelectTrigger id="channel-select" data-testid="select-channel">
+                <SelectValue placeholder="Select a channel" />
+              </SelectTrigger>
+              <SelectContent>
+                {channels.map((channel) => (
+                  <SelectItem key={channel.id} value={channel.id.toString()}>
+                    {channel.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {!channelId && (
+              <p className="text-sm text-amber-600">
+                This campaign needs a channel to work with the SDK endpoints
+              </p>
+            )}
+          </div>
+          <Button 
+            onClick={handleSaveChannel}
+            disabled={updateCampaignMutation.isPending}
+            data-testid="button-save-channel"
+          >
+            {updateCampaignMutation.isPending ? 'Saving...' : 'Save Channel'}
+          </Button>
         </CardContent>
       </Card>
 
