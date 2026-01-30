@@ -1150,6 +1150,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (updateData.endDate !== undefined) {
         updateData.endDate = updateData.endDate ? new Date(updateData.endDate) : null;
       }
+      if (updateData.matchStartTime !== undefined) {
+        updateData.matchStartTime = updateData.matchStartTime ? new Date(updateData.matchStartTime) : null;
+      }
       
       const campaign = await storage.updateCampaign(parseInt(req.params.id), updateData);
       if (!campaign) {
