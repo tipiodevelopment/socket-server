@@ -49,6 +49,9 @@ export const campaigns = pgTable("campaigns", {
   isSegmented: varchar("is_segmented", { length: 10 }).notNull().default('false'),
   targetCountries: text("target_countries").array(),
   targetPercentage: integer("target_percentage"),
+  matchId: varchar("match_id", { length: 255 }),
+  matchName: varchar("match_name", { length: 255 }),
+  matchStartTime: timestamp("match_start_time"),
   createdAt: timestamp("created_at").defaultNow().notNull()
 });
 
@@ -103,6 +106,7 @@ export const campaignComponents = pgTable("campaign_components", {
   scheduledTime: timestamp("scheduled_time"), // Optional: auto-activate at this time (null = manual toggle only)
   endTime: timestamp("end_time"), // Optional: auto-deactivate at this time (null = no end)
   activatedAt: timestamp("activated_at"),
+  matchId: varchar("match_id", { length: 255 }), // Optional: Associate component with specific match
   updatedAt: timestamp("updated_at").defaultNow().notNull()
 });
 
@@ -206,7 +210,10 @@ export const updateCampaignSchema = insertCampaignSchema.partial().extend({
   endDate: z.string().datetime().nullable().optional(),
   targetCountries: z.array(z.string()).nullable().optional(),
   targetPercentage: z.number().min(1).max(100).nullable().optional(),
-  isSegmented: z.string().optional()
+  isSegmented: z.string().optional(),
+  matchId: z.string().nullable().optional(),
+  matchName: z.string().nullable().optional(),
+  matchStartTime: z.string().datetime().nullable().optional()
 });
 
 export const insertEventSchema = createInsertSchema(events).omit({ 
