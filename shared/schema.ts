@@ -19,6 +19,7 @@ export const clientApps = pgTable("client_apps", {
   name: varchar("name", { length: 255 }).notNull(),
   bundleId: varchar("bundle_id", { length: 255 }).notNull().unique(),
   apiKey: text("api_key").notNull().unique(),
+  reachuApiKey: text("reachu_api_key"),
   createdAt: timestamp("created_at").defaultNow().notNull()
 });
 

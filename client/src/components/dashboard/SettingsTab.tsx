@@ -72,7 +72,7 @@ export function SettingsTab({ campaignId, campaign }: SettingsTabProps) {
   const [channelId, setChannelId] = useState<number | null>(campaign.channelId || null);
 
   const { data: channels = [] } = useQuery<Channel[]>({
-    queryKey: ['/api/channels', { userId: campaign.userId }],
+    queryKey: [`/api/channels?userId=${campaign.userId}`],
   });
 
   const updateCampaignMutation = useMutation({

@@ -1040,6 +1040,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Get all channels for a user (across all their client apps)
+  app.get('/api/channels', async (req, res) => {
+    try {
+      const userIdParam = req.query.userId as string | undefined;
+      
+      if (!userIdParam) {
+        return res.status(400).json({ 
+          message: 'userId query parameter is required' 
+        });
+      }
+      
+      const userId = parseInt(userIdParam);
+      if (isNaN(userId)) {
+        return res.status(400).json({ message: 'Invalid userId' });
+      }
+      
+      const channels = await storage.getUserChannels(userId);
+      res.json(channels);
+    } catch (error) {
+      console.error('Error fetching user channels:', error);
+      res.status(500).json({ message: 'Error fetching channels' });
+    }
+  });
+
   // Campaign CRUD endpoints
   
   // Create campaign (requires userId for multi-tenant scoping)

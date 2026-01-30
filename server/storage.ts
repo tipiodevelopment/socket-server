@@ -27,6 +27,7 @@ export interface IStorage {
   createChannel(channel: InsertChannel): Promise<Channel>;
   getChannel(id: number): Promise<Channel | undefined>;
   getClientAppChannels(clientAppId: number): Promise<Channel[]>;
+  getUserChannels(userId: number): Promise<Channel[]>;
   getAllChannels(): Promise<Channel[]>;
   updateChannel(id: number, channel: Partial<InsertChannel>): Promise<Channel | undefined>;
   deleteChannel(id: number): Promise<void>;
@@ -170,6 +171,17 @@ export class MemStorage implements IStorage {
     return await db.select().from(channels)
       .where(eq(channels.clientAppId, clientAppId))
       .orderBy(desc(channels.createdAt));
+  }
+
+  async getUserChannels(userId: number): Promise<Channel[]> {
+    const userApps = await db.select().from(clientApps)
+      .where(eq(clientApps.userId, userId));
+    const appIds = userApps.map(app => app.id);
+    if (appIds.length === 0) return [];
+    
+    const results = await db.select().from(channels)
+      .orderBy(desc(channels.createdAt));
+    return results.filter(ch => appIds.includes(ch.clientAppId));
   }
 
   async getAllChannels(): Promise<Channel[]> {
