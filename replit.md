@@ -77,20 +77,30 @@ The frontend uses React 18 with TypeScript and Vite, styled with Tailwind CSS, a
     - `Users`: Stores user info (id, reachuUserId, email?, name?). Represents agencies/brands managing multiple apps.
     - `Client Apps`: Mobile/web applications owned by users (id, userId, name, bundleId, apiKey). Example: "XXL", "VG", "Pregnancy App".
     - `Channels`: Marketing channels within client apps (id, clientAppId, name, description). Example: "XXL Home", "XXL Category".
-    - `Campaigns`: Event campaigns within channels (id, channelId, userId, name, scheduling, pause state). Links to Components and Events.
+    - `Campaigns`: Event campaigns within channels (id, channelId, userId, name, scheduling, pause state, matchId, matchName, matchStartTime). Links to Components and Events.
     - `Components`: Reusable UI component library with `isTemplate` flag.
-    - `Campaign Components`: Links `Components` to `Campaigns`, managing activation status, scheduled times, `instanceName`, and `customConfig`.
+    - `Campaign Components`: Links `Components` to `Campaigns`, managing activation status, scheduled times, `instanceName`, `customConfig`, and `matchId`.
     
 - **SDK Integration Endpoints:**
+    - **GET /v1/sdk/campaigns:** Auto-discovery endpoint to find all active campaigns for a client app
+      - **Authentication:** Supports both `apiKey` query param and `X-App-Bundle-ID` header (prioritizes bundle ID)
+      - **Filtering:** Optional `matchId` query param to filter campaigns by match association
+      - **Response:** Returns array of active campaigns with components and matchContext
     - **GET /v1/sdk/config?apiKey=xxx&campaignId=yyy:** Returns campaign config (components, deeplinks, branding) for Swift SDK
+      - **matchContext:** Optional object with matchId, matchName, startTime when campaign is associated with a match
     - **GET /v1/offers?apiKey=xxx&campaignId=yyy&userId=user123&userCountry=MX:** Returns active product offers filtered by user targeting
-    - **Authentication:** API key-based authentication via `client_apps.api_key`
+      - **matchContext:** Included per-offer when component has matchId, plus campaign-level matchContext
+    - **Authentication:** API key-based authentication via `client_apps.api_key` or `X-App-Bundle-ID` header
     - **Scoping:** Campaign-level scoping (backend automatically resolves channel from campaignId)
     - **Targeting Parameters (Optional):**
       - `userId` (string): Unique user identifier for deterministic segmentation
       - `userCountry` (string): ISO country code (e.g., 'MX', 'US') for geographic targeting
     - **Response Format:** Includes campaignId, campaignName, channelId, channelName for client-side routing; offers array filtered by user eligibility
     - **HTTPS URLs:** All asset URLs (logos, images) enforced as HTTPS for iOS security requirements
+    - **Match Context Support (Jan 2026):** Campaigns and components can be associated with external matches (sports events)
+      - **Database Fields:** matchId, matchName, matchStartTime on campaigns; matchId on campaign_components
+      - **WebSocket Events:** campaign_started, component_status_changed, component_config_updated now include optional matchId
+      - **Dashboard UI:** "Match Context" section in Campaign Settings with fields for Match ID, Match Name, Match Start Time
 - **Page Structure:**
     - **Campaigns Page:** Lists all campaigns.
     - **Campaign Dashboard:** Unified command center with tabs for Overview (campaign control, stats, saved events, create new event), Events (broadcasting interface), Scheduled (timeline), Components (management), Integrations (view only), and Settings.
