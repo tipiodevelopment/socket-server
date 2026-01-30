@@ -1958,6 +1958,124 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   };
 
+  // GET /v1/sdk/campaigns - Auto-Discovery endpoint
+  // Discovers all active campaigns using API key or Bundle ID
+  app.get('/v1/sdk/campaigns', async (req, res) => {
+    try {
+      // Priority 1: Identification by X-App-Bundle-ID header
+      const bundleId = req.headers['x-app-bundle-id'] as string;
+      // Priority 2: API key in query parameter (backward compatibility)
+      const apiKey = req.query.apiKey as string || req.headers['x-api-key'] as string;
+      
+      let clientApp;
+      
+      if (bundleId) {
+        clientApp = await storage.getClientAppByBundleId(bundleId);
+        if (!clientApp) {
+          return res.status(401).json({ message: 'Bundle ID not found' });
+        }
+      } else if (apiKey) {
+        clientApp = await storage.getClientAppByApiKey(apiKey);
+        if (!clientApp) {
+          return res.status(401).json({ message: 'Invalid API key' });
+        }
+      } else {
+        return res.status(401).json({ message: 'API key or X-App-Bundle-ID header required' });
+      }
+
+      const matchIdFilter = req.query.matchId as string | undefined;
+      const now = new Date();
+
+      // Get all channels for this client app
+      const channels = await storage.getClientAppChannels(clientApp.id);
+      
+      // Get all campaigns for each channel
+      const allCampaigns: any[] = [];
+      
+      for (const channel of channels) {
+        const channelCampaigns = await storage.getChannelCampaigns(channel.id);
+        
+        for (const campaign of channelCampaigns) {
+          // Filter by matchId if provided
+          if (matchIdFilter && campaign.matchId !== matchIdFilter) {
+            continue;
+          }
+
+          // Check if campaign is active
+          const isPaused = campaign.isPaused === 'true';
+          const startDate = campaign.startDate ? new Date(campaign.startDate) : null;
+          const endDate = campaign.endDate ? new Date(campaign.endDate) : null;
+          
+          const isWithinDates = (!startDate || startDate <= now) && (!endDate || endDate >= now);
+          const isActive = !isPaused && isWithinDates;
+
+          if (!isActive) {
+            continue;
+          }
+
+          // Get active components for this campaign
+          const components = await storage.getCampaignComponents(campaign.id);
+          const activeComponents = components
+            .filter(c => c.status === 'active')
+            .map(cc => {
+              const component: any = {
+                id: cc.componentId,
+                type: cc.component.type,
+                name: cc.instanceName || cc.component.name,
+                config: normalizeUrls(cc.customConfig || cc.component.config, req.protocol, req.get('host')),
+                status: cc.status
+              };
+
+              // Include matchContext if component has matchId
+              if (cc.matchId) {
+                component.matchContext = {
+                  matchId: cc.matchId
+                };
+              }
+
+              return component;
+            });
+
+          const campaignData: any = {
+            campaignId: campaign.id,
+            campaignName: campaign.name,
+            campaignLogo: campaign.logo ? toAbsoluteUrl(campaign.logo, req) : null,
+            isActive: true,
+            startDate: campaign.startDate,
+            endDate: campaign.endDate,
+            isPaused: isPaused,
+            components: activeComponents
+          };
+
+          // Include matchContext if campaign has matchId
+          if (campaign.matchId) {
+            campaignData.matchContext = {
+              matchId: campaign.matchId,
+              matchName: campaign.matchName || null,
+              startTime: campaign.matchStartTime ? campaign.matchStartTime.toISOString() : null,
+              channelId: campaign.channelId
+            };
+          }
+
+          allCampaigns.push(campaignData);
+        }
+      }
+
+      // Sort by startDate (most recent first)
+      allCampaigns.sort((a, b) => {
+        if (!a.startDate && !b.startDate) return 0;
+        if (!a.startDate) return 1;
+        if (!b.startDate) return -1;
+        return new Date(b.startDate).getTime() - new Date(a.startDate).getTime();
+      });
+
+      res.json({ campaigns: allCampaigns });
+    } catch (error) {
+      console.error('Error fetching SDK campaigns:', error);
+      res.status(500).json({ message: 'Error fetching SDK campaigns' });
+    }
+  });
+
   // GET /v1/sdk/config - Get dynamic SDK configuration
   app.get('/v1/sdk/config', validateApiKey, async (req, res) => {
     try {

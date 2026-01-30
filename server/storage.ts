@@ -18,6 +18,7 @@ export interface IStorage {
   createClientApp(clientApp: InsertClientApp): Promise<ClientApp>;
   getClientApp(id: number): Promise<ClientApp | undefined>;
   getClientAppByApiKey(apiKey: string): Promise<ClientApp | undefined>;
+  getClientAppByBundleId(bundleId: string): Promise<ClientApp | undefined>;
   getUserClientApps(userId: number): Promise<ClientApp[]>;
   getAllClientApps(): Promise<ClientApp[]>;
   updateClientApp(id: number, clientApp: Partial<InsertClientApp>): Promise<ClientApp | undefined>;
@@ -131,6 +132,11 @@ export class MemStorage implements IStorage {
 
   async getClientAppByApiKey(apiKey: string): Promise<ClientApp | undefined> {
     const [clientApp] = await db.select().from(clientApps).where(eq(clientApps.apiKey, apiKey));
+    return clientApp || undefined;
+  }
+
+  async getClientAppByBundleId(bundleId: string): Promise<ClientApp | undefined> {
+    const [clientApp] = await db.select().from(clientApps).where(eq(clientApps.bundleId, bundleId));
     return clientApp || undefined;
   }
 
