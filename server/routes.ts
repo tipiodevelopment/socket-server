@@ -1996,7 +1996,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const dynamicConfig = channel.dynamicConfig as any || {};
 
-      const config = {
+      const config: any = {
         campaignId: campaign.id,
         campaignName: campaign.name,
         campaignLogo: campaign.logo ? toAbsoluteUrl(campaign.logo, req) : null,
@@ -2018,6 +2018,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
           enableGuestCheckout: true
         }
       };
+
+      // Include matchContext if campaign is associated with a match
+      if (campaign.matchId) {
+        config.matchContext = {
+          matchId: campaign.matchId,
+          matchName: campaign.matchName || null,
+          startTime: campaign.matchStartTime ? campaign.matchStartTime.toISOString() : null,
+          channelId: campaign.channelId,
+          metadata: {}
+        };
+      }
 
       res.json(config);
     } catch (error) {
@@ -2101,23 +2112,50 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const components = await storage.getCampaignComponents(campaign.id);
       const activeComponents = components.filter(c => c.status === 'active');
 
-      // Transform components to offers format
-      const offers = activeComponents.map(cc => ({
-        id: cc.componentId,
-        type: cc.component.type,
-        name: cc.instanceName || cc.component.name,
-        config: normalizeUrls(cc.customConfig || cc.component.config, req.protocol, req.get('host')),
-        placement: placement || 'default'
-      }));
+      // Transform components to offers format with optional matchContext
+      const offers = activeComponents.map(cc => {
+        const offer: any = {
+          id: cc.componentId,
+          type: cc.component.type,
+          name: cc.instanceName || cc.component.name,
+          config: normalizeUrls(cc.customConfig || cc.component.config, req.protocol, req.get('host')),
+          placement: placement || 'default'
+        };
 
-      res.json({
+        // Include matchContext if component is associated with a specific match
+        if (cc.matchId) {
+          offer.matchContext = {
+            matchId: cc.matchId,
+            matchName: campaign.matchName || null,
+            startTime: campaign.matchStartTime ? campaign.matchStartTime.toISOString() : null,
+            channelId: campaign.channelId
+          };
+        }
+
+        return offer;
+      });
+
+      const response: any = {
         campaignId: campaign.id,
         campaignName: campaign.name,
         campaignLogo: campaign.logo ? toAbsoluteUrl(campaign.logo, req) : null,
         channelId: channel.id,
         channelName: channel.name,
         offers
-      });
+      };
+
+      // Include campaign-level matchContext if available
+      if (campaign.matchId) {
+        response.matchContext = {
+          matchId: campaign.matchId,
+          matchName: campaign.matchName || null,
+          startTime: campaign.matchStartTime ? campaign.matchStartTime.toISOString() : null,
+          channelId: campaign.channelId,
+          metadata: {}
+        };
+      }
+
+      res.json(response);
     } catch (error) {
       console.error('Error fetching offers:', error);
       res.status(500).json({ message: 'Error fetching offers' });
