@@ -18,7 +18,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { Settings, Trash2, Upload, X, Link } from "lucide-react";
+import { Settings, Trash2, Upload, X, Link, Calendar } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Campaign, UpdateCampaign, Channel } from "@shared/schema";
 import { useToast } from "@/hooks/use-toast";
@@ -70,6 +70,11 @@ export function SettingsTab({ campaignId, campaign }: SettingsTabProps) {
   const [targetPercentage, setTargetPercentage] = useState<number>(campaign.targetPercentage || 100);
   const [countrySearch, setCountrySearch] = useState('');
   const [channelId, setChannelId] = useState<number | null>(campaign.channelId || null);
+  const [matchId, setMatchId] = useState(campaign.matchId || '');
+  const [matchName, setMatchName] = useState(campaign.matchName || '');
+  const [matchStartTime, setMatchStartTime] = useState(
+    campaign.matchStartTime ? new Date(campaign.matchStartTime).toISOString().slice(0, 16) : ''
+  );
 
   const { data: channels = [] } = useQuery<Channel[]>({
     queryKey: [`/api/channels?userId=${campaign.userId}`],
@@ -150,6 +155,26 @@ export function SettingsTab({ campaignId, campaign }: SettingsTabProps) {
 
   const handleSaveChannel = () => {
     updateCampaignMutation.mutate({ channelId });
+  };
+
+  const handleSaveMatchContext = (e: React.FormEvent) => {
+    e.preventDefault();
+    updateCampaignMutation.mutate({
+      matchId: matchId || null,
+      matchName: matchName || null,
+      matchStartTime: matchStartTime ? new Date(matchStartTime).toISOString() : null,
+    });
+  };
+
+  const handleClearMatchContext = () => {
+    setMatchId('');
+    setMatchName('');
+    setMatchStartTime('');
+    updateCampaignMutation.mutate({
+      matchId: null,
+      matchName: null,
+      matchStartTime: null,
+    });
   };
 
   const handleSaveSegmentation = (e: React.FormEvent) => {
@@ -343,6 +368,76 @@ export function SettingsTab({ campaignId, campaign }: SettingsTabProps) {
           >
             {updateCampaignMutation.isPending ? 'Saving...' : 'Save Logo'}
           </Button>
+        </CardContent>
+      </Card>
+
+      {/* Match Context */}
+      <Card className="border-0">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Calendar className="w-5 h-5" />
+            Match Context
+          </CardTitle>
+          <CardDescription>
+            Associate this campaign with a specific match or event for context-aware targeting
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={handleSaveMatchContext} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="match-id">Match ID</Label>
+              <Input
+                id="match-id"
+                value={matchId}
+                onChange={(e) => setMatchId(e.target.value)}
+                placeholder="Enter external match identifier (e.g., match-123)"
+                data-testid="input-match-id"
+              />
+              <p className="text-xs text-muted-foreground">
+                External identifier to link this campaign to a specific match
+              </p>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="match-name">Match Name</Label>
+              <Input
+                id="match-name"
+                value={matchName}
+                onChange={(e) => setMatchName(e.target.value)}
+                placeholder="Enter match name (e.g., Team A vs Team B)"
+                data-testid="input-match-name"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="match-start-time">Match Start Time</Label>
+              <Input
+                id="match-start-time"
+                type="datetime-local"
+                value={matchStartTime}
+                onChange={(e) => setMatchStartTime(e.target.value)}
+                data-testid="input-match-start-time"
+              />
+            </div>
+            <div className="flex gap-2">
+              <Button 
+                type="submit" 
+                disabled={updateCampaignMutation.isPending}
+                data-testid="button-save-match-context"
+              >
+                {updateCampaignMutation.isPending ? 'Saving...' : 'Save Match Context'}
+              </Button>
+              {(matchId || matchName || matchStartTime) && (
+                <Button 
+                  type="button"
+                  variant="outline"
+                  onClick={handleClearMatchContext}
+                  disabled={updateCampaignMutation.isPending}
+                  data-testid="button-clear-match-context"
+                >
+                  Clear Match Context
+                </Button>
+              )}
+            </div>
+          </form>
         </CardContent>
       </Card>
 
