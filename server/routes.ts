@@ -304,12 +304,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
           const timeDiff = now.getTime() - startDate.getTime();
           if (timeDiff >= 0 && timeDiff < 60000) {
             // Campaign just started, broadcast to all connected clients
-            broadcastToCampaignImpl(campaign.id, JSON.stringify({
+            const event: any = {
               type: 'campaign_started',
               campaignId: campaign.id,
               startDate: campaign.startDate,
               endDate: campaign.endDate
-            }));
+            };
+            // Include matchId if campaign is associated with a match
+            if (campaign.matchId) {
+              event.matchId = campaign.matchId;
+            }
+            broadcastToCampaignImpl(campaign.id, JSON.stringify(event));
             console.log(`Campaign ${campaign.id} (${campaign.name}) has started`);
           }
         }
@@ -1636,7 +1641,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const isUsed = campaignComponents.some(cc => cc.componentId === req.params.id);
         
         if (isUsed) {
-          broadcastToCampaignImpl(campaign.id, JSON.stringify({
+          const campaignComponent = campaignComponents.find(cc => cc.componentId === req.params.id);
+          const event: any = {
             type: 'component_config_updated',
             campaignId: campaign.id,
             componentId: req.params.id,
@@ -1644,9 +1650,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
               id: component.id,
               type: component.type,
               name: component.name,
-              config: normalizeUrls(updates.config || component.config, req.protocol, req.get('host')) // Normalize URLs to absolute
+              config: normalizeUrls(updates.config || component.config, req.protocol, req.get('host'))
             }
-          }));
+          };
+          // Include matchId if component or campaign is associated with a match
+          if (campaignComponent?.matchId) {
+            event.matchId = campaignComponent.matchId;
+          } else if (campaign.matchId) {
+            event.matchId = campaign.matchId;
+          }
+          broadcastToCampaignImpl(campaign.id, JSON.stringify(event));
         }
       }
       
@@ -1825,8 +1838,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         // Get full component details for broadcast
         const fullComponent = await storage.getComponentById(componentId);
         
-        // Broadcast status change via WebSocket with complete component data
-        broadcastToCampaignImpl(campaignId, JSON.stringify({
+        // Build event with optional matchId
+        const event: any = {
           type: 'component_status_changed',
           campaignId,
           componentId,
@@ -1835,10 +1848,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
             id: fullComponent.id,
             type: fullComponent.type,
             name: fullComponent.name,
-            // Use campaign-specific customConfig if available, otherwise use component's default config
             config: normalizeUrls(updated.customConfig || fullComponent.config, req.protocol, req.get('host'))
           } : null
-        }));
+        };
+        // Include matchId if component or campaign is associated with a match
+        if (updated.matchId) {
+          event.matchId = updated.matchId;
+        } else if (campaign.matchId) {
+          event.matchId = campaign.matchId;
+        }
+        broadcastToCampaignImpl(campaignId, JSON.stringify(event));
       }
       
       res.json(updated);
@@ -1873,10 +1892,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const fullComponent = await storage.getComponentById(componentId);
         
         // Broadcast config update via WebSocket
-        // Use customConfig if set, otherwise fall back to component's default config
         const effectiveConfig = updated.customConfig || fullComponent?.config;
         
-        broadcastToCampaignImpl(campaignId, JSON.stringify({
+        const event: any = {
           type: 'component_config_updated',
           campaignId,
           componentId,
@@ -1886,7 +1904,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
             name: fullComponent.name,
             config: normalizeUrls(effectiveConfig, req.protocol, req.get('host'))
           } : null
-        }));
+        };
+        // Include matchId if component or campaign is associated with a match
+        if (updated.matchId) {
+          event.matchId = updated.matchId;
+        } else if (campaign.matchId) {
+          event.matchId = campaign.matchId;
+        }
+        broadcastToCampaignImpl(campaignId, JSON.stringify(event));
       }
       
       res.json(updated);
