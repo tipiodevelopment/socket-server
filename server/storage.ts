@@ -1,7 +1,7 @@
-import { WebSocketEvent, Campaign, InsertCampaign, Event, InsertEvent, CampaignFormState, InsertFormState, ScheduledComponent, InsertScheduledComponent, Component, InsertComponent, CampaignComponent, InsertCampaignComponent, User, InsertUser, ClientApp, InsertClientApp, Channel, InsertChannel } from "@shared/schema";
+import { WebSocketEvent, Campaign, InsertCampaign, Event, InsertEvent, CampaignFormState, InsertFormState, ScheduledComponent, InsertScheduledComponent, Component, InsertComponent, CampaignComponent, InsertCampaignComponent, User, InsertUser, ClientApp, InsertClientApp, Channel, InsertChannel, CampaignTranslation, InsertCampaignTranslation, CampaignEngagementConfig, InsertCampaignEngagementConfig, CampaignUiConfig, InsertCampaignUiConfig, CampaignFeatureFlags, InsertCampaignFeatureFlags, SdkTranslation, InsertSdkTranslation } from "@shared/schema";
 import { db } from "./db";
-import { campaigns, events, campaignFormState, scheduledComponents, components, campaignComponents, users, clientApps, channels } from "@shared/schema";
-import { eq, desc, and, gte, ne } from "drizzle-orm";
+import { campaigns, events, campaignFormState, scheduledComponents, components, campaignComponents, users, clientApps, channels, campaignTranslations, campaignEngagementConfig, campaignUiConfig, campaignFeatureFlags, sdkTranslations } from "@shared/schema";
+import { eq, desc, and, gte, ne, isNull } from "drizzle-orm";
 
 export interface IStorage {
   addEvent(event: WebSocketEvent): Promise<void>;
@@ -74,6 +74,37 @@ export interface IStorage {
   updateCampaignComponentConfig(campaignId: number, componentId: string, customConfig: any): Promise<CampaignComponent | undefined>;
   removeComponentFromCampaign(campaignId: number, componentId: string): Promise<void>;
   validateComponentAvailability(componentId: string, isTemplate: boolean, campaignId?: number): Promise<{ available: boolean; activeCampaignId?: number }>;
+  
+  // Campaign translation methods
+  getCampaignTranslations(campaignId: number): Promise<CampaignTranslation[]>;
+  upsertCampaignTranslation(translation: InsertCampaignTranslation): Promise<CampaignTranslation>;
+  deleteCampaignTranslation(campaignId: number, languageCode: string): Promise<void>;
+  
+  // Campaign engagement config methods
+  getCampaignEngagementConfig(campaignId: number): Promise<CampaignEngagementConfig | undefined>;
+  upsertCampaignEngagementConfig(config: InsertCampaignEngagementConfig): Promise<CampaignEngagementConfig>;
+  
+  // Campaign UI config methods
+  getCampaignUiConfig(campaignId: number): Promise<CampaignUiConfig | undefined>;
+  upsertCampaignUiConfig(config: InsertCampaignUiConfig): Promise<CampaignUiConfig>;
+  
+  // Campaign feature flags methods
+  getCampaignFeatureFlags(campaignId: number): Promise<CampaignFeatureFlags | undefined>;
+  upsertCampaignFeatureFlags(flags: InsertCampaignFeatureFlags): Promise<CampaignFeatureFlags>;
+  
+  // SDK translations methods
+  getSdkTranslations(languageCode: string, campaignId?: number, matchId?: string): Promise<SdkTranslation[]>;
+  upsertSdkTranslation(translation: InsertSdkTranslation): Promise<SdkTranslation>;
+  deleteSdkTranslation(id: number): Promise<void>;
+  
+  // Full campaign config for SDK endpoints
+  getFullCampaignConfig(campaignId: number): Promise<{
+    campaign: Campaign;
+    translations: CampaignTranslation[];
+    engagementConfig: CampaignEngagementConfig | null;
+    uiConfig: CampaignUiConfig | null;
+    featureFlags: CampaignFeatureFlags | null;
+  } | null>;
 }
 
 export class MemStorage implements IStorage {
@@ -518,6 +549,249 @@ export class MemStorage implements IStorage {
     }
     
     return { available: true };
+  }
+  
+  // Campaign translation methods
+  async getCampaignTranslations(campaignId: number): Promise<CampaignTranslation[]> {
+    return db.select()
+      .from(campaignTranslations)
+      .where(eq(campaignTranslations.campaignId, campaignId));
+  }
+  
+  async upsertCampaignTranslation(translation: InsertCampaignTranslation): Promise<CampaignTranslation> {
+    const existing = await db.select()
+      .from(campaignTranslations)
+      .where(and(
+        eq(campaignTranslations.campaignId, translation.campaignId),
+        eq(campaignTranslations.languageCode, translation.languageCode)
+      ))
+      .limit(1);
+    
+    if (existing.length > 0) {
+      const [updated] = await db.update(campaignTranslations)
+        .set(translation)
+        .where(eq(campaignTranslations.id, existing[0].id))
+        .returning();
+      return updated;
+    }
+    
+    const [created] = await db.insert(campaignTranslations).values(translation).returning();
+    return created;
+  }
+  
+  async deleteCampaignTranslation(campaignId: number, languageCode: string): Promise<void> {
+    await db.delete(campaignTranslations)
+      .where(and(
+        eq(campaignTranslations.campaignId, campaignId),
+        eq(campaignTranslations.languageCode, languageCode)
+      ));
+  }
+  
+  // Campaign engagement config methods
+  async getCampaignEngagementConfig(campaignId: number): Promise<CampaignEngagementConfig | undefined> {
+    const [config] = await db.select()
+      .from(campaignEngagementConfig)
+      .where(eq(campaignEngagementConfig.campaignId, campaignId))
+      .limit(1);
+    return config;
+  }
+  
+  async upsertCampaignEngagementConfig(config: InsertCampaignEngagementConfig): Promise<CampaignEngagementConfig> {
+    const existing = await db.select()
+      .from(campaignEngagementConfig)
+      .where(eq(campaignEngagementConfig.campaignId, config.campaignId))
+      .limit(1);
+    
+    if (existing.length > 0) {
+      const [updated] = await db.update(campaignEngagementConfig)
+        .set(config)
+        .where(eq(campaignEngagementConfig.id, existing[0].id))
+        .returning();
+      return updated;
+    }
+    
+    const [created] = await db.insert(campaignEngagementConfig).values(config).returning();
+    return created;
+  }
+  
+  // Campaign UI config methods
+  async getCampaignUiConfig(campaignId: number): Promise<CampaignUiConfig | undefined> {
+    const [config] = await db.select()
+      .from(campaignUiConfig)
+      .where(eq(campaignUiConfig.campaignId, campaignId))
+      .limit(1);
+    return config;
+  }
+  
+  async upsertCampaignUiConfig(config: InsertCampaignUiConfig): Promise<CampaignUiConfig> {
+    const existing = await db.select()
+      .from(campaignUiConfig)
+      .where(eq(campaignUiConfig.campaignId, config.campaignId))
+      .limit(1);
+    
+    if (existing.length > 0) {
+      const [updated] = await db.update(campaignUiConfig)
+        .set(config)
+        .where(eq(campaignUiConfig.id, existing[0].id))
+        .returning();
+      return updated;
+    }
+    
+    const [created] = await db.insert(campaignUiConfig).values(config).returning();
+    return created;
+  }
+  
+  // Campaign feature flags methods
+  async getCampaignFeatureFlags(campaignId: number): Promise<CampaignFeatureFlags | undefined> {
+    const [flags] = await db.select()
+      .from(campaignFeatureFlags)
+      .where(eq(campaignFeatureFlags.campaignId, campaignId))
+      .limit(1);
+    return flags;
+  }
+  
+  async upsertCampaignFeatureFlags(flags: InsertCampaignFeatureFlags): Promise<CampaignFeatureFlags> {
+    const existing = await db.select()
+      .from(campaignFeatureFlags)
+      .where(eq(campaignFeatureFlags.campaignId, flags.campaignId))
+      .limit(1);
+    
+    if (existing.length > 0) {
+      const [updated] = await db.update(campaignFeatureFlags)
+        .set(flags)
+        .where(eq(campaignFeatureFlags.id, existing[0].id))
+        .returning();
+      return updated;
+    }
+    
+    const [created] = await db.insert(campaignFeatureFlags).values(flags).returning();
+    return created;
+  }
+  
+  // SDK translations methods - with priority: match > campaign > global
+  async getSdkTranslations(languageCode: string, campaignId?: number, matchId?: string): Promise<SdkTranslation[]> {
+    let translations: SdkTranslation[] = [];
+    
+    // First get global translations (where campaignId and matchId are null)
+    const globalTranslations = await db.select()
+      .from(sdkTranslations)
+      .where(and(
+        eq(sdkTranslations.languageCode, languageCode),
+        isNull(sdkTranslations.campaignId),
+        isNull(sdkTranslations.matchId)
+      ));
+    translations = globalTranslations;
+    
+    // Then get campaign-specific translations if campaignId provided
+    if (campaignId) {
+      const campaignTranslationsResult = await db.select()
+        .from(sdkTranslations)
+        .where(and(
+          eq(sdkTranslations.languageCode, languageCode),
+          eq(sdkTranslations.campaignId, campaignId),
+          isNull(sdkTranslations.matchId)
+        ));
+      
+      // Merge campaign translations (override global)
+      for (const ct of campaignTranslationsResult) {
+        const idx = translations.findIndex(t => t.translationKey === ct.translationKey);
+        if (idx >= 0) {
+          translations[idx] = ct;
+        } else {
+          translations.push(ct);
+        }
+      }
+    }
+    
+    // Finally get match-specific translations if matchId provided
+    if (matchId && campaignId) {
+      const matchTranslations = await db.select()
+        .from(sdkTranslations)
+        .where(and(
+          eq(sdkTranslations.languageCode, languageCode),
+          eq(sdkTranslations.campaignId, campaignId),
+          eq(sdkTranslations.matchId, matchId)
+        ));
+      
+      // Merge match translations (override campaign and global)
+      for (const mt of matchTranslations) {
+        const idx = translations.findIndex(t => t.translationKey === mt.translationKey);
+        if (idx >= 0) {
+          translations[idx] = mt;
+        } else {
+          translations.push(mt);
+        }
+      }
+    }
+    
+    return translations;
+  }
+  
+  async upsertSdkTranslation(translation: InsertSdkTranslation): Promise<SdkTranslation> {
+    // Build conditions for finding existing translation
+    const conditions = [
+      eq(sdkTranslations.languageCode, translation.languageCode),
+      eq(sdkTranslations.translationKey, translation.translationKey)
+    ];
+    
+    if (translation.campaignId) {
+      conditions.push(eq(sdkTranslations.campaignId, translation.campaignId));
+    } else {
+      conditions.push(isNull(sdkTranslations.campaignId));
+    }
+    
+    if (translation.matchId) {
+      conditions.push(eq(sdkTranslations.matchId, translation.matchId));
+    } else {
+      conditions.push(isNull(sdkTranslations.matchId));
+    }
+    
+    const existing = await db.select()
+      .from(sdkTranslations)
+      .where(and(...conditions))
+      .limit(1);
+    
+    if (existing.length > 0) {
+      const [updated] = await db.update(sdkTranslations)
+        .set(translation)
+        .where(eq(sdkTranslations.id, existing[0].id))
+        .returning();
+      return updated;
+    }
+    
+    const [created] = await db.insert(sdkTranslations).values(translation).returning();
+    return created;
+  }
+  
+  async deleteSdkTranslation(id: number): Promise<void> {
+    await db.delete(sdkTranslations).where(eq(sdkTranslations.id, id));
+  }
+  
+  // Full campaign config for SDK endpoints
+  async getFullCampaignConfig(campaignId: number): Promise<{
+    campaign: Campaign;
+    translations: CampaignTranslation[];
+    engagementConfig: CampaignEngagementConfig | null;
+    uiConfig: CampaignUiConfig | null;
+    featureFlags: CampaignFeatureFlags | null;
+  } | null> {
+    const campaign = await this.getCampaign(campaignId);
+    if (!campaign) return null;
+    
+    const [translations, engagementConfig, uiConfig, featureFlagsResult] = await Promise.all([
+      this.getCampaignTranslations(campaignId),
+      this.getCampaignEngagementConfig(campaignId),
+      this.getCampaignUiConfig(campaignId),
+      this.getCampaignFeatureFlags(campaignId)
+    ]);
+    
+    return {
+      campaign,
+      translations,
+      engagementConfig: engagementConfig || null,
+      uiConfig: uiConfig || null,
+      featureFlags: featureFlagsResult || null
+    };
   }
 }
 

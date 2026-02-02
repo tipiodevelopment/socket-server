@@ -156,3 +156,25 @@ The frontend uses React 18 with TypeScript and Vite, styled with Tailwind CSS, a
 - **Description:** Added image upload component to campaign creation form
 - **Location:** `/campaigns/new` page - uses `ImageUploadWithPreview` component
 - **Features:** Upload from file or paste URL, preview, remove uploaded image
+
+### Dynamic Configuration System (Completed - Feb 2026)
+- **Description:** Complete dynamic configuration management for SDK campaigns
+- **New Database Tables:**
+  - `campaign_translations`: Sponsor badge text translations by language
+  - `campaign_engagement_config`: Poll/contest durations, demo mode, real-time settings
+  - `campaign_ui_config`: Primary/secondary colors, component configs
+  - `campaign_feature_flags`: Enable/disable features (live streaming, polls, contests, etc.)
+  - `sdk_translations`: Global/campaign/match-specific SDK string translations
+- **New Campaign Fields:** brandName, brandIconAsset, brandIconUrl, brandLogoUrl
+- **New SDK Endpoints:**
+  - **GET /v1/campaigns/{campaignId}/config:** Complete dynamic configuration with brand, engagement, UI, features
+  - **GET /v1/engagement/config:** Match-specific engagement configuration
+  - **GET /v1/localization/{language}:** Localized strings with priority (match > campaign > global)
+- **Dashboard UI:** New settings sections in Campaign Settings tab:
+  - Brand Configuration (name, icon asset, icon URL, logo URL)
+  - Engagement Settings (demo mode, poll/contest durations, real-time updates)
+  - UI Theme (primary/secondary colors with color pickers)
+  - Feature Flags (toggles for live streaming, product catalog, engagement, polls, contests)
+- **WebSocket Events:** `config:updated` event broadcast when configurations change
+- **Caching:** Response headers with Cache-Control (5 min for config, 1 hour for localization)
+- **Backward Compatibility:** All fields optional with sensible defaults

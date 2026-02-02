@@ -1219,6 +1219,123 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Get campaign engagement config
+  app.get('/api/campaigns/:id/engagement-config', async (req, res) => {
+    try {
+      const campaignId = parseInt(req.params.id);
+      const config = await storage.getCampaignEngagementConfig(campaignId);
+      res.json(config || null);
+    } catch (error) {
+      console.error('Error fetching engagement config:', error);
+      res.status(500).json({ message: 'Error fetching engagement config' });
+    }
+  });
+
+  // Save campaign engagement config
+  app.put('/api/campaigns/:id/engagement-config', async (req, res) => {
+    try {
+      const campaignId = parseInt(req.params.id);
+      const config = await storage.upsertCampaignEngagementConfig({
+        campaignId,
+        ...req.body
+      });
+      
+      // Broadcast config:updated event
+      const campaign = await storage.getCampaign(campaignId);
+      broadcastToCampaign(campaignId, JSON.stringify({
+        type: 'config:updated',
+        campaignId,
+        matchId: campaign?.matchId || null,
+        sections: ['engagement'],
+        version: '1.0.0',
+        timestamp: new Date().toISOString()
+      }));
+      
+      res.json(config);
+    } catch (error) {
+      console.error('Error saving engagement config:', error);
+      res.status(500).json({ message: 'Error saving engagement config' });
+    }
+  });
+
+  // Get campaign UI config
+  app.get('/api/campaigns/:id/ui-config', async (req, res) => {
+    try {
+      const campaignId = parseInt(req.params.id);
+      const config = await storage.getCampaignUiConfig(campaignId);
+      res.json(config || null);
+    } catch (error) {
+      console.error('Error fetching UI config:', error);
+      res.status(500).json({ message: 'Error fetching UI config' });
+    }
+  });
+
+  // Save campaign UI config
+  app.put('/api/campaigns/:id/ui-config', async (req, res) => {
+    try {
+      const campaignId = parseInt(req.params.id);
+      const config = await storage.upsertCampaignUiConfig({
+        campaignId,
+        ...req.body
+      });
+      
+      // Broadcast config:updated event
+      const campaign = await storage.getCampaign(campaignId);
+      broadcastToCampaign(campaignId, JSON.stringify({
+        type: 'config:updated',
+        campaignId,
+        matchId: campaign?.matchId || null,
+        sections: ['ui'],
+        version: '1.0.0',
+        timestamp: new Date().toISOString()
+      }));
+      
+      res.json(config);
+    } catch (error) {
+      console.error('Error saving UI config:', error);
+      res.status(500).json({ message: 'Error saving UI config' });
+    }
+  });
+
+  // Get campaign feature flags
+  app.get('/api/campaigns/:id/feature-flags', async (req, res) => {
+    try {
+      const campaignId = parseInt(req.params.id);
+      const flags = await storage.getCampaignFeatureFlags(campaignId);
+      res.json(flags || null);
+    } catch (error) {
+      console.error('Error fetching feature flags:', error);
+      res.status(500).json({ message: 'Error fetching feature flags' });
+    }
+  });
+
+  // Save campaign feature flags
+  app.put('/api/campaigns/:id/feature-flags', async (req, res) => {
+    try {
+      const campaignId = parseInt(req.params.id);
+      const flags = await storage.upsertCampaignFeatureFlags({
+        campaignId,
+        ...req.body
+      });
+      
+      // Broadcast config:updated event
+      const campaign = await storage.getCampaign(campaignId);
+      broadcastToCampaign(campaignId, JSON.stringify({
+        type: 'config:updated',
+        campaignId,
+        matchId: campaign?.matchId || null,
+        sections: ['features'],
+        version: '1.0.0',
+        timestamp: new Date().toISOString()
+      }));
+      
+      res.json(flags);
+    } catch (error) {
+      console.error('Error saving feature flags:', error);
+      res.status(500).json({ message: 'Error saving feature flags' });
+    }
+  });
+
   // Get campaign events
   app.get('/api/campaigns/:id/events', async (req, res) => {
     try {
@@ -2180,6 +2297,249 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error('Error fetching SDK config:', error);
       res.status(500).json({ message: 'Error fetching SDK config' });
+    }
+  });
+
+  // GET /v1/campaigns/:campaignId/config - Complete dynamic campaign configuration
+  app.get('/v1/campaigns/:campaignId/config', validateApiKey, async (req, res) => {
+    try {
+      const clientApp = (req as any).clientApp;
+      const campaignId = parseInt(req.params.campaignId);
+      const matchId = req.query.matchId as string | undefined;
+      
+      if (isNaN(campaignId)) {
+        return res.status(400).json({ 
+          error: 'Invalid campaignId',
+          code: 'INVALID_PARAMETERS'
+        });
+      }
+      
+      // Get full campaign config
+      const fullConfig = await storage.getFullCampaignConfig(campaignId);
+      
+      if (!fullConfig) {
+        return res.status(404).json({ 
+          error: 'Campaign not found',
+          code: 'CAMPAIGN_NOT_FOUND'
+        });
+      }
+      
+      const { campaign, translations, engagementConfig, uiConfig, featureFlags } = fullConfig;
+      
+      // Verify campaign belongs to a channel of this client app
+      if (campaign.channelId) {
+        const channel = await storage.getChannel(campaign.channelId);
+        if (!channel || channel.clientAppId !== clientApp.id) {
+          return res.status(403).json({ 
+            error: 'Campaign does not belong to this API key',
+            code: 'FORBIDDEN'
+          });
+        }
+      }
+      
+      // Build sponsorBadgeText from translations
+      const sponsorBadgeText: Record<string, string> = {};
+      const defaultSponsorBadgeText: Record<string, string> = {
+        'no': 'Sponset av',
+        'en': 'Sponsored by',
+        'sv': 'Sponsrad av'
+      };
+      
+      for (const t of translations) {
+        if (t.sponsorBadgeText) {
+          sponsorBadgeText[t.languageCode] = t.sponsorBadgeText;
+        }
+      }
+      
+      // Merge with defaults
+      const finalSponsorBadgeText = { ...defaultSponsorBadgeText, ...sponsorBadgeText };
+      
+      // Build response with defaults for missing configs
+      const config = {
+        campaignId: campaign.id,
+        version: '1.0.0',
+        brand: {
+          name: campaign.brandName || campaign.name || 'Reachu',
+          iconAsset: campaign.brandIconAsset || 'avatar_default',
+          iconUrl: campaign.brandIconUrl ? toAbsoluteUrl(campaign.brandIconUrl, req) : null,
+          logoUrl: campaign.brandLogoUrl ? toAbsoluteUrl(campaign.brandLogoUrl, req) : null,
+          sponsorBadgeText: finalSponsorBadgeText
+        },
+        engagement: {
+          demoMode: engagementConfig?.demoMode === 'true' || false,
+          defaultPollDuration: engagementConfig?.defaultPollDuration ?? 300,
+          defaultContestDuration: engagementConfig?.defaultContestDuration ?? 600,
+          maxVotesPerPoll: engagementConfig?.maxVotesPerPoll ?? 1,
+          maxContestsPerMatch: engagementConfig?.maxContestsPerMatch ?? 10,
+          enableRealTimeUpdates: engagementConfig?.enableRealTimeUpdates !== 'false',
+          updateInterval: engagementConfig?.updateInterval ?? 1000
+        },
+        ui: {
+          theme: {
+            primaryColor: uiConfig?.primaryColor || '#007AFF',
+            secondaryColor: uiConfig?.secondaryColor || '#5856D6'
+          },
+          components: uiConfig?.componentConfigs || {}
+        },
+        features: {
+          enableLiveStreaming: featureFlags?.enableLiveStreaming !== 'false',
+          enableProductCatalog: featureFlags?.enableProductCatalog !== 'false',
+          enableEngagement: featureFlags?.enableEngagement !== 'false',
+          enablePolls: featureFlags?.enablePolls !== 'false',
+          enableContests: featureFlags?.enableContests !== 'false'
+        },
+        cache: {
+          ttl: 300,
+          version: '1.0.0'
+        }
+      };
+      
+      res.set('Cache-Control', 'public, max-age=300');
+      res.json(config);
+    } catch (error) {
+      console.error('Error fetching campaign config:', error);
+      res.status(500).json({ 
+        error: 'Internal server error',
+        code: 'INTERNAL_ERROR'
+      });
+    }
+  });
+
+  // GET /v1/engagement/config - Engagement configuration for a match
+  app.get('/v1/engagement/config', validateApiKey, async (req, res) => {
+    try {
+      const matchId = req.query.matchId as string | undefined;
+      
+      if (!matchId) {
+        return res.status(400).json({ 
+          error: 'Missing required parameter: matchId',
+          code: 'MISSING_PARAMETER'
+        });
+      }
+      
+      // Find campaigns associated with this matchId
+      const allCampaigns = await storage.getAllCampaigns();
+      const matchCampaign = allCampaigns.find(c => c.matchId === matchId);
+      
+      if (!matchCampaign) {
+        return res.status(404).json({ 
+          error: 'Engagement config not found for matchId',
+          code: 'CONFIG_NOT_FOUND'
+        });
+      }
+      
+      // Get engagement config for this campaign
+      const engagementConfig = await storage.getCampaignEngagementConfig(matchCampaign.id);
+      
+      const config = {
+        matchId,
+        engagement: {
+          demoMode: engagementConfig?.demoMode === 'true' || false,
+          defaultPollDuration: engagementConfig?.defaultPollDuration ?? 300,
+          defaultContestDuration: engagementConfig?.defaultContestDuration ?? 600,
+          maxVotesPerPoll: engagementConfig?.maxVotesPerPoll ?? 1,
+          enableRealTimeUpdates: engagementConfig?.enableRealTimeUpdates !== 'false'
+        },
+        cache: {
+          ttl: 300
+        }
+      };
+      
+      res.set('Cache-Control', 'public, max-age=300');
+      res.json(config);
+    } catch (error) {
+      console.error('Error fetching engagement config:', error);
+      res.status(500).json({ 
+        error: 'Internal server error',
+        code: 'INTERNAL_ERROR'
+      });
+    }
+  });
+
+  // GET /v1/localization/:language - Localized strings
+  app.get('/v1/localization/:language', validateApiKey, async (req, res) => {
+    try {
+      const language = req.params.language;
+      const campaignId = req.query.campaignId ? parseInt(req.query.campaignId as string) : undefined;
+      const matchId = req.query.matchId as string | undefined;
+      
+      const supportedLanguages = ['no', 'en', 'sv', 'es', 'de', 'fr', 'da', 'fi'];
+      if (!supportedLanguages.includes(language)) {
+        return res.status(400).json({ 
+          error: 'Invalid language code',
+          code: 'INVALID_LANGUAGE'
+        });
+      }
+      
+      // Get translations with priority: match > campaign > global
+      const translations = await storage.getSdkTranslations(language, campaignId, matchId);
+      
+      // Default translations
+      const defaultTranslations: Record<string, Record<string, string>> = {
+        'no': {
+          sponsorBadge: 'Sponset av',
+          voteButton: 'Stem',
+          participateButton: 'Delta',
+          pollClosed: 'Avstemningen er stengt',
+          alreadyVoted: 'Du har allerede stemt',
+          contestEnded: 'Konkurransen er avsluttet'
+        },
+        'en': {
+          sponsorBadge: 'Sponsored by',
+          voteButton: 'Vote',
+          participateButton: 'Participate',
+          pollClosed: 'Poll is closed',
+          alreadyVoted: 'You have already voted',
+          contestEnded: 'Contest has ended'
+        },
+        'sv': {
+          sponsorBadge: 'Sponsrad av',
+          voteButton: 'Rösta',
+          participateButton: 'Delta',
+          pollClosed: 'Omröstningen är stängd',
+          alreadyVoted: 'Du har redan röstat',
+          contestEnded: 'Tävlingen har avslutats'
+        }
+      };
+      
+      // Build translations object
+      const translationsObj: Record<string, string> = { ...(defaultTranslations[language] || defaultTranslations['en']) };
+      
+      for (const t of translations) {
+        translationsObj[t.translationKey] = t.translationValue;
+      }
+      
+      const dateFormats: Record<string, string> = {
+        'no': 'dd.MM.yyyy',
+        'en': 'MM/dd/yyyy',
+        'sv': 'yyyy-MM-dd'
+      };
+      
+      const timeFormats: Record<string, string> = {
+        'no': 'HH:mm',
+        'en': 'h:mm a',
+        'sv': 'HH:mm'
+      };
+      
+      const response = {
+        language,
+        campaignId: campaignId || null,
+        translations: translationsObj,
+        dateFormat: translations[0]?.dateFormat || dateFormats[language] || 'dd.MM.yyyy',
+        timeFormat: translations[0]?.timeFormat || timeFormats[language] || 'HH:mm',
+        cache: {
+          ttl: 3600
+        }
+      };
+      
+      res.set('Cache-Control', 'public, max-age=3600');
+      res.json(response);
+    } catch (error) {
+      console.error('Error fetching localization:', error);
+      res.status(500).json({ 
+        error: 'Internal server error',
+        code: 'INTERNAL_ERROR'
+      });
     }
   });
 

@@ -52,7 +52,64 @@ export const campaigns = pgTable("campaigns", {
   matchId: varchar("match_id", { length: 255 }),
   matchName: varchar("match_name", { length: 255 }),
   matchStartTime: timestamp("match_start_time"),
+  brandName: varchar("brand_name", { length: 255 }),
+  brandIconAsset: varchar("brand_icon_asset", { length: 255 }),
+  brandIconUrl: text("brand_icon_url"),
+  brandLogoUrl: text("brand_logo_url"),
   createdAt: timestamp("created_at").defaultNow().notNull()
+});
+
+// Campaign Translations - for sponsorBadgeText and other campaign-specific translations
+export const campaignTranslations = pgTable("campaign_translations", {
+  id: serial("id").primaryKey(),
+  campaignId: integer("campaign_id").notNull().references(() => campaigns.id, { onDelete: 'cascade' }),
+  languageCode: varchar("language_code", { length: 10 }).notNull(),
+  sponsorBadgeText: varchar("sponsor_badge_text", { length: 255 })
+});
+
+// Campaign Engagement Config - engagement settings per campaign
+export const campaignEngagementConfig = pgTable("campaign_engagement_config", {
+  id: serial("id").primaryKey(),
+  campaignId: integer("campaign_id").notNull().references(() => campaigns.id, { onDelete: 'cascade' }),
+  demoMode: varchar("demo_mode", { length: 10 }).notNull().default('false'),
+  defaultPollDuration: integer("default_poll_duration").notNull().default(300),
+  defaultContestDuration: integer("default_contest_duration").notNull().default(600),
+  maxVotesPerPoll: integer("max_votes_per_poll").notNull().default(1),
+  maxContestsPerMatch: integer("max_contests_per_match").notNull().default(10),
+  enableRealTimeUpdates: varchar("enable_real_time_updates", { length: 10 }).notNull().default('true'),
+  updateInterval: integer("update_interval").notNull().default(1000)
+});
+
+// Campaign UI Config - UI theme settings per campaign
+export const campaignUiConfig = pgTable("campaign_ui_config", {
+  id: serial("id").primaryKey(),
+  campaignId: integer("campaign_id").notNull().references(() => campaigns.id, { onDelete: 'cascade' }),
+  primaryColor: varchar("primary_color", { length: 7 }).notNull().default('#007AFF'),
+  secondaryColor: varchar("secondary_color", { length: 7 }).notNull().default('#5856D6'),
+  componentConfigs: json("component_configs")
+});
+
+// Campaign Feature Flags - feature toggles per campaign
+export const campaignFeatureFlags = pgTable("campaign_feature_flags", {
+  id: serial("id").primaryKey(),
+  campaignId: integer("campaign_id").notNull().references(() => campaigns.id, { onDelete: 'cascade' }),
+  enableLiveStreaming: varchar("enable_live_streaming", { length: 10 }).notNull().default('true'),
+  enableProductCatalog: varchar("enable_product_catalog", { length: 10 }).notNull().default('true'),
+  enableEngagement: varchar("enable_engagement", { length: 10 }).notNull().default('true'),
+  enablePolls: varchar("enable_polls", { length: 10 }).notNull().default('true'),
+  enableContests: varchar("enable_contests", { length: 10 }).notNull().default('true')
+});
+
+// SDK Translations - global/campaign/match-specific translations
+export const sdkTranslations = pgTable("sdk_translations", {
+  id: serial("id").primaryKey(),
+  languageCode: varchar("language_code", { length: 10 }).notNull(),
+  campaignId: integer("campaign_id").references(() => campaigns.id, { onDelete: 'cascade' }),
+  matchId: varchar("match_id", { length: 255 }),
+  translationKey: varchar("translation_key", { length: 100 }).notNull(),
+  translationValue: text("translation_value").notNull(),
+  dateFormat: varchar("date_format", { length: 50 }).notNull().default('dd.MM.yyyy'),
+  timeFormat: varchar("time_format", { length: 50 }).notNull().default('HH:mm')
 });
 
 export const events = pgTable("events", {
@@ -144,7 +201,46 @@ export const campaignsRelations = relations(campaigns, ({ one, many }) => ({
   events: many(events),
   formStates: many(campaignFormState),
   scheduledComponents: many(scheduledComponents),
-  campaignComponents: many(campaignComponents)
+  campaignComponents: many(campaignComponents),
+  translations: many(campaignTranslations),
+  engagementConfig: many(campaignEngagementConfig),
+  uiConfig: many(campaignUiConfig),
+  featureFlags: many(campaignFeatureFlags)
+}));
+
+export const campaignTranslationsRelations = relations(campaignTranslations, ({ one }) => ({
+  campaign: one(campaigns, {
+    fields: [campaignTranslations.campaignId],
+    references: [campaigns.id]
+  })
+}));
+
+export const campaignEngagementConfigRelations = relations(campaignEngagementConfig, ({ one }) => ({
+  campaign: one(campaigns, {
+    fields: [campaignEngagementConfig.campaignId],
+    references: [campaigns.id]
+  })
+}));
+
+export const campaignUiConfigRelations = relations(campaignUiConfig, ({ one }) => ({
+  campaign: one(campaigns, {
+    fields: [campaignUiConfig.campaignId],
+    references: [campaigns.id]
+  })
+}));
+
+export const campaignFeatureFlagsRelations = relations(campaignFeatureFlags, ({ one }) => ({
+  campaign: one(campaigns, {
+    fields: [campaignFeatureFlags.campaignId],
+    references: [campaigns.id]
+  })
+}));
+
+export const sdkTranslationsRelations = relations(sdkTranslations, ({ one }) => ({
+  campaign: one(campaigns, {
+    fields: [sdkTranslations.campaignId],
+    references: [campaigns.id]
+  })
 }));
 
 export const eventsRelations = relations(events, ({ one }) => ({
@@ -241,6 +337,26 @@ export const insertCampaignComponentSchema = createInsertSchema(campaignComponen
   updatedAt: true 
 });
 
+export const insertCampaignTranslationSchema = createInsertSchema(campaignTranslations).omit({ 
+  id: true 
+});
+
+export const insertCampaignEngagementConfigSchema = createInsertSchema(campaignEngagementConfig).omit({ 
+  id: true 
+});
+
+export const insertCampaignUiConfigSchema = createInsertSchema(campaignUiConfig).omit({ 
+  id: true 
+});
+
+export const insertCampaignFeatureFlagsSchema = createInsertSchema(campaignFeatureFlags).omit({ 
+  id: true 
+});
+
+export const insertSdkTranslationSchema = createInsertSchema(sdkTranslations).omit({ 
+  id: true 
+});
+
 // Types
 export type User = typeof users.$inferSelect;
 export type InsertUser = z.infer<typeof insertUserSchema>;
@@ -261,6 +377,16 @@ export type Component = typeof components.$inferSelect;
 export type InsertComponent = z.infer<typeof insertComponentSchema>;
 export type CampaignComponent = typeof campaignComponents.$inferSelect;
 export type InsertCampaignComponent = z.infer<typeof insertCampaignComponentSchema>;
+export type CampaignTranslation = typeof campaignTranslations.$inferSelect;
+export type InsertCampaignTranslation = z.infer<typeof insertCampaignTranslationSchema>;
+export type CampaignEngagementConfig = typeof campaignEngagementConfig.$inferSelect;
+export type InsertCampaignEngagementConfig = z.infer<typeof insertCampaignEngagementConfigSchema>;
+export type CampaignUiConfig = typeof campaignUiConfig.$inferSelect;
+export type InsertCampaignUiConfig = z.infer<typeof insertCampaignUiConfigSchema>;
+export type CampaignFeatureFlags = typeof campaignFeatureFlags.$inferSelect;
+export type InsertCampaignFeatureFlags = z.infer<typeof insertCampaignFeatureFlagsSchema>;
+export type SdkTranslation = typeof sdkTranslations.$inferSelect;
+export type InsertSdkTranslation = z.infer<typeof insertSdkTranslationSchema>;
 
 // Event schemas
 export const productEventSchema = z.object({

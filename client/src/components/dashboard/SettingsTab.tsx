@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -18,9 +18,10 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { Settings, Trash2, Upload, X, Link, Calendar } from "lucide-react";
+import { Settings, Trash2, Upload, X, Link, Calendar, Palette, Zap, ToggleRight, Globe } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Campaign, UpdateCampaign, Channel } from "@shared/schema";
+import { Switch } from "@/components/ui/switch";
+import { Campaign, UpdateCampaign, Channel, CampaignEngagementConfig, CampaignUiConfig, CampaignFeatureFlags } from "@shared/schema";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { ImageUploadWithPreview } from "@/components/ImageUploadWithPreview";
@@ -76,9 +77,82 @@ export function SettingsTab({ campaignId, campaign }: SettingsTabProps) {
     campaign.matchStartTime ? new Date(campaign.matchStartTime).toISOString().slice(0, 16) : ''
   );
 
+  // Brand settings
+  const [brandName, setBrandName] = useState(campaign.brandName || '');
+  const [brandIconAsset, setBrandIconAsset] = useState(campaign.brandIconAsset || '');
+  const [brandIconUrl, setBrandIconUrl] = useState(campaign.brandIconUrl || '');
+  const [brandLogoUrl, setBrandLogoUrl] = useState(campaign.brandLogoUrl || '');
+
+  // Engagement config
+  const [demoMode, setDemoMode] = useState(false);
+  const [defaultPollDuration, setDefaultPollDuration] = useState(300);
+  const [defaultContestDuration, setDefaultContestDuration] = useState(600);
+  const [maxVotesPerPoll, setMaxVotesPerPoll] = useState(1);
+  const [maxContestsPerMatch, setMaxContestsPerMatch] = useState(10);
+  const [enableRealTimeUpdates, setEnableRealTimeUpdates] = useState(true);
+  const [updateInterval, setUpdateInterval] = useState(1000);
+
+  // UI config
+  const [primaryColor, setPrimaryColor] = useState('#007AFF');
+  const [secondaryColor, setSecondaryColor] = useState('#5856D6');
+
+  // Feature flags
+  const [enableLiveStreaming, setEnableLiveStreaming] = useState(true);
+  const [enableProductCatalog, setEnableProductCatalog] = useState(true);
+  const [enableEngagement, setEnableEngagement] = useState(true);
+  const [enablePolls, setEnablePolls] = useState(true);
+  const [enableContests, setEnableContests] = useState(true);
+
   const { data: channels = [] } = useQuery<Channel[]>({
     queryKey: [`/api/channels?userId=${campaign.userId}`],
   });
+
+  // Fetch engagement config
+  const { data: engagementConfig, isLoading: isLoadingEngagement } = useQuery<CampaignEngagementConfig | null>({
+    queryKey: [`/api/campaigns/${campaignId}/engagement-config`],
+  });
+
+  // Fetch UI config
+  const { data: uiConfig, isLoading: isLoadingUi } = useQuery<CampaignUiConfig | null>({
+    queryKey: [`/api/campaigns/${campaignId}/ui-config`],
+  });
+
+  // Fetch feature flags
+  const { data: featureFlagsData, isLoading: isLoadingFlags } = useQuery<CampaignFeatureFlags | null>({
+    queryKey: [`/api/campaigns/${campaignId}/feature-flags`],
+  });
+
+  // Sync engagement config to state when loaded
+  useEffect(() => {
+    if (engagementConfig) {
+      if (engagementConfig.demoMode !== undefined) setDemoMode(engagementConfig.demoMode);
+      if (engagementConfig.defaultPollDuration !== undefined) setDefaultPollDuration(engagementConfig.defaultPollDuration);
+      if (engagementConfig.defaultContestDuration !== undefined) setDefaultContestDuration(engagementConfig.defaultContestDuration);
+      if (engagementConfig.maxVotesPerPoll !== undefined) setMaxVotesPerPoll(engagementConfig.maxVotesPerPoll);
+      if (engagementConfig.maxContestsPerMatch !== undefined) setMaxContestsPerMatch(engagementConfig.maxContestsPerMatch);
+      if (engagementConfig.enableRealTimeUpdates !== undefined) setEnableRealTimeUpdates(engagementConfig.enableRealTimeUpdates);
+      if (engagementConfig.updateInterval !== undefined) setUpdateInterval(engagementConfig.updateInterval);
+    }
+  }, [engagementConfig]);
+
+  // Sync UI config to state when loaded
+  useEffect(() => {
+    if (uiConfig) {
+      if (uiConfig.primaryColor) setPrimaryColor(uiConfig.primaryColor);
+      if (uiConfig.secondaryColor) setSecondaryColor(uiConfig.secondaryColor);
+    }
+  }, [uiConfig]);
+
+  // Sync feature flags to state when loaded
+  useEffect(() => {
+    if (featureFlagsData) {
+      if (featureFlagsData.enableLiveStreaming !== undefined) setEnableLiveStreaming(featureFlagsData.enableLiveStreaming);
+      if (featureFlagsData.enableProductCatalog !== undefined) setEnableProductCatalog(featureFlagsData.enableProductCatalog);
+      if (featureFlagsData.enableEngagement !== undefined) setEnableEngagement(featureFlagsData.enableEngagement);
+      if (featureFlagsData.enablePolls !== undefined) setEnablePolls(featureFlagsData.enablePolls);
+      if (featureFlagsData.enableContests !== undefined) setEnableContests(featureFlagsData.enableContests);
+    }
+  }, [featureFlagsData]);
 
   const updateCampaignMutation = useMutation({
     mutationFn: async (data: UpdateCampaign) => {
@@ -127,6 +201,88 @@ export function SettingsTab({ campaignId, campaign }: SettingsTabProps) {
       });
     },
   });
+
+  // Mutations for config sections
+  const saveEngagementConfigMutation = useMutation({
+    mutationFn: async (data: any) => {
+      return await apiRequest('PUT', `/api/campaigns/${campaignId}/engagement-config`, data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/campaigns/${campaignId}/engagement-config`] });
+      toast({ title: 'Saved', description: 'Engagement settings saved successfully.' });
+    },
+    onError: () => {
+      toast({ title: 'Error', description: 'Failed to save engagement settings.', variant: 'destructive' });
+    },
+  });
+
+  const saveUiConfigMutation = useMutation({
+    mutationFn: async (data: any) => {
+      return await apiRequest('PUT', `/api/campaigns/${campaignId}/ui-config`, data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/campaigns/${campaignId}/ui-config`] });
+      toast({ title: 'Saved', description: 'UI theme saved successfully.' });
+    },
+    onError: () => {
+      toast({ title: 'Error', description: 'Failed to save UI theme.', variant: 'destructive' });
+    },
+  });
+
+  const saveFeatureFlagsMutation = useMutation({
+    mutationFn: async (data: any) => {
+      return await apiRequest('PUT', `/api/campaigns/${campaignId}/feature-flags`, data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/campaigns/${campaignId}/feature-flags`] });
+      toast({ title: 'Saved', description: 'Feature flags saved successfully.' });
+    },
+    onError: () => {
+      toast({ title: 'Error', description: 'Failed to save feature flags.', variant: 'destructive' });
+    },
+  });
+
+  const handleSaveBrand = (e: React.FormEvent) => {
+    e.preventDefault();
+    updateCampaignMutation.mutate({
+      brandName: brandName || null,
+      brandIconAsset: brandIconAsset || null,
+      brandIconUrl: brandIconUrl || null,
+      brandLogoUrl: brandLogoUrl || null,
+    });
+  };
+
+  const handleSaveEngagement = (e: React.FormEvent) => {
+    e.preventDefault();
+    saveEngagementConfigMutation.mutate({
+      demoMode: demoMode ? 'true' : 'false',
+      defaultPollDuration,
+      defaultContestDuration,
+      maxVotesPerPoll,
+      maxContestsPerMatch,
+      enableRealTimeUpdates: enableRealTimeUpdates ? 'true' : 'false',
+      updateInterval,
+    });
+  };
+
+  const handleSaveUiTheme = (e: React.FormEvent) => {
+    e.preventDefault();
+    saveUiConfigMutation.mutate({
+      primaryColor,
+      secondaryColor,
+    });
+  };
+
+  const handleSaveFeatureFlags = (e: React.FormEvent) => {
+    e.preventDefault();
+    saveFeatureFlagsMutation.mutate({
+      enableLiveStreaming: enableLiveStreaming ? 'true' : 'false',
+      enableProductCatalog: enableProductCatalog ? 'true' : 'false',
+      enableEngagement: enableEngagement ? 'true' : 'false',
+      enablePolls: enablePolls ? 'true' : 'false',
+      enableContests: enableContests ? 'true' : 'false',
+    });
+  };
 
   const handleSaveBasicInfo = (e: React.FormEvent) => {
     e.preventDefault();
@@ -551,6 +707,334 @@ export function SettingsTab({ campaignId, campaign }: SettingsTabProps) {
               data-testid="button-save-segmentation"
             >
               {updateCampaignMutation.isPending ? 'Saving...' : 'Save Targeting Settings'}
+            </Button>
+          </form>
+        </CardContent>
+      </Card>
+
+      {/* Brand Configuration */}
+      <Card className="border-0">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Globe className="w-5 h-5" />
+            Brand Configuration
+          </CardTitle>
+          <CardDescription>
+            Configure brand identity for SDK display
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={handleSaveBrand} className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="brand-name">Brand Name</Label>
+                <Input
+                  id="brand-name"
+                  value={brandName}
+                  onChange={(e) => setBrandName(e.target.value)}
+                  placeholder="e.g., Elkjøp"
+                  data-testid="input-brand-name"
+                />
+                <p className="text-xs text-muted-foreground">Name displayed in engagement components</p>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="brand-icon-asset">Icon Asset Name</Label>
+                <Input
+                  id="brand-icon-asset"
+                  value={brandIconAsset}
+                  onChange={(e) => setBrandIconAsset(e.target.value)}
+                  placeholder="e.g., avatar_el"
+                  data-testid="input-brand-icon-asset"
+                />
+                <p className="text-xs text-muted-foreground">Local asset name in app bundle</p>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="brand-icon-url">Icon URL (CDN)</Label>
+                <Input
+                  id="brand-icon-url"
+                  value={brandIconUrl}
+                  onChange={(e) => setBrandIconUrl(e.target.value)}
+                  placeholder="https://cdn.example.com/avatar.png"
+                  data-testid="input-brand-icon-url"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="brand-logo-url">Logo URL (CDN)</Label>
+                <Input
+                  id="brand-logo-url"
+                  value={brandLogoUrl}
+                  onChange={(e) => setBrandLogoUrl(e.target.value)}
+                  placeholder="https://cdn.example.com/logo.png"
+                  data-testid="input-brand-logo-url"
+                />
+              </div>
+            </div>
+            <Button 
+              type="submit" 
+              disabled={updateCampaignMutation.isPending}
+              data-testid="button-save-brand"
+            >
+              {updateCampaignMutation.isPending ? 'Saving...' : 'Save Brand Settings'}
+            </Button>
+          </form>
+        </CardContent>
+      </Card>
+
+      {/* Engagement Settings */}
+      <Card className="border-0">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Zap className="w-5 h-5" />
+            Engagement Settings
+          </CardTitle>
+          <CardDescription>
+            Configure polls, contests, and real-time updates
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={handleSaveEngagement} className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <Label>Demo Mode</Label>
+                <p className="text-xs text-muted-foreground">Use mock data (for testing only)</p>
+              </div>
+              <Switch
+                checked={demoMode}
+                onCheckedChange={setDemoMode}
+                data-testid="switch-demo-mode"
+              />
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="poll-duration">Default Poll Duration (seconds)</Label>
+                <Input
+                  id="poll-duration"
+                  type="number"
+                  value={defaultPollDuration}
+                  onChange={(e) => setDefaultPollDuration(parseInt(e.target.value) || 300)}
+                  min={30}
+                  max={3600}
+                  data-testid="input-poll-duration"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="contest-duration">Default Contest Duration (seconds)</Label>
+                <Input
+                  id="contest-duration"
+                  type="number"
+                  value={defaultContestDuration}
+                  onChange={(e) => setDefaultContestDuration(parseInt(e.target.value) || 600)}
+                  min={60}
+                  max={7200}
+                  data-testid="input-contest-duration"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="max-votes">Max Votes Per Poll</Label>
+                <Input
+                  id="max-votes"
+                  type="number"
+                  value={maxVotesPerPoll}
+                  onChange={(e) => setMaxVotesPerPoll(parseInt(e.target.value) || 1)}
+                  min={1}
+                  max={10}
+                  data-testid="input-max-votes"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="max-contests">Max Contests Per Match</Label>
+                <Input
+                  id="max-contests"
+                  type="number"
+                  value={maxContestsPerMatch}
+                  onChange={(e) => setMaxContestsPerMatch(parseInt(e.target.value) || 10)}
+                  min={1}
+                  max={50}
+                  data-testid="input-max-contests"
+                />
+              </div>
+            </div>
+            <div className="flex items-center justify-between">
+              <div>
+                <Label>Enable Real-Time Updates</Label>
+                <p className="text-xs text-muted-foreground">Use WebSocket for live updates</p>
+              </div>
+              <Switch
+                checked={enableRealTimeUpdates}
+                onCheckedChange={setEnableRealTimeUpdates}
+                data-testid="switch-realtime-updates"
+              />
+            </div>
+            {!enableRealTimeUpdates && (
+              <div className="space-y-2">
+                <Label htmlFor="update-interval">Polling Interval (ms)</Label>
+                <Input
+                  id="update-interval"
+                  type="number"
+                  value={updateInterval}
+                  onChange={(e) => setUpdateInterval(parseInt(e.target.value) || 1000)}
+                  min={500}
+                  max={10000}
+                  data-testid="input-update-interval"
+                />
+              </div>
+            )}
+            <Button 
+              type="submit" 
+              disabled={saveEngagementConfigMutation.isPending}
+              data-testid="button-save-engagement"
+            >
+              {saveEngagementConfigMutation.isPending ? 'Saving...' : 'Save Engagement Settings'}
+            </Button>
+          </form>
+        </CardContent>
+      </Card>
+
+      {/* UI Theme */}
+      <Card className="border-0">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Palette className="w-5 h-5" />
+            UI Theme
+          </CardTitle>
+          <CardDescription>
+            Customize colors for SDK components
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={handleSaveUiTheme} className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="primary-color">Primary Color</Label>
+                <div className="flex gap-2">
+                  <Input
+                    id="primary-color"
+                    type="color"
+                    value={primaryColor}
+                    onChange={(e) => setPrimaryColor(e.target.value)}
+                    className="w-12 h-10 p-1"
+                    data-testid="input-primary-color"
+                  />
+                  <Input
+                    value={primaryColor}
+                    onChange={(e) => setPrimaryColor(e.target.value)}
+                    placeholder="#007AFF"
+                    className="flex-1"
+                  />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="secondary-color">Secondary Color</Label>
+                <div className="flex gap-2">
+                  <Input
+                    id="secondary-color"
+                    type="color"
+                    value={secondaryColor}
+                    onChange={(e) => setSecondaryColor(e.target.value)}
+                    className="w-12 h-10 p-1"
+                    data-testid="input-secondary-color"
+                  />
+                  <Input
+                    value={secondaryColor}
+                    onChange={(e) => setSecondaryColor(e.target.value)}
+                    placeholder="#5856D6"
+                    className="flex-1"
+                  />
+                </div>
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <div className="w-12 h-12 rounded-lg" style={{ backgroundColor: primaryColor }} />
+              <div className="w-12 h-12 rounded-lg" style={{ backgroundColor: secondaryColor }} />
+              <span className="text-sm text-muted-foreground self-center ml-2">Color preview</span>
+            </div>
+            <Button 
+              type="submit" 
+              disabled={saveUiConfigMutation.isPending}
+              data-testid="button-save-ui-theme"
+            >
+              {saveUiConfigMutation.isPending ? 'Saving...' : 'Save UI Theme'}
+            </Button>
+          </form>
+        </CardContent>
+      </Card>
+
+      {/* Feature Flags */}
+      <Card className="border-0">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <ToggleRight className="w-5 h-5" />
+            Feature Flags
+          </CardTitle>
+          <CardDescription>
+            Enable or disable SDK features for this campaign
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={handleSaveFeatureFlags} className="space-y-4">
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <Label>Live Streaming</Label>
+                  <p className="text-xs text-muted-foreground">Enable video live streaming features</p>
+                </div>
+                <Switch
+                  checked={enableLiveStreaming}
+                  onCheckedChange={setEnableLiveStreaming}
+                  data-testid="switch-live-streaming"
+                />
+              </div>
+              <div className="flex items-center justify-between">
+                <div>
+                  <Label>Product Catalog</Label>
+                  <p className="text-xs text-muted-foreground">Enable product browsing and shopping</p>
+                </div>
+                <Switch
+                  checked={enableProductCatalog}
+                  onCheckedChange={setEnableProductCatalog}
+                  data-testid="switch-product-catalog"
+                />
+              </div>
+              <div className="flex items-center justify-between">
+                <div>
+                  <Label>Engagement</Label>
+                  <p className="text-xs text-muted-foreground">Enable polls, contests, and interactions</p>
+                </div>
+                <Switch
+                  checked={enableEngagement}
+                  onCheckedChange={setEnableEngagement}
+                  data-testid="switch-engagement"
+                />
+              </div>
+              <div className="flex items-center justify-between">
+                <div>
+                  <Label>Polls</Label>
+                  <p className="text-xs text-muted-foreground">Allow users to vote in polls</p>
+                </div>
+                <Switch
+                  checked={enablePolls}
+                  onCheckedChange={setEnablePolls}
+                  data-testid="switch-polls"
+                />
+              </div>
+              <div className="flex items-center justify-between">
+                <div>
+                  <Label>Contests</Label>
+                  <p className="text-xs text-muted-foreground">Allow users to participate in contests</p>
+                </div>
+                <Switch
+                  checked={enableContests}
+                  onCheckedChange={setEnableContests}
+                  data-testid="switch-contests"
+                />
+              </div>
+            </div>
+            <Button 
+              type="submit" 
+              disabled={saveFeatureFlagsMutation.isPending}
+              data-testid="button-save-feature-flags"
+            >
+              {saveFeatureFlagsMutation.isPending ? 'Saving...' : 'Save Feature Flags'}
             </Button>
           </form>
         </CardContent>
