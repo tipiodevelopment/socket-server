@@ -1126,6 +1126,253 @@ URLSession.shared.dataTask(with: url) { data, response, error in
           </CardContent>
         </Card>
 
+        {/* Dynamic Configuration System */}
+        <Card className="border-0 bg-gradient-to-br from-purple-500/10 to-pink-500/10">
+          <CardHeader>
+            <CardTitle className="flex items-center space-x-2 text-2xl">
+              <svg className="w-8 h-8 text-purple-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path>
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
+              </svg>
+              <span>Dynamic Configuration System</span>
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            <div>
+              <h3 className="text-lg font-semibold mb-3 text-purple-500">Overview</h3>
+              <p className="text-muted-foreground mb-4">
+                The Dynamic Configuration System allows you to customize brand identity, engagement settings, UI themes, and feature flags for each campaign. All configurations are accessible via SDK endpoints and update in real-time via WebSocket.
+              </p>
+            </div>
+
+            {/* SDK Endpoints */}
+            <div className="space-y-4">
+              <h4 className="font-semibold text-lg">SDK Configuration Endpoints</h4>
+              
+              <div className="bg-purple-500/10 border-0 rounded-lg p-4">
+                <h5 className="font-semibold mb-2 text-purple-400">GET /v1/campaigns/:campaignId/config</h5>
+                <p className="text-sm text-muted-foreground mb-3">
+                  Returns the complete dynamic configuration for a campaign including brand, engagement, UI, and feature flags.
+                </p>
+                <pre className="bg-background rounded p-3 overflow-x-auto text-xs">
+                  <code className="text-green-400">{`// Request
+GET ${window.location.protocol}//${window.location.host}/v1/campaigns/3/config?apiKey=YOUR_API_KEY
+
+// Response
+{
+  "campaignId": 3,
+  "version": "1.0.0",
+  "brand": {
+    "name": "My Campaign",
+    "iconAsset": "avatar_default",
+    "iconUrl": null,
+    "logoUrl": "https://example.com/logo.png",
+    "sponsorBadgeText": {
+      "no": "Sponset av",
+      "en": "Sponsored by",
+      "sv": "Sponsrad av"
+    }
+  },
+  "engagement": {
+    "demoMode": false,
+    "defaultPollDuration": 300,
+    "defaultContestDuration": 600,
+    "maxVotesPerPoll": 1,
+    "maxContestsPerMatch": 10,
+    "enableRealTimeUpdates": true,
+    "updateInterval": 1000
+  },
+  "ui": {
+    "theme": {
+      "primaryColor": "#007AFF",
+      "secondaryColor": "#5856D6"
+    },
+    "components": {}
+  },
+  "features": {
+    "enableLiveStreaming": true,
+    "enableProductCatalog": true,
+    "enableEngagement": true,
+    "enablePolls": true,
+    "enableContests": true
+  },
+  "cache": {
+    "ttl": 300,
+    "version": "1.0.0"
+  }
+}`}</code>
+                </pre>
+              </div>
+
+              <div className="bg-blue-500/10 border-0 rounded-lg p-4">
+                <h5 className="font-semibold mb-2 text-blue-400">GET /v1/engagement/config</h5>
+                <p className="text-sm text-muted-foreground mb-3">
+                  Returns engagement configuration for a specific match. Useful for match-specific settings.
+                </p>
+                <pre className="bg-background rounded p-3 overflow-x-auto text-xs">
+                  <code className="text-green-400">{`// Request
+GET ${window.location.protocol}//${window.location.host}/v1/engagement/config?apiKey=YOUR_API_KEY&matchId=MATCH_123
+
+// Response
+{
+  "matchId": "MATCH_123",
+  "engagement": {
+    "demoMode": false,
+    "defaultPollDuration": 300,
+    "defaultContestDuration": 600,
+    "enableRealTimeUpdates": true
+  }
+}`}</code>
+                </pre>
+              </div>
+
+              <div className="bg-green-500/10 border-0 rounded-lg p-4">
+                <h5 className="font-semibold mb-2 text-green-400">GET /v1/localization/:language</h5>
+                <p className="text-sm text-muted-foreground mb-3">
+                  Returns localized strings for the SDK with priority system: match-specific → campaign-specific → global translations.
+                </p>
+                <pre className="bg-background rounded p-3 overflow-x-auto text-xs">
+                  <code className="text-green-400">{`// Request
+GET ${window.location.protocol}//${window.location.host}/v1/localization/en?apiKey=YOUR_API_KEY&campaignId=3
+
+// Response
+{
+  "language": "en",
+  "strings": {
+    "sponsored_by": "Sponsored by",
+    "vote_now": "Vote Now",
+    "enter_contest": "Enter Contest",
+    "time_remaining": "Time Remaining"
+  },
+  "cache": {
+    "ttl": 3600,
+    "version": "1.0.0"
+  }
+}`}</code>
+                </pre>
+              </div>
+            </div>
+
+            {/* Configuration Sections */}
+            <div className="space-y-4">
+              <h4 className="font-semibold text-lg">Configuration Sections</h4>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="bg-background rounded-lg p-4">
+                  <h5 className="font-semibold mb-2 text-purple-400">🏢 Brand Configuration</h5>
+                  <ul className="text-sm space-y-1 text-muted-foreground">
+                    <li>• <strong>Brand Name:</strong> Display name for SDK</li>
+                    <li>• <strong>Icon Asset:</strong> Built-in icon identifier</li>
+                    <li>• <strong>Icon URL:</strong> Custom icon URL</li>
+                    <li>• <strong>Logo URL:</strong> Brand logo URL</li>
+                  </ul>
+                </div>
+
+                <div className="bg-background rounded-lg p-4">
+                  <h5 className="font-semibold mb-2 text-blue-400">⚡ Engagement Settings</h5>
+                  <ul className="text-sm space-y-1 text-muted-foreground">
+                    <li>• <strong>Demo Mode:</strong> Test mode for development</li>
+                    <li>• <strong>Poll Duration:</strong> Default poll time (seconds)</li>
+                    <li>• <strong>Contest Duration:</strong> Default contest time</li>
+                    <li>• <strong>Real-Time Updates:</strong> Enable live updates</li>
+                    <li>• <strong>Update Interval:</strong> Refresh rate (ms)</li>
+                  </ul>
+                </div>
+
+                <div className="bg-background rounded-lg p-4">
+                  <h5 className="font-semibold mb-2 text-pink-400">🎨 UI Theme</h5>
+                  <ul className="text-sm space-y-1 text-muted-foreground">
+                    <li>• <strong>Primary Color:</strong> Main accent color</li>
+                    <li>• <strong>Secondary Color:</strong> Secondary accent</li>
+                    <li>• <strong>Component Configs:</strong> Per-component styling</li>
+                  </ul>
+                </div>
+
+                <div className="bg-background rounded-lg p-4">
+                  <h5 className="font-semibold mb-2 text-amber-400">🚀 Feature Flags</h5>
+                  <ul className="text-sm space-y-1 text-muted-foreground">
+                    <li>• <strong>Live Streaming:</strong> Enable/disable streaming</li>
+                    <li>• <strong>Product Catalog:</strong> Show products</li>
+                    <li>• <strong>Engagement:</strong> Enable interactions</li>
+                    <li>• <strong>Polls:</strong> Enable voting</li>
+                    <li>• <strong>Contests:</strong> Enable contests</li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+
+            {/* WebSocket Events */}
+            <div className="bg-amber-500/10 rounded-lg p-4">
+              <h4 className="font-semibold mb-2 text-amber-500">📡 Real-Time Configuration Updates</h4>
+              <p className="text-sm text-muted-foreground mb-3">
+                When configuration changes are saved, a <code className="text-amber-300">config:updated</code> event is broadcast via WebSocket:
+              </p>
+              <pre className="bg-background rounded p-3 overflow-x-auto text-xs">
+                <code className="text-green-400">{`{
+  "type": "config:updated",
+  "campaignId": 3,
+  "matchId": "MATCH_123",  // optional
+  "sections": ["engagement"],  // which sections changed
+  "version": "1.0.0",
+  "timestamp": "2026-02-02T12:00:00Z"
+}`}</code>
+              </pre>
+              <p className="text-sm text-muted-foreground mt-2">
+                Your app should listen for this event and re-fetch the configuration endpoint to get updated values.
+              </p>
+            </div>
+
+            {/* Swift Integration Example */}
+            <div className="bg-background rounded-lg p-4">
+              <h4 className="font-semibold mb-2">Swift Integration Example</h4>
+              <pre className="bg-gray-900 rounded p-3 overflow-x-auto text-xs">
+                <code className="text-green-400">{`// Fetch campaign configuration
+func fetchCampaignConfig(campaignId: Int, apiKey: String) async throws -> CampaignConfig {
+    let url = URL(string: "${window.location.protocol}//${window.location.host}/v1/campaigns/\\(campaignId)/config?apiKey=\\(apiKey)")!
+    let (data, _) = try await URLSession.shared.data(from: url)
+    return try JSONDecoder().decode(CampaignConfig.self, from: data)
+}
+
+// Handle config:updated WebSocket event
+private func handleConfigUpdated(_ json: [String: Any]) {
+    guard let sections = json["sections"] as? [String] else { return }
+    
+    Task {
+        // Re-fetch configuration
+        let config = try await fetchCampaignConfig(
+            campaignId: currentCampaignId,
+            apiKey: apiKey
+        )
+        
+        // Apply updated config
+        DispatchQueue.main.async {
+            self.applyConfiguration(config)
+        }
+    }
+}`}</code>
+              </pre>
+            </div>
+
+            <div className="space-y-3">
+              <h4 className="font-semibold">Caching Guidelines</h4>
+              <div className="space-y-2">
+                <div className="bg-primary/5 rounded p-3">
+                  <p className="text-sm font-medium text-primary">Configuration Endpoint</p>
+                  <p className="text-xs text-muted-foreground">Cache-Control: max-age=300 (5 minutes)</p>
+                </div>
+                <div className="bg-primary/5 rounded p-3">
+                  <p className="text-sm font-medium text-primary">Localization Endpoint</p>
+                  <p className="text-xs text-muted-foreground">Cache-Control: max-age=3600 (1 hour)</p>
+                </div>
+                <div className="bg-primary/5 rounded p-3">
+                  <p className="text-sm font-medium text-primary">Real-Time Updates</p>
+                  <p className="text-xs text-muted-foreground">Listen for config:updated WebSocket events to invalidate cache</p>
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
         {/* Footer Note */}
         <div className="text-center text-sm text-muted-foreground pt-8 border-0">
           <p>Need help? Check the <Link href="/"><Button variant="link" className="p-0 h-auto" data-testid="link-admin-footer">admin panel</Button></Link> to test events in real-time.</p>
