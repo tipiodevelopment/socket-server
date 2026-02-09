@@ -1,19 +1,14 @@
-/**
- * Servicio de procesamiento de votos
- *
- * Actualmente síncrono - llamado directamente desde los endpoints.
- * Preparado para ser invocado desde un worker de BullMQ en el futuro.
- *
- * Flujo actual:  Endpoint → processPollVoteSync() → DB + WebSocket
- * Flujo futuro:  Endpoint → voteQueue.add() → Worker → processPollVote() → DB + WebSocket
- */
-
 import { VoteJobData, JobResult } from '../queue/types';
 import { storage } from '../storage';
 
+let broadcastFn: ((campaignId: number, message: string) => void) | null = null;
+
+export function setVoteBroadcastFunction(fn: (campaignId: number, message: string) => void) {
+  broadcastFn = fn;
+}
+
 export async function processPollVoteSync(
-  data: VoteJobData,
-  broadcastToCampaign?: (campaignId: number, message: string) => void
+  data: VoteJobData
 ): Promise<JobResult> {
   const { pollId, optionId, userId, broadcastId } = data;
 
@@ -37,16 +32,23 @@ export async function processPollVoteSync(
     broadcastId,
   });
 
+  await storage.updatePollOptionVoteCount(optionId, 1);
+
   const results = await storage.getPollResults(pollId);
 
-  if (broadcastToCampaign && poll.broadcastId) {
+  if (broadcastFn && poll.broadcastId) {
     const broadcast = await storage.getBroadcast(poll.broadcastId);
-    if (broadcast?.campaignId) {
-      broadcastToCampaign(broadcast.campaignId, JSON.stringify({
+    if (broadcast?.campaignId && results) {
+      const totalVotes = results.poll.totalVotes;
+      const optionsWithPercentages = results.options.map((opt: any) => ({
+        ...opt,
+        percentage: totalVotes > 0 ? Math.round((opt.voteCount / totalVotes) * 10000) / 100 : 0
+      }));
+      broadcastFn(broadcast.campaignId, JSON.stringify({
         type: 'poll_results_updated',
         broadcastId: poll.broadcastId,
         pollId,
-        results,
+        results: { ...results.poll, options: optionsWithPercentages },
       }));
     }
   }
@@ -54,10 +56,6 @@ export async function processPollVoteSync(
   return { success: true, data: results };
 }
 
-/**
- * Versión para workers de BullMQ (futuro)
- * Por ahora redirige a la versión síncrona
- */
 export async function processPollVote(data: VoteJobData): Promise<JobResult> {
   return await processPollVoteSync(data);
 }

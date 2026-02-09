@@ -1,13 +1,3 @@
-/**
- * Servicio de procesamiento de participaciones en concursos
- *
- * Actualmente síncrono - llamado directamente desde los endpoints.
- * Preparado para ser invocado desde un worker de BullMQ en el futuro.
- *
- * Flujo actual:  Endpoint → processContestParticipationSync() → DB
- * Flujo futuro:  Endpoint → contestQueue.add() → Worker → processContestParticipation() → DB
- */
-
 import { ContestParticipationJobData, JobResult } from '../queue/types';
 import { storage } from '../storage';
 
@@ -39,10 +29,6 @@ export async function processContestParticipationSync(
   return { success: true, data: participation };
 }
 
-/**
- * Versión para workers de BullMQ (futuro)
- * Por ahora redirige a la versión síncrona
- */
 export async function processContestParticipation(
   data: ContestParticipationJobData
 ): Promise<JobResult> {

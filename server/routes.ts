@@ -23,6 +23,10 @@ import {
   ObjectNotFoundError,
 } from "./objectStorage";
 import { isCampaignActive, hasCampaignEnded, isCampaignUpcoming, normalizeUrls } from "./utils";
+import { calculateScheduledTimes, validateScheduling } from "./utils/scheduling";
+import { voteQueue, contestParticipationQueue, isQueueEnabled } from "./queue/queues";
+import { createRateLimiter, rateLimitPresets } from "./middleware/rate-limiter";
+import { setVoteBroadcastFunction } from "./services/vote-processor";
 
 const JWT_SECRET = process.env.SESSION_SECRET || 'default-dev-secret';
 
@@ -288,8 +292,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   };
   
-  // Assign to exported variable
   broadcastToCampaign = broadcastToCampaignImpl;
+  setVoteBroadcastFunction(broadcastToCampaignImpl);
   
   // Legacy broadcast function (broadcasts to all campaigns)
   function broadcast(message: string) {
@@ -2275,7 +2279,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Engagement API (v1) - Admin endpoints (Bearer Auth)
   // ========================================
 
-  // Create poll with options
   app.post('/v1/broadcasts/:broadcastId/polls', requireBearerAuth, async (req, res) => {
     try {
       const { broadcastId } = req.params;
@@ -2284,18 +2287,33 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: 'Broadcast not found' });
       }
 
-      const { question, options, startTime, endTime, isActive } = req.body;
+      const { question, options, startTime, endTime, isActive, videoStartTime, videoEndTime, broadcastStartTime } = req.body;
       if (!question || !options || !Array.isArray(options) || options.length < 2) {
         return res.status(400).json({ message: 'question and at least 2 options are required' });
       }
 
-      const poll = await storage.createPoll({
+      const pollData: any = {
         broadcastId,
         question,
         startTime: startTime ? new Date(startTime) : null,
         endTime: endTime ? new Date(endTime) : null,
         isActive: isActive !== undefined ? isActive : true
-      });
+      };
+
+      if (videoStartTime !== undefined && videoEndTime !== undefined && broadcastStartTime) {
+        const validation = validateScheduling({ broadcastStartTime, videoStartTime, videoEndTime });
+        if (!validation.valid) {
+          return res.status(400).json({ message: validation.error });
+        }
+        const scheduled = calculateScheduledTimes({ broadcastStartTime, videoStartTime, videoEndTime });
+        pollData.videoStartTime = videoStartTime;
+        pollData.videoEndTime = videoEndTime;
+        pollData.broadcastStartTime = new Date(broadcastStartTime);
+        pollData.scheduledStartTime = scheduled.scheduledStart;
+        pollData.scheduledEndTime = scheduled.scheduledEnd;
+      }
+
+      const poll = await storage.createPoll(pollData);
 
       const createdOptions = [];
       for (let i = 0; i < options.length; i++) {
@@ -2385,7 +2403,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Create contest
   app.post('/v1/broadcasts/:broadcastId/contests', requireBearerAuth, async (req, res) => {
     try {
       const { broadcastId } = req.params;
@@ -2394,12 +2411,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: 'Broadcast not found' });
       }
 
-      const { title, description, prize, contestType, startTime, endTime, isActive } = req.body;
+      const { title, description, prize, contestType, startTime, endTime, isActive, videoStartTime, videoEndTime, broadcastStartTime } = req.body;
       if (!title || !contestType) {
         return res.status(400).json({ message: 'title and contestType are required' });
       }
 
-      const contest = await storage.createContest({
+      const contestData: any = {
         broadcastId,
         title,
         description: description || null,
@@ -2408,7 +2425,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
         startTime: startTime ? new Date(startTime) : null,
         endTime: endTime ? new Date(endTime) : null,
         isActive: isActive !== undefined ? isActive : true
-      });
+      };
+
+      if (videoStartTime !== undefined && videoEndTime !== undefined && broadcastStartTime) {
+        const validation = validateScheduling({ broadcastStartTime, videoStartTime, videoEndTime });
+        if (!validation.valid) {
+          return res.status(400).json({ message: validation.error });
+        }
+        const scheduled = calculateScheduledTimes({ broadcastStartTime, videoStartTime, videoEndTime });
+        contestData.videoStartTime = videoStartTime;
+        contestData.videoEndTime = videoEndTime;
+        contestData.broadcastStartTime = new Date(broadcastStartTime);
+        contestData.scheduledStartTime = scheduled.scheduledStart;
+        contestData.scheduledEndTime = scheduled.scheduledEnd;
+      }
+
+      const contest = await storage.createContest(contestData);
 
       res.status(201).json(contest);
     } catch (error) {
@@ -2487,7 +2519,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // ========================================
 
   // SDK: Vote on a poll (public endpoint, uses apiKey)
-  app.post('/v1/engagement/polls/:pollId/vote', async (req, res) => {
+  app.post('/v1/engagement/polls/:pollId/vote', createRateLimiter(rateLimitPresets.voting), async (req, res) => {
     try {
       const pollId = parseInt(req.params.pollId);
       const { optionId, userId, broadcastId } = req.body;
@@ -2496,62 +2528,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: 'optionId, userId, and broadcastId are required' });
       }
 
-      const poll = await storage.getPoll(pollId);
-      if (!poll) {
-        return res.status(404).json({ message: 'Poll not found' });
-      }
-      if (!poll.isActive) {
-        return res.status(400).json({ message: 'Poll is not active' });
-      }
-
-      const hasVoted = await storage.hasUserVoted(pollId, userId);
-      if (hasVoted) {
-        return res.status(409).json({ message: 'User has already voted on this poll' });
+      if (isQueueEnabled()) {
+        await voteQueue.add('process-vote', { pollId, optionId, userId, broadcastId }, {
+          jobId: `vote-${pollId}-${userId}`,
+        });
+        return res.json({ success: true, queued: true, message: 'Vote queued for processing' });
       }
 
-      await storage.createPollVote({
-        pollId,
-        optionId,
-        userId,
-        broadcastId
-      });
+      const { processPollVoteSync } = await import('./services/vote-processor');
+      const result = await processPollVoteSync({ pollId, optionId, userId, broadcastId });
 
-      await storage.updatePollOptionVoteCount(optionId, 1);
-
-      const results = await storage.getPollResults(pollId);
-      if (results) {
-        const totalVotes = results.poll.totalVotes;
-        const optionsWithPercentages = results.options.map(opt => ({
-          ...opt,
-          percentage: totalVotes > 0 ? Math.round((opt.voteCount / totalVotes) * 10000) / 100 : 0
-        }));
-
-        const wsEvent = {
-          type: 'poll_results_updated',
-          data: {
-            pollId,
-            broadcastId,
-            totalVotes,
-            options: optionsWithPercentages
-          }
-        };
-
-        const broadcast = await storage.getBroadcast(broadcastId);
-        if (broadcast?.campaignId) {
-          const clients = campaignClients.get(broadcast.campaignId);
-          if (clients) {
-            clients.forEach(client => {
-              if (client.readyState === WebSocket.OPEN) {
-                client.send(JSON.stringify(wsEvent));
-              }
-            });
-          }
-        }
-
-        res.json({ success: true, results: { ...results.poll, options: optionsWithPercentages } });
-      } else {
-        res.json({ success: true });
+      if (!result.success) {
+        const statusCode = result.error?.includes('not found') ? 404 :
+                          result.error?.includes('already voted') ? 409 :
+                          result.error?.includes('not active') ? 400 : 500;
+        return res.status(statusCode).json({ message: result.error });
       }
+
+      res.json({ success: true, results: result.data });
     } catch (error: any) {
       if (error.code === '23505') {
         return res.status(409).json({ message: 'User has already voted on this poll' });
@@ -2585,7 +2579,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // SDK: Participate in a contest (public)
-  app.post('/v1/engagement/contests/:contestId/participate', async (req, res) => {
+  app.post('/v1/engagement/contests/:contestId/participate', createRateLimiter(rateLimitPresets.participation), async (req, res) => {
     try {
       const contestId = parseInt(req.params.contestId);
       const { userId, broadcastId, answers } = req.body;
@@ -2594,27 +2588,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: 'userId and broadcastId are required' });
       }
 
-      const contest = await storage.getContest(contestId);
-      if (!contest) {
-        return res.status(404).json({ message: 'Contest not found' });
-      }
-      if (!contest.isActive) {
-        return res.status(400).json({ message: 'Contest is not active' });
-      }
-
-      const hasParticipated = await storage.hasUserParticipated(contestId, userId);
-      if (hasParticipated) {
-        return res.status(409).json({ message: 'User has already participated in this contest' });
+      if (isQueueEnabled()) {
+        await contestParticipationQueue.add('process-participation', { contestId, userId, broadcastId, answers }, {
+          jobId: `participate-${contestId}-${userId}`,
+        });
+        return res.status(201).json({ success: true, queued: true, message: 'Participation queued for processing' });
       }
 
-      const participation = await storage.createContestParticipation({
-        contestId,
-        userId,
-        broadcastId,
-        answers: answers || null
-      });
+      const { processContestParticipationSync } = await import('./services/contest-processor');
+      const result = await processContestParticipationSync({ contestId, userId, broadcastId, answers });
 
-      res.status(201).json(participation);
+      if (!result.success) {
+        const statusCode = result.error?.includes('not found') ? 404 :
+                          result.error?.includes('already participated') ? 409 :
+                          result.error?.includes('not active') ? 400 : 500;
+        return res.status(statusCode).json({ message: result.error });
+      }
+
+      res.status(201).json(result.data);
     } catch (error: any) {
       if (error.code === '23505') {
         return res.status(409).json({ message: 'User has already participated in this contest' });
@@ -2760,18 +2751,33 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: 'Broadcast not found' });
       }
 
-      const { question, options, startTime, endTime, isActive } = req.body;
+      const { question, options, startTime, endTime, isActive, videoStartTime, videoEndTime, broadcastStartTime } = req.body;
       if (!question || !options || !Array.isArray(options) || options.length < 2) {
         return res.status(400).json({ message: 'question and at least 2 options are required' });
       }
 
-      const poll = await storage.createPoll({
+      const pollData: any = {
         broadcastId,
         question,
         startTime: startTime ? new Date(startTime) : null,
         endTime: endTime ? new Date(endTime) : null,
         isActive: isActive !== undefined ? isActive : true
-      });
+      };
+
+      if (videoStartTime !== undefined && videoEndTime !== undefined && broadcastStartTime) {
+        const validation = validateScheduling({ broadcastStartTime, videoStartTime, videoEndTime });
+        if (!validation.valid) {
+          return res.status(400).json({ message: validation.error });
+        }
+        const scheduled = calculateScheduledTimes({ broadcastStartTime, videoStartTime, videoEndTime });
+        pollData.videoStartTime = videoStartTime;
+        pollData.videoEndTime = videoEndTime;
+        pollData.broadcastStartTime = new Date(broadcastStartTime);
+        pollData.scheduledStartTime = scheduled.scheduledStart;
+        pollData.scheduledEndTime = scheduled.scheduledEnd;
+      }
+
+      const poll = await storage.createPoll(pollData);
 
       const createdOptions = [];
       for (let i = 0; i < options.length; i++) {
@@ -2841,12 +2847,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: 'Broadcast not found' });
       }
 
-      const { title, description, prize, contestType, startTime, endTime, isActive } = req.body;
+      const { title, description, prize, contestType, startTime, endTime, isActive, videoStartTime, videoEndTime, broadcastStartTime } = req.body;
       if (!title || !contestType) {
         return res.status(400).json({ message: 'title and contestType are required' });
       }
 
-      const contest = await storage.createContest({
+      const contestData: any = {
         broadcastId,
         title,
         description: description || null,
@@ -2855,7 +2861,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
         startTime: startTime ? new Date(startTime) : null,
         endTime: endTime ? new Date(endTime) : null,
         isActive: isActive !== undefined ? isActive : true
-      });
+      };
+
+      if (videoStartTime !== undefined && videoEndTime !== undefined && broadcastStartTime) {
+        const validation = validateScheduling({ broadcastStartTime, videoStartTime, videoEndTime });
+        if (!validation.valid) {
+          return res.status(400).json({ message: validation.error });
+        }
+        const scheduled = calculateScheduledTimes({ broadcastStartTime, videoStartTime, videoEndTime });
+        contestData.videoStartTime = videoStartTime;
+        contestData.videoEndTime = videoEndTime;
+        contestData.broadcastStartTime = new Date(broadcastStartTime);
+        contestData.scheduledStartTime = scheduled.scheduledStart;
+        contestData.scheduledEndTime = scheduled.scheduledEnd;
+      }
+
+      const contest = await storage.createContest(contestData);
 
       res.status(201).json(contest);
     } catch (error) {

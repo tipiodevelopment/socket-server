@@ -2,7 +2,6 @@ import { storage } from "./storage";
 import { isCampaignActive, normalizeUrls } from "./utils";
 import { broadcastToCampaign } from "./routes";
 
-// Configurable interval in minutes (default: 1 minute)
 const SCHEDULER_INTERVAL_MINUTES = parseInt(process.env.SCHEDULER_INTERVAL_MINUTES || '1', 10);
 
 let schedulerInterval: NodeJS.Timeout | null = null;
@@ -16,17 +15,16 @@ export function startScheduler() {
   const intervalMs = SCHEDULER_INTERVAL_MINUTES * 60 * 1000;
   console.log(`[Scheduler] Starting with interval of ${SCHEDULER_INTERVAL_MINUTES} minute(s)`);
 
-  // Run immediately on startup
   checkScheduledComponents();
   updateBroadcastStatuses();
+  processScheduledPolls();
+  processScheduledContests();
 
-  // Then run on interval
   schedulerInterval = setInterval(() => {
     checkScheduledComponents();
     updateBroadcastStatuses();
-    // TODO: Descomentar cuando se implementen los campos de scheduling en la UI
-    // processScheduledPolls();
-    // processScheduledContests();
+    processScheduledPolls();
+    processScheduledContests();
   }, intervalMs);
 }
 
@@ -43,20 +41,16 @@ async function checkScheduledComponents() {
     const now = new Date();
     console.log(`[Scheduler] Checking scheduled components at ${now.toISOString()}`);
 
-    // Get all campaigns
     const campaigns = await storage.getAllCampaigns();
 
     for (const campaign of campaigns) {
-      // Skip inactive campaigns
       if (!isCampaignActive(campaign)) {
         continue;
       }
 
-      // Get all campaign components (including those with scheduling)
       const components = await storage.getCampaignComponents(campaign.id);
 
       for (const cc of components) {
-        // Skip if no scheduling defined
         if (!cc.scheduledTime) {
           continue;
         }
@@ -64,20 +58,16 @@ async function checkScheduledComponents() {
         const scheduledTime = new Date(cc.scheduledTime);
         const endTime = cc.endTime ? new Date(cc.endTime) : null;
 
-        // Check if component should be activated
         if (cc.status === 'inactive' && now >= scheduledTime) {
-          // If there's an end time and we're past it, don't activate
           if (endTime && now >= endTime) {
             continue;
           }
 
           console.log(`[Scheduler] Activating component ${cc.component.name} (${cc.component.type}) in campaign ${campaign.id}`);
           
-          // Activate the component
           const updated = await storage.updateCampaignComponentStatus(campaign.id, cc.componentId, 'active');
           
           if (updated) {
-            // Broadcast activation via WebSocket
             broadcastToCampaign(campaign.id, JSON.stringify({
               type: 'component_status_changed',
               campaignId: campaign.id,
@@ -93,15 +83,12 @@ async function checkScheduledComponents() {
           }
         }
 
-        // Check if component should be deactivated
         if (cc.status === 'active' && endTime && now >= endTime) {
           console.log(`[Scheduler] Deactivating component ${cc.component.name} (${cc.component.type}) in campaign ${campaign.id}`);
           
-          // Deactivate the component
           const updated = await storage.updateCampaignComponentStatus(campaign.id, cc.componentId, 'inactive');
           
           if (updated) {
-            // Broadcast deactivation via WebSocket
             broadcastToCampaign(campaign.id, JSON.stringify({
               type: 'component_status_changed',
               campaignId: campaign.id,
@@ -123,94 +110,94 @@ async function checkScheduledComponents() {
   }
 }
 
-/**
- * Procesa polls programados para activar/desactivar automáticamente
- * TODO: Activar cuando se implementen los campos scheduledStartTime/scheduledEndTime en la UI
- */
 async function processScheduledPolls() {
-  // TODO: Implementar cuando se use scheduling por video timing
-  // const now = new Date();
-  //
-  // const allBroadcasts = await storage.getAllBroadcasts({ status: 'live' });
-  // for (const broadcast of allBroadcasts) {
-  //   const polls = await storage.getPollsByBroadcast(broadcast.broadcastId);
-  //   for (const poll of polls) {
-  //     if (!poll.scheduledStartTime) continue;
-  //
-  //     const scheduledStart = new Date(poll.scheduledStartTime);
-  //     const scheduledEnd = poll.scheduledEndTime ? new Date(poll.scheduledEndTime) : null;
-  //
-  //     // Activate polls that should start
-  //     if (!poll.isActive && now >= scheduledStart && (!scheduledEnd || now < scheduledEnd)) {
-  //       await storage.updatePoll(poll.id, { isActive: true });
-  //       if (broadcast.campaignId) {
-  //         broadcastToCampaign(broadcast.campaignId, JSON.stringify({
-  //           type: 'poll_activated',
-  //           pollId: poll.id,
-  //           broadcastId: broadcast.broadcastId,
-  //           timestamp: now.toISOString(),
-  //         }));
-  //       }
-  //     }
-  //
-  //     // Deactivate polls that should end
-  //     if (poll.isActive && scheduledEnd && now >= scheduledEnd) {
-  //       await storage.updatePoll(poll.id, { isActive: false });
-  //       if (broadcast.campaignId) {
-  //         broadcastToCampaign(broadcast.campaignId, JSON.stringify({
-  //           type: 'poll_deactivated',
-  //           pollId: poll.id,
-  //           broadcastId: broadcast.broadcastId,
-  //           timestamp: now.toISOString(),
-  //         }));
-  //       }
-  //     }
-  //   }
-  // }
+  try {
+    const now = new Date();
+
+    const liveBroadcasts = await storage.getBroadcastsByStatus('live');
+    for (const broadcast of liveBroadcasts) {
+      const polls = await storage.getBroadcastPolls(broadcast.broadcastId);
+      for (const poll of polls) {
+        if (!poll.scheduledStartTime) continue;
+
+        const scheduledStart = new Date(poll.scheduledStartTime);
+        const scheduledEnd = poll.scheduledEndTime ? new Date(poll.scheduledEndTime) : null;
+
+        if (!poll.isActive && now >= scheduledStart && (!scheduledEnd || now < scheduledEnd)) {
+          await storage.updatePoll(poll.id, { isActive: true });
+          console.log(`[Scheduler] Activated poll ${poll.id} for broadcast ${broadcast.broadcastId}`);
+          if (broadcast.campaignId) {
+            broadcastToCampaign(broadcast.campaignId, JSON.stringify({
+              type: 'poll_activated',
+              pollId: poll.id,
+              broadcastId: broadcast.broadcastId,
+              timestamp: now.toISOString(),
+            }));
+          }
+        }
+
+        if (poll.isActive && scheduledEnd && now >= scheduledEnd) {
+          await storage.updatePoll(poll.id, { isActive: false });
+          console.log(`[Scheduler] Deactivated poll ${poll.id} for broadcast ${broadcast.broadcastId}`);
+          if (broadcast.campaignId) {
+            broadcastToCampaign(broadcast.campaignId, JSON.stringify({
+              type: 'poll_deactivated',
+              pollId: poll.id,
+              broadcastId: broadcast.broadcastId,
+              timestamp: now.toISOString(),
+            }));
+          }
+        }
+      }
+    }
+  } catch (error) {
+    console.error('[Scheduler] Error processing scheduled polls:', error);
+  }
 }
 
-/**
- * Procesa contests programados para activar/desactivar automáticamente
- * TODO: Activar cuando se implementen los campos scheduledStartTime/scheduledEndTime en la UI
- */
 async function processScheduledContests() {
-  // TODO: Implementar similar a processScheduledPolls
-  // const now = new Date();
-  //
-  // const allBroadcasts = await storage.getAllBroadcasts({ status: 'live' });
-  // for (const broadcast of allBroadcasts) {
-  //   const contests = await storage.getContestsByBroadcast(broadcast.broadcastId);
-  //   for (const contest of contests) {
-  //     if (!contest.scheduledStartTime) continue;
-  //
-  //     const scheduledStart = new Date(contest.scheduledStartTime);
-  //     const scheduledEnd = contest.scheduledEndTime ? new Date(contest.scheduledEndTime) : null;
-  //
-  //     if (!contest.isActive && now >= scheduledStart && (!scheduledEnd || now < scheduledEnd)) {
-  //       await storage.updateContest(contest.id, { isActive: true });
-  //       if (broadcast.campaignId) {
-  //         broadcastToCampaign(broadcast.campaignId, JSON.stringify({
-  //           type: 'contest_activated',
-  //           contestId: contest.id,
-  //           broadcastId: broadcast.broadcastId,
-  //           timestamp: now.toISOString(),
-  //         }));
-  //       }
-  //     }
-  //
-  //     if (contest.isActive && scheduledEnd && now >= scheduledEnd) {
-  //       await storage.updateContest(contest.id, { isActive: false });
-  //       if (broadcast.campaignId) {
-  //         broadcastToCampaign(broadcast.campaignId, JSON.stringify({
-  //           type: 'contest_deactivated',
-  //           contestId: contest.id,
-  //           broadcastId: broadcast.broadcastId,
-  //           timestamp: now.toISOString(),
-  //         }));
-  //       }
-  //     }
-  //   }
-  // }
+  try {
+    const now = new Date();
+
+    const liveBroadcasts = await storage.getBroadcastsByStatus('live');
+    for (const broadcast of liveBroadcasts) {
+      const contests = await storage.getBroadcastContests(broadcast.broadcastId);
+      for (const contest of contests) {
+        if (!contest.scheduledStartTime) continue;
+
+        const scheduledStart = new Date(contest.scheduledStartTime);
+        const scheduledEnd = contest.scheduledEndTime ? new Date(contest.scheduledEndTime) : null;
+
+        if (!contest.isActive && now >= scheduledStart && (!scheduledEnd || now < scheduledEnd)) {
+          await storage.updateContest(contest.id, { isActive: true });
+          console.log(`[Scheduler] Activated contest ${contest.id} for broadcast ${broadcast.broadcastId}`);
+          if (broadcast.campaignId) {
+            broadcastToCampaign(broadcast.campaignId, JSON.stringify({
+              type: 'contest_activated',
+              contestId: contest.id,
+              broadcastId: broadcast.broadcastId,
+              timestamp: now.toISOString(),
+            }));
+          }
+        }
+
+        if (contest.isActive && scheduledEnd && now >= scheduledEnd) {
+          await storage.updateContest(contest.id, { isActive: false });
+          console.log(`[Scheduler] Deactivated contest ${contest.id} for broadcast ${broadcast.broadcastId}`);
+          if (broadcast.campaignId) {
+            broadcastToCampaign(broadcast.campaignId, JSON.stringify({
+              type: 'contest_deactivated',
+              contestId: contest.id,
+              broadcastId: broadcast.broadcastId,
+              timestamp: now.toISOString(),
+            }));
+          }
+        }
+      }
+    }
+  } catch (error) {
+    console.error('[Scheduler] Error processing scheduled contests:', error);
+  }
 }
 
 async function updateBroadcastStatuses() {

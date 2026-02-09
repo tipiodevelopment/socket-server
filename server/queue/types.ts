@@ -8,7 +8,7 @@ export interface VoteJobData {
   optionId: number;
   userId: string;
   broadcastId: string;
-  timestamp: string;
+  timestamp?: string;
 }
 
 export interface ContestParticipationJobData {
@@ -16,7 +16,7 @@ export interface ContestParticipationJobData {
   userId: string;
   broadcastId: string;
   answers?: Record<string, any>;
-  timestamp: string;
+  timestamp?: string;
 }
 
 export interface BroadcastStatusJobData {

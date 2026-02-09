@@ -4,6 +4,8 @@ import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
 import { detectAndCacheBaseUrl } from "./utils";
 import { startScheduler } from "./scheduler";
+import { initializeWorkers } from "./queue/workers";
+import { isQueueEnabled } from "./queue/queues";
 
 const app = express();
 
@@ -79,9 +81,15 @@ app.use((req, res, next) => {
     const server = await registerRoutes(app);
     console.log('✅ Routes registered successfully');
     
-    // Start the scheduler for automatic component activation/deactivation
     startScheduler();
     console.log('✅ Scheduler started');
+
+    if (isQueueEnabled()) {
+      initializeWorkers();
+      console.log('✅ Queue workers initialized');
+    } else {
+      console.log('ℹ️ Queue disabled (USE_QUEUE != true), using synchronous processing');
+    }
 
     app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
       const status = err.status || err.statusCode || 500;
