@@ -914,15 +914,69 @@ Ejecuta cada 1 minuto (configurable via `SCHEDULER_INTERVAL_MINUTES`):
 
 ---
 
-## Fases Pendientes (Diferidas)
+## Infraestructura Preparada para Futuro
 
-### Fase 5: Scheduling con Video Timing
+El codigo incluye scaffolding preparado para facilitar la implementacion de features futuras. Estas estructuras estan creadas pero NO activas.
+
+### Archivos de Scaffolding
+
+```
+server/
+├── queue/
+│   ├── index.ts              # Exportaciones centralizadas
+│   ├── types.ts              # Tipos: VoteJobData, ContestParticipationJobData, etc.
+│   ├── queues.ts             # Definicion de colas BullMQ (comentado)
+│   ├── workers.ts            # Workers para procesar jobs (comentado)
+│   └── README.md             # Instrucciones de implementacion futura
+├── services/
+│   ├── vote-processor.ts     # Logica de votos extraida (funcional, usable por workers)
+│   └── contest-processor.ts  # Logica de participacion extraida (funcional, usable por workers)
+├── middleware/
+│   ├── rate-limiter.ts       # Rate limiting passthrough (necesita Redis)
+│   └── broadcast-validator.ts # Validacion de broadcastId (funcional)
+├── utils/
+│   └── scheduling.ts         # Calculo de timestamps relativos al video
+
+client/src/components/scheduling/
+├── SchedulingForm.tsx         # Formulario de scheduling (preparado)
+├── VideoTimeInput.tsx         # Input HH:MM:SS / segundos (preparado)
+└── TimelineView.tsx           # Vista de timeline visual (preparado)
+```
+
+### Campos de DB Preparados (pueden ser NULL)
+
+Nuevos campos en `polls`, `contests`, y `campaign_components`:
+- `video_start_time` (integer): Segundos relativos al inicio del broadcast
+- `video_end_time` (integer): Segundos relativos al inicio del broadcast
+- `broadcast_start_time` (timestamp, solo polls/contests): Timestamp del inicio del broadcast
+- `scheduled_start_time` (timestamp): Calculado: broadcastStartTime + videoStartTime
+- `scheduled_end_time` (timestamp): Calculado: broadcastStartTime + videoEndTime
+
+### Variables de Entorno Futuras (Redis)
+
+```
+REDIS_HOST=localhost
+REDIS_PORT=6379
+REDIS_PASSWORD=
+REDIS_URL=redis://localhost:6379
+QUEUE_ENABLED=false
+QUEUE_CONCURRENCY=10
+QUEUE_MAX_JOBS_PER_SECOND=100
+```
+
+### Fases Pendientes
+
+#### Fase 5: Scheduling con Video Timing
+- **Estado**: Campos de DB creados, utilidades de calculo listas, componentes UI preparados
+- **Para activar**: Integrar SchedulingForm en broadcast-detail.tsx, descomentar processScheduledPolls/processScheduledContests en scheduler.ts
 - Sincronizacion de engagement con timestamps del video
 - Video timeline markers
 - Activacion de polls/contests en momentos especificos del stream
 
-### Fase 6: Redis/Bull Message Queue
+#### Fase 6: Redis/Bull Message Queue
+- **Estado**: Tipos definidos, servicios extraidos, rate limiter preparado
+- **Para activar**: `npm install bullmq ioredis`, descomentar codigo en queues.ts/workers.ts, activar QUEUE_ENABLED=true
 - Cola de mensajes para procesamiento asincrono
-- Rate limiting de votos
+- Rate limiting de votos con sliding window
 - Agregacion de eventos en batch
 - Alta disponibilidad y escalabilidad horizontal

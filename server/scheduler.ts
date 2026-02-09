@@ -24,6 +24,9 @@ export function startScheduler() {
   schedulerInterval = setInterval(() => {
     checkScheduledComponents();
     updateBroadcastStatuses();
+    // TODO: Descomentar cuando se implementen los campos de scheduling en la UI
+    // processScheduledPolls();
+    // processScheduledContests();
   }, intervalMs);
 }
 
@@ -118,6 +121,96 @@ async function checkScheduledComponents() {
   } catch (error) {
     console.error('[Scheduler] Error checking scheduled components:', error);
   }
+}
+
+/**
+ * Procesa polls programados para activar/desactivar automáticamente
+ * TODO: Activar cuando se implementen los campos scheduledStartTime/scheduledEndTime en la UI
+ */
+async function processScheduledPolls() {
+  // TODO: Implementar cuando se use scheduling por video timing
+  // const now = new Date();
+  //
+  // const allBroadcasts = await storage.getAllBroadcasts({ status: 'live' });
+  // for (const broadcast of allBroadcasts) {
+  //   const polls = await storage.getPollsByBroadcast(broadcast.broadcastId);
+  //   for (const poll of polls) {
+  //     if (!poll.scheduledStartTime) continue;
+  //
+  //     const scheduledStart = new Date(poll.scheduledStartTime);
+  //     const scheduledEnd = poll.scheduledEndTime ? new Date(poll.scheduledEndTime) : null;
+  //
+  //     // Activate polls that should start
+  //     if (!poll.isActive && now >= scheduledStart && (!scheduledEnd || now < scheduledEnd)) {
+  //       await storage.updatePoll(poll.id, { isActive: true });
+  //       if (broadcast.campaignId) {
+  //         broadcastToCampaign(broadcast.campaignId, JSON.stringify({
+  //           type: 'poll_activated',
+  //           pollId: poll.id,
+  //           broadcastId: broadcast.broadcastId,
+  //           timestamp: now.toISOString(),
+  //         }));
+  //       }
+  //     }
+  //
+  //     // Deactivate polls that should end
+  //     if (poll.isActive && scheduledEnd && now >= scheduledEnd) {
+  //       await storage.updatePoll(poll.id, { isActive: false });
+  //       if (broadcast.campaignId) {
+  //         broadcastToCampaign(broadcast.campaignId, JSON.stringify({
+  //           type: 'poll_deactivated',
+  //           pollId: poll.id,
+  //           broadcastId: broadcast.broadcastId,
+  //           timestamp: now.toISOString(),
+  //         }));
+  //       }
+  //     }
+  //   }
+  // }
+}
+
+/**
+ * Procesa contests programados para activar/desactivar automáticamente
+ * TODO: Activar cuando se implementen los campos scheduledStartTime/scheduledEndTime en la UI
+ */
+async function processScheduledContests() {
+  // TODO: Implementar similar a processScheduledPolls
+  // const now = new Date();
+  //
+  // const allBroadcasts = await storage.getAllBroadcasts({ status: 'live' });
+  // for (const broadcast of allBroadcasts) {
+  //   const contests = await storage.getContestsByBroadcast(broadcast.broadcastId);
+  //   for (const contest of contests) {
+  //     if (!contest.scheduledStartTime) continue;
+  //
+  //     const scheduledStart = new Date(contest.scheduledStartTime);
+  //     const scheduledEnd = contest.scheduledEndTime ? new Date(contest.scheduledEndTime) : null;
+  //
+  //     if (!contest.isActive && now >= scheduledStart && (!scheduledEnd || now < scheduledEnd)) {
+  //       await storage.updateContest(contest.id, { isActive: true });
+  //       if (broadcast.campaignId) {
+  //         broadcastToCampaign(broadcast.campaignId, JSON.stringify({
+  //           type: 'contest_activated',
+  //           contestId: contest.id,
+  //           broadcastId: broadcast.broadcastId,
+  //           timestamp: now.toISOString(),
+  //         }));
+  //       }
+  //     }
+  //
+  //     if (contest.isActive && scheduledEnd && now >= scheduledEnd) {
+  //       await storage.updateContest(contest.id, { isActive: false });
+  //       if (broadcast.campaignId) {
+  //         broadcastToCampaign(broadcast.campaignId, JSON.stringify({
+  //           type: 'contest_deactivated',
+  //           contestId: contest.id,
+  //           broadcastId: broadcast.broadcastId,
+  //           timestamp: now.toISOString(),
+  //         }));
+  //       }
+  //     }
+  //   }
+  // }
 }
 
 async function updateBroadcastStatuses() {

@@ -51,9 +51,16 @@ The frontend uses React 18 with TypeScript and Vite, styled with Tailwind CSS, a
     - **`/v1/offers`**: Returns active product offers filtered by user targeting, with optional `userId` and `userCountry` parameters for segmentation.
     - All asset URLs enforced as HTTPS.
     - **Match Context Support:** Campaigns and components can be associated with external matches (sports events) with dedicated database fields and WebSocket event inclusion.
-- **Broadcast Management System:** Dedicated tables (`broadcasts`, `polls`, `poll_options`, `poll_votes`, `contests`, `contest_participations`) with auto-generated slugs for broadcast IDs. Features admin APIs with JWT authentication for CRUD operations, and SDK APIs for listing, engaging, and participating in broadcasts.
+- **Broadcast Management System:** Dedicated tables (`broadcasts`, `polls`, `poll_options`, `poll_votes`, `contests`, `contest_participations`) with auto-generated slugs for broadcast IDs. Features admin APIs with JWT authentication for CRUD operations, and SDK APIs for listing, engaging, and participating in broadcasts. Polls and contests support video-relative scheduling fields (`videoStartTime`, `videoEndTime`, `scheduledStartTime`, `scheduledEndTime`) for future video timing integration.
 - **Dynamic Configuration System:** New database tables (`campaign_translations`, `campaign_engagement_config`, `campaign_ui_config`, `campaign_feature_flags`, `sdk_translations`) to manage comprehensive dynamic configurations for SDK campaigns. Provides SDK endpoints (`/v1/campaigns/{campaignId}/config`, `/v1/engagement/config`, `/v1/localization/{language}`) and dashboard UI for managing brand, engagement, UI theme, and feature flags. Broadcasts `config:updated` WebSocket events upon changes.
 - **Page Structure:** Dedicated pages for Campaigns (listing), Campaign Dashboard (overview, events, scheduled, components, integrations, settings), Campaign Viewer (public-facing), Components Library, Broadcasts (listing), Broadcast Detail (overview, polls, contests), and Docs.
+- **Future Infrastructure Scaffolding:**
+    - `server/queue/`: Message queue scaffolding (types, queues, workers) prepared for BullMQ/Redis integration.
+    - `server/services/`: Extracted vote/contest processing logic ready for async worker execution.
+    - `server/middleware/rate-limiter.ts`: Rate limiting middleware (passthrough until Redis is available).
+    - `server/middleware/broadcast-validator.ts`: BroadcastId validation middleware.
+    - `server/utils/scheduling.ts`: Video-relative timestamp calculation utilities.
+    - `client/src/components/scheduling/`: SchedulingForm, VideoTimeInput, TimelineView components (prepared, not integrated).
 
 ## External Dependencies
 

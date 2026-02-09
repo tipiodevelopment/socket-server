@@ -163,7 +163,11 @@ export const campaignComponents = pgTable("campaign_components", {
   scheduledTime: timestamp("scheduled_time"), // Optional: auto-activate at this time (null = manual toggle only)
   endTime: timestamp("end_time"), // Optional: auto-deactivate at this time (null = no end)
   activatedAt: timestamp("activated_at"),
-  matchId: varchar("match_id", { length: 255 }), // Optional: Associate component with specific match
+  matchId: varchar("match_id", { length: 255 }),
+  videoStartTime: integer("video_start_time"),
+  videoEndTime: integer("video_end_time"),
+  scheduledStartTime: timestamp("scheduled_start_time"),
+  scheduledEndTime: timestamp("scheduled_end_time"),
   updatedAt: timestamp("updated_at").defaultNow().notNull()
 });
 
@@ -191,6 +195,11 @@ export const polls = pgTable("polls", {
   endTime: timestamp("end_time"),
   isActive: boolean("is_active").notNull().default(true),
   totalVotes: integer("total_votes").notNull().default(0),
+  videoStartTime: integer("video_start_time"),
+  videoEndTime: integer("video_end_time"),
+  broadcastStartTime: timestamp("broadcast_start_time"),
+  scheduledStartTime: timestamp("scheduled_start_time"),
+  scheduledEndTime: timestamp("scheduled_end_time"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull()
 });
@@ -228,6 +237,11 @@ export const contests = pgTable("contests", {
   startTime: timestamp("start_time"),
   endTime: timestamp("end_time"),
   isActive: boolean("is_active").notNull().default(true),
+  videoStartTime: integer("video_start_time"),
+  videoEndTime: integer("video_end_time"),
+  broadcastStartTime: timestamp("broadcast_start_time"),
+  scheduledStartTime: timestamp("scheduled_start_time"),
+  scheduledEndTime: timestamp("scheduled_end_time"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull()
 });
