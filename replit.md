@@ -2,7 +2,7 @@
 
 ## Overview
 
-This project is a real-time event broadcasting application for multi-campaign management, enabling administrators to create campaigns and broadcast various real-time events (products, polls, contests) to viewers. It features a full-stack TypeScript environment with a React frontend (Vite), an Express backend, and WebSocket-based communication. The system uses isolated WebSocket channels per campaign, persistent configuration and event storage in PostgreSQL, and a dynamic UI component library built with shadcn/ui. The goal is to provide a robust, scalable solution for interactive real-time audience engagement.
+This project is a real-time event broadcasting application for multi-campaign management. It enables administrators to create campaigns and broadcast various real-time events (products, polls, contests) to viewers. The system provides a robust, scalable solution for interactive real-time audience engagement using a full-stack TypeScript environment with a React frontend, an Express backend, and WebSocket-based communication. It features isolated WebSocket channels per campaign, persistent configuration and event storage in PostgreSQL, and a dynamic UI component library. The architecture supports multi-tenant SaaS, allowing different users (agencies/brands) to manage their client applications, channels, and campaigns with complete data isolation.
 
 ## User Preferences
 
@@ -11,13 +11,13 @@ Preferred communication style: Simple, everyday language.
 ## System Architecture
 
 ### UI/UX Decisions
-The frontend uses React 18 with TypeScript and Vite, styled with Tailwind CSS, and utilizes Radix UI primitives with shadcn/ui for components. The design features a premium gradient background, glass morphism, vibrant blue accents, Inter font, and a borderless, fully responsive design for mobile and desktop (320px - 768px).
+The frontend uses React 18 with TypeScript and Vite, styled with Tailwind CSS, and built with Radix UI primitives and shadcn/ui. The design incorporates a premium gradient background, glass morphism, vibrant blue accents, Inter font, and a borderless, fully responsive design for various screen sizes (320px - 768px).
 
 ### Technical Implementations
 **Frontend:**
 - **State Management:** TanStack Query.
 - **Routing:** Wouter.
-- **Real-time:** Custom `useWebSocket` hook for connection and reconnection.
+- **Real-time:** Custom `useWebSocket` hook.
 - **Type Safety:** Shared Zod schemas.
 - **Component Architecture:** Modular, self-contained dashboard tab components.
 
@@ -25,88 +25,35 @@ The frontend uses React 18 with TypeScript and Vite, styled with Tailwind CSS, a
 - **Runtime:** Node.js with Express.js.
 - **WebSockets:** `ws` library.
 - **Database:** PostgreSQL with Drizzle ORM.
-- **Scheduler Service:** Automatic component activation/deactivation based on scheduled times.
-- **RESTful Event API:** Provides GET and POST endpoints for campaign events, persisting to PostgreSQL and broadcasting via WebSocket.
+- **Scheduler Service:** Automates component activation/deactivation.
+- **RESTful Event API:** Manages campaign events, persisting to PostgreSQL and broadcasting via WebSocket.
 
 ### Feature Specifications
-- **Campaign Management:** Create, manage, and delete campaigns with associated integrations. Includes campaign lifecycle (startDate, endDate, isPaused) and a master control to pause/resume entire campaigns, overriding scheduled dates. Pause state is persistent.
-- **WebSocket Architecture:** Isolated WebSocket channels per campaign (`/ws/:campaignId`).
+- **Campaign Management:** Full CRUD operations for campaigns, including lifecycle management (start/end dates, pause state). Supports master control for pausing/resuming campaigns.
+- **WebSocket Architecture:** Isolated channels per campaign (`/ws/:campaignId`).
 - **Dynamic Component Management:**
-    - A library of reusable UI components (Banner, Countdown, Carousel, Product Spotlight, Offer Badge, Offer Banner, Product Carousel, Product Banner, Product Store).
-    - Components can be activated/deactivated manually or scheduled.
-    - Component Library maintains 6 base templates and allows campaigns to add multiple instances of these templates with unique names and campaign-specific custom configurations.
-    - Real-time updates via WebSockets for dynamic display.
-    - Deeplink support for CTAs in components.
-- **Event Broadcasting:** Supports Product, Poll, and Contest events, validated by Zod, stored in PostgreSQL, and broadcast to campaign-specific WebSocket clients.
-    - **Saved Events with Smart Deduplication (Nov 2025):** The "Saved Events" section in OverviewTab displays previously created events for easy re-broadcasting. To prevent visual clutter from duplicate event names, the system implements hybrid deduplication:
-        - **Default Behavior:** GET `/api/events/:campaignId` groups events by (type + event name/question) and returns only the most recent version of each unique combination
-        - **Full History Access:** Optional `?includeAll=true` query parameter bypasses deduplication to return complete event history
-        - **Performance:** Reduces UI payload from 50+ duplicate cards to ~9 unique events for typical campaigns
-        - **Data Integrity:** All events remain in database for audit trail; deduplication is view-only
-        - **React Best Practices:** Events use stable `event.id` as React keys instead of array index
-        - **Example:** Campaign with 50 "Producto Persistente" broadcasts displays only the latest version in Saved Events section
-    - **Template Component Multi-Campaign Support (Nov 2025):** Template components (isTemplate='true') can now be added to multiple campaigns simultaneously:
-        - **Architecture:** `validateComponentAvailability(componentId, isTemplate, campaignId?)` accepts componentId + isTemplate boolean
-        - **Template Behavior:** Returns `{available: true}` immediately for templates, bypassing multi-campaign restriction
-        - **Regular Component Behavior:** Non-template components (isTemplate='false') remain restricted to single campaign
-        - **Security:** Callers extract isTemplate from fetched component, preventing object mutation/tampering
-        - **Performance:** Zero redundant database lookups (component fetched once by caller)
-        - **Example:** "Product Banner" template can be added to Campaign 3, Campaign 19, and Campaign 20 without 409 conflicts
-    - **Geographic Targeting & User Segmentation (Nov 2025):** Server-side segmentation enables A/B testing and geographic restrictions:
-        - **Database Fields:** Added `isSegmented` (bool), `targetCountries` (array of ISO country codes), `targetPercentage` (1-100%)
-        - **Deterministic Hashing:** Uses SHA256(`userId:campaignId`) % 100 to ensure consistent user assignment (same user always sees/doesn't see a campaign)
-        - **Server-Side Filtering:** `/v1/offers` endpoint validates `userId`, `userCountry`, and campaign targeting before returning offers
-        - **Dashboard UI:** "Targeting & Segmentation" section in Campaign Settings with:
-          - Toggle to enable/disable segmentation
-          - Multi-select of 18 countries (US, MX, AR, CO, BR, ES, CA, DE, FR, GB, IT, JP, AU, NZ, SG, IN, KR, CN)
-          - Range slider + number input for user percentage (1-100%)
-          - Real-time country search and badge display
-        - **Query Parameters:** SDK passes `userId` and `userCountry` to endpoints: `GET /v1/offers?apiKey=xxx&campaignId=14&userId=user123&userCountry=MX`
-        - **Behavior:** If user doesn't match targeting, returns empty offers array (no error, graceful degradation)
-        - **Use Cases:** A/B testing (20% of users), regional campaigns (only Mexico), market testing
+    - A library of reusable UI components (e.g., Banner, Countdown, Product Spotlight).
+    - Components can be activated/deactivated manually or via scheduling.
+    - Supports multiple instances of base templates with unique configurations per campaign.
+    - Real-time updates via WebSockets and deeplink support for CTAs.
+- **Event Broadcasting:** Supports Product, Poll, and Contest events. Events are validated by Zod, stored in PostgreSQL, and broadcast to campaign-specific WebSocket clients.
+    - **Saved Events with Smart Deduplication:** Displays the most recent version of unique events in the UI, while retaining full history in the database.
+    - **Template Component Multi-Campaign Support:** Allows template components to be added to multiple campaigns simultaneously.
+    - **Geographic Targeting & User Segmentation:** Server-side segmentation using database fields (`isSegmented`, `targetCountries`, `targetPercentage`) and deterministic hashing for consistent user assignment. Filters offers based on user location and segmentation rules.
+- **Broadcast Management:** Supports creating, managing, and tracking the status of broadcasts (upcoming, live, ended). Integrates with a scheduler for automatic status transitions. Includes endpoints for managing polls and contests, and real-time WebSocket events for updates (e.g., poll results, broadcast status).
 
 ### System Design Choices
-- **Multi-Tenant SaaS Architecture (Nov 2025):**
-    - **Four-Level Hierarchy:** Users → Client Apps → Channels → Campaigns
-    - **Isolation:** Complete data isolation between users (agencies/brands) and their client apps
-    - **Performance:** Indexed foreign keys (user_id, client_app_id, channel_id) for optimized queries
-    - **Session Simulation:** localStorage-based userId (`reachu_simulated_user_id`) until Reachu authentication integration
-    - **Scoped Queries:** All campaign endpoints filter by userId for proper multi-tenant isolation
-    
-- **Database Schema:**
-    - `Users`: Stores user info (id, reachuUserId, email?, name?). Represents agencies/brands managing multiple apps.
-    - `Client Apps`: Mobile/web applications owned by users (id, userId, name, bundleId, apiKey). Example: "XXL", "VG", "Pregnancy App".
-    - `Channels`: Marketing channels within client apps (id, clientAppId, name, description). Example: "XXL Home", "XXL Category".
-    - `Campaigns`: Event campaigns within channels (id, channelId, userId, name, scheduling, pause state, matchId, matchName, matchStartTime). Links to Components and Events.
-    - `Components`: Reusable UI component library with `isTemplate` flag.
-    - `Campaign Components`: Links `Components` to `Campaigns`, managing activation status, scheduled times, `instanceName`, `customConfig`, and `matchId`.
-    
+- **Multi-Tenant SaaS Architecture:** Four-level hierarchy (Users → Client Apps → Channels → Campaigns) with complete data isolation and indexed foreign keys for optimized queries.
+- **Database Schema:** `Users`, `Client Apps`, `Channels`, `Campaigns`, `Components`, `Campaign Components` tables manage the hierarchical structure and relationships.
 - **SDK Integration Endpoints:**
-    - **GET /v1/sdk/campaigns:** Auto-discovery endpoint to find all active campaigns for a client app
-      - **Authentication:** Supports both `apiKey` query param and `X-App-Bundle-ID` header (prioritizes bundle ID)
-      - **Filtering:** Optional `matchId` query param to filter campaigns by match association
-      - **Response:** Returns array of active campaigns with components and matchContext
-    - **GET /v1/sdk/config?apiKey=xxx&campaignId=yyy:** Returns campaign config (components, deeplinks, branding) for Swift SDK
-      - **matchContext:** Optional object with matchId, matchName, startTime when campaign is associated with a match
-    - **GET /v1/offers?apiKey=xxx&campaignId=yyy&userId=user123&userCountry=MX:** Returns active product offers filtered by user targeting
-      - **matchContext:** Included per-offer when component has matchId, plus campaign-level matchContext
-    - **Authentication:** API key-based authentication via `client_apps.api_key` or `X-App-Bundle-ID` header
-    - **Scoping:** Campaign-level scoping (backend automatically resolves channel from campaignId)
-    - **Targeting Parameters (Optional):**
-      - `userId` (string): Unique user identifier for deterministic segmentation
-      - `userCountry` (string): ISO country code (e.g., 'MX', 'US') for geographic targeting
-    - **Response Format:** Includes campaignId, campaignName, channelId, channelName for client-side routing; offers array filtered by user eligibility
-    - **HTTPS URLs:** All asset URLs (logos, images) enforced as HTTPS for iOS security requirements
-    - **Match Context Support (Jan 2026):** Campaigns and components can be associated with external matches (sports events)
-      - **Database Fields:** matchId, matchName, matchStartTime on campaigns; matchId on campaign_components
-      - **WebSocket Events:** campaign_started, component_status_changed, component_config_updated now include optional matchId
-      - **Dashboard UI:** "Match Context" section in Campaign Settings with fields for Match ID, Match Name, Match Start Time
-- **Page Structure:**
-    - **Campaigns Page:** Lists all campaigns.
-    - **Campaign Dashboard:** Unified command center with tabs for Overview (campaign control, stats, saved events, create new event), Events (broadcasting interface), Scheduled (timeline), Components (management), Integrations (view only), and Settings.
-    - **Campaign Viewer Page:** Public-facing event display.
-    - **Components Library Page:** Manages reusable component templates.
-    - **Docs Page:** Integration documentation.
+    - **`/v1/sdk/campaigns`**: Auto-discovery of active campaigns for a client app, supporting API key or bundle ID authentication, and optional `matchId` filtering.
+    - **`/v1/sdk/config`**: Returns campaign configuration for Swift SDK, including components, deeplinks, branding, and optional `matchContext`.
+    - **`/v1/offers`**: Returns active product offers filtered by user targeting, with optional `userId` and `userCountry` parameters for segmentation.
+    - All asset URLs enforced as HTTPS.
+    - **Match Context Support:** Campaigns and components can be associated with external matches (sports events) with dedicated database fields and WebSocket event inclusion.
+- **Broadcast Management System:** Dedicated tables (`broadcasts`, `polls`, `poll_options`, `poll_votes`, `contests`, `contest_participations`) with auto-generated slugs for broadcast IDs. Features admin APIs with JWT authentication for CRUD operations, and SDK APIs for listing, engaging, and participating in broadcasts.
+- **Dynamic Configuration System:** New database tables (`campaign_translations`, `campaign_engagement_config`, `campaign_ui_config`, `campaign_feature_flags`, `sdk_translations`) to manage comprehensive dynamic configurations for SDK campaigns. Provides SDK endpoints (`/v1/campaigns/{campaignId}/config`, `/v1/engagement/config`, `/v1/localization/{language}`) and dashboard UI for managing brand, engagement, UI theme, and feature flags. Broadcasts `config:updated` WebSocket events upon changes.
+- **Page Structure:** Dedicated pages for Campaigns (listing), Campaign Dashboard (overview, events, scheduled, components, integrations, settings), Campaign Viewer (public-facing), Components Library, Broadcasts (listing), Broadcast Detail (overview, polls, contests), and Docs.
 
 ## External Dependencies
 
@@ -137,44 +84,3 @@ The frontend uses React 18 with TypeScript and Vite, styled with Tailwind CSS, a
 ### Database
 - **Neon Serverless PostgreSQL:** Configured via `@neondatabase/serverless`.
 - **Drizzle Kit:** Migrations and schema management.
-
-## Pending Tasks
-
-### API Key Management UI (Completed - Jan 2026)
-- **Description:** Added Client Apps page at `/client-apps` to view and manage API Keys
-- **Location:** `/client-apps` page accessible from user session and campaigns pages
-- **Features implemented:**
-  - Display API Key for each Client App (with copy button)
-  - Toggle API Key visibility (show/hide)
-  - Regenerate API Key with confirmation dialog
-  - Create new Client Apps
-  - Delete Client Apps
-  - SDK configuration example code snippet
-- **API Endpoints:** GET/POST `/api/client-apps`, PATCH/DELETE `/api/client-apps/:id`, POST `/api/client-apps/:id/regenerate-key`
-
-### Campaign Logo Upload on Creation (Completed - Jan 2026)
-- **Description:** Added image upload component to campaign creation form
-- **Location:** `/campaigns/new` page - uses `ImageUploadWithPreview` component
-- **Features:** Upload from file or paste URL, preview, remove uploaded image
-
-### Dynamic Configuration System (Completed - Feb 2026)
-- **Description:** Complete dynamic configuration management for SDK campaigns
-- **New Database Tables:**
-  - `campaign_translations`: Sponsor badge text translations by language
-  - `campaign_engagement_config`: Poll/contest durations, demo mode, real-time settings
-  - `campaign_ui_config`: Primary/secondary colors, component configs
-  - `campaign_feature_flags`: Enable/disable features (live streaming, polls, contests, etc.)
-  - `sdk_translations`: Global/campaign/match-specific SDK string translations
-- **New Campaign Fields:** brandName, brandIconAsset, brandIconUrl, brandLogoUrl
-- **New SDK Endpoints:**
-  - **GET /v1/campaigns/{campaignId}/config:** Complete dynamic configuration with brand, engagement, UI, features
-  - **GET /v1/engagement/config:** Match-specific engagement configuration
-  - **GET /v1/localization/{language}:** Localized strings with priority (match > campaign > global)
-- **Dashboard UI:** New settings sections in Campaign Settings tab:
-  - Brand Configuration (name, icon asset, icon URL, logo URL)
-  - Engagement Settings (demo mode, poll/contest durations, real-time updates)
-  - UI Theme (primary/secondary colors with color pickers)
-  - Feature Flags (toggles for live streaming, product catalog, engagement, polls, contests)
-- **WebSocket Events:** `config:updated` event broadcast when configurations change
-- **Caching:** Response headers with Cache-Control (5 min for config, 1 hour for localization)
-- **Backward Compatibility:** All fields optional with sensible defaults
