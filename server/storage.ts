@@ -1,7 +1,7 @@
-import { WebSocketEvent, Campaign, InsertCampaign, Event, InsertEvent, CampaignFormState, InsertFormState, ScheduledComponent, InsertScheduledComponent, Component, InsertComponent, CampaignComponent, InsertCampaignComponent, User, InsertUser, ClientApp, InsertClientApp, Channel, InsertChannel, CampaignTranslation, InsertCampaignTranslation, CampaignEngagementConfig, InsertCampaignEngagementConfig, CampaignUiConfig, InsertCampaignUiConfig, CampaignFeatureFlags, InsertCampaignFeatureFlags, SdkTranslation, InsertSdkTranslation } from "@shared/schema";
+import { WebSocketEvent, Campaign, InsertCampaign, Event, InsertEvent, CampaignFormState, InsertFormState, ScheduledComponent, InsertScheduledComponent, Component, InsertComponent, CampaignComponent, InsertCampaignComponent, User, InsertUser, ClientApp, InsertClientApp, Channel, InsertChannel, CampaignTranslation, InsertCampaignTranslation, CampaignEngagementConfig, InsertCampaignEngagementConfig, CampaignUiConfig, InsertCampaignUiConfig, CampaignFeatureFlags, InsertCampaignFeatureFlags, SdkTranslation, InsertSdkTranslation, Broadcast, InsertBroadcast, Poll, InsertPoll, PollOptionRecord, InsertPollOption, PollVote, InsertPollVote, Contest, InsertContest, ContestParticipation, InsertContestParticipation } from "@shared/schema";
 import { db } from "./db";
-import { campaigns, events, campaignFormState, scheduledComponents, components, campaignComponents, users, clientApps, channels, campaignTranslations, campaignEngagementConfig, campaignUiConfig, campaignFeatureFlags, sdkTranslations } from "@shared/schema";
-import { eq, desc, and, gte, ne, isNull } from "drizzle-orm";
+import { campaigns, events, campaignFormState, scheduledComponents, components, campaignComponents, users, clientApps, channels, campaignTranslations, campaignEngagementConfig, campaignUiConfig, campaignFeatureFlags, sdkTranslations, broadcasts, polls, pollOptions, pollVotes, contests, contestParticipations } from "@shared/schema";
+import { eq, desc, and, gte, ne, isNull, sql, lte } from "drizzle-orm";
 
 export interface IStorage {
   addEvent(event: WebSocketEvent): Promise<void>;
@@ -105,6 +105,43 @@ export interface IStorage {
     uiConfig: CampaignUiConfig | null;
     featureFlags: CampaignFeatureFlags | null;
   } | null>;
+  
+  // Broadcast methods
+  createBroadcast(broadcast: InsertBroadcast): Promise<Broadcast>;
+  getBroadcast(broadcastId: string): Promise<Broadcast | undefined>;
+  getAllBroadcasts(filters?: { status?: string; campaignId?: number }): Promise<Broadcast[]>;
+  getCampaignBroadcasts(campaignId: number): Promise<Broadcast[]>;
+  updateBroadcast(broadcastId: string, data: Partial<InsertBroadcast>): Promise<Broadcast | undefined>;
+  deleteBroadcast(broadcastId: string): Promise<void>;
+  getBroadcastsByStatus(status: string): Promise<Broadcast[]>;
+
+  // Poll methods  
+  createPoll(poll: InsertPoll): Promise<Poll>;
+  getPoll(id: number): Promise<Poll | undefined>;
+  getBroadcastPolls(broadcastId: string): Promise<Array<Poll & { options: PollOptionRecord[] }>>;
+  updatePoll(id: number, data: Partial<InsertPoll>): Promise<Poll | undefined>;
+  deletePoll(id: number): Promise<void>;
+
+  // Poll option methods
+  createPollOption(option: InsertPollOption): Promise<PollOptionRecord>;
+  updatePollOptionVoteCount(optionId: number, increment: number): Promise<void>;
+
+  // Poll vote methods
+  createPollVote(vote: InsertPollVote): Promise<PollVote>;
+  hasUserVoted(pollId: number, userId: string): Promise<boolean>;
+  getPollResults(pollId: number): Promise<{ poll: Poll; options: PollOptionRecord[] } | null>;
+
+  // Contest methods
+  createContest(contest: InsertContest): Promise<Contest>;
+  getContest(id: number): Promise<Contest | undefined>;
+  getBroadcastContests(broadcastId: string): Promise<Contest[]>;
+  updateContest(id: number, data: Partial<InsertContest>): Promise<Contest | undefined>;
+  deleteContest(id: number): Promise<void>;
+
+  // Contest participation methods
+  createContestParticipation(participation: InsertContestParticipation): Promise<ContestParticipation>;
+  hasUserParticipated(contestId: number, userId: string): Promise<boolean>;
+  getContestParticipations(contestId: number): Promise<ContestParticipation[]>;
 }
 
 export class MemStorage implements IStorage {
@@ -792,6 +829,184 @@ export class MemStorage implements IStorage {
       uiConfig: uiConfig || null,
       featureFlags: featureFlagsResult || null
     };
+  }
+
+  // Broadcast methods (database-backed)
+  async createBroadcast(broadcast: InsertBroadcast): Promise<Broadcast> {
+    const [newBroadcast] = await db.insert(broadcasts).values(broadcast).returning();
+    return newBroadcast;
+  }
+
+  async getBroadcast(broadcastId: string): Promise<Broadcast | undefined> {
+    const [broadcast] = await db.select().from(broadcasts).where(eq(broadcasts.broadcastId, broadcastId));
+    return broadcast || undefined;
+  }
+
+  async getAllBroadcasts(filters?: { status?: string; campaignId?: number }): Promise<Broadcast[]> {
+    const conditions: any[] = [];
+    if (filters?.status) {
+      conditions.push(eq(broadcasts.status, filters.status));
+    }
+    if (filters?.campaignId) {
+      conditions.push(eq(broadcasts.campaignId, filters.campaignId));
+    }
+    if (conditions.length > 0) {
+      return await db.select().from(broadcasts).where(and(...conditions)).orderBy(desc(broadcasts.createdAt));
+    }
+    return await db.select().from(broadcasts).orderBy(desc(broadcasts.createdAt));
+  }
+
+  async getCampaignBroadcasts(campaignId: number): Promise<Broadcast[]> {
+    return await db.select().from(broadcasts)
+      .where(eq(broadcasts.campaignId, campaignId))
+      .orderBy(desc(broadcasts.createdAt));
+  }
+
+  async updateBroadcast(broadcastId: string, data: Partial<InsertBroadcast>): Promise<Broadcast | undefined> {
+    const [updated] = await db.update(broadcasts)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(broadcasts.broadcastId, broadcastId))
+      .returning();
+    return updated || undefined;
+  }
+
+  async deleteBroadcast(broadcastId: string): Promise<void> {
+    await db.delete(broadcasts).where(eq(broadcasts.broadcastId, broadcastId));
+  }
+
+  async getBroadcastsByStatus(status: string): Promise<Broadcast[]> {
+    return await db.select().from(broadcasts)
+      .where(eq(broadcasts.status, status))
+      .orderBy(desc(broadcasts.createdAt));
+  }
+
+  // Poll methods (database-backed)
+  async createPoll(poll: InsertPoll): Promise<Poll> {
+    const [newPoll] = await db.insert(polls).values(poll).returning();
+    return newPoll;
+  }
+
+  async getPoll(id: number): Promise<Poll | undefined> {
+    const [poll] = await db.select().from(polls).where(eq(polls.id, id));
+    return poll || undefined;
+  }
+
+  async getBroadcastPolls(broadcastId: string): Promise<Array<Poll & { options: PollOptionRecord[] }>> {
+    const broadcastPolls = await db.select().from(polls)
+      .where(eq(polls.broadcastId, broadcastId))
+      .orderBy(desc(polls.createdAt));
+    
+    const result: Array<Poll & { options: PollOptionRecord[] }> = [];
+    for (const poll of broadcastPolls) {
+      const options = await db.select().from(pollOptions)
+        .where(eq(pollOptions.pollId, poll.id))
+        .orderBy(pollOptions.displayOrder);
+      result.push({ ...poll, options });
+    }
+    return result;
+  }
+
+  async updatePoll(id: number, data: Partial<InsertPoll>): Promise<Poll | undefined> {
+    const [updated] = await db.update(polls)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(polls.id, id))
+      .returning();
+    return updated || undefined;
+  }
+
+  async deletePoll(id: number): Promise<void> {
+    await db.delete(polls).where(eq(polls.id, id));
+  }
+
+  // Poll option methods (database-backed)
+  async createPollOption(option: InsertPollOption): Promise<PollOptionRecord> {
+    const [newOption] = await db.insert(pollOptions).values(option).returning();
+    return newOption;
+  }
+
+  async updatePollOptionVoteCount(optionId: number, increment: number): Promise<void> {
+    await db.update(pollOptions)
+      .set({ voteCount: sql`${pollOptions.voteCount} + ${increment}` })
+      .where(eq(pollOptions.id, optionId));
+  }
+
+  // Poll vote methods (database-backed)
+  async createPollVote(vote: InsertPollVote): Promise<PollVote> {
+    const [newVote] = await db.insert(pollVotes).values(vote).returning();
+    await db.update(polls)
+      .set({ totalVotes: sql`${polls.totalVotes} + 1` })
+      .where(eq(polls.id, vote.pollId));
+    return newVote;
+  }
+
+  async hasUserVoted(pollId: number, userId: string): Promise<boolean> {
+    const [vote] = await db.select().from(pollVotes)
+      .where(and(
+        eq(pollVotes.pollId, pollId),
+        eq(pollVotes.userId, userId)
+      ))
+      .limit(1);
+    return !!vote;
+  }
+
+  async getPollResults(pollId: number): Promise<{ poll: Poll; options: PollOptionRecord[] } | null> {
+    const [poll] = await db.select().from(polls).where(eq(polls.id, pollId));
+    if (!poll) return null;
+    const options = await db.select().from(pollOptions)
+      .where(eq(pollOptions.pollId, pollId))
+      .orderBy(pollOptions.displayOrder);
+    return { poll, options };
+  }
+
+  // Contest methods (database-backed)
+  async createContest(contest: InsertContest): Promise<Contest> {
+    const [newContest] = await db.insert(contests).values(contest).returning();
+    return newContest;
+  }
+
+  async getContest(id: number): Promise<Contest | undefined> {
+    const [contest] = await db.select().from(contests).where(eq(contests.id, id));
+    return contest || undefined;
+  }
+
+  async getBroadcastContests(broadcastId: string): Promise<Contest[]> {
+    return await db.select().from(contests)
+      .where(eq(contests.broadcastId, broadcastId))
+      .orderBy(desc(contests.createdAt));
+  }
+
+  async updateContest(id: number, data: Partial<InsertContest>): Promise<Contest | undefined> {
+    const [updated] = await db.update(contests)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(contests.id, id))
+      .returning();
+    return updated || undefined;
+  }
+
+  async deleteContest(id: number): Promise<void> {
+    await db.delete(contests).where(eq(contests.id, id));
+  }
+
+  // Contest participation methods (database-backed)
+  async createContestParticipation(participation: InsertContestParticipation): Promise<ContestParticipation> {
+    const [newParticipation] = await db.insert(contestParticipations).values(participation).returning();
+    return newParticipation;
+  }
+
+  async hasUserParticipated(contestId: number, userId: string): Promise<boolean> {
+    const [participation] = await db.select().from(contestParticipations)
+      .where(and(
+        eq(contestParticipations.contestId, contestId),
+        eq(contestParticipations.userId, userId)
+      ))
+      .limit(1);
+    return !!participation;
+  }
+
+  async getContestParticipations(contestId: number): Promise<ContestParticipation[]> {
+    return await db.select().from(contestParticipations)
+      .where(eq(contestParticipations.contestId, contestId))
+      .orderBy(desc(contestParticipations.createdAt));
   }
 }
 

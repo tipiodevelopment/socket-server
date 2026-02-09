@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { pgTable, serial, varchar, text, timestamp, json, integer } from "drizzle-orm/pg-core";
+import { pgTable, serial, varchar, text, timestamp, json, integer, boolean, uniqueIndex } from "drizzle-orm/pg-core";
 import { relations, sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 
@@ -167,6 +167,83 @@ export const campaignComponents = pgTable("campaign_components", {
   updatedAt: timestamp("updated_at").defaultNow().notNull()
 });
 
+// Broadcasts - represents live events/matches that campaigns are associated with
+export const broadcasts = pgTable("broadcasts", {
+  broadcastId: varchar("broadcast_id", { length: 255 }).primaryKey(),
+  broadcastName: varchar("broadcast_name", { length: 255 }).notNull(),
+  campaignId: integer("campaign_id").references(() => campaigns.id, { onDelete: 'cascade' }),
+  channelId: integer("channel_id").references(() => channels.id, { onDelete: 'set null' }),
+  startTime: timestamp("start_time"),
+  endTime: timestamp("end_time"),
+  status: varchar("status", { length: 20 }).notNull().default('upcoming'),
+  metadata: json("metadata"),
+  createdBy: integer("created_by").references(() => users.id, { onDelete: 'set null' }),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull()
+});
+
+// Polls - engagement polls associated with broadcasts
+export const polls = pgTable("polls", {
+  id: serial("id").primaryKey(),
+  broadcastId: varchar("broadcast_id", { length: 255 }).notNull().references(() => broadcasts.broadcastId, { onDelete: 'cascade' }),
+  question: text("question").notNull(),
+  startTime: timestamp("start_time"),
+  endTime: timestamp("end_time"),
+  isActive: boolean("is_active").notNull().default(true),
+  totalVotes: integer("total_votes").notNull().default(0),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull()
+});
+
+// Poll Options - choices for each poll
+export const pollOptions = pgTable("poll_options", {
+  id: serial("id").primaryKey(),
+  pollId: integer("poll_id").notNull().references(() => polls.id, { onDelete: 'cascade' }),
+  text: varchar("text", { length: 500 }).notNull(),
+  voteCount: integer("vote_count").notNull().default(0),
+  displayOrder: integer("display_order").notNull().default(0),
+  createdAt: timestamp("created_at").defaultNow().notNull()
+});
+
+// Poll Votes - individual vote records
+export const pollVotes = pgTable("poll_votes", {
+  id: serial("id").primaryKey(),
+  pollId: integer("poll_id").notNull().references(() => polls.id, { onDelete: 'cascade' }),
+  optionId: integer("option_id").notNull().references(() => pollOptions.id, { onDelete: 'cascade' }),
+  userId: varchar("user_id", { length: 255 }).notNull(),
+  broadcastId: varchar("broadcast_id", { length: 255 }).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull()
+}, (table) => [
+  uniqueIndex("unique_user_poll").on(table.pollId, table.userId)
+]);
+
+// Contests - engagement contests associated with broadcasts
+export const contests = pgTable("contests", {
+  id: serial("id").primaryKey(),
+  broadcastId: varchar("broadcast_id", { length: 255 }).notNull().references(() => broadcasts.broadcastId, { onDelete: 'cascade' }),
+  title: varchar("title", { length: 500 }).notNull(),
+  description: text("description"),
+  prize: varchar("prize", { length: 500 }),
+  contestType: varchar("contest_type", { length: 50 }).notNull(),
+  startTime: timestamp("start_time"),
+  endTime: timestamp("end_time"),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull()
+});
+
+// Contest Participations - individual participation records
+export const contestParticipations = pgTable("contest_participations", {
+  id: serial("id").primaryKey(),
+  contestId: integer("contest_id").notNull().references(() => contests.id, { onDelete: 'cascade' }),
+  userId: varchar("user_id", { length: 255 }).notNull(),
+  broadcastId: varchar("broadcast_id", { length: 255 }).notNull(),
+  answers: json("answers"),
+  createdAt: timestamp("created_at").defaultNow().notNull()
+}, (table) => [
+  uniqueIndex("unique_user_contest").on(table.contestId, table.userId)
+]);
+
 // Relations
 export const usersRelations = relations(users, ({ many }) => ({
   campaigns: many(campaigns),
@@ -205,7 +282,8 @@ export const campaignsRelations = relations(campaigns, ({ one, many }) => ({
   translations: many(campaignTranslations),
   engagementConfig: many(campaignEngagementConfig),
   uiConfig: many(campaignUiConfig),
-  featureFlags: many(campaignFeatureFlags)
+  featureFlags: many(campaignFeatureFlags),
+  broadcasts: many(broadcasts)
 }));
 
 export const campaignTranslationsRelations = relations(campaignTranslations, ({ one }) => ({
@@ -276,6 +354,65 @@ export const campaignComponentsRelations = relations(campaignComponents, ({ one 
   component: one(components, {
     fields: [campaignComponents.componentId],
     references: [components.id]
+  })
+}));
+
+export const broadcastsRelations = relations(broadcasts, ({ one, many }) => ({
+  campaign: one(campaigns, {
+    fields: [broadcasts.campaignId],
+    references: [campaigns.id]
+  }),
+  channel: one(channels, {
+    fields: [broadcasts.channelId],
+    references: [channels.id]
+  }),
+  creator: one(users, {
+    fields: [broadcasts.createdBy],
+    references: [users.id]
+  }),
+  polls: many(polls),
+  contests: many(contests)
+}));
+
+export const pollsRelations = relations(polls, ({ one, many }) => ({
+  broadcast: one(broadcasts, {
+    fields: [polls.broadcastId],
+    references: [broadcasts.broadcastId]
+  }),
+  options: many(pollOptions),
+  votes: many(pollVotes)
+}));
+
+export const pollOptionsRelations = relations(pollOptions, ({ one }) => ({
+  poll: one(polls, {
+    fields: [pollOptions.pollId],
+    references: [polls.id]
+  })
+}));
+
+export const pollVotesRelations = relations(pollVotes, ({ one }) => ({
+  poll: one(polls, {
+    fields: [pollVotes.pollId],
+    references: [polls.id]
+  }),
+  option: one(pollOptions, {
+    fields: [pollVotes.optionId],
+    references: [pollOptions.id]
+  })
+}));
+
+export const contestsRelations = relations(contests, ({ one, many }) => ({
+  broadcast: one(broadcasts, {
+    fields: [contests.broadcastId],
+    references: [broadcasts.broadcastId]
+  }),
+  participations: many(contestParticipations)
+}));
+
+export const contestParticipationsRelations = relations(contestParticipations, ({ one }) => ({
+  contest: one(contests, {
+    fields: [contestParticipations.contestId],
+    references: [contests.id]
   })
 }));
 
@@ -357,6 +494,45 @@ export const insertSdkTranslationSchema = createInsertSchema(sdkTranslations).om
   id: true 
 });
 
+export const insertBroadcastSchema = createInsertSchema(broadcasts).omit({
+  createdAt: true,
+  updatedAt: true
+});
+
+export const updateBroadcastSchema = insertBroadcastSchema.partial().extend({
+  startTime: z.string().datetime().nullable().optional(),
+  endTime: z.string().datetime().nullable().optional()
+});
+
+export const insertPollSchema = createInsertSchema(polls).omit({
+  id: true,
+  totalVotes: true,
+  createdAt: true,
+  updatedAt: true
+});
+
+export const insertPollOptionSchema = createInsertSchema(pollOptions).omit({
+  id: true,
+  voteCount: true,
+  createdAt: true
+});
+
+export const insertPollVoteSchema = createInsertSchema(pollVotes).omit({
+  id: true,
+  createdAt: true
+});
+
+export const insertContestSchema = createInsertSchema(contests).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true
+});
+
+export const insertContestParticipationSchema = createInsertSchema(contestParticipations).omit({
+  id: true,
+  createdAt: true
+});
+
 // Types
 export type User = typeof users.$inferSelect;
 export type InsertUser = z.infer<typeof insertUserSchema>;
@@ -387,6 +563,19 @@ export type CampaignFeatureFlags = typeof campaignFeatureFlags.$inferSelect;
 export type InsertCampaignFeatureFlags = z.infer<typeof insertCampaignFeatureFlagsSchema>;
 export type SdkTranslation = typeof sdkTranslations.$inferSelect;
 export type InsertSdkTranslation = z.infer<typeof insertSdkTranslationSchema>;
+export type Broadcast = typeof broadcasts.$inferSelect;
+export type InsertBroadcast = z.infer<typeof insertBroadcastSchema>;
+export type UpdateBroadcast = z.infer<typeof updateBroadcastSchema>;
+export type Poll = typeof polls.$inferSelect;
+export type InsertPoll = z.infer<typeof insertPollSchema>;
+export type PollOptionRecord = typeof pollOptions.$inferSelect;
+export type InsertPollOption = z.infer<typeof insertPollOptionSchema>;
+export type PollVote = typeof pollVotes.$inferSelect;
+export type InsertPollVote = z.infer<typeof insertPollVoteSchema>;
+export type Contest = typeof contests.$inferSelect;
+export type InsertContest = z.infer<typeof insertContestSchema>;
+export type ContestParticipation = typeof contestParticipations.$inferSelect;
+export type InsertContestParticipation = z.infer<typeof insertContestParticipationSchema>;
 
 // Event schemas
 export const productEventSchema = z.object({

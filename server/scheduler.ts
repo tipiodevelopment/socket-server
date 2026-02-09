@@ -18,10 +18,12 @@ export function startScheduler() {
 
   // Run immediately on startup
   checkScheduledComponents();
+  updateBroadcastStatuses();
 
   // Then run on interval
   schedulerInterval = setInterval(() => {
     checkScheduledComponents();
+    updateBroadcastStatuses();
   }, intervalMs);
 }
 
@@ -115,5 +117,46 @@ async function checkScheduledComponents() {
     }
   } catch (error) {
     console.error('[Scheduler] Error checking scheduled components:', error);
+  }
+}
+
+async function updateBroadcastStatuses() {
+  try {
+    const now = new Date();
+    
+    const upcomingBroadcasts = await storage.getBroadcastsByStatus('upcoming');
+    for (const broadcast of upcomingBroadcasts) {
+      if (broadcast.startTime && now >= new Date(broadcast.startTime)) {
+        const newStatus = broadcast.endTime && now >= new Date(broadcast.endTime) ? 'ended' : 'live';
+        await storage.updateBroadcast(broadcast.broadcastId, { status: newStatus });
+        console.log(`[Scheduler] Broadcast ${broadcast.broadcastId} status: upcoming -> ${newStatus}`);
+        
+        if (broadcast.campaignId) {
+          broadcastToCampaign(broadcast.campaignId, JSON.stringify({
+            type: 'broadcast_status_changed',
+            broadcastId: broadcast.broadcastId,
+            status: newStatus
+          }));
+        }
+      }
+    }
+
+    const liveBroadcasts = await storage.getBroadcastsByStatus('live');
+    for (const broadcast of liveBroadcasts) {
+      if (broadcast.endTime && now >= new Date(broadcast.endTime)) {
+        await storage.updateBroadcast(broadcast.broadcastId, { status: 'ended' });
+        console.log(`[Scheduler] Broadcast ${broadcast.broadcastId} status: live -> ended`);
+        
+        if (broadcast.campaignId) {
+          broadcastToCampaign(broadcast.campaignId, JSON.stringify({
+            type: 'broadcast_status_changed',
+            broadcastId: broadcast.broadcastId,
+            status: 'ended'
+          }));
+        }
+      }
+    }
+  } catch (error) {
+    console.error('[Scheduler] Error updating broadcast statuses:', error);
   }
 }

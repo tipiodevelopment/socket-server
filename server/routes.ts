@@ -2,11 +2,18 @@ import type { Express, Request } from "express";
 import { createServer, type Server } from "http";
 import { WebSocketServer, WebSocket } from "ws";
 import { createHash } from "crypto";
+import jwt from "jsonwebtoken";
 import { storage } from "./storage";
 import { 
   webSocketEventSchema, 
   updateCampaignSchema,
   componentSDKNames,
+  insertBroadcastSchema,
+  updateBroadcastSchema,
+  insertPollSchema,
+  insertPollOptionSchema,
+  insertContestSchema,
+  insertContestParticipationSchema,
   type WebSocketEvent, 
   type InsertScheduledComponent 
 } from "@shared/schema";
@@ -16,6 +23,37 @@ import {
   ObjectNotFoundError,
 } from "./objectStorage";
 import { isCampaignActive, hasCampaignEnded, isCampaignUpcoming, normalizeUrls } from "./utils";
+
+const JWT_SECRET = process.env.SESSION_SECRET || 'default-dev-secret';
+
+function generateBroadcastId(name: string, date?: string): string {
+  const slug = name
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, '')
+    .replace(/\s+/g, '-')
+    .replace(/-+/g, '-')
+    .trim();
+  const dateStr = date || new Date().toISOString().split('T')[0];
+  return `${slug}-${dateStr}`;
+}
+
+const requireBearerAuth = (req: Request, res: any, next: any) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ message: 'Bearer token required' });
+    }
+    const token = authHeader.split(' ')[1];
+    const decoded = jwt.verify(token, JWT_SECRET) as { userId: number; reachuUserId: string };
+    (req as any).authUser = decoded;
+    next();
+  } catch (error: any) {
+    if (error.name === 'TokenExpiredError') {
+      return res.status(401).json({ message: 'Token expired' });
+    }
+    return res.status(401).json({ message: 'Invalid token' });
+  }
+};
 
 // Helper function to convert relative paths to absolute URLs
 function toAbsoluteUrl(pathOrUrl: string | undefined, req: Request): string | undefined {
@@ -812,13 +850,41 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
       
-      res.json(user);
+      const token = jwt.sign(
+        { userId: user.id, reachuUserId: user.reachuUserId },
+        JWT_SECRET,
+        { expiresIn: '7d' }
+      );
+
+      res.json({ ...user, token });
     } catch (error) {
       console.error('Error ensuring user exists:', error);
       res.status(500).json({ 
         message: 'Error ensuring user exists',
         error: error instanceof Error ? error.message : String(error)
       });
+    }
+  });
+
+  app.post('/api/auth/token', async (req, res) => {
+    try {
+      const { reachuUserId } = req.body;
+      if (!reachuUserId) {
+        return res.status(400).json({ message: 'reachuUserId is required' });
+      }
+      const user = await storage.getUserByReachuId(reachuUserId);
+      if (!user) {
+        return res.status(404).json({ message: 'User not found' });
+      }
+      const token = jwt.sign(
+        { userId: user.id, reachuUserId: user.reachuUserId },
+        JWT_SECRET,
+        { expiresIn: '7d' }
+      );
+      res.json({ token, userId: user.id, expiresIn: '7d' });
+    } catch (error) {
+      console.error('Error generating token:', error);
+      res.status(500).json({ message: 'Error generating token' });
     }
   });
 
@@ -2072,6 +2138,783 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error('Error validating component availability:', error);
       res.status(500).json({ message: 'Error validating component availability' });
+    }
+  });
+
+  // ========================================
+  // Broadcast Management API (v1) - Bearer Auth
+  // ========================================
+
+  // Create broadcast
+  app.post('/v1/broadcasts', requireBearerAuth, async (req, res) => {
+    try {
+      const authUser = (req as any).authUser;
+      const { broadcastName, campaignId, channelId, startTime, endTime, metadata } = req.body;
+
+      if (!broadcastName) {
+        return res.status(400).json({ message: 'broadcastName is required' });
+      }
+
+      const dateStr = startTime ? new Date(startTime).toISOString().split('T')[0] : undefined;
+      let broadcastId = generateBroadcastId(broadcastName, dateStr);
+
+      const existing = await storage.getBroadcast(broadcastId);
+      if (existing) {
+        broadcastId = `${broadcastId}-${Date.now()}`;
+      }
+
+      if (campaignId) {
+        const campaign = await storage.getCampaign(campaignId);
+        if (!campaign) {
+          return res.status(404).json({ message: 'Campaign not found' });
+        }
+      }
+
+      const broadcast = await storage.createBroadcast({
+        broadcastId,
+        broadcastName,
+        campaignId: campaignId || null,
+        channelId: channelId || null,
+        startTime: startTime ? new Date(startTime) : null,
+        endTime: endTime ? new Date(endTime) : null,
+        status: 'upcoming',
+        metadata: metadata || null,
+        createdBy: authUser.userId
+      });
+
+      res.status(201).json(broadcast);
+    } catch (error) {
+      console.error('Error creating broadcast:', error);
+      res.status(500).json({ message: 'Error creating broadcast' });
+    }
+  });
+
+  // List broadcasts with optional filters
+  app.get('/v1/broadcasts', requireBearerAuth, async (req, res) => {
+    try {
+      const { status, campaignId } = req.query;
+      const filters: { status?: string; campaignId?: number } = {};
+      if (status) filters.status = status as string;
+      if (campaignId) filters.campaignId = parseInt(campaignId as string);
+
+      const broadcastsList = await storage.getAllBroadcasts(filters);
+      res.json(broadcastsList);
+    } catch (error) {
+      console.error('Error listing broadcasts:', error);
+      res.status(500).json({ message: 'Error listing broadcasts' });
+    }
+  });
+
+  // Get single broadcast
+  app.get('/v1/broadcasts/:broadcastId', requireBearerAuth, async (req, res) => {
+    try {
+      const broadcast = await storage.getBroadcast(req.params.broadcastId);
+      if (!broadcast) {
+        return res.status(404).json({ message: 'Broadcast not found' });
+      }
+      res.json(broadcast);
+    } catch (error) {
+      console.error('Error getting broadcast:', error);
+      res.status(500).json({ message: 'Error getting broadcast' });
+    }
+  });
+
+  // Update broadcast
+  app.put('/v1/broadcasts/:broadcastId', requireBearerAuth, async (req, res) => {
+    try {
+      const { broadcastName, campaignId, channelId, startTime, endTime, status, metadata } = req.body;
+      const updateData: any = {};
+
+      if (broadcastName !== undefined) updateData.broadcastName = broadcastName;
+      if (campaignId !== undefined) updateData.campaignId = campaignId;
+      if (channelId !== undefined) updateData.channelId = channelId;
+      if (startTime !== undefined) updateData.startTime = startTime ? new Date(startTime) : null;
+      if (endTime !== undefined) updateData.endTime = endTime ? new Date(endTime) : null;
+      if (status !== undefined) updateData.status = status;
+      if (metadata !== undefined) updateData.metadata = metadata;
+
+      const updated = await storage.updateBroadcast(req.params.broadcastId, updateData);
+      if (!updated) {
+        return res.status(404).json({ message: 'Broadcast not found' });
+      }
+      res.json(updated);
+    } catch (error) {
+      console.error('Error updating broadcast:', error);
+      res.status(500).json({ message: 'Error updating broadcast' });
+    }
+  });
+
+  // Delete broadcast
+  app.delete('/v1/broadcasts/:broadcastId', requireBearerAuth, async (req, res) => {
+    try {
+      const broadcast = await storage.getBroadcast(req.params.broadcastId);
+      if (!broadcast) {
+        return res.status(404).json({ message: 'Broadcast not found' });
+      }
+      await storage.deleteBroadcast(req.params.broadcastId);
+      res.status(204).send();
+    } catch (error) {
+      console.error('Error deleting broadcast:', error);
+      res.status(500).json({ message: 'Error deleting broadcast' });
+    }
+  });
+
+  // Get broadcasts for a campaign
+  app.get('/v1/campaigns/:campaignId/broadcasts', requireBearerAuth, async (req, res) => {
+    try {
+      const campaignId = parseInt(req.params.campaignId);
+      const broadcastsList = await storage.getCampaignBroadcasts(campaignId);
+      res.json(broadcastsList);
+    } catch (error) {
+      console.error('Error getting campaign broadcasts:', error);
+      res.status(500).json({ message: 'Error getting campaign broadcasts' });
+    }
+  });
+
+  // ========================================
+  // Engagement API (v1) - Admin endpoints (Bearer Auth)
+  // ========================================
+
+  // Create poll with options
+  app.post('/v1/broadcasts/:broadcastId/polls', requireBearerAuth, async (req, res) => {
+    try {
+      const { broadcastId } = req.params;
+      const broadcast = await storage.getBroadcast(broadcastId);
+      if (!broadcast) {
+        return res.status(404).json({ message: 'Broadcast not found' });
+      }
+
+      const { question, options, startTime, endTime, isActive } = req.body;
+      if (!question || !options || !Array.isArray(options) || options.length < 2) {
+        return res.status(400).json({ message: 'question and at least 2 options are required' });
+      }
+
+      const poll = await storage.createPoll({
+        broadcastId,
+        question,
+        startTime: startTime ? new Date(startTime) : null,
+        endTime: endTime ? new Date(endTime) : null,
+        isActive: isActive !== undefined ? isActive : true
+      });
+
+      const createdOptions = [];
+      for (let i = 0; i < options.length; i++) {
+        const optionText = typeof options[i] === 'string' ? options[i] : options[i].text;
+        const option = await storage.createPollOption({
+          pollId: poll.id,
+          text: optionText,
+          displayOrder: i
+        });
+        createdOptions.push(option);
+      }
+
+      res.status(201).json({ ...poll, options: createdOptions });
+    } catch (error) {
+      console.error('Error creating poll:', error);
+      res.status(500).json({ message: 'Error creating poll' });
+    }
+  });
+
+  // Get polls for a broadcast
+  app.get('/v1/broadcasts/:broadcastId/polls', requireBearerAuth, async (req, res) => {
+    try {
+      const { broadcastId } = req.params;
+      const pollsList = await storage.getBroadcastPolls(broadcastId);
+      res.json(pollsList);
+    } catch (error) {
+      console.error('Error getting polls:', error);
+      res.status(500).json({ message: 'Error getting polls' });
+    }
+  });
+
+  // Update poll
+  app.put('/v1/polls/:pollId', requireBearerAuth, async (req, res) => {
+    try {
+      const pollId = parseInt(req.params.pollId);
+      const { question, isActive, startTime, endTime } = req.body;
+      const updateData: any = {};
+      if (question !== undefined) updateData.question = question;
+      if (isActive !== undefined) updateData.isActive = isActive;
+      if (startTime !== undefined) updateData.startTime = startTime ? new Date(startTime) : null;
+      if (endTime !== undefined) updateData.endTime = endTime ? new Date(endTime) : null;
+
+      const updated = await storage.updatePoll(pollId, updateData);
+      if (!updated) {
+        return res.status(404).json({ message: 'Poll not found' });
+      }
+      res.json(updated);
+    } catch (error) {
+      console.error('Error updating poll:', error);
+      res.status(500).json({ message: 'Error updating poll' });
+    }
+  });
+
+  // Delete poll
+  app.delete('/v1/polls/:pollId', requireBearerAuth, async (req, res) => {
+    try {
+      const pollId = parseInt(req.params.pollId);
+      const poll = await storage.getPoll(pollId);
+      if (!poll) {
+        return res.status(404).json({ message: 'Poll not found' });
+      }
+      await storage.deletePoll(pollId);
+      res.status(204).send();
+    } catch (error) {
+      console.error('Error deleting poll:', error);
+      res.status(500).json({ message: 'Error deleting poll' });
+    }
+  });
+
+  // Get poll results
+  app.get('/v1/polls/:pollId/results', requireBearerAuth, async (req, res) => {
+    try {
+      const pollId = parseInt(req.params.pollId);
+      const results = await storage.getPollResults(pollId);
+      if (!results) {
+        return res.status(404).json({ message: 'Poll not found' });
+      }
+      const totalVotes = results.poll.totalVotes;
+      const optionsWithPercentages = results.options.map(opt => ({
+        ...opt,
+        percentage: totalVotes > 0 ? Math.round((opt.voteCount / totalVotes) * 10000) / 100 : 0
+      }));
+      res.json({ ...results.poll, options: optionsWithPercentages });
+    } catch (error) {
+      console.error('Error getting poll results:', error);
+      res.status(500).json({ message: 'Error getting poll results' });
+    }
+  });
+
+  // Create contest
+  app.post('/v1/broadcasts/:broadcastId/contests', requireBearerAuth, async (req, res) => {
+    try {
+      const { broadcastId } = req.params;
+      const broadcast = await storage.getBroadcast(broadcastId);
+      if (!broadcast) {
+        return res.status(404).json({ message: 'Broadcast not found' });
+      }
+
+      const { title, description, prize, contestType, startTime, endTime, isActive } = req.body;
+      if (!title || !contestType) {
+        return res.status(400).json({ message: 'title and contestType are required' });
+      }
+
+      const contest = await storage.createContest({
+        broadcastId,
+        title,
+        description: description || null,
+        prize: prize || null,
+        contestType,
+        startTime: startTime ? new Date(startTime) : null,
+        endTime: endTime ? new Date(endTime) : null,
+        isActive: isActive !== undefined ? isActive : true
+      });
+
+      res.status(201).json(contest);
+    } catch (error) {
+      console.error('Error creating contest:', error);
+      res.status(500).json({ message: 'Error creating contest' });
+    }
+  });
+
+  // Get contests for a broadcast
+  app.get('/v1/broadcasts/:broadcastId/contests', requireBearerAuth, async (req, res) => {
+    try {
+      const { broadcastId } = req.params;
+      const contestsList = await storage.getBroadcastContests(broadcastId);
+      res.json(contestsList);
+    } catch (error) {
+      console.error('Error getting contests:', error);
+      res.status(500).json({ message: 'Error getting contests' });
+    }
+  });
+
+  // Update contest
+  app.put('/v1/contests/:contestId', requireBearerAuth, async (req, res) => {
+    try {
+      const contestId = parseInt(req.params.contestId);
+      const { title, description, prize, contestType, isActive, startTime, endTime } = req.body;
+      const updateData: any = {};
+      if (title !== undefined) updateData.title = title;
+      if (description !== undefined) updateData.description = description;
+      if (prize !== undefined) updateData.prize = prize;
+      if (contestType !== undefined) updateData.contestType = contestType;
+      if (isActive !== undefined) updateData.isActive = isActive;
+      if (startTime !== undefined) updateData.startTime = startTime ? new Date(startTime) : null;
+      if (endTime !== undefined) updateData.endTime = endTime ? new Date(endTime) : null;
+
+      const updated = await storage.updateContest(contestId, updateData);
+      if (!updated) {
+        return res.status(404).json({ message: 'Contest not found' });
+      }
+      res.json(updated);
+    } catch (error) {
+      console.error('Error updating contest:', error);
+      res.status(500).json({ message: 'Error updating contest' });
+    }
+  });
+
+  // Delete contest
+  app.delete('/v1/contests/:contestId', requireBearerAuth, async (req, res) => {
+    try {
+      const contestId = parseInt(req.params.contestId);
+      const contest = await storage.getContest(contestId);
+      if (!contest) {
+        return res.status(404).json({ message: 'Contest not found' });
+      }
+      await storage.deleteContest(contestId);
+      res.status(204).send();
+    } catch (error) {
+      console.error('Error deleting contest:', error);
+      res.status(500).json({ message: 'Error deleting contest' });
+    }
+  });
+
+  // Get contest participations
+  app.get('/v1/contests/:contestId/participations', requireBearerAuth, async (req, res) => {
+    try {
+      const contestId = parseInt(req.params.contestId);
+      const participations = await storage.getContestParticipations(contestId);
+      res.json(participations);
+    } catch (error) {
+      console.error('Error getting contest participations:', error);
+      res.status(500).json({ message: 'Error getting contest participations' });
+    }
+  });
+
+  // ========================================
+  // Engagement SDK Endpoints (public, apiKey auth)
+  // ========================================
+
+  // SDK: Vote on a poll (public endpoint, uses apiKey)
+  app.post('/v1/engagement/polls/:pollId/vote', async (req, res) => {
+    try {
+      const pollId = parseInt(req.params.pollId);
+      const { optionId, userId, broadcastId } = req.body;
+
+      if (!optionId || !userId || !broadcastId) {
+        return res.status(400).json({ message: 'optionId, userId, and broadcastId are required' });
+      }
+
+      const poll = await storage.getPoll(pollId);
+      if (!poll) {
+        return res.status(404).json({ message: 'Poll not found' });
+      }
+      if (!poll.isActive) {
+        return res.status(400).json({ message: 'Poll is not active' });
+      }
+
+      const hasVoted = await storage.hasUserVoted(pollId, userId);
+      if (hasVoted) {
+        return res.status(409).json({ message: 'User has already voted on this poll' });
+      }
+
+      await storage.createPollVote({
+        pollId,
+        optionId,
+        userId,
+        broadcastId
+      });
+
+      await storage.updatePollOptionVoteCount(optionId, 1);
+
+      const results = await storage.getPollResults(pollId);
+      if (results) {
+        const totalVotes = results.poll.totalVotes;
+        const optionsWithPercentages = results.options.map(opt => ({
+          ...opt,
+          percentage: totalVotes > 0 ? Math.round((opt.voteCount / totalVotes) * 10000) / 100 : 0
+        }));
+
+        const wsEvent = {
+          type: 'poll_results_updated',
+          data: {
+            pollId,
+            broadcastId,
+            totalVotes,
+            options: optionsWithPercentages
+          }
+        };
+
+        const broadcast = await storage.getBroadcast(broadcastId);
+        if (broadcast?.campaignId) {
+          const clients = campaignClients.get(broadcast.campaignId);
+          if (clients) {
+            clients.forEach(client => {
+              if (client.readyState === WebSocket.OPEN) {
+                client.send(JSON.stringify(wsEvent));
+              }
+            });
+          }
+        }
+
+        res.json({ success: true, results: { ...results.poll, options: optionsWithPercentages } });
+      } else {
+        res.json({ success: true });
+      }
+    } catch (error: any) {
+      if (error.code === '23505') {
+        return res.status(409).json({ message: 'User has already voted on this poll' });
+      }
+      console.error('Error voting on poll:', error);
+      res.status(500).json({ message: 'Error voting on poll' });
+    }
+  });
+
+  // SDK: Get polls for a broadcast (public)
+  app.get('/v1/engagement/polls', async (req, res) => {
+    try {
+      const broadcastId = req.query.broadcastId as string;
+      if (!broadcastId) {
+        return res.status(400).json({ message: 'broadcastId query parameter is required' });
+      }
+      const pollsList = await storage.getBroadcastPolls(broadcastId);
+      const pollsWithPercentages = pollsList.map(poll => {
+        const totalVotes = poll.totalVotes;
+        const options = poll.options.map(opt => ({
+          ...opt,
+          percentage: totalVotes > 0 ? Math.round((opt.voteCount / totalVotes) * 10000) / 100 : 0
+        }));
+        return { ...poll, options };
+      });
+      res.json(pollsWithPercentages);
+    } catch (error) {
+      console.error('Error getting polls:', error);
+      res.status(500).json({ message: 'Error getting polls' });
+    }
+  });
+
+  // SDK: Participate in a contest (public)
+  app.post('/v1/engagement/contests/:contestId/participate', async (req, res) => {
+    try {
+      const contestId = parseInt(req.params.contestId);
+      const { userId, broadcastId, answers } = req.body;
+
+      if (!userId || !broadcastId) {
+        return res.status(400).json({ message: 'userId and broadcastId are required' });
+      }
+
+      const contest = await storage.getContest(contestId);
+      if (!contest) {
+        return res.status(404).json({ message: 'Contest not found' });
+      }
+      if (!contest.isActive) {
+        return res.status(400).json({ message: 'Contest is not active' });
+      }
+
+      const hasParticipated = await storage.hasUserParticipated(contestId, userId);
+      if (hasParticipated) {
+        return res.status(409).json({ message: 'User has already participated in this contest' });
+      }
+
+      const participation = await storage.createContestParticipation({
+        contestId,
+        userId,
+        broadcastId,
+        answers: answers || null
+      });
+
+      res.status(201).json(participation);
+    } catch (error: any) {
+      if (error.code === '23505') {
+        return res.status(409).json({ message: 'User has already participated in this contest' });
+      }
+      console.error('Error participating in contest:', error);
+      res.status(500).json({ message: 'Error participating in contest' });
+    }
+  });
+
+  // SDK: Get contests for a broadcast (public)
+  app.get('/v1/engagement/contests', async (req, res) => {
+    try {
+      const broadcastId = req.query.broadcastId as string;
+      if (!broadcastId) {
+        return res.status(400).json({ message: 'broadcastId query parameter is required' });
+      }
+      const contestsList = await storage.getBroadcastContests(broadcastId);
+      res.json(contestsList);
+    } catch (error) {
+      console.error('Error getting contests:', error);
+      res.status(500).json({ message: 'Error getting contests' });
+    }
+  });
+
+  // Also expose broadcasts listing without auth for dashboard internal API
+  app.get('/api/broadcasts', async (req, res) => {
+    try {
+      const { status, campaignId } = req.query;
+      const filters: { status?: string; campaignId?: number } = {};
+      if (status) filters.status = status as string;
+      if (campaignId) filters.campaignId = parseInt(campaignId as string);
+      const broadcastsList = await storage.getAllBroadcasts(filters);
+      res.json(broadcastsList);
+    } catch (error) {
+      console.error('Error listing broadcasts:', error);
+      res.status(500).json({ message: 'Error listing broadcasts' });
+    }
+  });
+
+  app.get('/api/broadcasts/:broadcastId', async (req, res) => {
+    try {
+      const broadcast = await storage.getBroadcast(req.params.broadcastId);
+      if (!broadcast) {
+        return res.status(404).json({ message: 'Broadcast not found' });
+      }
+      const pollsList = await storage.getBroadcastPolls(broadcast.broadcastId);
+      const contestsList = await storage.getBroadcastContests(broadcast.broadcastId);
+      res.json({ ...broadcast, polls: pollsList, contests: contestsList });
+    } catch (error) {
+      console.error('Error getting broadcast:', error);
+      res.status(500).json({ message: 'Error getting broadcast' });
+    }
+  });
+
+  app.post('/api/broadcasts', async (req, res) => {
+    try {
+      const { broadcastName, campaignId, channelId, startTime, endTime, metadata, createdBy } = req.body;
+
+      if (!broadcastName) {
+        return res.status(400).json({ message: 'broadcastName is required' });
+      }
+
+      const dateStr = startTime ? new Date(startTime).toISOString().split('T')[0] : undefined;
+      let broadcastId = generateBroadcastId(broadcastName, dateStr);
+
+      const existing = await storage.getBroadcast(broadcastId);
+      if (existing) {
+        broadcastId = `${broadcastId}-${Date.now()}`;
+      }
+
+      const broadcast = await storage.createBroadcast({
+        broadcastId,
+        broadcastName,
+        campaignId: campaignId || null,
+        channelId: channelId || null,
+        startTime: startTime ? new Date(startTime) : null,
+        endTime: endTime ? new Date(endTime) : null,
+        status: 'upcoming',
+        metadata: metadata || null,
+        createdBy: createdBy || null
+      });
+
+      res.status(201).json(broadcast);
+    } catch (error) {
+      console.error('Error creating broadcast:', error);
+      res.status(500).json({ message: 'Error creating broadcast' });
+    }
+  });
+
+  app.put('/api/broadcasts/:broadcastId', async (req, res) => {
+    try {
+      const { broadcastName, campaignId, channelId, startTime, endTime, status, metadata } = req.body;
+      const updateData: any = {};
+
+      if (broadcastName !== undefined) updateData.broadcastName = broadcastName;
+      if (campaignId !== undefined) updateData.campaignId = campaignId;
+      if (channelId !== undefined) updateData.channelId = channelId;
+      if (startTime !== undefined) updateData.startTime = startTime ? new Date(startTime) : null;
+      if (endTime !== undefined) updateData.endTime = endTime ? new Date(endTime) : null;
+      if (status !== undefined) updateData.status = status;
+      if (metadata !== undefined) updateData.metadata = metadata;
+
+      const updated = await storage.updateBroadcast(req.params.broadcastId, updateData);
+      if (!updated) {
+        return res.status(404).json({ message: 'Broadcast not found' });
+      }
+      res.json(updated);
+    } catch (error) {
+      console.error('Error updating broadcast:', error);
+      res.status(500).json({ message: 'Error updating broadcast' });
+    }
+  });
+
+  app.delete('/api/broadcasts/:broadcastId', async (req, res) => {
+    try {
+      const broadcast = await storage.getBroadcast(req.params.broadcastId);
+      if (!broadcast) {
+        return res.status(404).json({ message: 'Broadcast not found' });
+      }
+      await storage.deleteBroadcast(req.params.broadcastId);
+      res.status(204).send();
+    } catch (error) {
+      console.error('Error deleting broadcast:', error);
+      res.status(500).json({ message: 'Error deleting broadcast' });
+    }
+  });
+
+  app.get('/api/broadcasts/:broadcastId/polls', async (req, res) => {
+    try {
+      const pollsList = await storage.getBroadcastPolls(req.params.broadcastId);
+      res.json(pollsList);
+    } catch (error) {
+      console.error('Error getting polls:', error);
+      res.status(500).json({ message: 'Error getting polls' });
+    }
+  });
+
+  app.post('/api/broadcasts/:broadcastId/polls', async (req, res) => {
+    try {
+      const { broadcastId } = req.params;
+      const broadcast = await storage.getBroadcast(broadcastId);
+      if (!broadcast) {
+        return res.status(404).json({ message: 'Broadcast not found' });
+      }
+
+      const { question, options, startTime, endTime, isActive } = req.body;
+      if (!question || !options || !Array.isArray(options) || options.length < 2) {
+        return res.status(400).json({ message: 'question and at least 2 options are required' });
+      }
+
+      const poll = await storage.createPoll({
+        broadcastId,
+        question,
+        startTime: startTime ? new Date(startTime) : null,
+        endTime: endTime ? new Date(endTime) : null,
+        isActive: isActive !== undefined ? isActive : true
+      });
+
+      const createdOptions = [];
+      for (let i = 0; i < options.length; i++) {
+        const optionText = typeof options[i] === 'string' ? options[i] : options[i].text;
+        const option = await storage.createPollOption({
+          pollId: poll.id,
+          text: optionText,
+          displayOrder: i
+        });
+        createdOptions.push(option);
+      }
+
+      res.status(201).json({ ...poll, options: createdOptions });
+    } catch (error) {
+      console.error('Error creating poll:', error);
+      res.status(500).json({ message: 'Error creating poll' });
+    }
+  });
+
+  app.put('/api/polls/:pollId', async (req, res) => {
+    try {
+      const pollId = parseInt(req.params.pollId);
+      const { question, isActive, startTime, endTime } = req.body;
+      const updateData: any = {};
+      if (question !== undefined) updateData.question = question;
+      if (isActive !== undefined) updateData.isActive = isActive;
+      if (startTime !== undefined) updateData.startTime = startTime ? new Date(startTime) : null;
+      if (endTime !== undefined) updateData.endTime = endTime ? new Date(endTime) : null;
+
+      const updated = await storage.updatePoll(pollId, updateData);
+      if (!updated) {
+        return res.status(404).json({ message: 'Poll not found' });
+      }
+      res.json(updated);
+    } catch (error) {
+      console.error('Error updating poll:', error);
+      res.status(500).json({ message: 'Error updating poll' });
+    }
+  });
+
+  app.delete('/api/polls/:pollId', async (req, res) => {
+    try {
+      const pollId = parseInt(req.params.pollId);
+      await storage.deletePoll(pollId);
+      res.status(204).send();
+    } catch (error) {
+      console.error('Error deleting poll:', error);
+      res.status(500).json({ message: 'Error deleting poll' });
+    }
+  });
+
+  app.get('/api/broadcasts/:broadcastId/contests', async (req, res) => {
+    try {
+      const contestsList = await storage.getBroadcastContests(req.params.broadcastId);
+      res.json(contestsList);
+    } catch (error) {
+      console.error('Error getting contests:', error);
+      res.status(500).json({ message: 'Error getting contests' });
+    }
+  });
+
+  app.post('/api/broadcasts/:broadcastId/contests', async (req, res) => {
+    try {
+      const { broadcastId } = req.params;
+      const broadcast = await storage.getBroadcast(broadcastId);
+      if (!broadcast) {
+        return res.status(404).json({ message: 'Broadcast not found' });
+      }
+
+      const { title, description, prize, contestType, startTime, endTime, isActive } = req.body;
+      if (!title || !contestType) {
+        return res.status(400).json({ message: 'title and contestType are required' });
+      }
+
+      const contest = await storage.createContest({
+        broadcastId,
+        title,
+        description: description || null,
+        prize: prize || null,
+        contestType,
+        startTime: startTime ? new Date(startTime) : null,
+        endTime: endTime ? new Date(endTime) : null,
+        isActive: isActive !== undefined ? isActive : true
+      });
+
+      res.status(201).json(contest);
+    } catch (error) {
+      console.error('Error creating contest:', error);
+      res.status(500).json({ message: 'Error creating contest' });
+    }
+  });
+
+  app.put('/api/contests/:contestId', async (req, res) => {
+    try {
+      const contestId = parseInt(req.params.contestId);
+      const { title, description, prize, contestType, isActive, startTime, endTime } = req.body;
+      const updateData: any = {};
+      if (title !== undefined) updateData.title = title;
+      if (description !== undefined) updateData.description = description;
+      if (prize !== undefined) updateData.prize = prize;
+      if (contestType !== undefined) updateData.contestType = contestType;
+      if (isActive !== undefined) updateData.isActive = isActive;
+      if (startTime !== undefined) updateData.startTime = startTime ? new Date(startTime) : null;
+      if (endTime !== undefined) updateData.endTime = endTime ? new Date(endTime) : null;
+
+      const updated = await storage.updateContest(contestId, updateData);
+      if (!updated) {
+        return res.status(404).json({ message: 'Contest not found' });
+      }
+      res.json(updated);
+    } catch (error) {
+      console.error('Error updating contest:', error);
+      res.status(500).json({ message: 'Error updating contest' });
+    }
+  });
+
+  app.delete('/api/contests/:contestId', async (req, res) => {
+    try {
+      const contestId = parseInt(req.params.contestId);
+      await storage.deleteContest(contestId);
+      res.status(204).send();
+    } catch (error) {
+      console.error('Error deleting contest:', error);
+      res.status(500).json({ message: 'Error deleting contest' });
+    }
+  });
+
+  app.get('/api/polls/:pollId/results', async (req, res) => {
+    try {
+      const pollId = parseInt(req.params.pollId);
+      const results = await storage.getPollResults(pollId);
+      if (!results) {
+        return res.status(404).json({ message: 'Poll not found' });
+      }
+      const totalVotes = results.poll.totalVotes;
+      const optionsWithPercentages = results.options.map(opt => ({
+        ...opt,
+        percentage: totalVotes > 0 ? Math.round((opt.voteCount / totalVotes) * 10000) / 100 : 0
+      }));
+      res.json({ ...results.poll, options: optionsWithPercentages });
+    } catch (error) {
+      console.error('Error getting poll results:', error);
+      res.status(500).json({ message: 'Error getting poll results' });
     }
   });
 
