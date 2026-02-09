@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { pgTable, serial, varchar, text, timestamp, json, integer, boolean, uniqueIndex } from "drizzle-orm/pg-core";
+import { pgTable, serial, varchar, text, timestamp, json, integer, boolean, uniqueIndex, index } from "drizzle-orm/pg-core";
 import { relations, sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 
@@ -202,7 +202,11 @@ export const polls = pgTable("polls", {
   scheduledEndTime: timestamp("scheduled_end_time"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull()
-});
+}, (table) => [
+  index("idx_polls_broadcast_id").on(table.broadcastId),
+  index("idx_polls_is_active").on(table.isActive),
+  index("idx_polls_scheduled").on(table.scheduledStartTime, table.scheduledEndTime),
+]);
 
 // Poll Options - choices for each poll
 export const pollOptions = pgTable("poll_options", {
@@ -212,7 +216,9 @@ export const pollOptions = pgTable("poll_options", {
   voteCount: integer("vote_count").notNull().default(0),
   displayOrder: integer("display_order").notNull().default(0),
   createdAt: timestamp("created_at").defaultNow().notNull()
-});
+}, (table) => [
+  index("idx_poll_options_poll_id").on(table.pollId),
+]);
 
 // Poll Votes - individual vote records
 export const pollVotes = pgTable("poll_votes", {
@@ -223,7 +229,9 @@ export const pollVotes = pgTable("poll_votes", {
   broadcastId: varchar("broadcast_id", { length: 255 }).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull()
 }, (table) => [
-  uniqueIndex("unique_user_poll").on(table.pollId, table.userId)
+  uniqueIndex("unique_user_poll").on(table.pollId, table.userId),
+  index("idx_poll_votes_poll_id").on(table.pollId),
+  index("idx_poll_votes_broadcast_id").on(table.broadcastId),
 ]);
 
 // Contests - engagement contests associated with broadcasts
@@ -244,7 +252,11 @@ export const contests = pgTable("contests", {
   scheduledEndTime: timestamp("scheduled_end_time"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull()
-});
+}, (table) => [
+  index("idx_contests_broadcast_id").on(table.broadcastId),
+  index("idx_contests_is_active").on(table.isActive),
+  index("idx_contests_scheduled").on(table.scheduledStartTime, table.scheduledEndTime),
+]);
 
 // Contest Participations - individual participation records
 export const contestParticipations = pgTable("contest_participations", {
@@ -255,7 +267,9 @@ export const contestParticipations = pgTable("contest_participations", {
   answers: json("answers"),
   createdAt: timestamp("created_at").defaultNow().notNull()
 }, (table) => [
-  uniqueIndex("unique_user_contest").on(table.contestId, table.userId)
+  uniqueIndex("unique_user_contest").on(table.contestId, table.userId),
+  index("idx_contest_participations_contest_id").on(table.contestId),
+  index("idx_contest_participations_broadcast_id").on(table.broadcastId),
 ]);
 
 // Relations
@@ -545,6 +559,43 @@ export const insertContestSchema = createInsertSchema(contests).omit({
 export const insertContestParticipationSchema = createInsertSchema(contestParticipations).omit({
   id: true,
   createdAt: true
+});
+
+// API Input Validation Schemas
+export const createPollInputSchema = z.object({
+  question: z.string().min(1, "Question is required").max(500),
+  options: z.array(z.union([z.string().min(1), z.object({ text: z.string().min(1) })])).min(2, "At least 2 options are required").max(20),
+  startTime: z.string().datetime().optional(),
+  endTime: z.string().datetime().optional(),
+  isActive: z.boolean().optional().default(true),
+  videoStartTime: z.number().int().min(0).optional(),
+  videoEndTime: z.number().int().min(0).optional(),
+  broadcastStartTime: z.string().datetime().optional(),
+});
+
+export const createContestInputSchema = z.object({
+  title: z.string().min(1, "Title is required").max(500),
+  description: z.string().max(2000).optional(),
+  prize: z.string().max(500).optional(),
+  contestType: z.string().min(1, "Contest type is required").max(50),
+  startTime: z.string().datetime().optional(),
+  endTime: z.string().datetime().optional(),
+  isActive: z.boolean().optional().default(true),
+  videoStartTime: z.number().int().min(0).optional(),
+  videoEndTime: z.number().int().min(0).optional(),
+  broadcastStartTime: z.string().datetime().optional(),
+});
+
+export const voteInputSchema = z.object({
+  optionId: z.number().int().positive("optionId is required"),
+  userId: z.string().min(1, "userId is required").max(255),
+  broadcastId: z.string().min(1, "broadcastId is required").max(255),
+});
+
+export const participateInputSchema = z.object({
+  userId: z.string().min(1, "userId is required").max(255),
+  broadcastId: z.string().min(1, "broadcastId is required").max(255),
+  answers: z.record(z.any()).optional(),
 });
 
 // Types

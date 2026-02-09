@@ -14,6 +14,10 @@ import {
   insertPollOptionSchema,
   insertContestSchema,
   insertContestParticipationSchema,
+  createPollInputSchema,
+  createContestInputSchema,
+  voteInputSchema,
+  participateInputSchema,
   type WebSocketEvent, 
   type InsertScheduledComponent 
 } from "@shared/schema";
@@ -2287,10 +2291,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: 'Broadcast not found' });
       }
 
-      const { question, options, startTime, endTime, isActive, videoStartTime, videoEndTime, broadcastStartTime } = req.body;
-      if (!question || !options || !Array.isArray(options) || options.length < 2) {
-        return res.status(400).json({ message: 'question and at least 2 options are required' });
+      const parsed = createPollInputSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: parsed.error.errors.map(e => e.message).join(', ') });
       }
+      const { question, options, startTime, endTime, isActive, videoStartTime, videoEndTime, broadcastStartTime } = parsed.data;
 
       const pollData: any = {
         broadcastId,
@@ -2317,7 +2322,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const createdOptions = [];
       for (let i = 0; i < options.length; i++) {
-        const optionText = typeof options[i] === 'string' ? options[i] : options[i].text;
+        const opt = options[i];
+        const optionText = typeof opt === 'string' ? opt : opt.text;
         const option = await storage.createPollOption({
           pollId: poll.id,
           text: optionText,
@@ -2411,10 +2417,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: 'Broadcast not found' });
       }
 
-      const { title, description, prize, contestType, startTime, endTime, isActive, videoStartTime, videoEndTime, broadcastStartTime } = req.body;
-      if (!title || !contestType) {
-        return res.status(400).json({ message: 'title and contestType are required' });
+      const parsed = createContestInputSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: parsed.error.errors.map(e => e.message).join(', ') });
       }
+      const { title, description, prize, contestType, startTime, endTime, isActive, videoStartTime, videoEndTime, broadcastStartTime } = parsed.data;
 
       const contestData: any = {
         broadcastId,
@@ -2522,11 +2529,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post('/v1/engagement/polls/:pollId/vote', createRateLimiter(rateLimitPresets.voting), async (req, res) => {
     try {
       const pollId = parseInt(req.params.pollId);
-      const { optionId, userId, broadcastId } = req.body;
-
-      if (!optionId || !userId || !broadcastId) {
-        return res.status(400).json({ message: 'optionId, userId, and broadcastId are required' });
+      if (isNaN(pollId) || pollId <= 0) {
+        return res.status(400).json({ message: 'Invalid pollId' });
       }
+
+      const parsed = voteInputSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: parsed.error.errors.map(e => e.message).join(', ') });
+      }
+      const { optionId, userId, broadcastId } = parsed.data;
 
       if (isQueueEnabled()) {
         await voteQueue.add('process-vote', { pollId, optionId, userId, broadcastId }, {
@@ -2571,8 +2582,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!broadcastId) {
         return res.status(400).json({ message: 'broadcastId query parameter is required' });
       }
+      const currentVideoTime = req.query.currentVideoTime ? parseInt(req.query.currentVideoTime as string) : undefined;
+
       const pollsList = await storage.getBroadcastPolls(broadcastId);
-      const pollsWithPercentages = pollsList.map(poll => {
+      let filteredPolls = pollsList.filter(poll => poll.isActive);
+
+      if (currentVideoTime !== undefined && !isNaN(currentVideoTime)) {
+        filteredPolls = filteredPolls.filter(poll => {
+          if (poll.videoStartTime === null && poll.videoEndTime === null) return true;
+          const start = poll.videoStartTime ?? 0;
+          const end = poll.videoEndTime ?? Infinity;
+          return currentVideoTime >= start && currentVideoTime <= end;
+        });
+      }
+
+      const pollsWithPercentages = filteredPolls.map(poll => {
         const totalVotes = poll.totalVotes;
         const options = poll.options.map(opt => ({
           ...opt,
@@ -2591,11 +2615,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post('/v1/engagement/contests/:contestId/participate', createRateLimiter(rateLimitPresets.participation), async (req, res) => {
     try {
       const contestId = parseInt(req.params.contestId);
-      const { userId, broadcastId, answers } = req.body;
-
-      if (!userId || !broadcastId) {
-        return res.status(400).json({ message: 'userId and broadcastId are required' });
+      if (isNaN(contestId) || contestId <= 0) {
+        return res.status(400).json({ message: 'Invalid contestId' });
       }
+
+      const parsed = participateInputSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: parsed.error.errors.map(e => e.message).join(', ') });
+      }
+      const { userId, broadcastId, answers } = parsed.data;
 
       if (isQueueEnabled()) {
         await contestParticipationQueue.add('process-participation', { contestId, userId, broadcastId, answers }, {
@@ -2631,8 +2659,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!broadcastId) {
         return res.status(400).json({ message: 'broadcastId query parameter is required' });
       }
+      const currentVideoTime = req.query.currentVideoTime ? parseInt(req.query.currentVideoTime as string) : undefined;
+
       const contestsList = await storage.getBroadcastContests(broadcastId);
-      res.json(contestsList);
+      let filteredContests = contestsList.filter(contest => contest.isActive);
+
+      if (currentVideoTime !== undefined && !isNaN(currentVideoTime)) {
+        filteredContests = filteredContests.filter(contest => {
+          if (contest.videoStartTime === null && contest.videoEndTime === null) return true;
+          const start = contest.videoStartTime ?? 0;
+          const end = contest.videoEndTime ?? Infinity;
+          return currentVideoTime >= start && currentVideoTime <= end;
+        });
+      }
+
+      res.json(filteredContests);
     } catch (error) {
       console.error('Error getting contests:', error);
       res.status(500).json({ message: 'Error getting contests' });
