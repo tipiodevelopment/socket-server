@@ -1,6 +1,6 @@
 # SDK Infrastructure - Documentacion Completa para Cursor
 # Ultima actualizacion: 2026-02-09
-# Version: 2.0 - Incluye scaffolding Fases 5 y 6
+# Version: 3.0 - Fases 5 y 6 ACTIVAS (Video Scheduling + Queue + Rate Limiting)
 
 ## Indice
 
@@ -17,14 +17,14 @@
 11. [Scheduler / Cron Jobs](#scheduler)
 12. [Paginas del Dashboard](#paginas-dashboard)
 13. [Flujos Completos](#flujos-completos)
-14. [Infraestructura Preparada - Scaffolding](#scaffolding)
-15. [Servicios Extraidos](#servicios)
-16. [Middleware](#middleware)
-17. [Sistema de Colas (Queue System)](#queue-system)
-18. [Video Scheduling](#video-scheduling)
+14. [Servicios Extraidos](#servicios)
+15. [Middleware Activo](#middleware)
+16. [Sistema de Colas - Adapter Pattern](#queue-system)
+17. [Video Scheduling (Activo)](#video-scheduling)
+18. [Rate Limiting (Activo)](#rate-limiting)
 19. [Componentes UI de Scheduling](#scheduling-ui)
 20. [Variables de Entorno](#variables-entorno)
-21. [Guia de Activacion de Fases Futuras](#activacion)
+21. [Guia de Transicion a Produccion (Redis)](#produccion)
 
 ---
 
@@ -50,13 +50,16 @@
 │  Logos, imagenes de campanas                                │
 ├─────────────────────────────────────────────────────────────┤
 │                      Scheduler Service                      │
-│  Cron cada 1 minuto: componentes + broadcasts               │
+│  Cron cada 1 minuto: componentes + broadcasts +             │
+│  polls/contests (video scheduling activo)                   │
 ├─────────────────────────────────────────────────────────────┤
-│              [PREPARADO] Message Queue (BullMQ)             │
-│  Scaffolding para procesamiento asincrono con Redis         │
+│              ✅ Message Queue (Adapter Pattern)              │
+│  SimpleQueueAdapter (in-memory) activo ahora                │
+│  BullMQAdapter (Redis) listo para produccion                │
 ├─────────────────────────────────────────────────────────────┤
-│              [PREPARADO] Rate Limiter                       │
-│  Passthrough actual, ready para Redis sliding window        │
+│              ✅ Rate Limiter (Adapter Pattern)               │
+│  SimpleRateLimiter (in-memory Map) activo ahora             │
+│  RedisRateLimiter (sliding window sorted sets) para prod    │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -74,25 +77,24 @@
 **Estructura de Archivos Completa:**
 ```
 server/
-├── index.ts                    # Entry point
+├── index.ts                    # Entry point (inicializa workers si USE_QUEUE=true)
 ├── routes.ts                   # Todos los endpoints API y SDK
 ├── storage.ts                  # Interface de storage + implementacion PostgreSQL
-├── scheduler.ts                # Cron jobs (componentes + broadcasts + scheduling preparado)
+├── scheduler.ts                # Cron jobs (componentes + broadcasts + polls/contests scheduling)
 ├── vite.ts                     # Configuracion Vite
-├── queue/                      # [SCAFFOLDING] Sistema de colas
-│   ├── index.ts                # Exportaciones centralizadas
-│   ├── types.ts                # Tipos para jobs de cola
-│   ├── queues.ts               # Definiciones de colas BullMQ (comentado)
-│   ├── workers.ts              # Workers procesadores (comentado)
-│   └── README.md               # Guia de implementacion
-├── services/                   # [SCAFFOLDING] Logica extraida
-│   ├── vote-processor.ts       # Procesamiento de votos (funcional)
-│   └── contest-processor.ts    # Procesamiento de participaciones (funcional)
-├── middleware/                  # [SCAFFOLDING] Middleware
-│   ├── rate-limiter.ts         # Rate limiting (passthrough)
+├── queue/                      # ✅ Sistema de colas ACTIVO (Adapter Pattern)
+│   ├── queue-adapter.ts        # SimpleQueueAdapter + BullMQAdapter
+│   ├── types.ts                # Tipos: VoteJobData, ContestParticipationJobData, etc.
+│   ├── queues.ts               # voteQueue, contestParticipationQueue, broadcastStatusQueue
+│   └── workers.ts              # Workers: vote-processing, contest-participation
+├── services/                   # ✅ Logica extraida FUNCIONAL
+│   ├── vote-processor.ts       # processPollVoteSync + WebSocket broadcast
+│   └── contest-processor.ts    # processContestParticipationSync
+├── middleware/                  # ✅ Middleware ACTIVO
+│   ├── rate-limiter.ts         # SimpleRateLimiter (in-memory) + RedisRateLimiter
 │   └── broadcast-validator.ts  # Validacion de broadcastId (funcional)
 └── utils/
-    └── scheduling.ts           # Utilidades de video scheduling
+    └── scheduling.ts           # Calculo de timestamps relativos al video
 
 shared/
 └── schema.ts                   # Modelos Drizzle + Zod schemas (19 tablas)
@@ -106,7 +108,7 @@ client/src/
 │   ├── components.tsx          # Libreria de componentes
 │   └── ...
 └── components/
-    └── scheduling/             # [SCAFFOLDING] Componentes de scheduling
+    └── scheduling/             # Componentes de scheduling (preparados, no integrados)
         ├── SchedulingForm.tsx   # Formulario de scheduling
         ├── VideoTimeInput.tsx   # Input de tiempo video
         └── TimelineView.tsx    # Vista de timeline visual
@@ -124,11 +126,11 @@ Users (agencias/marcas)
                  ├── Components (componentes UI)
                  ├── Events (productos, polls, contests legados)
                  ├── Broadcasts (transmisiones/partidos)
-                 │    ├── Polls (encuestas)
+                 │    ├── Polls (encuestas) ← con video scheduling activo
                  │    │    ├── Poll Options (opciones)
-                 │    │    └── Poll Votes (votos)
-                 │    └── Contests (concursos)
-                 │         └── Contest Participations
+                 │    │    └── Poll Votes (votos) ← rate limited + queue-ready
+                 │    └── Contests (concursos) ← con video scheduling activo
+                 │         └── Contest Participations ← rate limited + queue-ready
                  ├── Engagement Config
                  ├── UI Config
                  ├── Feature Flags
@@ -232,11 +234,11 @@ Users (agencias/marcas)
 | end_time | timestamp | Fin (opcional) |
 | is_active | boolean | Si esta activa (default: true) |
 | total_votes | integer | Contador de votos totales |
-| video_start_time | integer | **[NUEVO]** Segundos desde inicio del video |
-| video_end_time | integer | **[NUEVO]** Segundos desde inicio del video |
-| broadcast_start_time | timestamp | **[NUEVO]** Timestamp del inicio del broadcast |
-| scheduled_start_time | timestamp | **[NUEVO]** Calculado: broadcastStartTime + videoStartTime |
-| scheduled_end_time | timestamp | **[NUEVO]** Calculado: broadcastStartTime + videoEndTime |
+| video_start_time | integer | Segundos desde inicio del video |
+| video_end_time | integer | Segundos desde inicio del video |
+| broadcast_start_time | timestamp | Timestamp del inicio del broadcast |
+| scheduled_start_time | timestamp | Calculado: broadcastStartTime + videoStartTime |
+| scheduled_end_time | timestamp | Calculado: broadcastStartTime + videoEndTime |
 | created_at | timestamp | Fecha de creacion |
 | updated_at | timestamp | Ultima actualizacion |
 
@@ -273,11 +275,11 @@ Users (agencias/marcas)
 | start_time | timestamp | Inicio (opcional) |
 | end_time | timestamp | Fin (opcional) |
 | is_active | boolean | Si esta activo (default: true) |
-| video_start_time | integer | **[NUEVO]** Segundos desde inicio del video |
-| video_end_time | integer | **[NUEVO]** Segundos desde inicio del video |
-| broadcast_start_time | timestamp | **[NUEVO]** Timestamp del inicio del broadcast |
-| scheduled_start_time | timestamp | **[NUEVO]** Calculado: broadcastStartTime + videoStartTime |
-| scheduled_end_time | timestamp | **[NUEVO]** Calculado: broadcastStartTime + videoEndTime |
+| video_start_time | integer | Segundos desde inicio del video |
+| video_end_time | integer | Segundos desde inicio del video |
+| broadcast_start_time | timestamp | Timestamp del inicio del broadcast |
+| scheduled_start_time | timestamp | Calculado: broadcastStartTime + videoStartTime |
+| scheduled_end_time | timestamp | Calculado: broadcastStartTime + videoEndTime |
 | created_at | timestamp | Fecha de creacion |
 | updated_at | timestamp | Ultima actualizacion |
 
@@ -315,10 +317,10 @@ Users (agencias/marcas)
 | end_time | timestamp | Desactivacion programada |
 | activated_at | timestamp | Cuando fue activado |
 | match_id | varchar(255) | Match asociado |
-| video_start_time | integer | **[NUEVO]** Segundos desde inicio del video |
-| video_end_time | integer | **[NUEVO]** Segundos desde inicio del video |
-| scheduled_start_time | timestamp | **[NUEVO]** Calculado para activacion |
-| scheduled_end_time | timestamp | **[NUEVO]** Calculado para desactivacion |
+| video_start_time | integer | Segundos desde inicio del video |
+| video_end_time | integer | Segundos desde inicio del video |
+| scheduled_start_time | timestamp | Calculado para activacion |
+| scheduled_end_time | timestamp | Calculado para desactivacion |
 | updated_at | timestamp | Ultima actualizacion |
 
 ### 3.13-3.18 Tablas de configuracion
@@ -540,7 +542,7 @@ Response 200:
 
 Filtrado por targeting: Si `userId`/`userCountry` no coinciden con segmentacion, devuelve array vacio.
 
-### 5.7 Broadcasts (SDK - Publico)
+### 5.7 Engagement SDK - Polls (Publico, Rate Limited)
 
 ```http
 GET /v1/engagement/polls?broadcastId=<id>
@@ -562,11 +564,13 @@ Response 200:
 
 ```http
 POST /v1/engagement/polls/:pollId/vote
+Rate Limit: 30 req/min por userId
 Body: { "optionId": 1, "userId": "user123", "broadcastId": "barcelona-psg-2025-01-23" }
 
+# Modo sincrono (USE_QUEUE != true):
 Response 200:
 {
-  "message": "Vote recorded",
+  "success": true,
   "results": {
     "id": 1,
     "question": "...",
@@ -577,8 +581,19 @@ Response 200:
   }
 }
 
+# Modo queue (USE_QUEUE=true):
+Response 200:
+{
+  "success": true,
+  "queued": true,
+  "message": "Vote queued for processing"
+}
+
 Response 409: { "message": "User has already voted on this poll" }
+Response 429: { "error": "Rate limit exceeded", "retryAfter": 45 }
 ```
+
+### 5.8 Engagement SDK - Contests (Publico, Rate Limited)
 
 ```http
 GET /v1/engagement/contests?broadcastId=<id>
@@ -597,10 +612,17 @@ Response 200:
 
 ```http
 POST /v1/engagement/contests/:contestId/participate
+Rate Limit: 10 req/min por userId
 Body: { "userId": "user123", "broadcastId": "barcelona-psg-2025-01-23", "answers": {...} }
 
-Response 200: { "message": "Participation recorded", ... }
+# Modo sincrono:
+Response 201: { "id": 1, "contestId": 1, "userId": "user123", ... }
+
+# Modo queue:
+Response 201: { "success": true, "queued": true, "message": "Participation queued for processing" }
+
 Response 409: { "message": "User has already participated in this contest" }
+Response 429: { "error": "Rate limit exceeded", "retryAfter": 55 }
 ```
 
 ---
@@ -620,111 +642,99 @@ Response 409: { "message": "User has already participated in this contest" }
 ### 6.2 Client Apps
 | Metodo | Ruta | Descripcion |
 |--------|------|-------------|
-| GET | `/api/client-apps?userId=X` | Listar apps del usuario |
-| GET | `/api/client-apps/:id` | Obtener app |
-| POST | `/api/client-apps` | Crear app (genera API Key) |
-| PATCH | `/api/client-apps/:id` | Actualizar app |
-| POST | `/api/client-apps/:id/regenerate-key` | Regenerar API Key |
-| DELETE | `/api/client-apps/:id` | Eliminar app |
-| GET | `/api/client-apps/:id/channels` | Canales de la app |
+| GET | `/api/client-apps?userId=<id>` | Listar apps del usuario |
+| POST | `/api/client-apps` | Crear client app (auto-genera apiKey) |
+| PATCH | `/api/client-apps/:id` | Actualizar client app |
+| DELETE | `/api/client-apps/:id` | Eliminar client app |
 
 ### 6.3 Channels
 | Metodo | Ruta | Descripcion |
 |--------|------|-------------|
-| GET | `/api/channels?userId=X` | Listar canales |
+| GET | `/api/channels?clientAppId=<id>` | Listar canales |
+| POST | `/api/channels` | Crear canal |
+| PATCH | `/api/channels/:id` | Actualizar canal |
+| DELETE | `/api/channels/:id` | Eliminar canal |
 
 ### 6.4 Campaigns
 | Metodo | Ruta | Descripcion |
 |--------|------|-------------|
-| GET | `/api/campaigns?userId=X` | Listar campanas |
+| GET | `/api/campaigns?userId=<id>` | Listar campanas |
 | GET | `/api/campaigns/:id` | Obtener campana |
 | POST | `/api/campaigns` | Crear campana |
-| PUT | `/api/campaigns/:id` | Actualizar campana |
+| PATCH | `/api/campaigns/:id` | Actualizar campana |
 | DELETE | `/api/campaigns/:id` | Eliminar campana |
-| PATCH | `/api/campaigns/:id/toggle-pause` | Pausar/reanudar campana |
+| PUT | `/api/campaigns/:id/pause` | Pausar campana |
+| PUT | `/api/campaigns/:id/resume` | Reanudar campana |
 
-### 6.5 Campaign Config
+### 6.5 Components
 | Metodo | Ruta | Descripcion |
 |--------|------|-------------|
-| GET/PUT | `/api/campaigns/:id/engagement-config` | Config de engagement |
-| GET/PUT | `/api/campaigns/:id/ui-config` | Config de UI/tema |
-| GET/PUT | `/api/campaigns/:id/feature-flags` | Feature flags |
-
-### 6.6 Components
-| Metodo | Ruta | Descripcion |
-|--------|------|-------------|
-| GET | `/api/components` | Listar componentes |
-| POST | `/api/components` | Crear componente |
+| GET | `/api/components` | Listar todos los componentes |
 | GET | `/api/components/:id` | Obtener componente |
-| PATCH | `/api/components/:id` | Actualizar componente |
+| POST | `/api/components` | Crear componente |
+| PUT | `/api/components/:id` | Actualizar componente |
 | DELETE | `/api/components/:id` | Eliminar componente |
-| GET | `/api/components/usage` | Uso en campanas |
-| GET | `/api/components/:id/availability` | Disponibilidad |
 
-### 6.7 Campaign Components
+### 6.6 Campaign Components
 | Metodo | Ruta | Descripcion |
 |--------|------|-------------|
-| GET | `/api/campaigns/:id/components` | Componentes de campana |
-| GET | `/api/campaigns/:id/active-components` | Solo activos (iOS) |
-| POST | `/api/campaigns/:id/components` | Anadir componente a campana |
-| PATCH | `/api/campaigns/:id/components/:cId` | Cambiar status |
-| PATCH | `/api/campaigns/:id/components/:cId/config` | Cambiar config |
-| DELETE | `/api/campaigns/:id/components/:cId` | Quitar componente |
+| GET | `/api/campaigns/:id/components` | Listar componentes de campana |
+| POST | `/api/campaigns/:id/components` | Agregar componente a campana |
+| PUT | `/api/campaigns/:id/components/:compId` | Actualizar instancia |
+| DELETE | `/api/campaigns/:id/components/:compId` | Eliminar instancia |
 
-### 6.8 Events
+### 6.7 Broadcasts (Dashboard)
 | Metodo | Ruta | Descripcion |
 |--------|------|-------------|
-| GET | `/api/events?campaignId=X` | Listar eventos |
-| POST | `/api/events/product` | Crear evento producto |
-| POST | `/api/events/poll` | Crear evento encuesta |
-| POST | `/api/events/contest` | Crear evento concurso |
-| POST | `/api/events/:campaignId` | Evento generico |
-
-### 6.9 Broadcasts (Dashboard)
-| Metodo | Ruta | Descripcion |
-|--------|------|-------------|
-| GET | `/api/broadcasts?status=X&campaignId=Y` | Listar broadcasts |
-| GET | `/api/broadcasts/:broadcastId` | Obtener broadcast + polls + contests |
+| GET | `/api/broadcasts?status=<s>&campaignId=<id>` | Listar broadcasts |
+| GET | `/api/broadcasts/:broadcastId` | Obtener broadcast |
 | POST | `/api/broadcasts` | Crear broadcast |
 | PUT | `/api/broadcasts/:broadcastId` | Actualizar broadcast |
 | DELETE | `/api/broadcasts/:broadcastId` | Eliminar broadcast |
 
-### 6.10 Polls (Dashboard)
+### 6.8 Polls (Dashboard) - Con Video Scheduling
 | Metodo | Ruta | Descripcion |
 |--------|------|-------------|
-| GET | `/api/broadcasts/:broadcastId/polls` | Polls del broadcast |
-| POST | `/api/broadcasts/:broadcastId/polls` | Crear poll con opciones |
-| PUT | `/api/polls/:pollId` | Actualizar poll (isActive, etc.) |
+| GET | `/api/broadcasts/:broadcastId/polls` | Listar polls |
+| POST | `/api/broadcasts/:broadcastId/polls` | Crear poll (acepta videoStartTime/videoEndTime/broadcastStartTime) |
+| PUT | `/api/polls/:pollId` | Actualizar poll |
 | DELETE | `/api/polls/:pollId` | Eliminar poll |
-| GET | `/api/polls/:pollId/results` | Resultados con porcentajes |
 
-### 6.11 Contests (Dashboard)
+### 6.9 Contests (Dashboard) - Con Video Scheduling
 | Metodo | Ruta | Descripcion |
 |--------|------|-------------|
-| GET | `/api/broadcasts/:broadcastId/contests` | Contests del broadcast |
-| POST | `/api/broadcasts/:broadcastId/contests` | Crear contest |
+| GET | `/api/broadcasts/:broadcastId/contests` | Listar contests |
+| POST | `/api/broadcasts/:broadcastId/contests` | Crear contest (acepta videoStartTime/videoEndTime/broadcastStartTime) |
 | PUT | `/api/contests/:contestId` | Actualizar contest |
 | DELETE | `/api/contests/:contestId` | Eliminar contest |
 
-### 6.12 Broadcasts (Admin v1 - Bearer Auth)
+### 6.10 Broadcasts Admin (v1 - Bearer Auth)
 | Metodo | Ruta | Auth | Descripcion |
 |--------|------|------|-------------|
 | POST | `/v1/broadcasts` | Bearer | Crear broadcast |
-| GET | `/v1/broadcasts?status=X&campaignId=Y` | Bearer | Listar broadcasts |
-| GET | `/v1/broadcasts/:broadcastId` | Bearer | Obtener broadcast |
-| PUT | `/v1/broadcasts/:broadcastId` | Bearer | Actualizar broadcast |
-| DELETE | `/v1/broadcasts/:broadcastId` | Bearer | Eliminar broadcast |
-| GET | `/v1/campaigns/:campaignId/broadcasts` | Bearer | Broadcasts de campana |
-| POST | `/v1/broadcasts/:broadcastId/polls` | Bearer | Crear poll |
-| GET | `/v1/broadcasts/:broadcastId/polls` | Bearer | Polls del broadcast |
-| PUT | `/v1/polls/:pollId` | Bearer | Actualizar poll |
-| DELETE | `/v1/polls/:pollId` | Bearer | Eliminar poll |
-| GET | `/v1/polls/:pollId/results` | Bearer | Resultados poll |
-| POST | `/v1/broadcasts/:broadcastId/contests` | Bearer | Crear contest |
-| GET | `/v1/broadcasts/:broadcastId/contests` | Bearer | Contests del broadcast |
-| PUT | `/v1/contests/:contestId` | Bearer | Actualizar contest |
-| DELETE | `/v1/contests/:contestId` | Bearer | Eliminar contest |
-| GET | `/v1/contests/:contestId/participations` | Bearer | Participaciones |
+| GET | `/v1/broadcasts` | Bearer | Listar broadcasts |
+| GET | `/v1/broadcasts/:id` | Bearer | Obtener broadcast |
+| PUT | `/v1/broadcasts/:id` | Bearer | Actualizar broadcast |
+| DELETE | `/v1/broadcasts/:id` | Bearer | Eliminar broadcast |
+| POST | `/v1/broadcasts/:id/polls` | Bearer | Crear poll (con video scheduling) |
+| GET | `/v1/broadcasts/:id/polls` | Bearer | Listar polls |
+| GET | `/v1/polls/:id/results` | Bearer | Resultados de poll |
+| POST | `/v1/broadcasts/:id/contests` | Bearer | Crear contest (con video scheduling) |
+| GET | `/v1/broadcasts/:id/contests` | Bearer | Listar contests |
+
+### 6.11 Configuracion Dinamica (Dashboard)
+| Metodo | Ruta | Descripcion |
+|--------|------|-------------|
+| GET | `/api/campaigns/:id/engagement-config` | Obtener config engagement |
+| PUT | `/api/campaigns/:id/engagement-config` | Actualizar config engagement |
+| GET | `/api/campaigns/:id/ui-config` | Obtener config UI |
+| PUT | `/api/campaigns/:id/ui-config` | Actualizar config UI |
+| GET | `/api/campaigns/:id/feature-flags` | Obtener feature flags |
+| PUT | `/api/campaigns/:id/feature-flags` | Actualizar feature flags |
+| GET | `/api/campaigns/:id/translations` | Obtener traducciones |
+| PUT | `/api/campaigns/:id/translations` | Actualizar traducciones |
+| GET | `/api/sdk-translations/:language` | Obtener traducciones SDK |
+| PUT | `/api/sdk-translations/:language` | Actualizar traducciones SDK |
 
 ---
 
@@ -733,395 +743,317 @@ Response 409: { "message": "User has already participated in this contest" }
 ### Conexion
 
 ```
-ws://HOST/ws/:campaignId
-wss://HOST/ws/:campaignId  (produccion)
+ws://<host>/ws/:campaignId
 ```
 
-Cada campana tiene su propio canal aislado. Los clientes se conectan a un campaignId y reciben solo eventos de esa campana.
+Cada cliente se conecta a un canal especifico de campaign. Los eventos se emiten solo a los clientes de esa campaign.
 
-### Eventos que recibe el SDK
+### Tipos de Eventos
 
-| Evento | Cuando se envia | Payload |
-|--------|----------------|---------|
-| `campaign_started` | Campana inicia (startDate alcanzada) | `{ type, campaignId, startDate, endDate, matchId? }` |
-| `campaign_ended` | Campana finaliza (endDate alcanzada) | `{ type, campaignId, endDate }` |
-| `campaign_paused` | Admin pausa campana | `{ type, campaignId, timestamp }` |
-| `campaign_resumed` | Admin reanuda campana | `{ type, campaignId, timestamp }` |
-| `component_status_changed` | Componente se activa/desactiva | `{ type, campaignId, componentId, status, component: {id, type, name, config}, matchId? }` |
-| `component_config_updated` | Config de componente cambia | `{ type, campaignId, componentId, component: {id, type, name, config}, matchId? }` |
-| `config:updated` | Config de engagement/UI cambia | `{ type, campaignId, matchId?, sections: ['engagement'\|'ui'], version, timestamp }` |
-| `product` | Evento de producto enviado | `{ type: 'product', data: {...}, campaignLogo?, timestamp }` |
-| `poll` | Evento de encuesta enviado | `{ type: 'poll', data: {...}, campaignLogo?, timestamp }` |
-| `contest` | Evento de concurso enviado | `{ type: 'contest', data: {...}, campaignLogo?, timestamp }` |
-| `poll_results_updated` | Alguien vota en una encuesta | `{ type, broadcastId, pollId, results: { question, totalVotes, options: [{id, text, voteCount, percentage}] } }` |
-| `broadcast_status_changed` | Broadcast cambia de estado | `{ type, broadcastId, status }` |
+| Tipo | Trigger | Payload |
+|------|---------|---------|
+| `component:activated` | Componente activado | `{ type, componentId, config }` |
+| `component:deactivated` | Componente desactivado | `{ type, componentId }` |
+| `event:new` | Nuevo evento creado | `{ type, data: { eventId, eventType, ... } }` |
+| `event:saved` | Evento guardado | `{ type, data: { eventId, ... } }` |
+| `campaign:paused` | Campana pausada | `{ type, campaignId }` |
+| `campaign:resumed` | Campana reanudada | `{ type, campaignId }` |
+| `broadcast:status_changed` | Estado de broadcast cambio | `{ type, broadcastId, status }` |
+| `poll_results_updated` | Votos actualizados | `{ type, pollId, broadcastId, totalVotes, options: [...] }` |
+| `config:updated` | Config dinamica cambio | `{ type, campaignId, section }` |
+
+**Nota:** `poll_results_updated` ahora se emite desde `vote-processor.ts` via `setVoteBroadcastFunction`, permitiendo que tanto el procesamiento sincrono como el queue-based emitan WebSocket events.
 
 ---
 
 ## 8. Sistema de Broadcasts <a name="sistema-de-broadcasts"></a>
 
-### Concepto
-Un Broadcast representa una transmision en vivo o evento (ej: un partido de futbol). Se asocia opcionalmente a una Campaign.
-
 ### Ciclo de vida
+
 ```
-upcoming ──(startTime alcanzada)──> live ──(endTime alcanzada)──> ended
+upcoming → live → ended
 ```
 
-El Scheduler revisa cada minuto y transiciona automaticamente.
+- **upcoming**: `startTime` en el futuro
+- **live**: `startTime` en el pasado, `endTime` en el futuro
+- **ended**: `endTime` en el pasado
 
-### Generacion de Broadcast ID
+### Auto-transicion (Scheduler)
+
+El scheduler verifica cada minuto:
+1. Broadcasts `upcoming` cuyo `startTime` ya paso → cambia a `live`
+2. Broadcasts `live` cuyo `endTime` ya paso → cambia a `ended`
+3. Emite evento WebSocket `broadcast:status_changed` en cada transicion
+
+### Slug Generation
+
 ```
 broadcastName: "Barcelona vs PSG"
-startTime: "2025-01-23T20:00:00Z"
-
-broadcastId = slugify("Barcelona vs PSG") + "-" + "2025-01-23"
-           = "barcelona-vs-psg-2025-01-23"
-
-Si ya existe: "barcelona-vs-psg-2025-01-23-1706012345678"
+date: "2025-01-23"
+→ broadcastId: "barcelona-vs-psg-2025-01-23"
 ```
 
-### Crear Broadcast (Body)
-```json
-{
-  "broadcastName": "Barcelona vs PSG",
-  "campaignId": 1,
-  "channelId": null,
-  "startTime": "2025-01-23T20:00:00Z",
-  "endTime": "2025-01-23T23:00:00Z",
-  "metadata": { "league": "Champions League", "round": "Quarter Final" }
-}
-```
+Si hay colision, agrega sufijo numerico: `barcelona-vs-psg-2025-01-23-2`
 
 ---
 
 ## 9. Sistema de Engagement (Polls y Contests) <a name="sistema-de-engagement"></a>
 
-### 9.1 Polls (Encuestas)
+### 9.1 Flujo de Votacion (con Queue Fallback)
 
-**Crear Poll:**
-```json
-POST /api/broadcasts/:broadcastId/polls
-{
-  "question": "Mejor jugador del partido?",
-  "options": ["Messi", "Mbappe", "Dembele"]
-}
+```
+1. Cliente envia POST /v1/engagement/polls/:pollId/vote
+   Body: { optionId, userId, broadcastId }
+
+2. Rate Limiter verifica: 30 req/min por userId (SimpleRateLimiter in-memory)
+   Si excede → 429 Too Many Requests
+
+3. Si USE_QUEUE=true:
+   → Job se encola en voteQueue (SimpleQueueAdapter o BullMQAdapter)
+   → Response: { success: true, queued: true }
+   → Worker procesa asincrono: processPollVote()
+   → WebSocket broadcast via setVoteBroadcastFunction
+
+4. Si USE_QUEUE != true (default actual):
+   → processPollVoteSync() se ejecuta directamente
+   → Verifica poll activa, usuario no ha votado
+   → Crea voto, actualiza contadores
+   → Calcula porcentajes
+   → WebSocket broadcast de resultados
+   → Response: { success: true, results: {...} }
 ```
 
-**Crear Poll con Video Scheduling (Fase 5 - preparado):**
+### 9.2 Flujo de Participacion en Contest (con Queue Fallback)
+
+```
+1. Cliente envia POST /v1/engagement/contests/:contestId/participate
+   Body: { userId, broadcastId, answers }
+
+2. Rate Limiter: 10 req/min por userId
+
+3. Si USE_QUEUE=true:
+   → Job se encola en contestParticipationQueue
+   → Response: { success: true, queued: true }
+
+4. Si USE_QUEUE != true:
+   → processContestParticipationSync() se ejecuta directamente
+   → Verifica contest activo, usuario no ha participado
+   → Crea participacion
+   → Response: participation object
+```
+
+### 9.3 Video Scheduling de Polls/Contests
+
+Los 4 endpoints de creacion (POST) aceptan campos opcionales de video scheduling:
+
 ```json
-POST /api/broadcasts/:broadcastId/polls
 {
-  "question": "Mejor jugador del partido?",
-  "options": ["Messi", "Mbappe", "Dembele"],
+  "question": "Mejor jugador?",
+  "options": ["Messi", "Mbappe"],
   "videoStartTime": 300,
   "videoEndTime": 600,
   "broadcastStartTime": "2025-01-23T20:00:00Z"
 }
 ```
-Los campos `scheduledStartTime` y `scheduledEndTime` se calculan automaticamente:
-- `scheduledStartTime = broadcastStartTime + videoStartTime` (ej: 20:05:00)
-- `scheduledEndTime = broadcastStartTime + videoEndTime` (ej: 20:10:00)
 
-**Votar (SDK):**
-```json
-POST /v1/engagement/polls/:pollId/vote
-{
-  "optionId": 1,
-  "userId": "user-abc-123",
-  "broadcastId": "barcelona-psg-2025-01-23"
-}
-```
+Backend calcula automaticamente:
+- `scheduledStartTime` = broadcastStartTime + videoStartTime (20:05:00)
+- `scheduledEndTime` = broadcastStartTime + videoEndTime (20:10:00)
 
-- Un usuario solo puede votar 1 vez por poll (UNIQUE constraint)
-- Despues de votar, se emite `poll_results_updated` via WebSocket
-- Los porcentajes se calculan: `(voteCount / totalVotes) * 100`, redondeado a 2 decimales
-
-### 9.2 Contests (Concursos)
-
-**Tipos disponibles:** quiz, giveaway, trivia, prediction
-
-**Crear Contest:**
-```json
-POST /api/broadcasts/:broadcastId/contests
-{
-  "title": "Win a Jersey",
-  "description": "Answer correctly to win",
-  "prize": "Signed Jersey",
-  "contestType": "giveaway"
-}
-```
-
-**Crear Contest con Video Scheduling (Fase 5 - preparado):**
-```json
-POST /api/broadcasts/:broadcastId/contests
-{
-  "title": "Win a Jersey",
-  "description": "Answer correctly to win",
-  "prize": "Signed Jersey",
-  "contestType": "giveaway",
-  "videoStartTime": 900,
-  "videoEndTime": 1200,
-  "broadcastStartTime": "2025-01-23T20:00:00Z"
-}
-```
-
-**Participar (SDK):**
-```json
-POST /v1/engagement/contests/:contestId/participate
-{
-  "userId": "user-abc-123",
-  "broadcastId": "barcelona-psg-2025-01-23",
-  "answers": { "q1": "answer1" }
-}
-```
-
-- Un usuario solo puede participar 1 vez por contest (UNIQUE constraint)
+Validacion:
+- `videoEndTime` >= `videoStartTime`
+- `broadcastStartTime` debe ser ISO timestamp valido
 
 ---
 
 ## 10. Configuracion Dinamica <a name="configuracion-dinamica"></a>
 
-Cada campana puede tener configuraciones personalizadas:
+4 tablas independientes por campana:
 
-### Brand
-- `brandName`, `brandIconAsset`, `brandIconUrl`, `brandLogoUrl`
+| Tabla | Campos Clave | Endpoint Dashboard | Endpoint SDK |
+|-------|-------------|-------------------|--------------|
+| `campaign_engagement_config` | demoMode, defaultPollDuration, maxVotesPerPoll, enableRealTimeUpdates, updateInterval | PUT `/api/campaigns/:id/engagement-config` | GET `/v1/campaigns/:id/config` |
+| `campaign_ui_config` | primaryColor, secondaryColor, componentConfigs | PUT `/api/campaigns/:id/ui-config` | GET `/v1/campaigns/:id/config` |
+| `campaign_feature_flags` | enableLiveStreaming, enableProductCatalog, enableEngagement, enablePolls, enableContests | PUT `/api/campaigns/:id/feature-flags` | GET `/v1/campaigns/:id/config` |
+| `sdk_translations` | language, campaignId, matchId, translations | PUT `/api/sdk-translations/:language` | GET `/v1/localization/:language` |
 
-### Engagement Config
-- `demoMode`: Modo demo (sin datos reales)
-- `defaultPollDuration`: Duracion de polls en segundos (default: 300)
-- `defaultContestDuration`: Duracion de contests en segundos (default: 600)
-- `maxVotesPerPoll`: Maximo votos por poll (default: 1)
-- `maxContestsPerMatch`: Maximo concursos por match (default: 10)
-- `enableRealTimeUpdates`: Updates en tiempo real (default: true)
-- `updateInterval`: Intervalo de actualizacion en ms (default: 1000)
-
-### UI Config
-- `primaryColor`: Color primario (default: #007AFF)
-- `secondaryColor`: Color secundario (default: #5856D6)
-- `componentConfigs`: Configs visuales de componentes
-
-### Feature Flags
-- `enableLiveStreaming`: Streaming en vivo
-- `enableProductCatalog`: Catalogo de productos
-- `enableEngagement`: Engagement general
-- `enablePolls`: Encuestas
-- `enableContests`: Concursos
-
-Cuando se actualizan, se emite `config:updated` via WebSocket.
+Al actualizar cualquier config, se emite evento WebSocket `config:updated` a todos los clientes de la campana.
 
 ---
 
 ## 11. Scheduler / Cron Jobs <a name="scheduler"></a>
 
 **Archivo:** `server/scheduler.ts`
+**Intervalo:** Configurable via `SCHEDULER_INTERVAL_MINUTES` (default: 1 minuto)
 
-Ejecuta cada 1 minuto (configurable via `SCHEDULER_INTERVAL_MINUTES`):
+### Funciones activas cada minuto:
 
-1. **checkScheduledComponents()**: Activa/desactiva componentes de campana segun sus `scheduledTime` y `endTime`
-2. **updateBroadcastStatuses()**: Transiciona broadcasts:
-   - `upcoming` → `live` (cuando `now >= startTime`)
-   - `live` → `ended` (cuando `now >= endTime`)
-   - Emite `broadcast_status_changed` via WebSocket
+1. **processScheduledComponents()**: Activa/desactiva componentes segun `scheduled_time`/`end_time`
+2. **processScheduledBroadcasts()**: Transiciona broadcasts upcoming→live→ended
+3. **processScheduledPolls()**: ✅ ACTIVO - Auto-activa/desactiva polls segun `scheduledStartTime`/`scheduledEndTime`
+4. **processScheduledContests()**: ✅ ACTIVO - Auto-activa/desactiva contests segun scheduling
 
-**[PREPARADO - Comentado] Funciones futuras:**
-3. **processScheduledPolls()**: Activara/desactivara polls segun `scheduledStartTime`/`scheduledEndTime`
-4. **processScheduledContests()**: Activara/desactivara contests segun `scheduledStartTime`/`scheduledEndTime`
+### Logica de processScheduledPolls:
+```
+Para cada poll con scheduledStartTime Y scheduledEndTime:
+  Si now >= scheduledStartTime AND poll.isActive == false:
+    → UPDATE poll SET isActive = true
+    → Log: "Auto-activated poll X"
+  Si now >= scheduledEndTime AND poll.isActive == true:
+    → UPDATE poll SET isActive = false
+    → Log: "Auto-deactivated poll X"
+```
+
+Misma logica para contests.
 
 ---
 
 ## 12. Paginas del Dashboard <a name="paginas-dashboard"></a>
 
-| Ruta | Pagina | Archivo |
-|------|--------|---------|
-| `/` | Campanas (inicio) | `campaigns.tsx` |
-| `/campaigns` | Lista de campanas | `campaigns.tsx` |
-| `/campaigns/new` | Crear campana | `new-campaign.tsx` |
-| `/campaign/:id/dashboard` | Dashboard de campana | `campaign-dashboard.tsx` |
-| `/campaign/:id/advanced` | Campana avanzada | `advanced-campaign.tsx` |
-| `/campaign/:id/admin` | Admin de campana | `admin.tsx` |
-| `/campaign/:name/:id` | Viewer publico | `campaign-viewer.tsx` |
-| `/broadcasts` | Lista de broadcasts | `broadcasts.tsx` |
-| `/broadcasts/:broadcastId` | Detalle de broadcast | `broadcast-detail.tsx` |
-| `/components` | Libreria de componentes | `components.tsx` |
-| `/client-apps` | Gestion de API Keys | `client-apps.tsx` |
-| `/user-session` | Sesion de usuario | `user-session.tsx` |
-| `/viewer` | Viewer general | `viewer.tsx` |
-| `/docs` | Documentacion | `docs.tsx` |
+| Ruta | Pagina | Descripcion |
+|------|--------|-------------|
+| `/` | Home/Campaigns | Lista de campanas del usuario |
+| `/campaigns` | Campaigns | Lista completa de campanas |
+| `/campaign/:id` | Campaign Dashboard | Tabs: Overview, Events, Scheduled, Components, Integrations, Settings |
+| `/broadcasts` | Broadcasts | Lista de broadcasts con filtros |
+| `/broadcast/:id` | Broadcast Detail | Tabs: Overview, Polls, Contests |
+| `/components` | Component Library | Libreria de componentes reutilizables |
+| `/viewer/:id` | Campaign Viewer | Vista publica del viewer |
+| `/docs` | Documentation | Documentacion de la API |
 
 ---
 
 ## 13. Flujos Completos <a name="flujos-completos"></a>
 
-### Flujo 1: Setup Inicial (SDK iOS)
+### Flujo 1: Setup Completo
 
 ```
-1. Dashboard: Crear User → POST /api/users/ensure
-2. Dashboard: Crear Client App → POST /api/client-apps (obtiene apiKey)
-3. Dashboard: Crear Channel → (automatico con Client App)
-4. Dashboard: Crear Campaign → POST /api/campaigns
-5. iOS SDK: GET /v1/sdk/campaigns?apiKey=xxx (descubre campanas activas)
-6. iOS SDK: Conectar WebSocket ws://host/ws/:campaignId
-7. iOS SDK: GET /v1/campaigns/:id/config?apiKey=xxx (obtiene config completa)
+1. Frontend: Login/registro → POST /api/users/ensure
+2. Crear Client App → POST /api/client-apps (genera apiKey)
+3. Crear Channel → POST /api/channels
+4. Crear Campaign → POST /api/campaigns
+5. Crear Component → POST /api/components
+6. Asignar Component → POST /api/campaigns/:id/components
+7. Activar Component → PUT /api/campaigns/:id/components/:compId { status: "active" }
+8. SDK conecta → WebSocket /ws/:campaignId
+9. SDK recibe → component:activated event
 ```
 
 ### Flujo 2: Broadcast con Engagement
 
 ```
-1. Dashboard: Crear Broadcast → POST /api/broadcasts { broadcastName, campaignId, startTime, endTime }
-2. Dashboard: Crear Poll → POST /api/broadcasts/:broadcastId/polls { question, options }
-3. Dashboard: Crear Contest → POST /api/broadcasts/:broadcastId/contests { title, contestType }
-4. Scheduler: Cuando startTime llega → status: "upcoming" → "live"
-5. iOS SDK: GET /v1/engagement/polls?broadcastId=xxx (obtiene polls activas)
-6. iOS SDK: POST /v1/engagement/polls/:pollId/vote (vota)
-7. WebSocket: Recibe poll_results_updated (resultados actualizados en real-time)
-8. iOS SDK: GET /v1/engagement/contests?broadcastId=xxx (obtiene contests)
-9. iOS SDK: POST /v1/engagement/contests/:contestId/participate (participa)
-10. Scheduler: Cuando endTime llega → status: "live" → "ended"
-11. WebSocket: Recibe broadcast_status_changed { status: "ended" }
+1. POST /api/broadcasts { broadcastName: "Barcelona vs PSG", startTime, endTime, campaignId }
+2. POST /api/broadcasts/:id/polls {
+     question: "MVP del partido?",
+     options: ["Messi", "Mbappe"],
+     videoStartTime: 300,
+     videoEndTime: 600,
+     broadcastStartTime: "2025-01-23T20:00:00Z"
+   }
+3. Backend calcula scheduledStartTime/scheduledEndTime
+4. Scheduler: A las 20:05 → activa poll automaticamente
+5. SDK: GET /v1/engagement/polls?broadcastId=xxx → recibe poll activa
+6. SDK: POST /v1/engagement/polls/:pollId/vote (rate limited 30/min)
+   → processPollVoteSync o queue
+   → WebSocket: poll_results_updated a todos los clientes
+7. Scheduler: A las 20:10 → desactiva poll automaticamente
 ```
 
-### Flujo 3: Producto en Tiempo Real
+### Flujo 3: SDK Auto-Discovery
 
 ```
-1. Dashboard: POST /api/events/product { campaignId, data: { name, price, imageUrl, ... } }
-2. Backend: Guarda en DB + broadcast via WebSocket
-3. iOS SDK: Recibe evento `product` en WebSocket
-4. iOS SDK: Muestra el producto en la UI
+1. SDK iOS: GET /v1/sdk/campaigns?apiKey=<key>
+2. SDK iOS: GET /v1/campaigns/:id/config?apiKey=<key>
+3. SDK iOS: WebSocket connect /ws/:campaignId
+4. SDK iOS: Recibe eventos en real-time
+5. SDK iOS: GET /v1/engagement/polls?broadcastId=<id>
+6. SDK iOS: POST /v1/engagement/polls/:pollId/vote
 ```
 
-### Flujo 4: Segmentacion de Usuarios
+### Flujo 4: Geo-Targeting
 
 ```
-1. Dashboard: Campaign Settings → Enable segmentation
-   - Seleccionar paises: ["MX", "AR", "CO"]
-   - Porcentaje: 50%
-2. iOS SDK: GET /v1/offers?apiKey=xxx&campaignId=1&userId=user123&userCountry=MX
-3. Backend: 
+1. Dashboard: Configurar campana con isSegmented=true, targetCountries=["NO","SE"], targetPercentage=50
+2. SDK: GET /v1/offers?apiKey=<key>&campaignId=1&userId=user123&userCountry=NO
+3. Backend:
    - Verifica si userCountry esta en targetCountries
    - Calcula SHA256(userId:campaignId) % 100 < targetPercentage
    - Si pasa: devuelve ofertas
    - Si no: devuelve array vacio
 ```
 
-### Flujo 5: Broadcast con Video Scheduling [PREPARADO]
-
-```
-1. Dashboard: Crear Broadcast → POST /api/broadcasts { broadcastName, startTime, endTime }
-2. Dashboard: Crear Poll con videoStartTime/videoEndTime
-   POST /api/broadcasts/:broadcastId/polls {
-     question: "...",
-     options: [...],
-     videoStartTime: 300,    // 5 minutos del inicio del video
-     videoEndTime: 600,      // 10 minutos del inicio del video
-     broadcastStartTime: "2025-01-23T20:00:00Z"
-   }
-3. Backend: Calcula scheduledStartTime = 20:05:00, scheduledEndTime = 20:10:00
-4. Scheduler: Cuando now >= scheduledStartTime → activa poll (isActive = true)
-5. Scheduler: Cuando now >= scheduledEndTime → desactiva poll (isActive = false)
-6. WebSocket: Emite eventos de activacion/desactivacion
-```
-
 ---
 
-## 14. Infraestructura Preparada - Scaffolding <a name="scaffolding"></a>
+## 14. Servicios Extraidos <a name="servicios"></a>
 
-El codigo incluye scaffolding preparado para facilitar la implementacion de features futuras. Estas estructuras estan creadas pero **NO activas**.
+### 14.1 Vote Processor (`server/services/vote-processor.ts`)
 
-### Mapa de Archivos de Scaffolding
-
-```
-server/
-├── queue/
-│   ├── index.ts              # Exportaciones centralizadas
-│   ├── types.ts              # Tipos: VoteJobData, ContestParticipationJobData, etc.
-│   ├── queues.ts             # Definicion de colas BullMQ (comentado)
-│   ├── workers.ts            # Workers para procesar jobs (comentado)
-│   └── README.md             # Instrucciones de implementacion futura
-├── services/
-│   ├── vote-processor.ts     # Logica de votos extraida (funcional, usable por workers)
-│   └── contest-processor.ts  # Logica de participacion extraida (funcional, usable por workers)
-├── middleware/
-│   ├── rate-limiter.ts       # Rate limiting passthrough (necesita Redis)
-│   └── broadcast-validator.ts # Validacion de broadcastId (funcional)
-├── utils/
-│   └── scheduling.ts         # Calculo de timestamps relativos al video
-
-client/src/components/scheduling/
-├── SchedulingForm.tsx         # Formulario de scheduling (preparado)
-├── VideoTimeInput.tsx         # Input HH:MM:SS / segundos (preparado)
-└── TimelineView.tsx           # Vista de timeline visual (preparado)
-```
-
----
-
-## 15. Servicios Extraidos <a name="servicios"></a>
-
-### 15.1 Vote Processor (`server/services/vote-processor.ts`)
-
-Logica de procesamiento de votos extraida del route handler. Funcional y usable directamente o por queue workers.
+Logica de procesamiento de votos extraida del route handler. Incluye WebSocket broadcast.
 
 ```typescript
-interface VoteProcessorResult {
-  success: boolean;
-  message: string;
-  results?: PollResults;
-  error?: string;
-  statusCode: number;
-}
+import { processPollVoteSync, setVoteBroadcastFunction } from './services/vote-processor';
 
-// Uso sincrono actual (en routes.ts):
-processVoteSync(storage, pollId, optionId, userId, broadcastId): Promise<VoteProcessorResult>
+setVoteBroadcastFunction(broadcastToCampaignImpl);
 
-// Uso futuro asincrono (con queue workers):
-processVoteAsync(storage, jobData: VoteJobData): Promise<VoteProcessorResult>
+const result = await processPollVoteSync({
+  pollId: 1,
+  optionId: 2,
+  userId: "user123",
+  broadcastId: "barcelona-psg-2025-01-23"
+});
+// result: { success: boolean, error?: string, data?: PollResults }
 ```
 
 **Flujo interno:**
 1. Verifica que la poll existe y esta activa
-2. Verifica que la opcion pertenece a la poll
+2. Verifica que el usuario no ha votado
 3. Registra el voto (UNIQUE constraint previene duplicados)
 4. Actualiza contadores (option.voteCount, poll.totalVotes)
 5. Calcula porcentajes
-6. Retorna resultados completos
+6. Emite WebSocket `poll_results_updated` via broadcastFn
+7. Retorna resultados completos
 
-### 15.2 Contest Processor (`server/services/contest-processor.ts`)
+### 14.2 Contest Processor (`server/services/contest-processor.ts`)
 
 ```typescript
-interface ContestProcessorResult {
-  success: boolean;
-  message: string;
-  participation?: ContestParticipation;
-  error?: string;
-  statusCode: number;
-}
+import { processContestParticipationSync } from './services/contest-processor';
 
-processParticipationSync(storage, contestId, userId, broadcastId, answers?): Promise<ContestProcessorResult>
-processParticipationAsync(storage, jobData: ContestParticipationJobData): Promise<ContestProcessorResult>
+const result = await processContestParticipationSync({
+  contestId: 1,
+  userId: "user123",
+  broadcastId: "barcelona-psg-2025-01-23",
+  answers: { q1: "A" }
+});
+// result: { success: boolean, error?: string, data?: ContestParticipation }
 ```
 
 ---
 
-## 16. Middleware <a name="middleware"></a>
+## 15. Middleware Activo <a name="middleware"></a>
 
-### 16.1 Rate Limiter (`server/middleware/rate-limiter.ts`)
+### 15.1 Rate Limiter (`server/middleware/rate-limiter.ts`)
 
-**Estado actual:** Passthrough (no bloquea nada)
-**Para activar:** Necesita Redis connection
+**Estado:** ✅ ACTIVO con Adapter Pattern
+
+Dos implementaciones intercambiables:
+
+| Implementacion | Cuando se usa | Almacenamiento |
+|---------------|---------------|----------------|
+| `SimpleRateLimiter` | Sin Redis (default) | In-memory Map con cleanup cada 60s |
+| `RedisRateLimiter` | Con REDIS_HOST/REDIS_URL | Sorted sets con sliding window |
+
+La seleccion es automatica: si `REDIS_HOST` o `REDIS_URL` estan configuradas → Redis, sino → Simple.
 
 ```typescript
-// Uso en routes:
 import { createRateLimiter, rateLimitPresets } from './middleware/rate-limiter';
 
-// Endpoints de votacion: 30 req/min por userId
-app.post('/v1/engagement/polls/:pollId/vote', 
-  createRateLimiter(rateLimitPresets.voting),
+app.post('/v1/engagement/polls/:pollId/vote',
+  createRateLimiter(rateLimitPresets.voting),  // 30 req/min por userId
   handler
 );
 
-// Endpoints SDK publicos: 60 req/min por IP
-app.get('/v1/engagement/polls',
-  createRateLimiter(rateLimitPresets.sdkPublic),
+app.post('/v1/engagement/contests/:contestId/participate',
+  createRateLimiter(rateLimitPresets.participation),  // 10 req/min por userId
   handler
 );
 ```
@@ -1129,38 +1061,118 @@ app.get('/v1/engagement/polls',
 **Presets disponibles:**
 | Preset | Max Requests | Window | Key |
 |--------|-------------|--------|-----|
-| `voting` | 30 | 60s | userId |
-| `participation` | 10 | 60s | userId |
-| `sdkPublic` | 60 | 60s | IP |
-| `adminApi` | 100 | 60s | userId |
-| `broadcastWrite` | 20 | 60s | userId |
+| `voting` | 30 | 60s | `rate_limit:vote:{userId or IP}` |
+| `participation` | 10 | 60s | `rate_limit:contest:{userId or IP}` |
+| `sdkPublic` | 60 | 60s | `rate_limit:sdk:{IP}` |
+| `adminApi` | 100 | 60s | `rate_limit:admin:{IP}` |
 
-### 16.2 Broadcast Validator (`server/middleware/broadcast-validator.ts`)
+**Response headers:**
+- `X-RateLimit-Limit`: Max requests
+- `X-RateLimit-Remaining`: Requests restantes
+- `X-RateLimit-Reset`: Timestamp de reset
 
-**Estado actual:** Funcional
+**Response 429:**
+```json
+{
+  "error": "Rate limit exceeded",
+  "retryAfter": 45,
+  "limit": 30,
+  "window": 60
+}
+```
+
+### 15.2 Broadcast Validator (`server/middleware/broadcast-validator.ts`)
+
+**Estado:** ✅ Funcional
 
 ```typescript
 import { validateBroadcastId } from './middleware/broadcast-validator';
 
-// Valida que broadcastId existe en la DB
 app.post('/v1/engagement/polls/:pollId/vote',
   validateBroadcastId,
   handler
 );
 ```
 
-Extrae `broadcastId` de `req.params`, `req.body`, o `req.query`.
-Si el broadcast no existe, devuelve 404.
+Extrae `broadcastId` de `req.params`, `req.body`, o `req.query`. Si el broadcast no existe, devuelve 404.
 
 ---
 
-## 17. Sistema de Colas (Queue System) <a name="queue-system"></a>
+## 16. Sistema de Colas - Adapter Pattern <a name="queue-system"></a>
 
-**Estado:** Scaffolding completo, NO activo
-**Archivo:** `server/queue/`
-**Dependencia:** Requiere `bullmq` + `ioredis` (no instalados)
+**Estado:** ✅ ACTIVO con Adapter Pattern
+**Archivos:** `server/queue/`
 
-### 17.1 Tipos de Jobs (`server/queue/types.ts`)
+### 16.1 Arquitectura Adapter Pattern
+
+```
+┌───────────────────────────────────────────┐
+│          QueueAdapter Interface            │
+│  add(queue, job, data, options)            │
+│  process(queue, processor)                 │
+│  close()                                   │
+├───────────────┬───────────────────────────┤
+│ SimpleQueue   │ BullMQAdapter             │
+│ Adapter       │ (Redis)                   │
+│ ✅ Activo ahora │ Listo para produccion   │
+│ In-memory     │ Requiere: bullmq+ioredis  │
+│ 100ms polling │ Event-driven              │
+│ 3 retries     │ Configurable retries      │
+└───────────────┴───────────────────────────┘
+```
+
+### 16.2 SimpleQueueAdapter (activo por default)
+
+- Almacena jobs en Map<string, Array>
+- Polling cada 100ms para procesar jobs
+- 3 reintentos por job con backoff
+- Deduplicacion por jobId
+- Sin dependencias externas
+
+### 16.3 BullMQAdapter (para produccion)
+
+- Requiere: `npm install bullmq ioredis`
+- Se activa con: `QUEUE_ENABLED=true` + `REDIS_HOST`
+- Workers con concurrencia configurable (`QUEUE_CONCURRENCY`)
+- Backoff exponencial automatico
+
+### 16.4 Colas Definidas (`server/queue/queues.ts`)
+
+```typescript
+import { voteQueue, contestParticipationQueue, broadcastStatusQueue, isQueueEnabled } from './queue/queues';
+
+// Encolar voto
+await voteQueue.add('process-vote', { pollId, optionId, userId, broadcastId }, {
+  jobId: `vote-${pollId}-${userId}`,
+});
+
+// Encolar participacion
+await contestParticipationQueue.add('process-participation', { contestId, userId, broadcastId, answers }, {
+  jobId: `participate-${contestId}-${userId}`,
+});
+
+// Verificar si queue esta habilitada
+if (isQueueEnabled()) { ... }  // USE_QUEUE === 'true'
+```
+
+### 16.5 Workers (`server/queue/workers.ts`)
+
+Se inicializan en `server/index.ts` solo si `USE_QUEUE=true`:
+
+```typescript
+import { initializeWorkers } from './queue/workers';
+import { isQueueEnabled } from './queue/queues';
+
+if (isQueueEnabled()) {
+  initializeWorkers();
+}
+```
+
+Workers registrados:
+- `vote-processing`: Procesa votos usando `processPollVote()` de vote-processor.ts
+- `contest-participation`: Procesa participaciones usando `processContestParticipation()`
+
+### 16.6 Tipos de Jobs (`server/queue/types.ts`)
 
 ```typescript
 interface VoteJobData {
@@ -1168,8 +1180,7 @@ interface VoteJobData {
   optionId: number;
   userId: string;
   broadcastId: string;
-  campaignId?: number;
-  timestamp: string;
+  timestamp?: string;
 }
 
 interface ContestParticipationJobData {
@@ -1177,103 +1188,57 @@ interface ContestParticipationJobData {
   userId: string;
   broadcastId: string;
   answers?: Record<string, any>;
-  campaignId?: number;
-  timestamp: string;
+  timestamp?: string;
 }
 
 interface BroadcastStatusJobData {
   broadcastId: string;
   newStatus: 'upcoming' | 'live' | 'ended';
-  previousStatus?: string;
-  campaignId?: number;
-  timestamp: string;
+  timestamp?: string;
 }
 
-interface WebSocketNotificationJobData {
-  campaignId: number;
-  event: string;
-  payload: Record<string, any>;
-  timestamp: string;
+interface JobResult {
+  success: boolean;
+  error?: string;
+  data?: any;
 }
-
-type JobPriority = 'critical' | 'high' | 'normal' | 'low';
-```
-
-### 17.2 Colas Definidas (`server/queue/queues.ts`)
-
-| Cola | Proposito | Prioridad Default |
-|------|-----------|-------------------|
-| `vote-processing` | Procesar votos de polls | high |
-| `contest-participation` | Registrar participaciones | high |
-| `broadcast-status` | Cambios de estado | critical |
-| `websocket-notifications` | Enviar eventos WS | normal |
-| `analytics` | Agregar metricas | low |
-
-### 17.3 Workers (`server/queue/workers.ts`)
-
-Workers preparados para cada cola. Cuando se activen, procesan jobs usando los servicios extraidos:
-
-```typescript
-// El worker de votos usa vote-processor.ts:
-voteWorker.process(async (job) => {
-  const result = await processVoteAsync(storage, job.data);
-  if (result.success) {
-    await wsNotificationQueue.add('poll-update', { ... });
-  }
-});
 ```
 
 ---
 
-## 18. Video Scheduling <a name="video-scheduling"></a>
+## 17. Video Scheduling (Activo) <a name="video-scheduling"></a>
 
-**Estado:** Campos de DB creados, utilidades listas, scheduler preparado
+**Estado:** ✅ ACTIVO - Scheduler procesando, endpoints aceptando campos
 **Archivo:** `server/utils/scheduling.ts`
 
-### 18.1 Utilidades de Calculo
+### 17.1 Utilidades de Calculo
 
 ```typescript
-import { 
-  calculateScheduledTimestamp,
-  calculateScheduledRange,
-  formatVideoTime,
-  parseVideoTime,
-  isWithinScheduledWindow,
-  getTimeUntilScheduled
-} from './utils/scheduling';
+import { calculateScheduledTimes, validateScheduling } from './utils/scheduling';
 
-// Calcular timestamp absoluto desde tiempo relativo al video
-calculateScheduledTimestamp(
-  broadcastStartTime: Date,    // "2025-01-23T20:00:00Z"
-  videoOffsetSeconds: number   // 300 (5 minutos)
-): Date
-// Resultado: "2025-01-23T20:05:00Z"
+// Validar campos de scheduling
+const validation = validateScheduling({
+  broadcastStartTime: "2025-01-23T20:00:00Z",
+  videoStartTime: 300,
+  videoEndTime: 600
+});
+// validation: { valid: true } o { valid: false, error: "mensaje" }
 
-// Calcular rango completo
-calculateScheduledRange(
-  broadcastStartTime: Date,
-  videoStartTime: number,    // 300
-  videoEndTime: number       // 600
-): { scheduledStartTime: Date, scheduledEndTime: Date }
-
-// Formatear segundos a HH:MM:SS
-formatVideoTime(300) → "05:00"
-formatVideoTime(3661) → "01:01:01"
-
-// Parsear HH:MM:SS a segundos
-parseVideoTime("05:00") → 300
-parseVideoTime("01:01:01") → 3661
-
-// Verificar si estamos dentro de la ventana
-isWithinScheduledWindow(scheduledStart, scheduledEnd) → boolean
-
-// Tiempo restante hasta activacion
-getTimeUntilScheduled(scheduledStart) → number (ms, negativo si ya paso)
+// Calcular timestamps absolutos
+const scheduled = calculateScheduledTimes({
+  broadcastStartTime: "2025-01-23T20:00:00Z",
+  videoStartTime: 300,   // 5 min
+  videoEndTime: 600       // 10 min
+});
+// scheduled: {
+//   scheduledStart: Date("2025-01-23T20:05:00Z"),
+//   scheduledEnd: Date("2025-01-23T20:10:00Z")
+// }
 ```
 
-### 18.2 Campos de DB (todos nullable)
+### 17.2 Campos de DB (todos nullable)
 
-Nuevos campos en `polls`, `contests`, y `campaign_components`:
+Campos en `polls`, `contests`, y `campaign_components`:
 
 | Campo | Tipo | Descripcion |
 |-------|------|-------------|
@@ -1282,6 +1247,37 @@ Nuevos campos en `polls`, `contests`, y `campaign_components`:
 | `broadcast_start_time` | timestamp | Timestamp del inicio del broadcast (solo polls/contests) |
 | `scheduled_start_time` | timestamp | Calculado: broadcastStartTime + videoStartTime |
 | `scheduled_end_time` | timestamp | Calculado: broadcastStartTime + videoEndTime |
+
+### 17.3 Endpoints que aceptan Video Scheduling
+
+Los 4 endpoints de creacion aceptan campos opcionales:
+
+| Endpoint | Acepta Video Scheduling |
+|----------|------------------------|
+| `POST /v1/broadcasts/:id/polls` | ✅ videoStartTime, videoEndTime, broadcastStartTime |
+| `POST /v1/broadcasts/:id/contests` | ✅ videoStartTime, videoEndTime, broadcastStartTime |
+| `POST /api/broadcasts/:id/polls` | ✅ videoStartTime, videoEndTime, broadcastStartTime |
+| `POST /api/broadcasts/:id/contests` | ✅ videoStartTime, videoEndTime, broadcastStartTime |
+
+---
+
+## 18. Rate Limiting (Activo) <a name="rate-limiting"></a>
+
+**Estado:** ✅ ACTIVO en endpoints de engagement
+
+### Endpoints protegidos actualmente:
+
+| Endpoint | Preset | Limite |
+|----------|--------|--------|
+| `POST /v1/engagement/polls/:pollId/vote` | voting | 30 req/min por userId |
+| `POST /v1/engagement/contests/:contestId/participate` | participation | 10 req/min por userId |
+
+### Presets disponibles para uso futuro:
+
+| Preset | Max | Window | Para |
+|--------|-----|--------|------|
+| `sdkPublic` | 60 | 60s | Endpoints SDK publicos de lectura |
+| `adminApi` | 100 | 60s | Endpoints admin |
 
 ---
 
@@ -1344,112 +1340,99 @@ import { TimelineView } from '@/components/scheduling/TimelineView';
 
 ### Actuales (en uso)
 
-| Variable | Descripcion |
-|----------|-------------|
-| `DATABASE_URL` | URL de conexion PostgreSQL |
-| `SESSION_SECRET` | Secret para JWT tokens |
-| `PGHOST`, `PGPORT`, `PGUSER`, `PGPASSWORD`, `PGDATABASE` | Conexion DB individual |
-| `SCHEDULER_INTERVAL_MINUTES` | Intervalo del cron (default: 1) |
-| `DEFAULT_OBJECT_STORAGE_BUCKET_ID` | Bucket de Object Storage |
+| Variable | Descripcion | Requerida |
+|----------|-------------|-----------|
+| `DATABASE_URL` | URL de conexion PostgreSQL | ✅ Si |
+| `SESSION_SECRET` | Secret para JWT tokens | ✅ Si |
+| `PGHOST`, `PGPORT`, `PGUSER`, `PGPASSWORD`, `PGDATABASE` | Conexion DB individual | Auto |
+| `SCHEDULER_INTERVAL_MINUTES` | Intervalo del cron (default: 1) | No |
+| `DEFAULT_OBJECT_STORAGE_BUCKET_ID` | Bucket de Object Storage | No |
+| `USE_QUEUE` | Activar procesamiento via colas (default: undefined → sincrono) | No |
 
-### Futuras (para activar Fase 6)
+### Para Produccion con Redis
 
 | Variable | Default | Descripcion |
 |----------|---------|-------------|
-| `REDIS_HOST` | localhost | Host de Redis |
+| `REDIS_HOST` | localhost | Host de Redis (activa RedisRateLimiter automaticamente) |
 | `REDIS_PORT` | 6379 | Puerto de Redis |
 | `REDIS_PASSWORD` | (vacio) | Password de Redis |
-| `REDIS_URL` | redis://localhost:6379 | URL completa de Redis |
-| `QUEUE_ENABLED` | false | Activar sistema de colas |
+| `REDIS_URL` | (vacio) | URL completa de Redis (alternativa a HOST/PORT) |
+| `QUEUE_ENABLED` | false | Activar BullMQAdapter (requiere Redis + bullmq) |
 | `QUEUE_CONCURRENCY` | 10 | Workers concurrentes por cola |
-| `QUEUE_MAX_JOBS_PER_SECOND` | 100 | Rate limit de jobs |
+| `USE_QUEUE` | false | Activar encolamiento en endpoints vote/participate |
 
 ---
 
-## 21. Guia de Activacion de Fases Futuras <a name="activacion"></a>
+## 21. Guia de Transicion a Produccion (Redis) <a name="produccion"></a>
 
-### Fase 5: Video Scheduling
+### Lo que ya funciona sin Redis:
 
-**Prerequisitos:** Ninguno (solo integrar UI)
+| Feature | Implementacion | Estado |
+|---------|---------------|--------|
+| Rate Limiting | SimpleRateLimiter (in-memory Map) | ✅ Funcional |
+| Queue Processing | SimpleQueueAdapter (in-memory) | ✅ Funcional |
+| Video Scheduling | Scheduler con DB queries | ✅ Funcional |
+| Vote/Contest Processing | Sincrono directo | ✅ Funcional |
+| WebSocket Broadcast | Directo desde vote-processor | ✅ Funcional |
 
-**Pasos:**
-1. Integrar `SchedulingForm` en `broadcast-detail.tsx` (tab de Polls y Contests)
-2. Modificar los formularios de creacion de polls/contests para incluir campos de video timing
-3. Descomentar `processScheduledPolls()` y `processScheduledContests()` en `server/scheduler.ts`
-4. Actualizar los endpoints de creacion de polls/contests para aceptar los nuevos campos
-5. Agregar WebSocket events para activacion/desactivacion automatica
+### Para activar Redis en produccion:
 
-**Archivos a modificar:**
-- `server/scheduler.ts` → Descomentar lineas de processScheduledPolls/processScheduledContests
-- `client/src/pages/broadcast-detail.tsx` → Integrar SchedulingForm
-- `server/routes.ts` → Aceptar videoStartTime/videoEndTime en POST de polls/contests
+**Paso 1:** Instalar dependencias
+```bash
+npm install bullmq ioredis
+```
 
-### Fase 6: Redis/Bull Message Queue
+**Paso 2:** Configurar variables de entorno
+```
+REDIS_HOST=your-redis-host
+REDIS_PORT=6379
+REDIS_PASSWORD=your-password
+QUEUE_ENABLED=true
+USE_QUEUE=true
+```
 
-**Prerequisitos:** Redis server accesible
+**Paso 3:** Nada mas. El Adapter Pattern se encarga de todo:
+- `createRateLimiter` detecta `REDIS_HOST` → usa `RedisRateLimiter`
+- `getQueueAdapter` detecta `QUEUE_ENABLED=true` + Redis → usa `BullMQAdapter`
+- `isQueueEnabled()` detecta `USE_QUEUE=true` → endpoints encolan en vez de procesar sincrono
+- `initializeWorkers()` se activa automaticamente en `server/index.ts`
 
-**Pasos:**
-1. Instalar dependencias: `npm install bullmq ioredis`
-2. Configurar variables de entorno Redis
-3. Descomentar codigo en `server/queue/queues.ts` y `server/queue/workers.ts`
-4. Activar `QUEUE_ENABLED=true`
-5. Modificar routes.ts para usar colas en lugar de procesamiento sincrono:
-   ```typescript
-   // Antes (sincrono):
-   const result = await processVoteSync(storage, pollId, optionId, userId, broadcastId);
-   
-   // Despues (asincrono con cola):
-   if (isQueueEnabled()) {
-     await voteQueue.add('vote', { pollId, optionId, userId, broadcastId });
-     res.json({ message: "Vote queued for processing" });
-   } else {
-     const result = await processVoteSync(storage, pollId, optionId, userId, broadcastId);
-   }
-   ```
-6. Activar rate limiting en endpoints criticos:
-   ```typescript
-   app.post('/v1/engagement/polls/:pollId/vote',
-     createRateLimiter(rateLimitPresets.voting),
-     handler
-   );
-   ```
-7. Iniciar workers en `server/index.ts`:
-   ```typescript
-   import { initializeWorkers } from './queue';
-   if (isQueueEnabled()) {
-     await initializeWorkers(storage);
-   }
-   ```
+### Comparacion In-Memory vs Redis:
 
-**Archivos a modificar:**
-- `server/queue/queues.ts` → Descomentar importaciones y creacion de colas
-- `server/queue/workers.ts` → Descomentar workers
-- `server/routes.ts` → Agregar fallback sincrono/asincrono
-- `server/middleware/rate-limiter.ts` → Descomentar logica Redis
-- `server/index.ts` → Inicializar workers
+| Aspecto | In-Memory (actual) | Redis (produccion) |
+|---------|--------------------|--------------------|
+| Rate Limiting | Map con cleanup 60s | Sorted sets, sliding window |
+| Queue Jobs | Array con polling 100ms | BullMQ event-driven |
+| Persistencia | Se pierde en restart | Persistente |
+| Multi-instancia | No (solo 1 proceso) | Si (multiples workers) |
+| Retry | 3 intentos basicos | Configurable con backoff exponencial |
+| Monitoring | Logs basicos | Bull Board dashboard |
 
 ---
 
-## Resumen de Estado por Feature
+## Resumen de Estado por Feature (v3.0)
 
 | Feature | Estado | Fase | Archivos Clave |
 |---------|--------|------|----------------|
 | Broadcasts CRUD | ✅ Activo | 1-2 | routes.ts, storage.ts |
 | Polls & Voting | ✅ Activo | 3 | routes.ts, storage.ts |
 | Contests & Participation | ✅ Activo | 3 | routes.ts, storage.ts |
-| WebSocket Events | ✅ Activo | 3 | routes.ts |
+| WebSocket Events | ✅ Activo | 3 | routes.ts, vote-processor.ts |
 | Broadcast Scheduler | ✅ Activo | 4 | scheduler.ts |
 | Dashboard UI | ✅ Activo | 4 | broadcasts.tsx, broadcast-detail.tsx |
 | JWT Auth (v1) | ✅ Activo | 2 | routes.ts |
 | SDK Endpoints | ✅ Activo | 2 | routes.ts |
 | Broadcast Validator | ✅ Activo | 5 | middleware/broadcast-validator.ts |
-| Vote Processor Service | ✅ Listo | 5 | services/vote-processor.ts |
-| Contest Processor Service | ✅ Listo | 5 | services/contest-processor.ts |
-| Video Scheduling DB | ✅ Campos creados | 5 | schema.ts |
-| Video Scheduling Utils | ✅ Listo | 5 | utils/scheduling.ts |
-| Video Scheduling UI | ✅ Componentes creados | 5 | components/scheduling/ |
-| Scheduled Polls/Contests | ⏸ Comentado | 5 | scheduler.ts |
-| Queue Types | ✅ Definidos | 6 | queue/types.ts |
-| Queue Definitions | ⏸ Comentado | 6 | queue/queues.ts |
-| Queue Workers | ⏸ Comentado | 6 | queue/workers.ts |
-| Rate Limiter | ⏸ Passthrough | 6 | middleware/rate-limiter.ts |
+| Vote Processor Service | ✅ Activo + WS broadcast | 5 | services/vote-processor.ts |
+| Contest Processor Service | ✅ Activo | 5 | services/contest-processor.ts |
+| Video Scheduling DB | ✅ Activo | 5 | schema.ts |
+| Video Scheduling Utils | ✅ Activo | 5 | utils/scheduling.ts |
+| Video Scheduling Endpoints | ✅ 4 endpoints aceptan campos | 5 | routes.ts |
+| Scheduled Polls/Contests | ✅ Activo en scheduler | 5 | scheduler.ts |
+| Video Scheduling UI | ⏸ Componentes creados, no integrados | 5 | components/scheduling/ |
+| Queue Adapter Pattern | ✅ Activo (SimpleQueueAdapter) | 6 | queue/queue-adapter.ts |
+| Queue Definitions | ✅ Activo | 6 | queue/queues.ts |
+| Queue Workers | ✅ Activo (se inician si USE_QUEUE=true) | 6 | queue/workers.ts |
+| Rate Limiter | ✅ Activo (SimpleRateLimiter) | 6 | middleware/rate-limiter.ts |
+| Vote/Participate Queue Fallback | ✅ Activo (sincrono/queue) | 6 | routes.ts |
+| Worker Initialization | ✅ Activo en index.ts | 6 | index.ts |
