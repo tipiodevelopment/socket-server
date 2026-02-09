@@ -2545,7 +2545,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(statusCode).json({ message: result.error });
       }
 
-      res.json({ success: true, results: result.data });
+      if (result.data) {
+        const totalVotes = result.data.poll.totalVotes;
+        const optionsWithPercentages = result.data.options.map((opt: any) => ({
+          ...opt,
+          percentage: totalVotes > 0 ? Math.round((opt.voteCount / totalVotes) * 10000) / 100 : 0
+        }));
+        res.json({ success: true, results: { ...result.data.poll, options: optionsWithPercentages } });
+      } else {
+        res.json({ success: true });
+      }
     } catch (error: any) {
       if (error.code === '23505') {
         return res.status(409).json({ message: 'User has already voted on this poll' });
