@@ -3,60 +3,51 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import { User, LogOut, LogIn, Home } from "lucide-react";
-
-const USER_SESSION_KEY = "reachu_simulated_user_id";
+import { useUser } from "@/contexts/UserContext";
 
 export default function UserSessionPage() {
+  const { reachuUserId: currentUser, login, logout, isLoading } = useUser();
   const [reachuUserId, setReachuUserId] = useState("");
-  const [currentUser, setCurrentUser] = useState<string | null>(null);
-  const [showForm, setShowForm] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
+  const [showForm, setShowForm] = useState(true);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [, setLocation] = useLocation();
 
   useEffect(() => {
-    // Load current user from localStorage
-    const storedUserId = localStorage.getItem(USER_SESSION_KEY);
-    setCurrentUser(storedUserId);
-    setShowForm(!storedUserId);
-  }, []);
+    if (!isLoading && currentUser && !showForm) {
+      setLocation('/apps');
+    }
+  }, [isLoading, currentUser, showForm, setLocation]);
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900 flex items-center justify-center">
+        <p className="text-muted-foreground">Loading...</p>
+      </div>
+    );
+  }
 
   const handleLogin = async () => {
     if (!reachuUserId.trim()) return;
     
-    setIsLoading(true);
+    setIsSubmitting(true);
     setError(null);
     
     try {
-      // Call backend to ensure user exists (create if not, return if exists)
-      const response = await fetch('/api/users/ensure', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ reachuUserId: reachuUserId.trim() })
-      });
-      
-      if (!response.ok) {
-        throw new Error('Failed to create/fetch user');
-      }
-      
-      const user = await response.json();
-      
-      // Save to localStorage and update state
-      localStorage.setItem(USER_SESSION_KEY, reachuUserId.trim());
-      setCurrentUser(reachuUserId.trim());
+      await login(reachuUserId.trim());
       setReachuUserId("");
-      setShowForm(false);
+      setLocation('/apps');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to start session');
     } finally {
-      setIsLoading(false);
+      setIsSubmitting(false);
     }
   };
 
   const handleLogout = () => {
-    localStorage.removeItem(USER_SESSION_KEY);
-    setCurrentUser(null);
+    logout();
     setShowForm(true);
   };
 
@@ -96,15 +87,9 @@ export default function UserSessionPage() {
               </div>
 
               <div className="space-y-3">
-                <Link href="/campaigns">
-                  <Button className="w-full" data-testid="button-campaigns">
-                    View My Campaigns
-                  </Button>
-                </Link>
-                
-                <Link href="/client-apps">
-                  <Button variant="outline" className="w-full" data-testid="button-client-apps">
-                    Manage Client Apps
+                <Link href="/apps">
+                  <Button className="w-full" data-testid="button-apps">
+                    Go to My Apps
                   </Button>
                 </Link>
 
@@ -147,8 +132,8 @@ export default function UserSessionPage() {
                   placeholder="e.g., reachu-admin, user-123, etc."
                   value={reachuUserId}
                   onChange={(e) => setReachuUserId(e.target.value)}
-                  onKeyPress={(e) => e.key === 'Enter' && !isLoading && handleLogin()}
-                  disabled={isLoading}
+                  onKeyPress={(e) => e.key === 'Enter' && !isSubmitting && handleLogin()}
+                  disabled={isSubmitting}
                   data-testid="input-user-id"
                 />
 
@@ -160,12 +145,12 @@ export default function UserSessionPage() {
 
                 <Button
                   onClick={handleLogin}
-                  disabled={!reachuUserId.trim() || isLoading}
+                  disabled={!reachuUserId.trim() || isSubmitting}
                   className="w-full"
                   data-testid="button-start-session"
                 >
                   <LogIn className="h-4 w-4 mr-2" />
-                  {isLoading ? 'Starting Session...' : 'Start Session'}
+                  {isSubmitting ? 'Starting Session...' : 'Start Session'}
                 </Button>
 
                 {currentUser && (

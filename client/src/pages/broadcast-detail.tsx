@@ -12,9 +12,12 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { useToast } from '@/hooks/use-toast';
 import { queryClient, apiRequest } from '@/lib/queryClient';
-import type { Broadcast, Poll, PollOptionRecord, Contest, Campaign } from '@shared/schema';
+import { AppLayout } from '@/components/AppLayout';
+import type { BreadcrumbItem } from '@/components/AppLayout';
+import type { Broadcast, Poll, PollOptionRecord, Contest, Campaign, ClientApp } from '@shared/schema';
 import { ArrowLeft, Plus, Trash2, Clock, Calendar, Radio, BarChart3, Trophy, X, ChevronRight } from 'lucide-react';
 import { useState } from 'react';
+import { useUser } from '@/contexts/UserContext';
 
 type BroadcastWithRelations = Broadcast & {
   polls?: (Poll & { options?: PollOptionRecord[] })[];
@@ -42,7 +45,11 @@ const CONTEST_TYPES = [
 ];
 
 export default function BroadcastDetailPage() {
-  const { broadcastId } = useParams<{ broadcastId: string }>();
+  const params = useParams();
+  const { userId } = useUser();
+  const broadcastId = params.broadcastId;
+  const appId = params.appId ? parseInt(params.appId) : null;
+  const campaignId = params.campaignId ? parseInt(params.campaignId) : null;
   const { toast } = useToast();
 
   const [pollDialogOpen, setPollDialogOpen] = useState(false);
@@ -174,29 +181,47 @@ export default function BroadcastDetailPage() {
     }));
   };
 
+  const { data: app } = useQuery<ClientApp>({
+    queryKey: ['/api/client-apps', appId, userId],
+    queryFn: async () => {
+      const res = await fetch(`/api/client-apps/${appId}?userId=${userId}`);
+      if (!res.ok) throw new Error('Failed');
+      return res.json();
+    },
+    enabled: !!appId && !!userId
+  });
+
+  const { data: campaignData } = useQuery<Campaign>({
+    queryKey: ['/api/campaigns', campaignId],
+    enabled: !!campaignId
+  });
+
+  const buildBreadcrumbs = (): BreadcrumbItem[] => {
+    const crumbs: BreadcrumbItem[] = [{ label: 'My Apps', href: '/apps' }];
+    if (app) crumbs.push({ label: app.name, href: `/apps/${appId}` });
+    if (campaignData) crumbs.push({ label: campaignData.name, href: `/apps/${appId}/campaigns/${campaignId}` });
+    if (broadcast) crumbs.push({ label: broadcast.broadcastName });
+    else crumbs.push({ label: 'Loading...' });
+    return crumbs;
+  };
+
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-background p-8">
-        <div className="max-w-7xl mx-auto">
-          <div className="text-foreground">Loading broadcast...</div>
+      <AppLayout breadcrumbs={buildBreadcrumbs()}>
+        <div className="text-center py-12">
+          <p className="text-muted-foreground">Loading broadcast...</p>
         </div>
-      </div>
+      </AppLayout>
     );
   }
 
   if (!broadcast) {
     return (
-      <div className="min-h-screen bg-background p-8">
-        <div className="max-w-7xl mx-auto">
-          <div className="text-foreground">Broadcast not found</div>
-          <Link href="/broadcasts">
-            <Button variant="ghost" className="mt-4" data-testid="button-back-not-found">
-              <ArrowLeft className="w-4 h-4 mr-2" />
-              Back to Broadcasts
-            </Button>
-          </Link>
+      <AppLayout breadcrumbs={buildBreadcrumbs()}>
+        <div className="text-center py-12">
+          <p className="text-foreground">Broadcast not found</p>
         </div>
-      </div>
+      </AppLayout>
     );
   }
 
@@ -204,16 +229,9 @@ export default function BroadcastDetailPage() {
   const contests = broadcast.contests || [];
 
   return (
-    <div className="min-h-screen bg-background">
-      <div className="max-w-7xl mx-auto p-4 sm:p-8">
+    <AppLayout breadcrumbs={buildBreadcrumbs()}>
+      <div>
         <div className="mb-6">
-          <Link href="/broadcasts">
-            <Button variant="ghost" className="mb-4" data-testid="button-back">
-              <ArrowLeft className="w-4 h-4 mr-2" />
-              Back to Broadcasts
-            </Button>
-          </Link>
-
           <div className="flex items-start justify-between gap-4">
             <div className="flex-1">
               <div className="flex items-center gap-3 mb-2">
@@ -617,6 +635,6 @@ export default function BroadcastDetailPage() {
           </TabsContent>
         </Tabs>
       </div>
-    </div>
+    </AppLayout>
   );
 }
