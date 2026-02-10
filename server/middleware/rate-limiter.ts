@@ -15,14 +15,14 @@ class SimpleRateLimiter {
       const now = Date.now();
       const entries = Array.from(this.requests.entries());
       for (const [key, timestamps] of entries) {
-        const filtered = timestamps.filter((ts: number) => now - ts < 60000);
+        const filtered = timestamps.filter((ts: number) => now - ts < 120000);
         if (filtered.length === 0) {
           this.requests.delete(key);
         } else {
           this.requests.set(key, filtered);
         }
       }
-    }, 60000);
+    }, 10000);
   }
 
   async check(key: string, maxRequests: number, windowSeconds: number) {

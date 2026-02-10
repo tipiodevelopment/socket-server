@@ -9,12 +9,14 @@ class SimpleQueueAdapter implements QueueAdapter {
   private processors: Map<string, (job: { id: string; data: any; attemptsMade: number }) => Promise<any>>;
   private processing: boolean;
   private intervalId: NodeJS.Timeout | null;
+  private activeJobs: Set<string>;
 
   constructor() {
     this.queues = new Map();
     this.processors = new Map();
     this.processing = false;
     this.intervalId = null;
+    this.activeJobs = new Set();
     this.startProcessing();
   }
 
@@ -52,6 +54,13 @@ class SimpleQueueAdapter implements QueueAdapter {
         if (!processor) continue;
 
         const job = queue.shift()!;
+
+        if (this.activeJobs.has(job.id)) {
+          queue.unshift(job);
+          continue;
+        }
+
+        this.activeJobs.add(job.id);
         try {
           await processor({ id: job.id, data: job.data, attemptsMade: job.attempts });
           console.log(`[SimpleQueue] Job ${job.id} completed`);
@@ -64,6 +73,8 @@ class SimpleQueueAdapter implements QueueAdapter {
           } else {
             console.error(`[SimpleQueue] Job ${job.id} failed after 3 attempts`);
           }
+        } finally {
+          this.activeJobs.delete(job.id);
         }
       }
     }, 100);

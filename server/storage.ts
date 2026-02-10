@@ -128,6 +128,7 @@ export interface IStorage {
 
   // Poll vote methods
   createPollVote(vote: InsertPollVote): Promise<PollVote>;
+  createPollVoteWithCountUpdate(vote: InsertPollVote, optionId: number): Promise<PollVote>;
   hasUserVoted(pollId: number, userId: string): Promise<boolean>;
   getPollResults(pollId: number): Promise<{ poll: Poll; options: PollOptionRecord[] } | null>;
 
@@ -140,8 +141,15 @@ export interface IStorage {
 
   // Contest participation methods
   createContestParticipation(participation: InsertContestParticipation): Promise<ContestParticipation>;
+  createContestParticipationAtomic(participation: InsertContestParticipation): Promise<ContestParticipation>;
   hasUserParticipated(contestId: number, userId: string): Promise<boolean>;
   getContestParticipations(contestId: number): Promise<ContestParticipation[]>;
+
+  // Pagination support
+  getBroadcastPollsPaginated(broadcastId: string, options: { limit: number; offset: number }): Promise<Array<Poll & { options: PollOptionRecord[] }>>;
+  getBroadcastPollsCount(broadcastId: string): Promise<number>;
+  getBroadcastContestsPaginated(broadcastId: string, options: { limit: number; offset: number }): Promise<Contest[]>;
+  getBroadcastContestsCount(broadcastId: string): Promise<number>;
 }
 
 export class MemStorage implements IStorage {
@@ -939,6 +947,19 @@ export class MemStorage implements IStorage {
     return newVote;
   }
 
+  async createPollVoteWithCountUpdate(vote: InsertPollVote, optionId: number): Promise<PollVote> {
+    return await db.transaction(async (tx) => {
+      const [newVote] = await tx.insert(pollVotes).values(vote).returning();
+      await tx.update(pollOptions)
+        .set({ voteCount: sql`${pollOptions.voteCount} + 1` })
+        .where(eq(pollOptions.id, optionId));
+      await tx.update(polls)
+        .set({ totalVotes: sql`${polls.totalVotes} + 1` })
+        .where(eq(polls.id, vote.pollId));
+      return newVote;
+    });
+  }
+
   async hasUserVoted(pollId: number, userId: string): Promise<boolean> {
     const [vote] = await db.select().from(pollVotes)
       .where(and(
@@ -993,6 +1014,13 @@ export class MemStorage implements IStorage {
     return newParticipation;
   }
 
+  async createContestParticipationAtomic(participation: InsertContestParticipation): Promise<ContestParticipation> {
+    return await db.transaction(async (tx) => {
+      const [newParticipation] = await tx.insert(contestParticipations).values(participation).returning();
+      return newParticipation;
+    });
+  }
+
   async hasUserParticipated(contestId: number, userId: string): Promise<boolean> {
     const [participation] = await db.select().from(contestParticipations)
       .where(and(
@@ -1007,6 +1035,46 @@ export class MemStorage implements IStorage {
     return await db.select().from(contestParticipations)
       .where(eq(contestParticipations.contestId, contestId))
       .orderBy(desc(contestParticipations.createdAt));
+  }
+
+  // Pagination support methods
+  async getBroadcastPollsPaginated(broadcastId: string, options: { limit: number; offset: number }): Promise<Array<Poll & { options: PollOptionRecord[] }>> {
+    const broadcastPolls = await db.select().from(polls)
+      .where(eq(polls.broadcastId, broadcastId))
+      .orderBy(desc(polls.createdAt))
+      .limit(options.limit)
+      .offset(options.offset);
+
+    const result: Array<Poll & { options: PollOptionRecord[] }> = [];
+    for (const poll of broadcastPolls) {
+      const opts = await db.select().from(pollOptions)
+        .where(eq(pollOptions.pollId, poll.id))
+        .orderBy(pollOptions.displayOrder);
+      result.push({ ...poll, options: opts });
+    }
+    return result;
+  }
+
+  async getBroadcastPollsCount(broadcastId: string): Promise<number> {
+    const [result] = await db.select({ count: sql<number>`count(*)::int` })
+      .from(polls)
+      .where(eq(polls.broadcastId, broadcastId));
+    return result?.count ?? 0;
+  }
+
+  async getBroadcastContestsPaginated(broadcastId: string, options: { limit: number; offset: number }): Promise<Contest[]> {
+    return await db.select().from(contests)
+      .where(eq(contests.broadcastId, broadcastId))
+      .orderBy(desc(contests.createdAt))
+      .limit(options.limit)
+      .offset(options.offset);
+  }
+
+  async getBroadcastContestsCount(broadcastId: string): Promise<number> {
+    const [result] = await db.select({ count: sql<number>`count(*)::int` })
+      .from(contests)
+      .where(eq(contests.broadcastId, broadcastId));
+    return result?.count ?? 0;
   }
 }
 

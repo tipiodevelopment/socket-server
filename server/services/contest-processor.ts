@@ -19,7 +19,7 @@ export async function processContestParticipationSync(
     return { success: false, error: 'User has already participated in this contest' };
   }
 
-  const participation = await storage.createContestParticipation({
+  const participation = await storage.createContestParticipationAtomic({
     contestId,
     userId,
     broadcastId,

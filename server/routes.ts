@@ -2582,9 +2582,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!broadcastId) {
         return res.status(400).json({ message: 'broadcastId query parameter is required' });
       }
+
+      const broadcast = await storage.getBroadcast(broadcastId);
+      if (!broadcast) {
+        return res.status(404).json({ message: 'Broadcast not found', broadcastId });
+      }
+
+      const limit = Math.min(parseInt(req.query.limit as string) || 50, 100);
+      const offset = parseInt(req.query.offset as string) || 0;
       const currentVideoTime = req.query.currentVideoTime ? parseInt(req.query.currentVideoTime as string) : undefined;
 
-      const pollsList = await storage.getBroadcastPolls(broadcastId);
+      const pollsList = await storage.getBroadcastPollsPaginated(broadcastId, { limit, offset });
       let filteredPolls = pollsList.filter(poll => poll.isActive);
 
       if (currentVideoTime !== undefined && !isNaN(currentVideoTime)) {
@@ -2604,7 +2612,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }));
         return { ...poll, options };
       });
-      res.json(pollsWithPercentages);
+
+      const total = await storage.getBroadcastPollsCount(broadcastId);
+      res.json({
+        polls: pollsWithPercentages,
+        pagination: { limit, offset, total, hasMore: offset + limit < total }
+      });
     } catch (error) {
       console.error('Error getting polls:', error);
       res.status(500).json({ message: 'Error getting polls' });
@@ -2659,9 +2672,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!broadcastId) {
         return res.status(400).json({ message: 'broadcastId query parameter is required' });
       }
+
+      const broadcast = await storage.getBroadcast(broadcastId);
+      if (!broadcast) {
+        return res.status(404).json({ message: 'Broadcast not found', broadcastId });
+      }
+
+      const limit = Math.min(parseInt(req.query.limit as string) || 50, 100);
+      const offset = parseInt(req.query.offset as string) || 0;
       const currentVideoTime = req.query.currentVideoTime ? parseInt(req.query.currentVideoTime as string) : undefined;
 
-      const contestsList = await storage.getBroadcastContests(broadcastId);
+      const contestsList = await storage.getBroadcastContestsPaginated(broadcastId, { limit, offset });
       let filteredContests = contestsList.filter(contest => contest.isActive);
 
       if (currentVideoTime !== undefined && !isNaN(currentVideoTime)) {
@@ -2673,7 +2694,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
 
-      res.json(filteredContests);
+      const total = await storage.getBroadcastContestsCount(broadcastId);
+      res.json({
+        contests: filteredContests,
+        pagination: { limit, offset, total, hasMore: offset + limit < total }
+      });
     } catch (error) {
       console.error('Error getting contests:', error);
       res.status(500).json({ message: 'Error getting contests' });

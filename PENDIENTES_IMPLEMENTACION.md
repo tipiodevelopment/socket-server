@@ -1,8 +1,8 @@
 # Puntos Pendientes de Implementación - Socket Server
 
 **Fecha:** 2026-01-23  
-**Estado Actual:** 5/8 mejoras principales implementadas  
-**Prioridad:** Alta para producción
+**Estado Actual:** 8/8 mejoras principales implementadas ✅  
+**Prioridad:** Completado
 
 ---
 
@@ -623,28 +623,34 @@ curl "http://localhost:5000/v1/engagement/polls?broadcastId=xxx&limit=200"
 ## ✅ Checklist de Implementación
 
 ### Transacciones
-- [ ] Agregar `createPollVoteWithCountUpdate` en `IStorage`
-- [ ] Implementar método en `PostgreSQLStorage`
-- [ ] Actualizar `vote-processor.ts` para usar nuevo método
-- [ ] Agregar `createContestParticipationWithUpdate` (si aplica)
-- [ ] Probar con casos de fallo
-- [ ] Verificar rollback funciona correctamente
+- [x] Agregar `createPollVoteWithCountUpdate` en `IStorage`
+- [x] Implementar método en `MemStorage` (uses db.transaction)
+- [x] Actualizar `vote-processor.ts` para usar nuevo método
+- [x] Agregar `createContestParticipationAtomic` 
+- [x] Probar con casos de fallo
+- [x] Verificar rollback funciona correctamente
 
 ### Validación broadcastId
-- [ ] Agregar validación en GET `/v1/engagement/polls`
-- [ ] Agregar validación en GET `/v1/engagement/contests`
-- [ ] Probar con broadcastId inválido
-- [ ] Probar con broadcastId válido pero sin polls/contests
+- [x] Agregar validación en GET `/v1/engagement/polls`
+- [x] Agregar validación en GET `/v1/engagement/contests`
+- [x] Probar con broadcastId inválido → 404
+- [x] Probar con broadcastId válido pero sin polls/contests → 200 con array vacío
 
 ### Paginación
-- [ ] Agregar métodos con paginación en `IStorage`
-- [ ] Implementar en `PostgreSQLStorage`
-- [ ] Agregar métodos `getBroadcastPollsCount` y `getBroadcastContestsCount`
-- [ ] Actualizar GET `/v1/engagement/polls` con paginación
-- [ ] Actualizar GET `/v1/engagement/contests` con paginación
-- [ ] Probar con diferentes límites y offsets
-- [ ] Verificar que `hasMore` funciona correctamente
+- [x] Agregar métodos con paginación en `IStorage` (`getBroadcastPollsPaginated`, `getBroadcastContestsPaginated`)
+- [x] Implementar en `MemStorage`
+- [x] Agregar métodos `getBroadcastPollsCount` y `getBroadcastContestsCount`
+- [x] Actualizar GET `/v1/engagement/polls` con paginación
+- [x] Actualizar GET `/v1/engagement/contests` con paginación
+- [x] Probar con diferentes límites y offsets
+- [x] Verificar que `hasMore` funciona correctamente
+
+### Mejoras adicionales (Code Review)
+- [x] SimpleQueueAdapter: Agregar `activeJobs` Set para prevenir procesamiento duplicado
+- [x] SimpleRateLimiter: Mejorar intervalo de limpieza de 60s a 10s con ventana de 120s
 
 ---
+
+**Estado: COMPLETADO** - Fecha: 2026-02-10
 
 **Fin del Documento**

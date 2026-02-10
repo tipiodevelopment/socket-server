@@ -25,14 +25,12 @@ export async function processPollVoteSync(
     return { success: false, error: 'User has already voted on this poll' };
   }
 
-  await storage.createPollVote({
+  await storage.createPollVoteWithCountUpdate({
     pollId,
     optionId,
     userId,
     broadcastId,
-  });
-
-  await storage.updatePollOptionVoteCount(optionId, 1);
+  }, optionId);
 
   const results = await storage.getPollResults(pollId);
 
