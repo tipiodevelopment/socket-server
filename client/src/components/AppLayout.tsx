@@ -1,5 +1,6 @@
 import { Link, useLocation } from 'wouter';
 import { useUser } from '@/contexts/UserContext';
+import { useTheme } from '@/contexts/ThemeContext';
 import {
   Breadcrumb,
   BreadcrumbItem as BreadcrumbUIItem,
@@ -24,6 +25,8 @@ import {
   Menu,
   X,
   ChevronRight,
+  Sun,
+  Moon,
 } from 'lucide-react';
 import { useState } from 'react';
 
@@ -51,7 +54,6 @@ const NAV_ITEMS = [
   { href: '/docs', label: 'Docs', icon: FileText },
 ];
 
-
 function isActiveRoute(itemHref: string, location: string, exact?: boolean) {
   if (exact) return location === itemHref;
   return location.startsWith(itemHref);
@@ -59,6 +61,7 @@ function isActiveRoute(itemHref: string, location: string, exact?: boolean) {
 
 export function AppLayout({ children, breadcrumbs = [], title, subtitle, actions, headerBreadcrumb, headerBreadcrumbHref }: AppLayoutProps) {
   const { reachuUserId, logout } = useUser();
+  const { theme, toggleTheme } = useTheme();
   const [location] = useLocation();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
@@ -66,8 +69,8 @@ export function AppLayout({ children, breadcrumbs = [], title, subtitle, actions
   const pageTitle = title || currentPage?.label || 'Dashboard';
 
   return (
-    <div className="min-h-screen flex bg-[#0d0b1a]">
-      <aside className="hidden md:flex flex-col w-16 bg-[#12101f] border-r border-white/5 fixed top-0 left-0 h-full z-50">
+    <div className="min-h-screen flex bg-background dark:bg-[#0d0b1a]">
+      <aside className="hidden md:flex flex-col w-16 bg-white dark:bg-[#12101f] border-r border-gray-200 dark:border-white/5 fixed top-0 left-0 h-full z-50 shadow-sm dark:shadow-none">
         <div className="flex items-center justify-center h-16">
           <Link href="/">
             <div className="w-10 h-10 bg-gradient-to-br from-purple-500 to-blue-500 rounded-xl flex items-center justify-center cursor-pointer" data-testid="link-home">
@@ -85,7 +88,7 @@ export function AppLayout({ children, breadcrumbs = [], title, subtitle, actions
                   className={`w-10 h-10 rounded-xl flex items-center justify-center cursor-pointer transition-all group relative ${
                     active
                       ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/30'
-                      : 'text-white/40 hover:text-white/70 hover:bg-white/5'
+                      : 'text-gray-400 dark:text-white/40 hover:text-gray-600 dark:hover:text-white/70 hover:bg-gray-100 dark:hover:bg-white/5'
                   }`}
                   data-testid={`nav-${item.label.toLowerCase()}`}
                 >
@@ -99,10 +102,20 @@ export function AppLayout({ children, breadcrumbs = [], title, subtitle, actions
           })}
         </nav>
 
-        <div className="flex flex-col items-center gap-2 py-4 border-t border-white/5">
+        <div className="flex flex-col items-center gap-2 py-4 border-t border-gray-200 dark:border-white/5">
+          <button
+            onClick={toggleTheme}
+            className="w-10 h-10 rounded-xl flex items-center justify-center text-gray-400 dark:text-white/40 hover:text-gray-600 dark:hover:text-white/70 hover:bg-gray-100 dark:hover:bg-white/5 transition-all group relative"
+            data-testid="button-theme-toggle"
+          >
+            {theme === 'dark' ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
+            <div className="absolute left-full ml-3 px-2 py-1 bg-gray-900 text-white text-xs rounded-md opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity whitespace-nowrap z-50">
+              {theme === 'dark' ? 'Light Mode' : 'Dark Mode'}
+            </div>
+          </button>
           <button
             onClick={logout}
-            className="w-10 h-10 rounded-xl flex items-center justify-center text-white/40 hover:text-white/70 hover:bg-white/5 transition-all group relative"
+            className="w-10 h-10 rounded-xl flex items-center justify-center text-gray-400 dark:text-white/40 hover:text-gray-600 dark:hover:text-white/70 hover:bg-gray-100 dark:hover:bg-white/5 transition-all group relative"
             data-testid="button-logout"
           >
             <LogOut className="w-5 h-5" />
@@ -117,13 +130,13 @@ export function AppLayout({ children, breadcrumbs = [], title, subtitle, actions
       </aside>
 
       <div className="flex-1 md:ml-16 flex flex-col min-h-screen">
-        <header className="sticky top-0 z-40 bg-[#0d0b1a]/80 backdrop-blur-xl border-b border-white/5">
+        <header className="sticky top-0 z-40 bg-white/80 dark:bg-[#0d0b1a]/80 backdrop-blur-xl border-b border-gray-200 dark:border-white/5">
           <div className="flex items-center justify-between h-14 px-4 sm:px-6">
             <div className="flex items-center gap-3">
               <Button
                 variant="ghost"
                 size="icon"
-                className="md:hidden text-white/60"
+                className="md:hidden text-gray-500 dark:text-white/60"
                 onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
                 data-testid="button-mobile-menu"
               >
@@ -131,16 +144,16 @@ export function AppLayout({ children, breadcrumbs = [], title, subtitle, actions
               </Button>
 
               <div className="flex items-center gap-2">
-                <h1 className="text-base font-semibold text-white" data-testid="text-page-title">{pageTitle}</h1>
+                <h1 className="text-base font-semibold text-gray-900 dark:text-white" data-testid="text-page-title">{pageTitle}</h1>
                 {headerBreadcrumb && (
                   <>
-                    <ChevronRight className="w-4 h-4 text-white/30" />
+                    <ChevronRight className="w-4 h-4 text-gray-300 dark:text-white/30" />
                     {headerBreadcrumbHref ? (
                       <Link href={headerBreadcrumbHref}>
-                        <span className="text-sm text-white/50 hover:text-white/80 transition-colors cursor-pointer">{headerBreadcrumb}</span>
+                        <span className="text-sm text-gray-500 dark:text-white/50 hover:text-gray-700 dark:hover:text-white/80 transition-colors cursor-pointer">{headerBreadcrumb}</span>
                       </Link>
                     ) : (
-                      <span className="text-sm text-white/50">{headerBreadcrumb}</span>
+                      <span className="text-sm text-gray-500 dark:text-white/50">{headerBreadcrumb}</span>
                     )}
                   </>
                 )}
@@ -149,27 +162,34 @@ export function AppLayout({ children, breadcrumbs = [], title, subtitle, actions
 
             <div className="flex items-center gap-3">
               <div className="hidden sm:flex items-center relative">
-                <Search className="w-4 h-4 text-white/30 absolute left-3" />
+                <Search className="w-4 h-4 text-gray-400 dark:text-white/30 absolute left-3" />
                 <Input
                   placeholder="Search..."
-                  className="w-48 lg:w-64 pl-9 h-9 bg-white/5 border-white/10 text-sm text-white placeholder:text-white/30 focus:border-blue-500/50 focus:bg-white/8"
+                  className="w-48 lg:w-64 pl-9 h-9 bg-gray-100 dark:bg-white/5 border-gray-200 dark:border-white/10 text-sm text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-white/30 focus:border-blue-500/50"
                   data-testid="input-search"
                 />
               </div>
-              <button className="w-9 h-9 rounded-lg flex items-center justify-center text-white/40 hover:text-white/70 hover:bg-white/5 transition-all relative" data-testid="button-notifications">
+              <button className="w-9 h-9 rounded-lg flex items-center justify-center text-gray-400 dark:text-white/40 hover:text-gray-600 dark:hover:text-white/70 hover:bg-gray-100 dark:hover:bg-white/5 transition-all relative" data-testid="button-notifications">
                 <Bell className="w-5 h-5" />
+              </button>
+              <button
+                onClick={toggleTheme}
+                className="md:hidden w-9 h-9 rounded-lg flex items-center justify-center text-gray-400 dark:text-white/40 hover:text-gray-600 dark:hover:text-white/70 hover:bg-gray-100 dark:hover:bg-white/5 transition-all"
+                data-testid="button-theme-toggle-mobile"
+              >
+                {theme === 'dark' ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
               </button>
               {actions}
             </div>
           </div>
 
           {mobileMenuOpen && (
-            <div className="md:hidden border-t border-white/5 bg-[#12101f] px-3 py-2">
+            <div className="md:hidden border-t border-gray-200 dark:border-white/5 bg-white dark:bg-[#12101f] px-3 py-2">
               {NAV_ITEMS.map((item) => (
                 <Link key={item.href} href={item.href}>
                   <Button
                     variant={isActiveRoute(item.href, location, item.exact) ? 'secondary' : 'ghost'}
-                    className="w-full justify-start gap-2 mb-1 text-white/70"
+                    className="w-full justify-start gap-2 mb-1 text-gray-700 dark:text-white/70"
                     onClick={() => setMobileMenuOpen(false)}
                     data-testid={`mobile-nav-${item.label.toLowerCase()}`}
                   >
@@ -205,7 +225,7 @@ export function AppLayout({ children, breadcrumbs = [], title, subtitle, actions
           {(title || subtitle) && !breadcrumbs.length && (
             <div className="mb-6">
               {subtitle && (
-                <p className="text-sm text-white/50 mt-1">{subtitle}</p>
+                <p className="text-sm text-gray-500 dark:text-white/50 mt-1">{subtitle}</p>
               )}
             </div>
           )}

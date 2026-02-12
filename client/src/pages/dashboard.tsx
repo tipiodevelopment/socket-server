@@ -168,22 +168,22 @@ export default function DashboardPage() {
       <div className="mb-8">
         <div className="flex items-center justify-between mb-4">
           <div>
-            <h2 className="text-lg font-semibold text-white" data-testid="text-client-apps-title">Client Apps</h2>
-            <p className="text-sm text-white/40">Manage your client applications and their campaigns</p>
+            <h2 className="text-lg font-semibold text-gray-900 dark:text-white" data-testid="text-client-apps-title">Client Apps</h2>
+            <p className="text-sm text-gray-400 dark:text-white/40">Manage your client applications and their campaigns</p>
           </div>
           <Link href="/apps">
-            <Button variant="outline" size="sm" className="gap-1.5 border-white/10 text-white/70 hover:text-white hover:bg-white/5" data-testid="button-new-client-app">
+            <Button variant="outline" size="sm" className="gap-1.5 border-gray-200 dark:border-white/10 text-gray-600 dark:text-white/70 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/5" data-testid="button-new-client-app">
               <Plus className="w-4 h-4" /> New Client App
             </Button>
           </Link>
         </div>
 
         {clientApps.length === 0 ? (
-          <div className="rounded-xl border border-white/5 bg-white/[0.02] p-8 text-center">
+          <div className="rounded-xl border border-gray-200 dark:border-white/5 bg-white dark:bg-white/[0.02] p-8 text-center">
             <div className="w-12 h-12 rounded-xl bg-purple-500/20 flex items-center justify-center mx-auto mb-3">
               <Activity className="w-6 h-6 text-purple-400" />
             </div>
-            <p className="text-white/50 text-sm mb-4">No client apps yet. Create your first app to get started.</p>
+            <p className="text-gray-500 dark:text-white/50 text-sm mb-4">No client apps yet. Create your first app to get started.</p>
             <Link href="/apps">
               <Button size="sm" className="gap-1.5 bg-blue-600 hover:bg-blue-700">
                 <Plus className="w-4 h-4" /> Create App
@@ -217,18 +217,18 @@ export default function DashboardPage() {
                       <h3 className="text-white font-semibold text-base">{app.name}</h3>
                       <p className="text-white/60 text-xs mt-0.5">{app.bundleId}</p>
                     </div>
-                    <div className="bg-[#161429] p-4 border border-white/5 border-t-0 rounded-b-xl">
+                    <div className="bg-white dark:bg-[#161429] p-4 border border-gray-200 dark:border-white/5 border-t-0 rounded-b-xl">
                       <div className="flex items-center justify-between">
                         <div>
-                          <p className="text-[10px] text-white/30 uppercase tracking-wider">Active Broadcasts</p>
-                          <p className="text-lg font-bold text-white">{activeBroadcasts.length}</p>
+                          <p className="text-[10px] text-gray-400 dark:text-white/30 uppercase tracking-wider">Active Broadcasts</p>
+                          <p className="text-lg font-bold text-gray-900 dark:text-white">{activeBroadcasts.length}</p>
                         </div>
                         <div className="text-right">
-                          <p className="text-[10px] text-white/30 uppercase tracking-wider">Total Viewers</p>
-                          <p className="text-lg font-bold text-white">--</p>
+                          <p className="text-[10px] text-gray-400 dark:text-white/30 uppercase tracking-wider">Total Viewers</p>
+                          <p className="text-lg font-bold text-gray-900 dark:text-white">--</p>
                         </div>
                       </div>
-                      <div className="mt-3 w-full bg-white/10 rounded-full h-1.5">
+                      <div className="mt-3 w-full bg-gray-200 dark:bg-white/10 rounded-full h-1.5">
                         <div
                           className="bg-gradient-to-r from-blue-400 to-purple-400 h-1.5 rounded-full transition-all"
                           style={{ width: `${Math.min(appCampaigns.length * 15, 100)}%` }}
@@ -246,41 +246,41 @@ export default function DashboardPage() {
       <div className="mb-8">
         <div className="flex items-center justify-between mb-4">
           <div>
-            <h2 className="text-lg font-semibold text-white" data-testid="text-live-broadcasts-title">Live Broadcasts</h2>
-            <p className="text-sm text-white/40">Currently streaming events</p>
+            <h2 className="text-lg font-semibold text-gray-900 dark:text-white" data-testid="text-live-broadcasts-title">Live Broadcasts</h2>
+            <p className="text-sm text-gray-400 dark:text-white/40">Currently streaming events</p>
           </div>
           <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" className="gap-1.5 border-white/10 text-white/50 hover:text-white text-xs h-8" data-testid="button-filter-broadcasts">
+            <Button variant="outline" size="sm" className="gap-1.5 border-gray-200 dark:border-white/10 text-gray-500 dark:text-white/50 hover:text-gray-900 dark:hover:text-white text-xs h-8" data-testid="button-filter-broadcasts">
               <Filter className="w-3.5 h-3.5" /> Filter
             </Button>
-            <Button variant="outline" size="sm" className="gap-1.5 border-white/10 text-white/50 hover:text-white text-xs h-8" data-testid="button-sort-broadcasts">
+            <Button variant="outline" size="sm" className="gap-1.5 border-gray-200 dark:border-white/10 text-gray-500 dark:text-white/50 hover:text-gray-900 dark:hover:text-white text-xs h-8" data-testid="button-sort-broadcasts">
               <ArrowUpDown className="w-3.5 h-3.5" /> Sort
             </Button>
           </div>
         </div>
 
-        <div className="rounded-xl border border-white/5 overflow-hidden bg-white/[0.02]">
+        <div className="rounded-xl border border-gray-200 dark:border-white/5 overflow-hidden bg-white dark:bg-white/[0.02]">
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead>
-                <tr className="border-b border-white/5">
-                  <th className="text-left text-[10px] text-white/30 uppercase tracking-wider py-3 px-4 font-medium">Broadcast</th>
-                  <th className="text-left text-[10px] text-white/30 uppercase tracking-wider py-3 px-4 font-medium">Campaign</th>
-                  <th className="text-left text-[10px] text-white/30 uppercase tracking-wider py-3 px-4 font-medium">Status</th>
-                  <th className="text-left text-[10px] text-white/30 uppercase tracking-wider py-3 px-4 font-medium">Viewers</th>
-                  <th className="text-left text-[10px] text-white/30 uppercase tracking-wider py-3 px-4 font-medium">Engagement</th>
-                  <th className="text-left text-[10px] text-white/30 uppercase tracking-wider py-3 px-4 font-medium">Duration</th>
-                  <th className="text-left text-[10px] text-white/30 uppercase tracking-wider py-3 px-4 font-medium">Actions</th>
+                <tr className="border-b border-gray-200 dark:border-white/5">
+                  <th className="text-left text-[10px] text-gray-400 dark:text-white/30 uppercase tracking-wider py-3 px-4 font-medium">Broadcast</th>
+                  <th className="text-left text-[10px] text-gray-400 dark:text-white/30 uppercase tracking-wider py-3 px-4 font-medium">Campaign</th>
+                  <th className="text-left text-[10px] text-gray-400 dark:text-white/30 uppercase tracking-wider py-3 px-4 font-medium">Status</th>
+                  <th className="text-left text-[10px] text-gray-400 dark:text-white/30 uppercase tracking-wider py-3 px-4 font-medium">Viewers</th>
+                  <th className="text-left text-[10px] text-gray-400 dark:text-white/30 uppercase tracking-wider py-3 px-4 font-medium">Engagement</th>
+                  <th className="text-left text-[10px] text-gray-400 dark:text-white/30 uppercase tracking-wider py-3 px-4 font-medium">Duration</th>
+                  <th className="text-left text-[10px] text-gray-400 dark:text-white/30 uppercase tracking-wider py-3 px-4 font-medium">Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {liveBroadcasts.length === 0 ? (
                   <tr>
                     <td colSpan={7} className="text-center py-10">
-                      <Radio className="w-8 h-8 text-white/20 mx-auto mb-2" />
-                      <p className="text-sm text-white/30">No live broadcasts right now</p>
+                      <Radio className="w-8 h-8 text-gray-300 dark:text-white/20 mx-auto mb-2" />
+                      <p className="text-sm text-gray-400 dark:text-white/30">No live broadcasts right now</p>
                       <Link href="/broadcasts">
-                        <Button size="sm" variant="outline" className="mt-3 gap-1.5 border-white/10 text-white/50 text-xs">
+                        <Button size="sm" variant="outline" className="mt-3 gap-1.5 border-gray-200 dark:border-white/10 text-gray-500 dark:text-white/50 text-xs">
                           <Plus className="w-3.5 h-3.5" /> Create Broadcast
                         </Button>
                       </Link>
@@ -296,19 +296,19 @@ export default function DashboardPage() {
                     const mins = duration % 60;
 
                     return (
-                      <tr key={broadcast.broadcastId} className="border-b border-white/5 hover:bg-white/[0.02] transition-colors" data-testid={`row-broadcast-${broadcast.broadcastId}`}>
+                      <tr key={broadcast.broadcastId} className="border-b border-gray-200 dark:border-white/5 hover:bg-gray-50 dark:hover:bg-white/[0.02] transition-colors" data-testid={`row-broadcast-${broadcast.broadcastId}`}>
                         <td className="py-3 px-4">
                           <div className="flex items-center gap-3">
                             <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
                             <div>
-                              <p className="text-sm font-medium text-white">{broadcast.broadcastName}</p>
-                              <p className="text-xs text-white/30">{broadcast.broadcastId}</p>
+                              <p className="text-sm font-medium text-gray-900 dark:text-white">{broadcast.broadcastName}</p>
+                              <p className="text-xs text-gray-400 dark:text-white/30">{broadcast.broadcastId}</p>
                             </div>
                           </div>
                         </td>
                         <td className="py-3 px-4">
-                          <p className="text-sm text-white/70">{campaign?.name || '--'}</p>
-                          <p className="text-xs text-white/30">{campaign?.description?.slice(0, 30) || ''}</p>
+                          <p className="text-sm text-gray-600 dark:text-white/70">{campaign?.name || '--'}</p>
+                          <p className="text-xs text-gray-400 dark:text-white/30">{campaign?.description?.slice(0, 30) || ''}</p>
                         </td>
                         <td className="py-3 px-4">
                           <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-green-500/20 text-green-400 text-xs font-medium">
@@ -317,13 +317,13 @@ export default function DashboardPage() {
                           </span>
                         </td>
                         <td className="py-3 px-4">
-                          <p className="text-sm font-semibold text-white">--</p>
+                          <p className="text-sm font-semibold text-gray-900 dark:text-white">--</p>
                         </td>
                         <td className="py-3 px-4">
-                          <p className="text-sm text-white/50">--</p>
+                          <p className="text-sm text-gray-500 dark:text-white/50">--</p>
                         </td>
                         <td className="py-3 px-4">
-                          <p className="text-sm text-white/70">{hours > 0 ? `${hours}h ${mins}m` : `${mins}m`}</p>
+                          <p className="text-sm text-gray-600 dark:text-white/70">{hours > 0 ? `${hours}h ${mins}m` : `${mins}m`}</p>
                         </td>
                         <td className="py-3 px-4">
                           <Link href={`/broadcasts/${broadcast.broadcastId}`}>
@@ -346,8 +346,8 @@ export default function DashboardPage() {
         <div>
           <div className="flex items-center justify-between mb-4">
             <div>
-              <h2 className="text-lg font-semibold text-white" data-testid="text-upcoming-campaigns-title">Upcoming Campaigns</h2>
-              <p className="text-sm text-white/40">Scheduled campaigns for the next 7 days</p>
+              <h2 className="text-lg font-semibold text-gray-900 dark:text-white" data-testid="text-upcoming-campaigns-title">Upcoming Campaigns</h2>
+              <p className="text-sm text-gray-400 dark:text-white/40">Scheduled campaigns for the next 7 days</p>
             </div>
             <Link href="/campaigns">
               <Button variant="ghost" size="sm" className="gap-1 text-blue-400 hover:text-blue-300 text-xs" data-testid="link-view-all-campaigns">
@@ -366,7 +366,7 @@ export default function DashboardPage() {
               return (
                 <div
                   key={campaign.id}
-                  className="rounded-xl border border-white/5 bg-white/[0.02] overflow-hidden"
+                  className="rounded-xl border border-gray-200 dark:border-white/5 bg-white dark:bg-white/[0.02] overflow-hidden"
                   data-testid={`card-campaign-${campaign.id}`}
                 >
                   <div className="p-4">
@@ -376,8 +376,8 @@ export default function DashboardPage() {
                           <Megaphone className="w-5 h-5 text-white" />
                         </div>
                         <div>
-                          <h3 className="text-sm font-semibold text-white">{campaign.name}</h3>
-                          <p className="text-xs text-white/40">{app?.name || 'No app'}</p>
+                          <h3 className="text-sm font-semibold text-gray-900 dark:text-white">{campaign.name}</h3>
+                          <p className="text-xs text-gray-400 dark:text-white/40">{app?.name || 'No app'}</p>
                         </div>
                       </div>
                       {campaign.startDate && (
@@ -394,18 +394,18 @@ export default function DashboardPage() {
                     </div>
                     <div className="grid grid-cols-3 gap-3 mb-4">
                       <div>
-                        <p className="text-[10px] text-white/30 uppercase tracking-wider">Start Date</p>
-                        <p className="text-xs text-white/70 mt-0.5">
+                        <p className="text-[10px] text-gray-400 dark:text-white/30 uppercase tracking-wider">Start Date</p>
+                        <p className="text-xs text-gray-600 dark:text-white/70 mt-0.5">
                           {campaign.startDate ? new Date(campaign.startDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '--'}
                         </p>
                       </div>
                       <div>
-                        <p className="text-[10px] text-white/30 uppercase tracking-wider">Broadcasts</p>
-                        <p className="text-xs text-white/70 mt-0.5">{campaignBroadcasts.length} scheduled</p>
+                        <p className="text-[10px] text-gray-400 dark:text-white/30 uppercase tracking-wider">Broadcasts</p>
+                        <p className="text-xs text-gray-600 dark:text-white/70 mt-0.5">{campaignBroadcasts.length} scheduled</p>
                       </div>
                       <div>
-                        <p className="text-[10px] text-white/30 uppercase tracking-wider">Components</p>
-                        <p className="text-xs text-white/70 mt-0.5">--</p>
+                        <p className="text-[10px] text-gray-400 dark:text-white/30 uppercase tracking-wider">Components</p>
+                        <p className="text-xs text-gray-600 dark:text-white/70 mt-0.5">--</p>
                       </div>
                     </div>
                   </div>
@@ -415,7 +415,7 @@ export default function DashboardPage() {
                         Configure
                       </Button>
                     </Link>
-                    <Button variant="ghost" size="icon" className="text-white/30 hover:text-white/60 h-9 w-9" data-testid={`button-more-campaign-${campaign.id}`}>
+                    <Button variant="ghost" size="icon" className="text-gray-400 dark:text-white/30 hover:text-gray-600 dark:hover:text-white/60 h-9 w-9" data-testid={`button-more-campaign-${campaign.id}`}>
                       <MoreVertical className="w-4 h-4" />
                     </Button>
                   </div>
@@ -451,7 +451,7 @@ function StatCard({
   testId: string;
 }) {
   return (
-    <div className="rounded-xl border border-white/5 bg-white/[0.02] p-4 hover:bg-white/[0.04] transition-all" data-testid={testId}>
+    <div className="rounded-xl border border-gray-200 dark:border-white/5 bg-white dark:bg-white/[0.02] p-4 hover:bg-gray-50 dark:hover:bg-white/[0.04] transition-all" data-testid={testId}>
       <div className="flex items-start justify-between mb-3">
         <div className={`w-10 h-10 rounded-xl ${iconBg} flex items-center justify-center ${iconColor}`}>
           {icon}
@@ -463,8 +463,8 @@ function StatCard({
           </div>
         )}
       </div>
-      <p className="text-2xl font-bold text-white">{formattedValue || formatNumber(value)}{suffix}</p>
-      <p className="text-xs text-white/40 mt-0.5">{label}</p>
+      <p className="text-2xl font-bold text-gray-900 dark:text-white">{formattedValue || formatNumber(value)}{suffix}</p>
+      <p className="text-xs text-gray-400 dark:text-white/40 mt-0.5">{label}</p>
     </div>
   );
 }

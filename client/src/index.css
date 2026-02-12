@@ -4,53 +4,106 @@
 @tailwind utilities;
 
 :root {
-  /* Gradient background - purple to blue */
-  --background: linear-gradient(135deg, #1a0f2e 0%, #0f1729 100%);
-  --foreground: hsl(0, 0%, 100%);
-  
-  /* Glass morphism cards */
-  --card: rgba(30, 30, 50, 0.6);
-  --card-foreground: hsl(0, 0%, 100%);
-  --popover: rgba(40, 40, 60, 0.95);
-  --popover-foreground: hsl(0, 0%, 100%);
-  
-  /* Vibrant blue primary */
+  /* Light mode */
+  --background: hsl(220, 20%, 97%);
+  --foreground: hsl(222, 47%, 11%);
+
+  --card: hsl(0, 0%, 100%);
+  --card-foreground: hsl(222, 47%, 11%);
+  --popover: hsl(0, 0%, 100%);
+  --popover-foreground: hsl(222, 47%, 11%);
+
   --primary: #0066FF;
   --primary-foreground: hsl(0, 0%, 100%);
   --primary-hover: #0052CC;
-  
-  /* Secondary colors */
-  --secondary: #A855F7;
-  --secondary-foreground: hsl(0, 0%, 100%);
-  
-  /* Muted backgrounds */
-  --muted: rgba(255, 255, 255, 0.1);
-  --muted-foreground: rgba(255, 255, 255, 0.7);
-  
-  /* Accent */
-  --accent: #0066FF;
-  --accent-foreground: hsl(0, 0%, 100%);
-  
-  /* States */
+
+  --secondary: hsl(240, 5%, 96%);
+  --secondary-foreground: hsl(222, 47%, 11%);
+
+  --muted: hsl(220, 14%, 96%);
+  --muted-foreground: hsl(220, 9%, 46%);
+
+  --accent: hsl(220, 14%, 96%);
+  --accent-foreground: hsl(222, 47%, 11%);
+
   --destructive: #EF4444;
   --destructive-foreground: hsl(0, 0%, 100%);
   --success: #10B981;
   --warning: #F59E0B;
-  
-  /* Borders and inputs */
-  --border: rgba(255, 255, 255, 0.1);
-  --input: rgba(255, 255, 255, 0.05);
+
+  --border: hsl(220, 13%, 91%);
+  --input: hsl(220, 13%, 91%);
   --ring: #0066FF;
-  
-  /* Charts */
+
   --chart-1: #0066FF;
   --chart-2: #A855F7;
   --chart-3: #10B981;
   --chart-4: #F59E0B;
   --chart-5: #EF4444;
-  
-  /* Sidebar */
-  --sidebar: rgba(0, 0, 0, 0.5);
+
+  --sidebar-background: hsl(0, 0%, 100%);
+  --sidebar-foreground: hsl(222, 47%, 11%);
+  --sidebar-primary: #0066FF;
+  --sidebar-primary-foreground: hsl(0, 0%, 100%);
+  --sidebar-accent: hsl(220, 14%, 96%);
+  --sidebar-accent-foreground: hsl(222, 47%, 11%);
+  --sidebar-border: hsl(220, 13%, 91%);
+  --sidebar-ring: #0066FF;
+
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', Monaco, monospace;
+
+  --radius: 0.75rem;
+
+  /* Theme-specific surface colors */
+  --surface-primary: hsl(0, 0%, 100%);
+  --surface-secondary: hsl(220, 20%, 97%);
+  --surface-elevated: hsl(0, 0%, 100%);
+  --text-primary: hsl(222, 47%, 11%);
+  --text-secondary: hsl(220, 9%, 46%);
+  --text-tertiary: hsl(220, 9%, 64%);
+  --border-subtle: hsl(220, 13%, 91%);
+  --border-strong: hsl(220, 13%, 82%);
+}
+
+.dark {
+  --background: hsl(235, 30%, 7%);
+  --foreground: hsl(0, 0%, 100%);
+
+  --card: rgba(30, 30, 50, 0.6);
+  --card-foreground: hsl(0, 0%, 100%);
+  --popover: rgba(40, 40, 60, 0.95);
+  --popover-foreground: hsl(0, 0%, 100%);
+
+  --primary: #0066FF;
+  --primary-foreground: hsl(0, 0%, 100%);
+  --primary-hover: #0052CC;
+
+  --secondary: #A855F7;
+  --secondary-foreground: hsl(0, 0%, 100%);
+
+  --muted: rgba(255, 255, 255, 0.1);
+  --muted-foreground: rgba(255, 255, 255, 0.7);
+
+  --accent: #0066FF;
+  --accent-foreground: hsl(0, 0%, 100%);
+
+  --destructive: #EF4444;
+  --destructive-foreground: hsl(0, 0%, 100%);
+  --success: #10B981;
+  --warning: #F59E0B;
+
+  --border: rgba(255, 255, 255, 0.1);
+  --input: rgba(255, 255, 255, 0.05);
+  --ring: #0066FF;
+
+  --chart-1: #0066FF;
+  --chart-2: #A855F7;
+  --chart-3: #10B981;
+  --chart-4: #F59E0B;
+  --chart-5: #EF4444;
+
+  --sidebar-background: hsl(235, 25%, 8%);
   --sidebar-foreground: hsl(0, 0%, 100%);
   --sidebar-primary: #0066FF;
   --sidebar-primary-foreground: hsl(0, 0%, 100%);
@@ -58,35 +111,16 @@
   --sidebar-accent-foreground: hsl(0, 0%, 100%);
   --sidebar-border: rgba(255, 255, 255, 0.1);
   --sidebar-ring: #0066FF;
-  
-  /* Fonts */
-  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  --font-mono: 'JetBrains Mono', 'Fira Code', Monaco, monospace;
-  
-  /* Radius */
-  --radius: 0.75rem;
-}
 
-.dark {
-  --background: linear-gradient(135deg, #1a0f2e 0%, #0f1729 100%);
-  --foreground: hsl(0, 0%, 100%);
-  --card: rgba(30, 30, 50, 0.6);
-  --card-foreground: hsl(0, 0%, 100%);
-  --popover: rgba(40, 40, 60, 0.95);
-  --popover-foreground: hsl(0, 0%, 100%);
-  --primary: #0066FF;
-  --primary-foreground: hsl(0, 0%, 100%);
-  --secondary: #A855F7;
-  --secondary-foreground: hsl(0, 0%, 100%);
-  --muted: rgba(255, 255, 255, 0.1);
-  --muted-foreground: rgba(255, 255, 255, 0.7);
-  --accent: #0066FF;
-  --accent-foreground: hsl(0, 0%, 100%);
-  --destructive: #EF4444;
-  --destructive-foreground: hsl(0, 0%, 100%);
-  --border: rgba(255, 255, 255, 0.1);
-  --input: rgba(255, 255, 255, 0.05);
-  --ring: #0066FF;
+  /* Theme-specific surface colors */
+  --surface-primary: hsl(235, 25%, 10%);
+  --surface-secondary: hsl(235, 25%, 8%);
+  --surface-elevated: rgba(30, 30, 50, 0.6);
+  --text-primary: hsl(0, 0%, 100%);
+  --text-secondary: rgba(255, 255, 255, 0.7);
+  --text-tertiary: rgba(255, 255, 255, 0.4);
+  --border-subtle: rgba(255, 255, 255, 0.1);
+  --border-strong: rgba(255, 255, 255, 0.2);
 }
 
 @layer base {
@@ -95,13 +129,18 @@
   }
 
   body {
-    @apply font-sans antialiased text-foreground;
+    @apply font-sans antialiased;
+    background: var(--background);
+    color: var(--foreground);
+    min-height: 100vh;
+    transition: background-color 0.3s ease, color 0.3s ease;
+  }
+
+  .dark body {
     background: linear-gradient(135deg, #1a0f2e 0%, #0f1729 100%);
     background-attachment: fixed;
-    min-height: 100vh;
   }
-  
-  /* Make body and html fill viewport */
+
   html, body, #root {
     height: 100%;
   }
@@ -151,17 +190,17 @@
 }
 
 .scrollbar-thin::-webkit-scrollbar-track {
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--muted);
   border-radius: 4px;
 }
 
 .scrollbar-thin::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.2);
+  background: var(--border-strong);
   border-radius: 4px;
 }
 
 .scrollbar-thin::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.3);
+  background: var(--text-tertiary);
 }
 
 /* Code blocks */
@@ -173,10 +212,10 @@
 
 /* Glass morphism effect for cards */
 .glass-card {
-  background: rgba(30, 30, 50, 0.6);
+  background: var(--surface-elevated);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 1px solid var(--border-subtle);
 }
 
 /* Primary button style */
@@ -193,14 +232,14 @@
 
 /* Secondary button style */
 .btn-secondary {
-  background: rgba(255, 255, 255, 0.1);
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  color: white;
+  background: var(--muted);
+  border: 1px solid var(--border-strong);
+  color: var(--foreground);
   transition: all 0.2s ease;
 }
 
 .btn-secondary:hover {
-  background: rgba(255, 255, 255, 0.15);
+  opacity: 0.9;
 }
 
 /* Input focus states */
@@ -219,4 +258,11 @@ input:focus, textarea:focus, select:focus {
 .backdrop-blur-strong {
   backdrop-filter: blur(40px);
   -webkit-backdrop-filter: blur(40px);
+}
+
+/* Theme transition */
+* {
+  transition-property: background-color, border-color, color;
+  transition-duration: 0.15s;
+  transition-timing-function: ease;
 }

@@ -11,7 +11,7 @@ Preferred communication style: Simple, everyday language.
 ## System Architecture
 
 ### UI/UX Decisions
-The frontend uses React 18 with TypeScript and Vite, styled with Tailwind CSS, and built with Radix UI primitives and shadcn/ui. The design incorporates a premium gradient background, glass morphism, vibrant blue accents, Inter font, and a borderless, fully responsive design for various screen sizes (320px - 768px).
+The frontend uses React 18 with TypeScript and Vite, styled with Tailwind CSS, and built with Radix UI primitives and shadcn/ui. The design supports both dark and light themes via a ThemeProvider context (`client/src/contexts/ThemeContext.tsx`). Dark mode features a premium gradient background (#1a0f2e → #0f1729), glass morphism, vibrant blue accents, and Inter font. Light mode uses clean whites and grays. Theme preference is persisted in localStorage. All pages use `dark:` Tailwind variants for dual-mode support. A theme toggle button (sun/moon) is available in the sidebar and mobile header.
 
 ### Technical Implementations
 **Frontend:**
