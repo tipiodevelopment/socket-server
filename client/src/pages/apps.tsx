@@ -4,7 +4,6 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import {
   Form,
@@ -25,6 +24,12 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog';
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import {
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
@@ -33,15 +38,24 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-  AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
 import { useToast } from '@/hooks/use-toast';
 import { queryClient, apiRequest } from '@/lib/queryClient';
 import { useUser } from '@/contexts/UserContext';
 import { AppLayout } from '@/components/AppLayout';
 import type { ClientApp } from '@shared/schema';
-import { Plus, LayoutGrid, Key, Trash2, ChevronRight, Smartphone } from 'lucide-react';
+import { Plus, Smartphone, Pencil, Settings, MoreVertical, Trash2 } from 'lucide-react';
 import { useState } from 'react';
+
+interface ClientAppWithStats extends ClientApp {
+  stats: {
+    campaignCount: number;
+    activeBroadcasts: number;
+    totalViewers: number;
+    channelCount: number;
+    engagementPercent: number;
+  };
+}
 
 const createClientAppSchema = z.object({
   name: z.string().min(1, 'App name is required').max(255, 'App name too long'),
@@ -50,21 +64,49 @@ const createClientAppSchema = z.object({
 
 type CreateClientAppForm = z.infer<typeof createClientAppSchema>;
 
+function formatViewers(num: number): string {
+  if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M';
+  if (num >= 1000) return Math.round(num / 1000) + 'K';
+  return num.toString();
+}
+
+const APP_GRADIENTS = [
+  'from-purple-600 to-indigo-800',
+  'from-blue-500 to-cyan-700',
+  'from-amber-600 to-yellow-800',
+  'from-emerald-500 to-teal-700',
+  'from-orange-500 to-red-700',
+  'from-pink-500 to-purple-700',
+];
+
+const APP_ICONS = ['⚽', '🏀', '🏎️', '⚾', '🏐', '🏈', '🎾', '🏓'];
+
+const PROGRESS_COLORS = [
+  'from-green-400 to-emerald-500',
+  'from-blue-400 to-blue-600',
+  'from-amber-400 to-orange-500',
+  'from-emerald-400 to-green-600',
+  'from-orange-400 to-red-500',
+  'from-purple-400 to-pink-500',
+];
+
 export default function AppsPage() {
   const { toast } = useToast();
   const [, setLocation] = useLocation();
   const { userId } = useUser();
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [appToDelete, setAppToDelete] = useState<ClientAppWithStats | null>(null);
 
   const form = useForm<CreateClientAppForm>({
     resolver: zodResolver(createClientAppSchema),
     defaultValues: { name: '', bundleId: '' },
   });
 
-  const { data: clientApps = [], isLoading } = useQuery<ClientApp[]>({
-    queryKey: ['/api/client-apps', userId],
+  const { data: clientApps = [], isLoading } = useQuery<ClientAppWithStats[]>({
+    queryKey: ['/api/client-apps/with-stats', userId],
     queryFn: async () => {
-      const res = await fetch(`/api/client-apps?userId=${userId}`);
+      const res = await fetch(`/api/client-apps/with-stats?userId=${userId}`);
       if (!res.ok) throw new Error('Failed to fetch client apps');
       return res.json();
     },
@@ -77,6 +119,7 @@ export default function AppsPage() {
       return response.json();
     },
     onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/client-apps/with-stats', userId] });
       queryClient.invalidateQueries({ queryKey: ['/api/client-apps', userId] });
       setCreateDialogOpen(false);
       form.reset();
@@ -92,7 +135,10 @@ export default function AppsPage() {
       return await apiRequest('DELETE', `/api/client-apps/${id}?userId=${userId}`);
     },
     onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/client-apps/with-stats', userId] });
       queryClient.invalidateQueries({ queryKey: ['/api/client-apps', userId] });
+      setDeleteDialogOpen(false);
+      setAppToDelete(null);
       toast({ title: 'App Deleted', description: 'The app has been deleted.' });
     },
     onError: () => {
@@ -107,13 +153,12 @@ export default function AppsPage() {
 
   return (
     <AppLayout
-      breadcrumbs={[{ label: 'My Apps' }]}
-      title="My Apps"
-      subtitle="Select an app to manage its campaigns and broadcasts"
+      title="Client Apps"
+      subtitle="Manage your client applications and their campaigns"
       actions={
         <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
           <DialogTrigger asChild>
-            <Button data-testid="button-create-app" className="gap-2 w-full sm:w-auto">
+            <Button data-testid="button-create-app" className="gap-2 bg-blue-600 hover:bg-blue-700 text-white">
               <Plus className="w-4 h-4" />
               New App
             </Button>
@@ -134,7 +179,7 @@ export default function AppsPage() {
                     <FormItem>
                       <FormLabel>App Name</FormLabel>
                       <FormControl>
-                        <Input placeholder="e.g. XXL iOS App" data-testid="input-app-name" {...field} />
+                        <Input placeholder="e.g. LaLiga Fan App" data-testid="input-app-name" {...field} />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -147,7 +192,7 @@ export default function AppsPage() {
                     <FormItem>
                       <FormLabel>Bundle ID</FormLabel>
                       <FormControl>
-                        <Input placeholder="e.g. com.xxl.iosapp" data-testid="input-bundle-id" {...field} />
+                        <Input placeholder="e.g. com.laliga.fanapp" data-testid="input-bundle-id" {...field} />
                       </FormControl>
                       <FormDescription>
                         The unique identifier for your app (iOS Bundle ID or Android Package Name)
@@ -157,7 +202,7 @@ export default function AppsPage() {
                   )}
                 />
                 <DialogFooter>
-                  <Button type="submit" disabled={createMutation.isPending} data-testid="button-submit-app">
+                  <Button type="submit" disabled={createMutation.isPending} data-testid="button-submit-app" className="bg-blue-600 hover:bg-blue-700 text-white">
                     {createMutation.isPending ? 'Creating...' : 'Create App'}
                   </Button>
                 </DialogFooter>
@@ -168,91 +213,164 @@ export default function AppsPage() {
       }
     >
       {isLoading ? (
-        <div className="text-center py-12">
-          <p className="text-muted-foreground">Loading apps...</p>
-        </div>
-      ) : clientApps.length === 0 ? (
-        <Card className="border-0">
-          <CardContent className="flex flex-col items-center justify-center py-12">
-            <Smartphone className="w-12 h-12 text-muted-foreground mb-4" />
-            <h3 className="text-lg font-semibold mb-2">No apps yet</h3>
-            <p className="text-muted-foreground mb-4 text-center max-w-md">
-              Create your first app to start managing campaigns and broadcasts
-            </p>
-            <Button onClick={() => setCreateDialogOpen(true)} data-testid="button-create-first-app">
-              <Plus className="w-4 h-4 mr-2" />
-              Create App
-            </Button>
-          </CardContent>
-        </Card>
-      ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {clientApps.map((app) => (
-            <Card
-              key={app.id}
-              className="border border-white/10 hover:border-white/20 transition-all cursor-pointer group"
-              data-testid={`card-app-${app.id}`}
-            >
-              <Link href={`/apps/${app.id}`}>
-                <CardHeader>
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-1">
-                        <div className="w-10 h-10 bg-primary/10 rounded-lg flex items-center justify-center">
-                          <Smartphone className="w-5 h-5 text-primary" />
-                        </div>
-                        <div>
-                          <CardTitle className="text-lg">{app.name}</CardTitle>
-                          <CardDescription className="text-xs font-mono">{app.bundleId}</CardDescription>
-                        </div>
-                      </div>
-                    </div>
-                    <ChevronRight className="w-5 h-5 text-muted-foreground group-hover:text-foreground transition-colors" />
-                  </div>
-                </CardHeader>
-              </Link>
-              <CardContent>
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                    <Key className="w-3 h-3" />
-                    <span>API Key configured</span>
-                  </div>
-                  <AlertDialog>
-                    <AlertDialogTrigger asChild>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-7 w-7 text-destructive hover:text-destructive hover:bg-destructive/10"
-                        onClick={(e) => e.stopPropagation()}
-                        data-testid={`button-delete-app-${app.id}`}
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </Button>
-                    </AlertDialogTrigger>
-                    <AlertDialogContent>
-                      <AlertDialogHeader>
-                        <AlertDialogTitle>Delete App?</AlertDialogTitle>
-                        <AlertDialogDescription>
-                          Are you sure you want to delete "{app.name}"? This will remove all channels, campaigns, and broadcasts associated with this app.
-                        </AlertDialogDescription>
-                      </AlertDialogHeader>
-                      <AlertDialogFooter>
-                        <AlertDialogCancel>Cancel</AlertDialogCancel>
-                        <AlertDialogAction
-                          onClick={() => deleteMutation.mutate(app.id)}
-                          className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                        >
-                          Delete
-                        </AlertDialogAction>
-                      </AlertDialogFooter>
-                    </AlertDialogContent>
-                  </AlertDialog>
-                </div>
-              </CardContent>
-            </Card>
+          {[1, 2, 3].map(i => (
+            <div key={i} className="bg-white dark:bg-white/[0.03] border border-gray-200 dark:border-white/10 rounded-2xl overflow-hidden animate-pulse">
+              <div className="h-24 bg-gray-200 dark:bg-white/5" />
+              <div className="p-4 space-y-3">
+                <div className="h-4 bg-gray-200 dark:bg-white/10 rounded w-3/4" />
+                <div className="h-3 bg-gray-200 dark:bg-white/5 rounded w-1/2" />
+                <div className="h-8 bg-gray-200 dark:bg-white/5 rounded" />
+              </div>
+            </div>
           ))}
         </div>
+      ) : clientApps.length === 0 ? (
+        <div className="bg-white dark:bg-white/[0.03] border border-gray-200 dark:border-white/10 rounded-2xl p-12 text-center">
+          <Smartphone className="w-12 h-12 text-gray-300 dark:text-white/20 mx-auto mb-4" />
+          <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">No apps yet</h3>
+          <p className="text-gray-500 dark:text-white/40 mb-4 max-w-md mx-auto">
+            Create your first app to start managing campaigns and broadcasts
+          </p>
+          <Button onClick={() => setCreateDialogOpen(true)} className="bg-blue-600 hover:bg-blue-700 text-white" data-testid="button-create-first-app">
+            <Plus className="w-4 h-4 mr-2" />
+            Create App
+          </Button>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {clientApps.map((app, index) => {
+            const gradient = APP_GRADIENTS[index % APP_GRADIENTS.length];
+            const icon = APP_ICONS[index % APP_ICONS.length];
+            const progressColor = PROGRESS_COLORS[index % PROGRESS_COLORS.length];
+
+            return (
+              <div
+                key={app.id}
+                className="bg-white dark:bg-[#161429] border border-gray-200 dark:border-white/10 rounded-2xl overflow-hidden hover:border-gray-300 dark:hover:border-white/20 transition-all group"
+                data-testid={`card-app-${app.id}`}
+              >
+                <div className={`relative h-24 bg-gradient-to-r ${gradient} p-4`}>
+                  <div className="absolute top-3 right-3">
+                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-500/90 text-white" data-testid={`badge-campaigns-${app.id}`}>
+                      {app.stats.campaignCount} Campaign{app.stats.campaignCount !== 1 ? 's' : ''}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="p-4">
+                  <div className="flex items-center gap-3 mb-4 -mt-8">
+                    <div className="w-11 h-11 bg-gray-800 dark:bg-[#1e1b30] border-2 border-white dark:border-[#161429] rounded-xl flex items-center justify-center text-lg shadow-lg">
+                      {icon}
+                    </div>
+                    <div className="pt-5">
+                      <Link href={`/apps/${app.id}`}>
+                        <h3 className="text-sm font-semibold text-gray-900 dark:text-white hover:text-blue-600 dark:hover:text-blue-400 transition-colors cursor-pointer" data-testid={`text-app-name-${app.id}`}>
+                          {app.name}
+                        </h3>
+                      </Link>
+                      <p className="text-xs text-gray-400 dark:text-white/30 font-mono" data-testid={`text-bundle-id-${app.id}`}>{app.bundleId}</p>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4 mb-4">
+                    <div>
+                      <p className="text-[10px] uppercase tracking-wider text-gray-400 dark:text-white/30 mb-0.5">Active Broadcasts</p>
+                      <p className="text-xl font-bold text-gray-900 dark:text-white" data-testid={`text-broadcasts-${app.id}`}>{app.stats.activeBroadcasts}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-[10px] uppercase tracking-wider text-gray-400 dark:text-white/30 mb-0.5">Total Viewers</p>
+                      <p className="text-xl font-bold text-gray-900 dark:text-white" data-testid={`text-viewers-${app.id}`}>{formatViewers(app.stats.totalViewers)}</p>
+                    </div>
+                  </div>
+
+                  <div className="mb-4">
+                    <div className="w-full bg-gray-200 dark:bg-white/10 rounded-full h-1.5">
+                      <div
+                        className={`bg-gradient-to-r ${progressColor} h-1.5 rounded-full transition-all`}
+                        style={{ width: `${app.stats.engagementPercent}%` }}
+                      />
+                    </div>
+                    <p className="text-right text-[10px] text-gray-400 dark:text-white/30 mt-1">{app.stats.engagementPercent}%</p>
+                  </div>
+
+                  <div className="flex items-center gap-2 pt-3 border-t border-gray-100 dark:border-white/5">
+                    <Link href={`/apps/${app.id}`}>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="gap-1.5 text-xs text-gray-500 dark:text-white/50 hover:text-gray-700 dark:hover:text-white/80 h-8"
+                        data-testid={`button-edit-app-${app.id}`}
+                      >
+                        <Pencil className="w-3.5 h-3.5" />
+                        Edit
+                      </Button>
+                    </Link>
+                    <Link href={`/apps/${app.id}`}>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="gap-1.5 text-xs text-gray-500 dark:text-white/50 hover:text-gray-700 dark:hover:text-white/80 h-8"
+                        data-testid={`button-settings-app-${app.id}`}
+                      >
+                        <Settings className="w-3.5 h-3.5" />
+                        Settings
+                      </Button>
+                    </Link>
+                    <div className="ml-auto">
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 text-gray-400 dark:text-white/30 hover:text-gray-600 dark:hover:text-white/60"
+                            data-testid={`button-more-app-${app.id}`}
+                          >
+                            <MoreVertical className="w-4 h-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem
+                            className="text-red-500 focus:text-red-600"
+                            onClick={() => {
+                              setAppToDelete(app);
+                              setDeleteDialogOpen(true);
+                            }}
+                            data-testid={`button-delete-app-${app.id}`}
+                          >
+                            <Trash2 className="w-4 h-4 mr-2" />
+                            Delete App
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
       )}
+
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete App?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete "{appToDelete?.name}"? This will remove all channels, campaigns, and broadcasts associated with this app.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setAppToDelete(null)}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => appToDelete && deleteMutation.mutate(appToDelete.id)}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </AppLayout>
   );
 }
