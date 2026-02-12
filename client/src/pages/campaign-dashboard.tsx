@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { BarChart3, Zap, Calendar, Settings as SettingsIcon, Activity, Radio } from "lucide-react";
-import { Campaign, ClientApp } from "@shared/schema";
+import { Campaign } from "@shared/schema";
 import { OverviewTab } from "@/components/dashboard/OverviewTab";
 import { EventsTab } from "@/components/dashboard/EventsTab";
 import { ScheduledTab } from "@/components/dashboard/ScheduledTab";
@@ -17,7 +17,6 @@ import { useUser } from "@/contexts/UserContext";
 export default function CampaignDashboard() {
   const params = useParams();
   const { userId } = useUser();
-  const appId = params.appId ? parseInt(params.appId) : null;
   const campaignId = params.campaignId ? parseInt(params.campaignId) : (params.id ? parseInt(params.id) : null);
 
   const { data: campaign, isLoading } = useQuery<Campaign>({
@@ -25,22 +24,9 @@ export default function CampaignDashboard() {
     enabled: !!campaignId
   });
 
-  const { data: app } = useQuery<ClientApp>({
-    queryKey: ['/api/client-apps', appId, userId],
-    queryFn: async () => {
-      const res = await fetch(`/api/client-apps/${appId}?userId=${userId}`);
-      if (!res.ok) throw new Error('Failed');
-      return res.json();
-    },
-    enabled: !!appId && !!userId
-  });
-
   const breadcrumbs: BreadcrumbItem[] = [
-    { label: 'My Apps', href: '/apps' },
+    { label: 'Campaigns', href: '/campaigns' },
   ];
-  if (app) {
-    breadcrumbs.push({ label: app.name, href: `/apps/${appId}` });
-  }
   if (campaign) {
     breadcrumbs.push({ label: campaign.name });
   } else {
@@ -67,7 +53,7 @@ export default function CampaignDashboard() {
     );
   }
 
-  const backHref = appId ? `/apps/${appId}` : '/apps';
+  const backHref = '/campaigns';
 
   return (
     <AppLayout
@@ -138,7 +124,7 @@ export default function CampaignDashboard() {
         </TabsContent>
 
         <TabsContent value="broadcasts">
-          <BroadcastsTab campaignId={campaignId!} appId={appId} />
+          <BroadcastsTab campaignId={campaignId!} />
         </TabsContent>
 
         <TabsContent value="events">
@@ -208,7 +194,7 @@ function getStatusBadge(status: string) {
   }
 }
 
-function BroadcastsTab({ campaignId, appId }: { campaignId: number; appId: number | null }) {
+function BroadcastsTab({ campaignId }: { campaignId: number }) {
   const { toast } = useToast();
   const { userId } = useUser();
   const [statusFilter, setStatusFilter] = useState<string>('all');
@@ -291,10 +277,7 @@ function BroadcastsTab({ campaignId, appId }: { campaignId: number; appId: numbe
     { value: 'ended', label: 'Ended' },
   ];
 
-  const broadcastDetailHref = (broadcastId: string) => {
-    if (appId) return `/apps/${appId}/campaigns/${campaignId}/broadcasts/${broadcastId}`;
-    return `/broadcasts/${broadcastId}`;
-  };
+  const broadcastDetailHref = (broadcastId: string) => `/broadcasts/${broadcastId}`;
 
   return (
     <div>

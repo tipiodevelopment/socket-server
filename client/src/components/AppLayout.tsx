@@ -2,7 +2,7 @@ import { Link, useLocation } from 'wouter';
 import { useUser } from '@/contexts/UserContext';
 import {
   Breadcrumb,
-  BreadcrumbItem,
+  BreadcrumbItem as BreadcrumbUIItem,
   BreadcrumbLink,
   BreadcrumbList,
   BreadcrumbPage,
@@ -11,14 +11,16 @@ import {
 import { Button } from '@/components/ui/button';
 import {
   Rocket,
-  LayoutGrid,
+  LayoutDashboard,
+  Smartphone,
+  Megaphone,
+  Radio,
   ShoppingBag,
   FileText,
   LogOut,
   User as UserIcon,
   Menu,
   X,
-  ChevronRight,
 } from 'lucide-react';
 import { useState } from 'react';
 
@@ -36,19 +38,23 @@ interface AppLayoutProps {
 }
 
 const NAV_ITEMS = [
-  { href: '/apps', label: 'My Apps', icon: LayoutGrid },
+  { href: '/', label: 'Dashboard', icon: LayoutDashboard, exact: true },
+  { href: '/apps', label: 'Apps', icon: Smartphone },
+  { href: '/campaigns', label: 'Campaigns', icon: Megaphone },
+  { href: '/broadcasts', label: 'Broadcasts', icon: Radio },
   { href: '/components', label: 'Components', icon: ShoppingBag },
   { href: '/docs', label: 'Docs', icon: FileText },
 ];
 
+function isActive(itemHref: string, location: string, exact?: boolean) {
+  if (exact) return location === itemHref;
+  return location.startsWith(itemHref);
+}
+
 export function AppLayout({ children, breadcrumbs = [], title, subtitle, actions }: AppLayoutProps) {
-  const { userData, reachuUserId, logout } = useUser();
+  const { reachuUserId, logout } = useUser();
   const [location] = useLocation();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-
-  const handleLogout = () => {
-    logout();
-  };
 
   return (
     <div className="min-h-screen bg-background text-foreground">
@@ -56,7 +62,7 @@ export function AppLayout({ children, breadcrumbs = [], title, subtitle, actions
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-14">
             <div className="flex items-center gap-4">
-              <Link href="/apps">
+              <Link href="/">
                 <div className="flex items-center gap-2 cursor-pointer" data-testid="link-home">
                   <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
                     <Rocket className="w-5 h-5 text-primary-foreground" />
@@ -69,10 +75,10 @@ export function AppLayout({ children, breadcrumbs = [], title, subtitle, actions
                 {NAV_ITEMS.map((item) => (
                   <Link key={item.href} href={item.href}>
                     <Button
-                      variant={location.startsWith(item.href) ? 'secondary' : 'ghost'}
+                      variant={isActive(item.href, location, item.exact) ? 'secondary' : 'ghost'}
                       size="sm"
                       className="gap-1.5 text-sm"
-                      data-testid={`nav-${item.label.toLowerCase().replace(/\s/g, '-')}`}
+                      data-testid={`nav-${item.label.toLowerCase()}`}
                     >
                       <item.icon className="w-4 h-4" />
                       {item.label}
@@ -92,7 +98,7 @@ export function AppLayout({ children, breadcrumbs = [], title, subtitle, actions
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={handleLogout}
+                onClick={logout}
                 data-testid="button-logout"
                 className="gap-1.5 text-sm"
               >
@@ -117,10 +123,10 @@ export function AppLayout({ children, breadcrumbs = [], title, subtitle, actions
             {NAV_ITEMS.map((item) => (
               <Link key={item.href} href={item.href}>
                 <Button
-                  variant={location.startsWith(item.href) ? 'secondary' : 'ghost'}
+                  variant={isActive(item.href, location, item.exact) ? 'secondary' : 'ghost'}
                   className="w-full justify-start gap-2 mb-1"
                   onClick={() => setMobileMenuOpen(false)}
-                  data-testid={`mobile-nav-${item.label.toLowerCase().replace(/\s/g, '-')}`}
+                  data-testid={`mobile-nav-${item.label.toLowerCase()}`}
                 >
                   <item.icon className="w-4 h-4" />
                   {item.label}
@@ -136,7 +142,7 @@ export function AppLayout({ children, breadcrumbs = [], title, subtitle, actions
           <Breadcrumb className="mb-4">
             <BreadcrumbList>
               {breadcrumbs.map((crumb, index) => (
-                <BreadcrumbItem key={index}>
+                <BreadcrumbUIItem key={index}>
                   {index > 0 && <BreadcrumbSeparator />}
                   {crumb.href && index < breadcrumbs.length - 1 ? (
                     <BreadcrumbLink asChild>
@@ -145,7 +151,7 @@ export function AppLayout({ children, breadcrumbs = [], title, subtitle, actions
                   ) : (
                     <BreadcrumbPage>{crumb.label}</BreadcrumbPage>
                   )}
-                </BreadcrumbItem>
+                </BreadcrumbUIItem>
               ))}
             </BreadcrumbList>
           </Breadcrumb>

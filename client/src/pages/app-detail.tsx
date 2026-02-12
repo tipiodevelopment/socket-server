@@ -141,7 +141,7 @@ export default function AppDetailPage() {
       setNewCampaignName('');
       setNewCampaignDescription('');
       toast({ title: 'Campaign Created', description: 'Your new campaign is ready.' });
-      setLocation(`/apps/${appIdNum}/campaigns/${newCampaign.id}`);
+      setLocation(`/campaigns/${newCampaign.id}`);
     },
     onError: () => {
       toast({ title: 'Error', description: 'Failed to create campaign', variant: 'destructive' });
@@ -347,7 +347,7 @@ export default function AppDetailPage() {
                         <span>{new Date(campaign.createdAt).toLocaleDateString('en-US')}</span>
                       </div>
                     </div>
-                    <Link href={`/apps/${appIdNum}/campaigns/${campaign.id}`}>
+                    <Link href={`/campaigns/${campaign.id}`}>
                       <Button variant="default" size="sm" className="w-full gap-2" data-testid={`button-manage-campaign-${campaign.id}`}>
                         <Settings className="w-4 h-4" />
                         Manage Campaign

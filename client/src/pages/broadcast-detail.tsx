@@ -14,7 +14,7 @@ import { useToast } from '@/hooks/use-toast';
 import { queryClient, apiRequest } from '@/lib/queryClient';
 import { AppLayout } from '@/components/AppLayout';
 import type { BreadcrumbItem } from '@/components/AppLayout';
-import type { Broadcast, Poll, PollOptionRecord, Contest, Campaign, ClientApp } from '@shared/schema';
+import type { Broadcast, Poll, PollOptionRecord, Contest, Campaign } from '@shared/schema';
 import { ArrowLeft, Plus, Trash2, Clock, Calendar, Radio, BarChart3, Trophy, X, ChevronRight } from 'lucide-react';
 import { useState } from 'react';
 import { useUser } from '@/contexts/UserContext';
@@ -48,8 +48,6 @@ export default function BroadcastDetailPage() {
   const params = useParams();
   const { userId } = useUser();
   const broadcastId = params.broadcastId;
-  const appId = params.appId ? parseInt(params.appId) : null;
-  const campaignId = params.campaignId ? parseInt(params.campaignId) : null;
   const { toast } = useToast();
 
   const [pollDialogOpen, setPollDialogOpen] = useState(false);
@@ -181,25 +179,16 @@ export default function BroadcastDetailPage() {
     }));
   };
 
-  const { data: app } = useQuery<ClientApp>({
-    queryKey: ['/api/client-apps', appId, userId],
-    queryFn: async () => {
-      const res = await fetch(`/api/client-apps/${appId}?userId=${userId}`);
-      if (!res.ok) throw new Error('Failed');
-      return res.json();
-    },
-    enabled: !!appId && !!userId
-  });
-
   const { data: campaignData } = useQuery<Campaign>({
-    queryKey: ['/api/campaigns', campaignId],
-    enabled: !!campaignId
+    queryKey: ['/api/campaigns', broadcast?.campaignId],
+    enabled: !!broadcast?.campaignId,
   });
 
   const buildBreadcrumbs = (): BreadcrumbItem[] => {
-    const crumbs: BreadcrumbItem[] = [{ label: 'My Apps', href: '/apps' }];
-    if (app) crumbs.push({ label: app.name, href: `/apps/${appId}` });
-    if (campaignData) crumbs.push({ label: campaignData.name, href: `/apps/${appId}/campaigns/${campaignId}` });
+    const crumbs: BreadcrumbItem[] = [{ label: 'Broadcasts', href: '/broadcasts' }];
+    if (campaignData) {
+      crumbs.push({ label: campaignData.name, href: `/campaigns/${campaignData.id}` });
+    }
     if (broadcast) crumbs.push({ label: broadcast.broadcastName });
     else crumbs.push({ label: 'Loading...' });
     return crumbs;

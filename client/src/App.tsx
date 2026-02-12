@@ -16,6 +16,9 @@ import UserSessionPage from "@/pages/user-session";
 import BroadcastDetailPage from "@/pages/broadcast-detail";
 import AppsPage from "@/pages/apps";
 import AppDetailPage from "@/pages/app-detail";
+import DashboardPage from "@/pages/dashboard";
+import CampaignsPage from "@/pages/campaigns";
+import BroadcastsPage from "@/pages/broadcasts";
 import NotFound from "@/pages/not-found";
 
 function Router() {
@@ -24,7 +27,7 @@ function Router() {
       <Route path="/user-session" component={UserSessionPage} />
 
       <Route path="/">
-        <Redirect to="/apps" />
+        <RequireAuth><DashboardPage /></RequireAuth>
       </Route>
 
       <Route path="/apps">
@@ -33,10 +36,18 @@ function Router() {
       <Route path="/apps/:appId">
         <RequireAuth><AppDetailPage /></RequireAuth>
       </Route>
-      <Route path="/apps/:appId/campaigns/:campaignId">
+
+      <Route path="/campaigns">
+        <RequireAuth><CampaignsPage /></RequireAuth>
+      </Route>
+      <Route path="/campaigns/:campaignId">
         <RequireAuth><CampaignDashboard /></RequireAuth>
       </Route>
-      <Route path="/apps/:appId/campaigns/:campaignId/broadcasts/:broadcastId">
+
+      <Route path="/broadcasts">
+        <RequireAuth><BroadcastsPage /></RequireAuth>
+      </Route>
+      <Route path="/broadcasts/:broadcastId">
         <RequireAuth><BroadcastDetailPage /></RequireAuth>
       </Route>
 
@@ -45,22 +56,12 @@ function Router() {
       </Route>
       <Route path="/docs" component={DocsPage} />
 
-      <Route path="/campaigns">
-        <Redirect to="/apps" />
-      </Route>
-      <Route path="/client-apps">
-        <Redirect to="/apps" />
-      </Route>
-      <Route path="/broadcasts">
-        <Redirect to="/apps" />
-      </Route>
       <Route path="/campaign/:id/dashboard">
         <RequireAuth><CampaignDashboard /></RequireAuth>
       </Route>
       <Route path="/campaign/:id/advanced" component={AdvancedCampaignPage} />
       <Route path="/campaign/:id/admin" component={AdminPage} />
       <Route path="/campaign/:name/:id" component={CampaignViewerPage} />
-      <Route path="/broadcasts/:broadcastId" component={BroadcastDetailPage} />
 
       <Route path="/admin" component={AdminPage} />
       <Route path="/viewer" component={ViewerPage} />
