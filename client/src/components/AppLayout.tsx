@@ -9,6 +9,7 @@ import {
   BreadcrumbSeparator,
 } from '@/components/ui/breadcrumb';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import {
   Rocket,
   LayoutDashboard,
@@ -18,9 +19,11 @@ import {
   ShoppingBag,
   FileText,
   LogOut,
-  User as UserIcon,
+  Bell,
+  Search,
   Menu,
   X,
+  ChevronRight,
 } from 'lucide-react';
 import { useState } from 'react';
 
@@ -35,6 +38,8 @@ interface AppLayoutProps {
   title?: string;
   subtitle?: string;
   actions?: React.ReactNode;
+  headerBreadcrumb?: string;
+  headerBreadcrumbHref?: string;
 }
 
 const NAV_ITEMS = [
@@ -46,133 +51,168 @@ const NAV_ITEMS = [
   { href: '/docs', label: 'Docs', icon: FileText },
 ];
 
-function isActive(itemHref: string, location: string, exact?: boolean) {
+
+function isActiveRoute(itemHref: string, location: string, exact?: boolean) {
   if (exact) return location === itemHref;
   return location.startsWith(itemHref);
 }
 
-export function AppLayout({ children, breadcrumbs = [], title, subtitle, actions }: AppLayoutProps) {
+export function AppLayout({ children, breadcrumbs = [], title, subtitle, actions, headerBreadcrumb, headerBreadcrumbHref }: AppLayoutProps) {
   const { reachuUserId, logout } = useUser();
   const [location] = useLocation();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
+  const currentPage = NAV_ITEMS.find(item => isActiveRoute(item.href, location, item.exact));
+  const pageTitle = title || currentPage?.label || 'Dashboard';
+
   return (
-    <div className="min-h-screen bg-background text-foreground">
-      <header className="bg-card border-b border-border sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-14">
-            <div className="flex items-center gap-4">
-              <Link href="/">
-                <div className="flex items-center gap-2 cursor-pointer" data-testid="link-home">
-                  <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
-                    <Rocket className="w-5 h-5 text-primary-foreground" />
+    <div className="min-h-screen flex bg-[#0d0b1a]">
+      <aside className="hidden md:flex flex-col w-16 bg-[#12101f] border-r border-white/5 fixed top-0 left-0 h-full z-50">
+        <div className="flex items-center justify-center h-16">
+          <Link href="/">
+            <div className="w-10 h-10 bg-gradient-to-br from-purple-500 to-blue-500 rounded-xl flex items-center justify-center cursor-pointer" data-testid="link-home">
+              <Rocket className="w-5 h-5 text-white" />
+            </div>
+          </Link>
+        </div>
+
+        <nav className="flex-1 flex flex-col items-center gap-1 py-4">
+          {NAV_ITEMS.map((item) => {
+            const active = isActiveRoute(item.href, location, item.exact);
+            return (
+              <Link key={item.href} href={item.href}>
+                <div
+                  className={`w-10 h-10 rounded-xl flex items-center justify-center cursor-pointer transition-all group relative ${
+                    active
+                      ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/30'
+                      : 'text-white/40 hover:text-white/70 hover:bg-white/5'
+                  }`}
+                  data-testid={`nav-${item.label.toLowerCase()}`}
+                >
+                  <item.icon className="w-5 h-5" />
+                  <div className="absolute left-full ml-3 px-2 py-1 bg-gray-900 text-white text-xs rounded-md opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity whitespace-nowrap z-50">
+                    {item.label}
                   </div>
-                  <span className="font-bold text-lg hidden sm:block">Reachu</span>
                 </div>
               </Link>
+            );
+          })}
+        </nav>
 
-              <nav className="hidden md:flex items-center gap-1">
-                {NAV_ITEMS.map((item) => (
-                  <Link key={item.href} href={item.href}>
-                    <Button
-                      variant={isActive(item.href, location, item.exact) ? 'secondary' : 'ghost'}
-                      size="sm"
-                      className="gap-1.5 text-sm"
-                      data-testid={`nav-${item.label.toLowerCase()}`}
-                    >
-                      <item.icon className="w-4 h-4" />
-                      {item.label}
-                    </Button>
-                  </Link>
-                ))}
-              </nav>
+        <div className="flex flex-col items-center gap-2 py-4 border-t border-white/5">
+          <button
+            onClick={logout}
+            className="w-10 h-10 rounded-xl flex items-center justify-center text-white/40 hover:text-white/70 hover:bg-white/5 transition-all group relative"
+            data-testid="button-logout"
+          >
+            <LogOut className="w-5 h-5" />
+            <div className="absolute left-full ml-3 px-2 py-1 bg-gray-900 text-white text-xs rounded-md opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity whitespace-nowrap z-50">
+              Logout
             </div>
+          </button>
+          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-purple-500 flex items-center justify-center text-white text-xs font-bold">
+            {(reachuUserId || 'U').charAt(0).toUpperCase()}
+          </div>
+        </div>
+      </aside>
 
-            <div className="flex items-center gap-2">
-              {reachuUserId && (
-                <div className="hidden sm:flex items-center gap-2 text-sm text-muted-foreground">
-                  <UserIcon className="w-4 h-4" />
-                  <span data-testid="text-current-user">{reachuUserId}</span>
-                </div>
-              )}
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={logout}
-                data-testid="button-logout"
-                className="gap-1.5 text-sm"
-              >
-                <LogOut className="w-4 h-4" />
-                <span className="hidden sm:inline">Logout</span>
-              </Button>
+      <div className="flex-1 md:ml-16 flex flex-col min-h-screen">
+        <header className="sticky top-0 z-40 bg-[#0d0b1a]/80 backdrop-blur-xl border-b border-white/5">
+          <div className="flex items-center justify-between h-14 px-4 sm:px-6">
+            <div className="flex items-center gap-3">
               <Button
                 variant="ghost"
                 size="icon"
-                className="md:hidden"
+                className="md:hidden text-white/60"
                 onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
                 data-testid="button-mobile-menu"
               >
                 {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
               </Button>
-            </div>
-          </div>
-        </div>
 
-        {mobileMenuOpen && (
-          <div className="md:hidden border-t border-border bg-card px-4 py-2">
-            {NAV_ITEMS.map((item) => (
-              <Link key={item.href} href={item.href}>
-                <Button
-                  variant={isActive(item.href, location, item.exact) ? 'secondary' : 'ghost'}
-                  className="w-full justify-start gap-2 mb-1"
-                  onClick={() => setMobileMenuOpen(false)}
-                  data-testid={`mobile-nav-${item.label.toLowerCase()}`}
-                >
-                  <item.icon className="w-4 h-4" />
-                  {item.label}
-                </Button>
-              </Link>
-            ))}
-          </div>
-        )}
-      </header>
-
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-        {breadcrumbs.length > 0 && (
-          <Breadcrumb className="mb-4">
-            <BreadcrumbList>
-              {breadcrumbs.map((crumb, index) => (
-                <BreadcrumbUIItem key={index}>
-                  {index > 0 && <BreadcrumbSeparator />}
-                  {crumb.href && index < breadcrumbs.length - 1 ? (
-                    <BreadcrumbLink asChild>
-                      <Link href={crumb.href}>{crumb.label}</Link>
-                    </BreadcrumbLink>
-                  ) : (
-                    <BreadcrumbPage>{crumb.label}</BreadcrumbPage>
-                  )}
-                </BreadcrumbUIItem>
-              ))}
-            </BreadcrumbList>
-          </Breadcrumb>
-        )}
-
-        {(title || actions) && (
-          <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 mb-6">
-            {title && (
-              <div>
-                <h1 className="text-xl sm:text-2xl font-bold" data-testid="text-page-title">{title}</h1>
-                {subtitle && (
-                  <p className="text-sm sm:text-base text-muted-foreground mt-1">{subtitle}</p>
+              <div className="flex items-center gap-2">
+                <h1 className="text-base font-semibold text-white" data-testid="text-page-title">{pageTitle}</h1>
+                {headerBreadcrumb && (
+                  <>
+                    <ChevronRight className="w-4 h-4 text-white/30" />
+                    {headerBreadcrumbHref ? (
+                      <Link href={headerBreadcrumbHref}>
+                        <span className="text-sm text-white/50 hover:text-white/80 transition-colors cursor-pointer">{headerBreadcrumb}</span>
+                      </Link>
+                    ) : (
+                      <span className="text-sm text-white/50">{headerBreadcrumb}</span>
+                    )}
+                  </>
                 )}
               </div>
-            )}
-            {actions && <div className="flex gap-2">{actions}</div>}
-          </div>
-        )}
+            </div>
 
-        {children}
-      </main>
+            <div className="flex items-center gap-3">
+              <div className="hidden sm:flex items-center relative">
+                <Search className="w-4 h-4 text-white/30 absolute left-3" />
+                <Input
+                  placeholder="Search..."
+                  className="w-48 lg:w-64 pl-9 h-9 bg-white/5 border-white/10 text-sm text-white placeholder:text-white/30 focus:border-blue-500/50 focus:bg-white/8"
+                  data-testid="input-search"
+                />
+              </div>
+              <button className="w-9 h-9 rounded-lg flex items-center justify-center text-white/40 hover:text-white/70 hover:bg-white/5 transition-all relative" data-testid="button-notifications">
+                <Bell className="w-5 h-5" />
+              </button>
+              {actions}
+            </div>
+          </div>
+
+          {mobileMenuOpen && (
+            <div className="md:hidden border-t border-white/5 bg-[#12101f] px-3 py-2">
+              {NAV_ITEMS.map((item) => (
+                <Link key={item.href} href={item.href}>
+                  <Button
+                    variant={isActiveRoute(item.href, location, item.exact) ? 'secondary' : 'ghost'}
+                    className="w-full justify-start gap-2 mb-1 text-white/70"
+                    onClick={() => setMobileMenuOpen(false)}
+                    data-testid={`mobile-nav-${item.label.toLowerCase()}`}
+                  >
+                    <item.icon className="w-4 h-4" />
+                    {item.label}
+                  </Button>
+                </Link>
+              ))}
+            </div>
+          )}
+        </header>
+
+        <main className="flex-1 px-4 sm:px-6 py-6 overflow-auto">
+          {breadcrumbs.length > 0 && (
+            <Breadcrumb className="mb-4">
+              <BreadcrumbList>
+                {breadcrumbs.map((crumb, index) => (
+                  <BreadcrumbUIItem key={index}>
+                    {index > 0 && <BreadcrumbSeparator />}
+                    {crumb.href && index < breadcrumbs.length - 1 ? (
+                      <BreadcrumbLink asChild>
+                        <Link href={crumb.href}>{crumb.label}</Link>
+                      </BreadcrumbLink>
+                    ) : (
+                      <BreadcrumbPage>{crumb.label}</BreadcrumbPage>
+                    )}
+                  </BreadcrumbUIItem>
+                ))}
+              </BreadcrumbList>
+            </Breadcrumb>
+          )}
+
+          {(title || subtitle) && !breadcrumbs.length && (
+            <div className="mb-6">
+              {subtitle && (
+                <p className="text-sm text-white/50 mt-1">{subtitle}</p>
+              )}
+            </div>
+          )}
+
+          {children}
+        </main>
+      </div>
     </div>
   );
 }

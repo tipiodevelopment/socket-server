@@ -1,23 +1,51 @@
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'wouter';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { useUser } from '@/contexts/UserContext';
 import { AppLayout } from '@/components/AppLayout';
-import type { ClientApp, Campaign, Broadcast } from '@shared/schema';
+import type { ClientApp, Campaign, Broadcast, Channel } from '@shared/schema';
 import {
-  Smartphone,
+  BarChart3,
   Megaphone,
   Radio,
   Plus,
   ChevronRight,
+  Users,
+  TrendingUp,
   Activity,
-  Clock,
-  Zap,
+  Filter,
+  ArrowUpDown,
+  MoreVertical,
 } from 'lucide-react';
 
+function formatNumber(num: number): string {
+  if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M';
+  if (num >= 1000) return (num / 1000).toFixed(0) + 'K';
+  return num.toString();
+}
+
+function getDaysUntil(date: Date): string {
+  const now = new Date();
+  const diff = date.getTime() - now.getTime();
+  const days = Math.ceil(diff / (1000 * 60 * 60 * 24));
+  if (days <= 0) return 'Today';
+  if (days === 1) return 'In 1 day';
+  return `In ${days} days`;
+}
+
+const APP_GRADIENTS = [
+  'from-purple-600/80 to-purple-900/80',
+  'from-blue-600/80 to-blue-900/80',
+  'from-orange-500/80 to-orange-800/80',
+  'from-emerald-600/80 to-emerald-900/80',
+  'from-pink-600/80 to-pink-900/80',
+  'from-cyan-600/80 to-cyan-900/80',
+];
+
+const APP_ICONS = ['⚽', '🏀', '🏐', '🏈', '⚾', '🎾', '🏓', '🎯'];
+
 export default function DashboardPage() {
-  const { userId, reachuUserId } = useUser();
+  const { userId } = useUser();
 
   const { data: clientApps = [] } = useQuery<ClientApp[]>({
     queryKey: ['/api/client-apps', userId],
@@ -49,245 +77,394 @@ export default function DashboardPage() {
     enabled: !!userId,
   });
 
-  const activeCampaigns = campaigns.filter(c => !c.isPaused);
+  const { data: channels = [] } = useQuery<Channel[]>({
+    queryKey: ['/api/channels', userId],
+    queryFn: async () => {
+      const res = await fetch(`/api/channels?userId=${userId}`);
+      if (!res.ok) throw new Error('Failed');
+      return res.json();
+    },
+    enabled: !!userId,
+  });
+
+  const activeCampaigns = campaigns.filter(c => c.isPaused !== 'true');
   const liveBroadcasts = broadcasts.filter(b => b.status === 'live');
-  const upcomingBroadcasts = broadcasts.filter(b => b.status === 'upcoming');
+  const upcomingCampaigns = campaigns.filter(c => {
+    if (!c.startDate) return false;
+    const start = new Date(c.startDate);
+    const now = new Date();
+    const weekFromNow = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+    return start > now && start <= weekFromNow;
+  });
 
-  const stats = [
-    {
-      label: 'Apps',
-      value: clientApps.length,
-      icon: Smartphone,
-      href: '/apps',
-      color: 'text-blue-400',
-      bg: 'bg-blue-500/10',
-    },
-    {
-      label: 'Campaigns',
-      value: campaigns.length,
-      icon: Megaphone,
-      href: '/campaigns',
-      color: 'text-purple-400',
-      bg: 'bg-purple-500/10',
-      subtitle: `${activeCampaigns.length} active`,
-    },
-    {
-      label: 'Broadcasts',
-      value: broadcasts.length,
-      icon: Radio,
-      href: '/broadcasts',
-      color: 'text-green-400',
-      bg: 'bg-green-500/10',
-      subtitle: `${liveBroadcasts.length} live`,
-    },
-  ];
+  const campaignMap = new Map(campaigns.map(c => [c.id, c]));
+  const channelMap = new Map(channels.map(ch => [ch.id, ch]));
 
-  const recentCampaigns = [...campaigns]
-    .sort((a, b) => (b.id || 0) - (a.id || 0))
-    .slice(0, 5);
+  const getCampaignsForApp = (appId: number) => {
+    const appChannels = channels.filter(ch => ch.clientAppId === appId);
+    const channelIds = new Set(appChannels.map(ch => ch.id));
+    return campaigns.filter(c => c.channelId && channelIds.has(c.channelId));
+  };
 
-  const recentBroadcasts = [...broadcasts]
-    .sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime())
-    .slice(0, 5);
+  const getBroadcastsForApp = (appId: number) => {
+    const appCampaignIds = new Set(getCampaignsForApp(appId).map(c => c.id));
+    return broadcasts.filter(b => b.campaignId && appCampaignIds.has(b.campaignId));
+  };
 
   return (
-    <AppLayout title={`Welcome back, ${reachuUserId || 'User'}`} subtitle="Here's an overview of your platform">
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
-        {stats.map((stat) => (
-          <Link key={stat.label} href={stat.href}>
-            <Card className="border border-white/10 hover:border-white/20 transition-all cursor-pointer group" data-testid={`stat-${stat.label.toLowerCase()}`}>
-              <CardContent className="flex items-center gap-4 p-5">
-                <div className={`w-12 h-12 rounded-xl ${stat.bg} flex items-center justify-center`}>
-                  <stat.icon className={`w-6 h-6 ${stat.color}`} />
-                </div>
-                <div className="flex-1">
-                  <p className="text-2xl font-bold">{stat.value}</p>
-                  <p className="text-sm text-muted-foreground">{stat.label}</p>
-                  {stat.subtitle && (
-                    <p className="text-xs text-muted-foreground mt-0.5">{stat.subtitle}</p>
-                  )}
-                </div>
-                <ChevronRight className="w-5 h-5 text-muted-foreground group-hover:text-foreground transition-colors" />
-              </CardContent>
-            </Card>
-          </Link>
-        ))}
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-        <Card className="border border-white/10">
-          <CardHeader className="flex flex-row items-center justify-between pb-3">
-            <CardTitle className="text-base font-semibold flex items-center gap-2">
-              <Megaphone className="w-4 h-4 text-purple-400" />
-              Recent Campaigns
-            </CardTitle>
-            <Link href="/campaigns">
-              <Button variant="ghost" size="sm" className="text-xs gap-1" data-testid="link-all-campaigns">
-                View all <ChevronRight className="w-3 h-3" />
-              </Button>
-            </Link>
-          </CardHeader>
-          <CardContent>
-            {recentCampaigns.length === 0 ? (
-              <div className="text-center py-8">
-                <Megaphone className="w-8 h-8 text-muted-foreground mx-auto mb-2" />
-                <p className="text-sm text-muted-foreground mb-3">No campaigns yet</p>
-                <Link href="/campaigns">
-                  <Button size="sm" className="gap-1">
-                    <Plus className="w-3 h-3" /> Create Campaign
-                  </Button>
-                </Link>
-              </div>
-            ) : (
-              <div className="space-y-2">
-                {recentCampaigns.map((campaign) => (
-                  <Link key={campaign.id} href={`/campaigns/${campaign.id}`}>
-                    <div
-                      className="flex items-center justify-between p-3 rounded-lg hover:bg-white/5 transition-colors cursor-pointer"
-                      data-testid={`dashboard-campaign-${campaign.id}`}
-                    >
-                      <div className="flex items-center gap-3">
-                        <div className={`w-2 h-2 rounded-full ${campaign.isPaused ? 'bg-yellow-400' : 'bg-green-400'}`} />
-                        <div>
-                          <p className="text-sm font-medium">{campaign.name}</p>
-                          {campaign.description && (
-                            <p className="text-xs text-muted-foreground truncate max-w-[250px]">{campaign.description}</p>
-                          )}
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs text-muted-foreground">
-                          {campaign.isPaused ? 'Paused' : 'Active'}
-                        </span>
-                        <ChevronRight className="w-4 h-4 text-muted-foreground" />
-                      </div>
-                    </div>
-                  </Link>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card className="border border-white/10">
-          <CardHeader className="flex flex-row items-center justify-between pb-3">
-            <CardTitle className="text-base font-semibold flex items-center gap-2">
-              <Radio className="w-4 h-4 text-green-400" />
-              Recent Broadcasts
-            </CardTitle>
-            <Link href="/broadcasts">
-              <Button variant="ghost" size="sm" className="text-xs gap-1" data-testid="link-all-broadcasts">
-                View all <ChevronRight className="w-3 h-3" />
-              </Button>
-            </Link>
-          </CardHeader>
-          <CardContent>
-            {recentBroadcasts.length === 0 ? (
-              <div className="text-center py-8">
-                <Radio className="w-8 h-8 text-muted-foreground mx-auto mb-2" />
-                <p className="text-sm text-muted-foreground mb-3">No broadcasts yet</p>
-                <Link href="/broadcasts">
-                  <Button size="sm" className="gap-1">
-                    <Plus className="w-3 h-3" /> Create Broadcast
-                  </Button>
-                </Link>
-              </div>
-            ) : (
-              <div className="space-y-2">
-                {recentBroadcasts.map((broadcast) => (
-                  <Link key={broadcast.broadcastId} href={`/broadcasts/${broadcast.broadcastId}`}>
-                    <div
-                      className="flex items-center justify-between p-3 rounded-lg hover:bg-white/5 transition-colors cursor-pointer"
-                      data-testid={`dashboard-broadcast-${broadcast.broadcastId}`}
-                    >
-                      <div className="flex items-center gap-3">
-                        <StatusDot status={broadcast.status} />
-                        <div>
-                          <p className="text-sm font-medium">{broadcast.broadcastName}</p>
-                          <p className="text-xs text-muted-foreground">
-                            Campaign #{broadcast.campaignId}
-                          </p>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <StatusBadge status={broadcast.status} />
-                        <ChevronRight className="w-4 h-4 text-muted-foreground" />
-                      </div>
-                    </div>
-                  </Link>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      </div>
-
-      {liveBroadcasts.length > 0 && (
-        <Card className="border border-green-500/30 bg-green-500/5">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base font-semibold flex items-center gap-2">
-              <Activity className="w-4 h-4 text-green-400 animate-pulse" />
-              Live Now
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-              {liveBroadcasts.map((broadcast) => (
-                <Link key={broadcast.broadcastId} href={`/broadcasts/${broadcast.broadcastId}`}>
-                  <div className="flex items-center gap-3 p-3 rounded-lg bg-green-500/10 hover:bg-green-500/15 transition-colors cursor-pointer" data-testid={`live-broadcast-${broadcast.broadcastId}`}>
-                    <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium truncate">{broadcast.broadcastName}</p>
-                      <p className="text-xs text-muted-foreground">Campaign #{broadcast.campaignId}</p>
-                    </div>
-                    <Zap className="w-4 h-4 text-green-400" />
-                  </div>
-                </Link>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      <div className="mt-8 flex flex-wrap gap-3">
-        <Link href="/apps">
-          <Button variant="outline" className="gap-2" data-testid="quick-new-app">
-            <Plus className="w-4 h-4" /> New App
-          </Button>
-        </Link>
+    <AppLayout
+      headerBreadcrumb="All Client Apps"
+      headerBreadcrumbHref="/apps"
+      actions={
         <Link href="/campaigns">
-          <Button variant="outline" className="gap-2" data-testid="quick-new-campaign">
+          <Button size="sm" className="gap-1.5 bg-blue-600 hover:bg-blue-700 text-white h-9 px-4" data-testid="button-new-campaign">
             <Plus className="w-4 h-4" /> New Campaign
           </Button>
         </Link>
-        <Link href="/broadcasts">
-          <Button variant="outline" className="gap-2" data-testid="quick-new-broadcast">
-            <Plus className="w-4 h-4" /> New Broadcast
-          </Button>
-        </Link>
+      }
+    >
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+        <StatCard
+          icon={<Radio className="w-5 h-5" />}
+          iconBg="bg-purple-500/20"
+          iconColor="text-purple-400"
+          value={liveBroadcasts.length}
+          label="Live Broadcasts"
+          change={12}
+          testId="stat-live-broadcasts"
+        />
+        <StatCard
+          icon={<Megaphone className="w-5 h-5" />}
+          iconBg="bg-blue-500/20"
+          iconColor="text-blue-400"
+          value={activeCampaigns.length}
+          label="Active Campaigns"
+          change={8}
+          testId="stat-active-campaigns"
+        />
+        <StatCard
+          icon={<Users className="w-5 h-5" />}
+          iconBg="bg-emerald-500/20"
+          iconColor="text-emerald-400"
+          value={0}
+          formattedValue="--"
+          label="Active Viewers"
+          change={0}
+          testId="stat-active-viewers"
+        />
+        <StatCard
+          icon={<BarChart3 className="w-5 h-5" />}
+          iconBg="bg-orange-500/20"
+          iconColor="text-orange-400"
+          value={0}
+          formattedValue="--"
+          label="Engagement Rate"
+          change={0}
+          suffix="%"
+          testId="stat-engagement-rate"
+        />
       </div>
+
+      <div className="mb-8">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h2 className="text-lg font-semibold text-white" data-testid="text-client-apps-title">Client Apps</h2>
+            <p className="text-sm text-white/40">Manage your client applications and their campaigns</p>
+          </div>
+          <Link href="/apps">
+            <Button variant="outline" size="sm" className="gap-1.5 border-white/10 text-white/70 hover:text-white hover:bg-white/5" data-testid="button-new-client-app">
+              <Plus className="w-4 h-4" /> New Client App
+            </Button>
+          </Link>
+        </div>
+
+        {clientApps.length === 0 ? (
+          <div className="rounded-xl border border-white/5 bg-white/[0.02] p-8 text-center">
+            <div className="w-12 h-12 rounded-xl bg-purple-500/20 flex items-center justify-center mx-auto mb-3">
+              <Activity className="w-6 h-6 text-purple-400" />
+            </div>
+            <p className="text-white/50 text-sm mb-4">No client apps yet. Create your first app to get started.</p>
+            <Link href="/apps">
+              <Button size="sm" className="gap-1.5 bg-blue-600 hover:bg-blue-700">
+                <Plus className="w-4 h-4" /> Create App
+              </Button>
+            </Link>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {clientApps.map((app, index) => {
+              const appCampaigns = getCampaignsForApp(app.id);
+              const appBroadcasts = getBroadcastsForApp(app.id);
+              const activeBroadcasts = appBroadcasts.filter(b => b.status === 'live');
+              const gradient = APP_GRADIENTS[index % APP_GRADIENTS.length];
+              const icon = APP_ICONS[index % APP_ICONS.length];
+
+              return (
+                <Link key={app.id} href={`/apps/${app.id}`}>
+                  <div
+                    className="rounded-xl overflow-hidden cursor-pointer group transition-all hover:scale-[1.02] hover:shadow-xl"
+                    data-testid={`card-app-${app.id}`}
+                  >
+                    <div className={`bg-gradient-to-br ${gradient} p-5 relative`}>
+                      <div className="absolute top-3 right-3">
+                        <span className="px-2.5 py-1 rounded-full bg-white/20 text-xs font-medium text-white backdrop-blur-sm">
+                          {appCampaigns.length} Campaign{appCampaigns.length !== 1 ? 's' : ''}
+                        </span>
+                      </div>
+                      <div className="w-12 h-12 rounded-xl bg-white/20 backdrop-blur-sm flex items-center justify-center text-2xl mb-3">
+                        {icon}
+                      </div>
+                      <h3 className="text-white font-semibold text-base">{app.name}</h3>
+                      <p className="text-white/60 text-xs mt-0.5">{app.bundleId}</p>
+                    </div>
+                    <div className="bg-[#161429] p-4 border border-white/5 border-t-0 rounded-b-xl">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-[10px] text-white/30 uppercase tracking-wider">Active Broadcasts</p>
+                          <p className="text-lg font-bold text-white">{activeBroadcasts.length}</p>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-[10px] text-white/30 uppercase tracking-wider">Total Viewers</p>
+                          <p className="text-lg font-bold text-white">--</p>
+                        </div>
+                      </div>
+                      <div className="mt-3 w-full bg-white/10 rounded-full h-1.5">
+                        <div
+                          className="bg-gradient-to-r from-blue-400 to-purple-400 h-1.5 rounded-full transition-all"
+                          style={{ width: `${Math.min(appCampaigns.length * 15, 100)}%` }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </Link>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      <div className="mb-8">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h2 className="text-lg font-semibold text-white" data-testid="text-live-broadcasts-title">Live Broadcasts</h2>
+            <p className="text-sm text-white/40">Currently streaming events</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" className="gap-1.5 border-white/10 text-white/50 hover:text-white text-xs h-8" data-testid="button-filter-broadcasts">
+              <Filter className="w-3.5 h-3.5" /> Filter
+            </Button>
+            <Button variant="outline" size="sm" className="gap-1.5 border-white/10 text-white/50 hover:text-white text-xs h-8" data-testid="button-sort-broadcasts">
+              <ArrowUpDown className="w-3.5 h-3.5" /> Sort
+            </Button>
+          </div>
+        </div>
+
+        <div className="rounded-xl border border-white/5 overflow-hidden bg-white/[0.02]">
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr className="border-b border-white/5">
+                  <th className="text-left text-[10px] text-white/30 uppercase tracking-wider py-3 px-4 font-medium">Broadcast</th>
+                  <th className="text-left text-[10px] text-white/30 uppercase tracking-wider py-3 px-4 font-medium">Campaign</th>
+                  <th className="text-left text-[10px] text-white/30 uppercase tracking-wider py-3 px-4 font-medium">Status</th>
+                  <th className="text-left text-[10px] text-white/30 uppercase tracking-wider py-3 px-4 font-medium">Viewers</th>
+                  <th className="text-left text-[10px] text-white/30 uppercase tracking-wider py-3 px-4 font-medium">Engagement</th>
+                  <th className="text-left text-[10px] text-white/30 uppercase tracking-wider py-3 px-4 font-medium">Duration</th>
+                  <th className="text-left text-[10px] text-white/30 uppercase tracking-wider py-3 px-4 font-medium">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {liveBroadcasts.length === 0 ? (
+                  <tr>
+                    <td colSpan={7} className="text-center py-10">
+                      <Radio className="w-8 h-8 text-white/20 mx-auto mb-2" />
+                      <p className="text-sm text-white/30">No live broadcasts right now</p>
+                      <Link href="/broadcasts">
+                        <Button size="sm" variant="outline" className="mt-3 gap-1.5 border-white/10 text-white/50 text-xs">
+                          <Plus className="w-3.5 h-3.5" /> Create Broadcast
+                        </Button>
+                      </Link>
+                    </td>
+                  </tr>
+                ) : (
+                  liveBroadcasts.map((broadcast) => {
+                    const campaign = broadcast.campaignId ? campaignMap.get(broadcast.campaignId) : null;
+                    const duration = broadcast.startTime
+                      ? Math.floor((new Date().getTime() - new Date(broadcast.startTime).getTime()) / 60000)
+                      : 0;
+                    const hours = Math.floor(duration / 60);
+                    const mins = duration % 60;
+
+                    return (
+                      <tr key={broadcast.broadcastId} className="border-b border-white/5 hover:bg-white/[0.02] transition-colors" data-testid={`row-broadcast-${broadcast.broadcastId}`}>
+                        <td className="py-3 px-4">
+                          <div className="flex items-center gap-3">
+                            <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+                            <div>
+                              <p className="text-sm font-medium text-white">{broadcast.broadcastName}</p>
+                              <p className="text-xs text-white/30">{broadcast.broadcastId}</p>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="py-3 px-4">
+                          <p className="text-sm text-white/70">{campaign?.name || '--'}</p>
+                          <p className="text-xs text-white/30">{campaign?.description?.slice(0, 30) || ''}</p>
+                        </td>
+                        <td className="py-3 px-4">
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-green-500/20 text-green-400 text-xs font-medium">
+                            <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
+                            Live
+                          </span>
+                        </td>
+                        <td className="py-3 px-4">
+                          <p className="text-sm font-semibold text-white">--</p>
+                        </td>
+                        <td className="py-3 px-4">
+                          <p className="text-sm text-white/50">--</p>
+                        </td>
+                        <td className="py-3 px-4">
+                          <p className="text-sm text-white/70">{hours > 0 ? `${hours}h ${mins}m` : `${mins}m`}</p>
+                        </td>
+                        <td className="py-3 px-4">
+                          <Link href={`/broadcasts/${broadcast.broadcastId}`}>
+                            <Button size="sm" variant="outline" className="border-blue-500/30 text-blue-400 hover:bg-blue-500/10 text-xs h-7 px-3" data-testid={`button-manage-broadcast-${broadcast.broadcastId}`}>
+                              Manage
+                            </Button>
+                          </Link>
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      {(upcomingCampaigns.length > 0 || campaigns.length > 0) && (
+        <div>
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h2 className="text-lg font-semibold text-white" data-testid="text-upcoming-campaigns-title">Upcoming Campaigns</h2>
+              <p className="text-sm text-white/40">Scheduled campaigns for the next 7 days</p>
+            </div>
+            <Link href="/campaigns">
+              <Button variant="ghost" size="sm" className="gap-1 text-blue-400 hover:text-blue-300 text-xs" data-testid="link-view-all-campaigns">
+                View All <ChevronRight className="w-3.5 h-3.5" />
+              </Button>
+            </Link>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {(upcomingCampaigns.length > 0 ? upcomingCampaigns : campaigns.slice(0, 3)).map((campaign, index) => {
+              const channel = campaign.channelId ? channelMap.get(campaign.channelId) : null;
+              const app = channel ? clientApps.find(a => a.id === channel.clientAppId) : null;
+              const campaignBroadcasts = broadcasts.filter(b => b.campaignId === campaign.id);
+              const gradient = APP_GRADIENTS[index % APP_GRADIENTS.length];
+
+              return (
+                <div
+                  key={campaign.id}
+                  className="rounded-xl border border-white/5 bg-white/[0.02] overflow-hidden"
+                  data-testid={`card-campaign-${campaign.id}`}
+                >
+                  <div className="p-4">
+                    <div className="flex items-start justify-between mb-3">
+                      <div className="flex items-center gap-3">
+                        <div className={`w-10 h-10 rounded-lg bg-gradient-to-br ${gradient} flex items-center justify-center`}>
+                          <Megaphone className="w-5 h-5 text-white" />
+                        </div>
+                        <div>
+                          <h3 className="text-sm font-semibold text-white">{campaign.name}</h3>
+                          <p className="text-xs text-white/40">{app?.name || 'No app'}</p>
+                        </div>
+                      </div>
+                      {campaign.startDate && (
+                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium ${
+                          new Date(campaign.startDate) > new Date()
+                            ? 'bg-orange-500/20 text-orange-400'
+                            : 'bg-green-500/20 text-green-400'
+                        }`}>
+                          {new Date(campaign.startDate) > new Date()
+                            ? getDaysUntil(new Date(campaign.startDate))
+                            : 'Active'}
+                        </span>
+                      )}
+                    </div>
+                    <div className="grid grid-cols-3 gap-3 mb-4">
+                      <div>
+                        <p className="text-[10px] text-white/30 uppercase tracking-wider">Start Date</p>
+                        <p className="text-xs text-white/70 mt-0.5">
+                          {campaign.startDate ? new Date(campaign.startDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '--'}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] text-white/30 uppercase tracking-wider">Broadcasts</p>
+                        <p className="text-xs text-white/70 mt-0.5">{campaignBroadcasts.length} scheduled</p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] text-white/30 uppercase tracking-wider">Components</p>
+                        <p className="text-xs text-white/70 mt-0.5">--</p>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="px-4 pb-4 flex items-center gap-2">
+                    <Link href={`/campaigns/${campaign.id}`} className="flex-1">
+                      <Button className="w-full bg-blue-600 hover:bg-blue-700 text-white text-xs h-9" data-testid={`button-configure-campaign-${campaign.id}`}>
+                        Configure
+                      </Button>
+                    </Link>
+                    <Button variant="ghost" size="icon" className="text-white/30 hover:text-white/60 h-9 w-9" data-testid={`button-more-campaign-${campaign.id}`}>
+                      <MoreVertical className="w-4 h-4" />
+                    </Button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
     </AppLayout>
   );
 }
 
-function StatusDot({ status }: { status: string }) {
-  const colors: Record<string, string> = {
-    live: 'bg-green-400',
-    upcoming: 'bg-yellow-400',
-    ended: 'bg-gray-400',
-  };
-  return <div className={`w-2 h-2 rounded-full ${colors[status] || 'bg-gray-400'}`} />;
-}
-
-function StatusBadge({ status }: { status: string }) {
-  const styles: Record<string, string> = {
-    live: 'bg-green-500/20 text-green-400',
-    upcoming: 'bg-yellow-500/20 text-yellow-400',
-    ended: 'bg-gray-500/20 text-gray-400',
-  };
+function StatCard({
+  icon,
+  iconBg,
+  iconColor,
+  value,
+  formattedValue,
+  label,
+  change,
+  suffix = '',
+  testId,
+}: {
+  icon: React.ReactNode;
+  iconBg: string;
+  iconColor: string;
+  value: number;
+  formattedValue?: string;
+  label: string;
+  change: number;
+  suffix?: string;
+  testId: string;
+}) {
   return (
-    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${styles[status] || styles.ended}`}>
-      {status}
-    </span>
+    <div className="rounded-xl border border-white/5 bg-white/[0.02] p-4 hover:bg-white/[0.04] transition-all" data-testid={testId}>
+      <div className="flex items-start justify-between mb-3">
+        <div className={`w-10 h-10 rounded-xl ${iconBg} flex items-center justify-center ${iconColor}`}>
+          {icon}
+        </div>
+        {change > 0 && (
+          <div className="flex items-center gap-1 text-emerald-400 text-xs">
+            <TrendingUp className="w-3 h-3" />
+            <span>↑ {change}%</span>
+          </div>
+        )}
+      </div>
+      <p className="text-2xl font-bold text-white">{formattedValue || formatNumber(value)}{suffix}</p>
+      <p className="text-xs text-white/40 mt-0.5">{label}</p>
+    </div>
   );
 }
