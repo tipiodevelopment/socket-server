@@ -1,0 +1,498 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Broadcasts</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script> window.FontAwesomeConfig = { autoReplaceSvg: 'nest'};</script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/js/all.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        ::-webkit-scrollbar { display: none;}
+        * { font-family: 'Inter', sans-serif; }
+    </style>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        dark: {
+                            950: '#05070a',
+                            900: '#0a0e1a',
+                            800: '#141824',
+                            700: '#1e2433',
+                            600: '#2a3142',
+                            500: '#4b5563',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-black text-gray-100 font-sans antialiased selection:bg-white selection:text-black">
+
+<div class="flex h-screen overflow-hidden">
+    
+    <aside id="sidebar" class="w-16 bg-black border-r border-white/10 flex flex-col items-center py-6">
+        <div class="mb-8">
+            <div class="w-8 h-8 bg-white rounded flex items-center justify-center">
+                <i class="fa-solid fa-tower-broadcast text-black text-sm"></i>
+            </div>
+        </div>
+        
+        <nav class="flex flex-col items-center space-y-4 flex-grow">
+            <a href="#" class="w-10 h-10 flex items-center justify-center rounded hover:bg-white/10 text-gray-400 hover:text-white transition">
+                <i class="fa-solid fa-house text-sm"></i>
+            </a>
+            <a href="#" class="w-10 h-10 flex items-center justify-center rounded hover:bg-white/10 text-gray-400 hover:text-white transition">
+                <i class="fa-solid fa-mobile-screen text-sm"></i>
+            </a>
+            <a href="#" class="w-10 h-10 flex items-center justify-center rounded hover:bg-white/10 text-gray-400 hover:text-white transition">
+                <i class="fa-solid fa-bullhorn text-sm"></i>
+            </a>
+            <a href="#" class="w-10 h-10 flex items-center justify-center rounded bg-white text-black">
+                <i class="fa-solid fa-signal text-sm"></i>
+            </a>
+            <a href="#" class="w-10 h-10 flex items-center justify-center rounded hover:bg-white/10 text-gray-400 hover:text-white transition">
+                <i class="fa-solid fa-puzzle-piece text-sm"></i>
+            </a>
+            <a href="#" class="w-10 h-10 flex items-center justify-center rounded hover:bg-white/10 text-gray-400 hover:text-white transition">
+                <i class="fa-solid fa-chart-line text-sm"></i>
+            </a>
+        </nav>
+        
+        <div class="mt-auto space-y-4">
+            <a href="#" class="w-10 h-10 flex items-center justify-center rounded hover:bg-white/10 text-gray-400 hover:text-white transition">
+                <i class="fa-solid fa-gear text-sm"></i>
+            </a>
+            <div class="w-8 h-8 rounded overflow-hidden border border-white/20">
+                <img src="https://storage.googleapis.com/uxpilot-auth.appspot.com/avatars/avatar-3.jpg" alt="User" class="w-full h-full object-cover">
+            </div>
+        </div>
+    </aside>
+
+    <div class="flex-1 flex flex-col overflow-hidden bg-black">
+        
+        <header id="header" class="h-24 flex items-center justify-between px-8 bg-black border-b border-white/10">
+            <div class="flex items-center space-x-4">
+                <div>
+                    <h1 class="text-2xl font-bold text-white mb-1">Broadcasts</h1>
+                    <div class="flex items-center text-xs text-gray-500 space-x-2">
+                        <span class="text-gray-300">All broadcasts across campaigns</span>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="flex items-center space-x-3">
+                <button class="px-4 py-2 bg-white hover:bg-gray-200 text-black rounded text-sm transition flex items-center space-x-2 font-medium">
+                    <i class="fa-solid fa-plus text-xs"></i>
+                    <span>New Broadcast</span>
+                </button>
+            </div>
+        </header>
+
+        <div id="filters-section" class="px-8 py-4 border-b border-white/10">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center space-x-3">
+                    <button class="px-3 py-1.5 bg-white text-black rounded text-xs font-medium">
+                        All
+                    </button>
+                    <button class="px-3 py-1.5 bg-transparent border border-white/20 hover:border-white/40 text-gray-300 rounded text-xs font-medium transition">
+                        Live
+                    </button>
+                    <button class="px-3 py-1.5 bg-transparent border border-white/20 hover:border-white/40 text-gray-300 rounded text-xs font-medium transition">
+                        Upcoming
+                    </button>
+                    <button class="px-3 py-1.5 bg-transparent border border-white/20 hover:border-white/40 text-gray-300 rounded text-xs font-medium transition">
+                        Ended
+                    </button>
+                </div>
+                <div class="flex items-center space-x-3">
+                    <div class="relative">
+                        <input type="text" placeholder="Search broadcasts..." class="w-64 px-3 py-1.5 bg-transparent border border-white/20 rounded text-sm text-white placeholder-gray-500 focus:outline-none focus:border-white/40">
+                        <i class="fa-solid fa-search absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 text-xs"></i>
+                    </div>
+                    <button class="w-8 h-8 flex items-center justify-center rounded border border-white/20 hover:border-white/40 text-gray-400 hover:text-white transition">
+                        <i class="fa-solid fa-filter text-xs"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <main class="flex-1 overflow-y-auto px-8 py-6">
+            
+            <div id="live-broadcasts-section" class="mb-8">
+                <div class="flex items-center justify-between mb-4">
+                    <h2 class="text-sm font-semibold text-gray-400 uppercase">Live Now</h2>
+                    <span class="text-xs text-gray-500">2 broadcasts</span>
+                </div>
+                <div class="space-y-3">
+                    <div class="bg-transparent border border-white/10 rounded-lg p-5 hover:border-white/30 transition-all cursor-pointer">
+                        <div class="flex justify-between items-start mb-4">
+                            <div class="flex-1">
+                                <div class="flex items-center space-x-3 mb-2">
+                                    <h3 class="text-base font-semibold text-white">Main Match Broadcast</h3>
+                                    <span class="px-2 py-0.5 bg-white text-black text-[10px] uppercase font-bold rounded-full">Live</span>
+                                    <span class="flex items-center space-x-1 text-xs text-gray-400">
+                                        <div class="w-2 h-2 bg-white rounded-full animate-pulse"></div>
+                                        <span>45 mins ago</span>
+                                    </span>
+                                </div>
+                                <div class="text-sm text-gray-400 mb-3">Real Madrid vs Barcelona - Live Commentary</div>
+                                <div class="flex items-center space-x-2 text-xs text-gray-500 mb-3">
+                                    <span class="text-gray-300">El Clásico 2026</span>
+                                    <span class="text-gray-700">/</span>
+                                    <span class="text-gray-300">LaLiga Fan App</span>
+                                </div>
+                            </div>
+                            <button class="px-4 py-1.5 bg-white hover:bg-gray-200 text-black rounded text-xs transition font-medium">
+                                Manage
+                            </button>
+                        </div>
+                        <div class="grid grid-cols-5 gap-4 pt-4 border-t border-white/5">
+                            <div>
+                                <div class="text-xs text-gray-500 mb-1">Viewers</div>
+                                <div class="text-lg font-semibold text-white">847K</div>
+                            </div>
+                            <div>
+                                <div class="text-xs text-gray-500 mb-1">Active Polls</div>
+                                <div class="text-lg font-semibold text-white">3</div>
+                            </div>
+                            <div>
+                                <div class="text-xs text-gray-500 mb-1">Total Polls</div>
+                                <div class="text-lg font-semibold text-white">18</div>
+                            </div>
+                            <div>
+                                <div class="text-xs text-gray-500 mb-1">Contests</div>
+                                <div class="text-lg font-semibold text-white">6</div>
+                            </div>
+                            <div>
+                                <div class="text-xs text-gray-500 mb-1">Engagement</div>
+                                <div class="text-lg font-semibold text-white">68.4%</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="bg-transparent border border-white/10 rounded-lg p-5 hover:border-white/30 transition-all cursor-pointer">
+                        <div class="flex justify-between items-start mb-4">
+                            <div class="flex-1">
+                                <div class="flex items-center space-x-3 mb-2">
+                                    <h3 class="text-base font-semibold text-white">Champions League Final</h3>
+                                    <span class="px-2 py-0.5 bg-white text-black text-[10px] uppercase font-bold rounded-full">Live</span>
+                                    <span class="flex items-center space-x-1 text-xs text-gray-400">
+                                        <div class="w-2 h-2 bg-white rounded-full animate-pulse"></div>
+                                        <span>2 hrs ago</span>
+                                    </span>
+                                </div>
+                                <div class="text-sm text-gray-400 mb-3">Manchester City vs Bayern Munich</div>
+                                <div class="flex items-center space-x-2 text-xs text-gray-500 mb-3">
+                                    <span class="text-gray-300">UCL Finals 2026</span>
+                                    <span class="text-gray-700">/</span>
+                                    <span class="text-gray-300">UEFA Fan App</span>
+                                </div>
+                            </div>
+                            <button class="px-4 py-1.5 bg-white hover:bg-gray-200 text-black rounded text-xs transition font-medium">
+                                Manage
+                            </button>
+                        </div>
+                        <div class="grid grid-cols-5 gap-4 pt-4 border-t border-white/5">
+                            <div>
+                                <div class="text-xs text-gray-500 mb-1">Viewers</div>
+                                <div class="text-lg font-semibold text-white">1.2M</div>
+                            </div>
+                            <div>
+                                <div class="text-xs text-gray-500 mb-1">Active Polls</div>
+                                <div class="text-lg font-semibold text-white">2</div>
+                            </div>
+                            <div>
+                                <div class="text-xs text-gray-500 mb-1">Total Polls</div>
+                                <div class="text-lg font-semibold text-white">24</div>
+                            </div>
+                            <div>
+                                <div class="text-xs text-gray-500 mb-1">Contests</div>
+                                <div class="text-lg font-semibold text-white">8</div>
+                            </div>
+                            <div>
+                                <div class="text-xs text-gray-500 mb-1">Engagement</div>
+                                <div class="text-lg font-semibold text-white">72.1%</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="upcoming-broadcasts-section" class="mb-8">
+                <div class="flex items-center justify-between mb-4">
+                    <h2 class="text-sm font-semibold text-gray-400 uppercase">Upcoming</h2>
+                    <span class="text-xs text-gray-500">4 broadcasts</span>
+                </div>
+                <div class="space-y-3">
+                    <div class="bg-transparent border border-white/10 rounded-lg p-5 hover:border-white/30 transition-all cursor-pointer">
+                        <div class="flex justify-between items-start">
+                            <div class="flex-1">
+                                <div class="flex items-center space-x-3 mb-2">
+                                    <h3 class="text-base font-semibold text-white">Pre-Match Show</h3>
+                                    <span class="px-2 py-0.5 bg-white/10 text-gray-300 text-[10px] uppercase font-bold rounded-full border border-white/20">Upcoming</span>
+                                </div>
+                                <div class="text-sm text-gray-400 mb-3">Team lineups and match predictions</div>
+                                <div class="flex items-center space-x-2 text-xs text-gray-500 mb-3">
+                                    <span class="text-gray-300">El Clásico 2026</span>
+                                    <span class="text-gray-700">/</span>
+                                    <span class="text-gray-300">LaLiga Fan App</span>
+                                </div>
+                                <div class="flex items-center space-x-4 text-xs text-gray-500">
+                                    <div class="flex items-center space-x-1.5">
+                                        <i class="fa-solid fa-clock"></i>
+                                        <span>Starts in 30 mins</span>
+                                    </div>
+                                    <div class="flex items-center space-x-1.5">
+                                        <i class="fa-solid fa-square-poll-vertical"></i>
+                                        <span>6 polls</span>
+                                    </div>
+                                    <div class="flex items-center space-x-1.5">
+                                        <i class="fa-solid fa-trophy"></i>
+                                        <span>2 contests</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <button class="px-4 py-1.5 bg-transparent border border-white/20 hover:border-white/40 text-white rounded text-xs transition font-medium">
+                                Configure
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="bg-transparent border border-white/10 rounded-lg p-5 hover:border-white/30 transition-all cursor-pointer">
+                        <div class="flex justify-between items-start">
+                            <div class="flex-1">
+                                <div class="flex items-center space-x-3 mb-2">
+                                    <h3 class="text-base font-semibold text-white">Derby Match Day</h3>
+                                    <span class="px-2 py-0.5 bg-white/10 text-gray-300 text-[10px] uppercase font-bold rounded-full border border-white/20">Upcoming</span>
+                                </div>
+                                <div class="text-sm text-gray-400 mb-3">Arsenal vs Tottenham - North London Derby</div>
+                                <div class="flex items-center space-x-2 text-xs text-gray-500 mb-3">
+                                    <span class="text-gray-300">Premier League Highlights</span>
+                                    <span class="text-gray-700">/</span>
+                                    <span class="text-gray-300">Premier League App</span>
+                                </div>
+                                <div class="flex items-center space-x-4 text-xs text-gray-500">
+                                    <div class="flex items-center space-x-1.5">
+                                        <i class="fa-solid fa-clock"></i>
+                                        <span>Tomorrow at 14:00</span>
+                                    </div>
+                                    <div class="flex items-center space-x-1.5">
+                                        <i class="fa-solid fa-square-poll-vertical"></i>
+                                        <span>12 polls</span>
+                                    </div>
+                                    <div class="flex items-center space-x-1.5">
+                                        <i class="fa-solid fa-trophy"></i>
+                                        <span>5 contests</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <button class="px-4 py-1.5 bg-transparent border border-white/20 hover:border-white/40 text-white rounded text-xs transition font-medium">
+                                Configure
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="bg-transparent border border-white/10 rounded-lg p-5 hover:border-white/30 transition-all cursor-pointer">
+                        <div class="flex justify-between items-start">
+                            <div class="flex-1">
+                                <div class="flex items-center space-x-3 mb-2">
+                                    <h3 class="text-base font-semibold text-white">World Cup Qualifier</h3>
+                                    <span class="px-2 py-0.5 bg-white/10 text-gray-300 text-[10px] uppercase font-bold rounded-full border border-white/20">Upcoming</span>
+                                </div>
+                                <div class="text-sm text-gray-400 mb-3">Brazil vs Argentina - CONMEBOL Qualifiers</div>
+                                <div class="flex items-center space-x-2 text-xs text-gray-500 mb-3">
+                                    <span class="text-gray-300">Road to World Cup</span>
+                                    <span class="text-gray-700">/</span>
+                                    <span class="text-gray-300">FIFA App</span>
+                                </div>
+                                <div class="flex items-center space-x-4 text-xs text-gray-500">
+                                    <div class="flex items-center space-x-1.5">
+                                        <i class="fa-solid fa-clock"></i>
+                                        <span>Feb 15, 2026</span>
+                                    </div>
+                                    <div class="flex items-center space-x-1.5">
+                                        <i class="fa-solid fa-square-poll-vertical"></i>
+                                        <span>15 polls</span>
+                                    </div>
+                                    <div class="flex items-center space-x-1.5">
+                                        <i class="fa-solid fa-trophy"></i>
+                                        <span>7 contests</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <button class="px-4 py-1.5 bg-transparent border border-white/20 hover:border-white/40 text-white rounded text-xs transition font-medium">
+                                Configure
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="bg-transparent border border-white/10 rounded-lg p-5 hover:border-white/30 transition-all cursor-pointer">
+                        <div class="flex justify-between items-start">
+                            <div class="flex-1">
+                                <div class="flex items-center space-x-3 mb-2">
+                                    <h3 class="text-base font-semibold text-white">Super Bowl LVIII</h3>
+                                    <span class="px-2 py-0.5 bg-white/10 text-gray-300 text-[10px] uppercase font-bold rounded-full border border-white/20">Upcoming</span>
+                                </div>
+                                <div class="text-sm text-gray-400 mb-3">Championship Game with Interactive Ads</div>
+                                <div class="flex items-center space-x-2 text-xs text-gray-500 mb-3">
+                                    <span class="text-gray-300">NFL Championship</span>
+                                    <span class="text-gray-700">/</span>
+                                    <span class="text-gray-300">NFL Fan Zone</span>
+                                </div>
+                                <div class="flex items-center space-x-4 text-xs text-gray-500">
+                                    <div class="flex items-center space-x-1.5">
+                                        <i class="fa-solid fa-clock"></i>
+                                        <span>Feb 20, 2026</span>
+                                    </div>
+                                    <div class="flex items-center space-x-1.5">
+                                        <i class="fa-solid fa-square-poll-vertical"></i>
+                                        <span>20 polls</span>
+                                    </div>
+                                    <div class="flex items-center space-x-1.5">
+                                        <i class="fa-solid fa-trophy"></i>
+                                        <span>10 contests</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <button class="px-4 py-1.5 bg-transparent border border-white/20 hover:border-white/40 text-white rounded text-xs transition font-medium">
+                                Configure
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="ended-broadcasts-section">
+                <div class="flex items-center justify-between mb-4">
+                    <h2 class="text-sm font-semibold text-gray-400 uppercase">Recently Ended</h2>
+                    <span class="text-xs text-gray-500">3 broadcasts</span>
+                </div>
+                <div class="space-y-3">
+                    <div class="bg-transparent border border-white/10 rounded-lg p-5 hover:border-white/30 transition-all cursor-pointer opacity-60">
+                        <div class="flex justify-between items-start">
+                            <div class="flex-1">
+                                <div class="flex items-center space-x-3 mb-2">
+                                    <h3 class="text-base font-semibold text-white">Copa del Rey Final</h3>
+                                    <span class="px-2 py-0.5 bg-white/10 text-gray-400 text-[10px] uppercase font-bold rounded-full border border-white/10">Ended</span>
+                                </div>
+                                <div class="text-sm text-gray-400 mb-3">Athletic Bilbao vs Real Sociedad</div>
+                                <div class="flex items-center space-x-2 text-xs text-gray-500 mb-3">
+                                    <span class="text-gray-300">Copa del Rey 2026</span>
+                                    <span class="text-gray-700">/</span>
+                                    <span class="text-gray-300">LaLiga Fan App</span>
+                                </div>
+                                <div class="flex items-center space-x-4 text-xs text-gray-500">
+                                    <div class="flex items-center space-x-1.5">
+                                        <i class="fa-solid fa-chart-simple"></i>
+                                        <span>432K viewers</span>
+                                    </div>
+                                    <div class="flex items-center space-x-1.5">
+                                        <i class="fa-solid fa-square-poll-vertical"></i>
+                                        <span>16 polls</span>
+                                    </div>
+                                    <div class="flex items-center space-x-1.5">
+                                        <i class="fa-solid fa-trophy"></i>
+                                        <span>4 contests</span>
+                                    </div>
+                                    <div class="flex items-center space-x-1.5">
+                                        <i class="fa-solid fa-clock"></i>
+                                        <span>2 days ago</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <button class="px-4 py-1.5 bg-transparent border border-white/20 hover:border-white/40 text-white rounded text-xs transition font-medium">
+                                View Report
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="bg-transparent border border-white/10 rounded-lg p-5 hover:border-white/30 transition-all cursor-pointer opacity-60">
+                        <div class="flex justify-between items-start">
+                            <div class="flex-1">
+                                <div class="flex items-center space-x-3 mb-2">
+                                    <h3 class="text-base font-semibold text-white">NBA All-Star Game</h3>
+                                    <span class="px-2 py-0.5 bg-white/10 text-gray-400 text-[10px] uppercase font-bold rounded-full border border-white/10">Ended</span>
+                                </div>
+                                <div class="text-sm text-gray-400 mb-3">East vs West - All-Star Weekend</div>
+                                <div class="flex items-center space-x-2 text-xs text-gray-500 mb-3">
+                                    <span class="text-gray-300">NBA All-Star 2026</span>
+                                    <span class="text-gray-700">/</span>
+                                    <span class="text-gray-300">NBA App</span>
+                                </div>
+                                <div class="flex items-center space-x-4 text-xs text-gray-500">
+                                    <div class="flex items-center space-x-1.5">
+                                        <i class="fa-solid fa-chart-simple"></i>
+                                        <span>687K viewers</span>
+                                    </div>
+                                    <div class="flex items-center space-x-1.5">
+                                        <i class="fa-solid fa-square-poll-vertical"></i>
+                                        <span>22 polls</span>
+                                    </div>
+                                    <div class="flex items-center space-x-1.5">
+                                        <i class="fa-solid fa-trophy"></i>
+                                        <span>9 contests</span>
+                                    </div>
+                                    <div class="flex items-center space-x-1.5">
+                                        <i class="fa-solid fa-clock"></i>
+                                        <span>3 days ago</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <button class="px-4 py-1.5 bg-transparent border border-white/20 hover:border-white/40 text-white rounded text-xs transition font-medium">
+                                View Report
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="bg-transparent border border-white/10 rounded-lg p-5 hover:border-white/30 transition-all cursor-pointer opacity-60">
+                        <div class="flex justify-between items-start">
+                            <div class="flex-1">
+                                <div class="flex items-center space-x-3 mb-2">
+                                    <h3 class="text-base font-semibold text-white">Formula 1 Grand Prix</h3>
+                                    <span class="px-2 py-0.5 bg-white/10 text-gray-400 text-[10px] uppercase font-bold rounded-full border border-white/10">Ended</span>
+                                </div>
+                                <div class="text-sm text-gray-400 mb-3">Monaco Grand Prix - Race Day</div>
+                                <div class="flex items-center space-x-2 text-xs text-gray-500 mb-3">
+                                    <span class="text-gray-300">F1 Season 2026</span>
+                                    <span class="text-gray-700">/</span>
+                                    <span class="text-gray-300">Formula 1 App</span>
+                                </div>
+                                <div class="flex items-center space-x-4 text-xs text-gray-500">
+                                    <div class="flex items-center space-x-1.5">
+                                        <i class="fa-solid fa-chart-simple"></i>
+                                        <span>923K viewers</span>
+                                    </div>
+                                    <div class="flex items-center space-x-1.5">
+                                        <i class="fa-solid fa-square-poll-vertical"></i>
+                                        <span>28 polls</span>
+                                    </div>
+                                    <div class="flex items-center space-x-1.5">
+                                        <i class="fa-solid fa-trophy"></i>
+                                        <span>12 contests</span>
+                                    </div>
+                                    <div class="flex items-center space-x-1.5">
+                                        <i class="fa-solid fa-clock"></i>
+                                        <span>5 days ago</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <button class="px-4 py-1.5 bg-transparent border border-white/20 hover:border-white/40 text-white rounded text-xs transition font-medium">
+                                View Report
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        </main>
+    </div>
+</div>
+
+</body>
+</html>
