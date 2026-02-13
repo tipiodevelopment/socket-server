@@ -1367,6 +1367,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
           return res.status(403).json({ message: 'Access denied - app does not belong to this user' });
         }
       }
+
+      if (req.body.sponsorId) {
+        const sponsor = await storage.getSponsor(req.body.sponsorId);
+        if (!sponsor) {
+          return res.status(404).json({ message: 'Sponsor not found' });
+        }
+        if (sponsor.userId !== userId) {
+          return res.status(403).json({ message: 'Access denied - sponsor does not belong to this user' });
+        }
+      }
       
       const campaign = await storage.createCampaign(req.body);
       res.status(201).json(campaign);
@@ -1433,6 +1443,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       if (updateData.matchStartTime !== undefined) {
         updateData.matchStartTime = updateData.matchStartTime ? new Date(updateData.matchStartTime) : null;
+      }
+
+      if (updateData.sponsorId) {
+        const existingCampaign = await storage.getCampaign(parseInt(req.params.id));
+        if (existingCampaign) {
+          const sponsor = await storage.getSponsor(updateData.sponsorId);
+          if (!sponsor) {
+            return res.status(404).json({ message: 'Sponsor not found' });
+          }
+          if (sponsor.userId !== existingCampaign.userId) {
+            return res.status(403).json({ message: 'Access denied - sponsor does not belong to this user' });
+          }
+        }
       }
       
       const campaign = await storage.updateCampaign(parseInt(req.params.id), updateData);
