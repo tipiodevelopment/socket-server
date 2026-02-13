@@ -23,6 +23,7 @@ export const clientApps = pgTable("client_apps", {
   description: text("description"),
   status: varchar("status", { length: 20 }).notNull().default('active'),
   iconUrl: text("icon_url"),
+  bannerUrl: text("banner_url"),
   createdAt: timestamp("created_at").defaultNow().notNull()
 });
 
