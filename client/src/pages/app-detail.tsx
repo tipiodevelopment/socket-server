@@ -14,6 +14,7 @@ import { queryClient, apiRequest } from '@/lib/queryClient';
 import { useUser } from '@/contexts/UserContext';
 import { AppLayout } from '@/components/AppLayout';
 import type { ClientApp, Campaign, Component as ComponentType } from '@shared/schema';
+import { ImageUploadWithPreview } from '@/components/ImageUploadWithPreview';
 import { ArrowLeft, Plus, Key, Copy, RefreshCw, Eye, EyeOff, Settings, ChevronRight, Megaphone, Puzzle, BarChart3, Users, Radio, Palette, Shield, Bell, Plug, X } from 'lucide-react';
 
 const gradients = [
@@ -72,6 +73,8 @@ export default function AppDetailPage() {
   const [editName, setEditName] = useState('');
   const [editDescription, setEditDescription] = useState('');
   const [editStatus, setEditStatus] = useState('active');
+  const [editIconUrl, setEditIconUrl] = useState('');
+  const [editBannerUrl, setEditBannerUrl] = useState('');
   const [editingReachuKey, setEditingReachuKey] = useState('');
   const [reachuKeyInitialized, setReachuKeyInitialized] = useState(false);
 
@@ -220,6 +223,8 @@ export default function AppDetailPage() {
     setEditName(app.name);
     setEditDescription(app.description || '');
     setEditStatus(app.status || 'active');
+    setEditIconUrl(app.iconUrl || '');
+    setEditBannerUrl(app.bannerUrl || '');
     setEditModalOpen(true);
   };
 
@@ -265,6 +270,12 @@ export default function AppDetailPage() {
   return (
     <AppLayout breadcrumbs={[{ label: 'My Apps', href: '/apps' }, { label: app.name }]}>
       <div className="space-y-6">
+        {app.bannerUrl && (
+          <div className="relative h-32 rounded-xl overflow-hidden -mt-2 mb-2">
+            <img src={app.bannerUrl} alt={`${app.name} banner`} className="w-full h-full object-cover" data-testid="img-app-banner" />
+            <div className="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent" />
+          </div>
+        )}
         <div className="flex items-center gap-4">
           <Link href="/apps">
             <button
@@ -274,6 +285,11 @@ export default function AppDetailPage() {
               <ArrowLeft className="w-4 h-4" />
             </button>
           </Link>
+          {app.iconUrl && (
+            <div className="w-10 h-10 rounded-xl overflow-hidden border-2 border-gray-200 dark:border-gray-600 shadow-sm flex-shrink-0">
+              <img src={app.iconUrl} alt={`${app.name} logo`} className="w-full h-full object-cover" data-testid="img-app-logo" />
+            </div>
+          )}
           <h1 className="text-xl font-semibold text-gray-900 dark:text-gray-100" data-testid="text-app-name">{app.name}</h1>
           <span
             data-testid="badge-app-status"
@@ -647,7 +663,7 @@ export default function AppDetailPage() {
       </div>
 
       <Dialog open={editModalOpen} onOpenChange={setEditModalOpen}>
-        <DialogContent className="bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700">
+        <DialogContent className="bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="text-gray-900 dark:text-white">Edit App Details</DialogTitle>
             <DialogDescription className="text-gray-500 dark:text-gray-400">
@@ -697,13 +713,27 @@ export default function AppDetailPage() {
                 </SelectContent>
               </Select>
             </div>
+            <ImageUploadWithPreview
+              label="Logo"
+              value={editIconUrl}
+              onChange={setEditIconUrl}
+              placeholder="Upload or paste logo URL"
+              testId="input-edit-logo"
+            />
+            <ImageUploadWithPreview
+              label="Banner"
+              value={editBannerUrl}
+              onChange={setEditBannerUrl}
+              placeholder="Upload or paste banner URL"
+              testId="input-edit-banner"
+            />
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditModalOpen(false)} className="border-gray-200 dark:border-gray-600 text-gray-700 dark:text-gray-300">
               Cancel
             </Button>
             <Button
-              onClick={() => updateAppMutation.mutate({ name: editName, description: editDescription, status: editStatus })}
+              onClick={() => updateAppMutation.mutate({ name: editName, description: editDescription, status: editStatus, iconUrl: editIconUrl || null, bannerUrl: editBannerUrl || null })}
               disabled={updateAppMutation.isPending || !editName.trim()}
               className="bg-purple-600 hover:bg-purple-700 text-white"
               data-testid="button-save-edit"

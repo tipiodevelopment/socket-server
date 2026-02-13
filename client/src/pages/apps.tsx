@@ -44,6 +44,7 @@ import { queryClient, apiRequest } from '@/lib/queryClient';
 import { useUser } from '@/contexts/UserContext';
 import { AppLayout } from '@/components/AppLayout';
 import type { ClientApp } from '@shared/schema';
+import { ImageUploadWithPreview } from '@/components/ImageUploadWithPreview';
 import { Plus, Smartphone, Pencil, Settings, MoreVertical, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 
@@ -60,6 +61,8 @@ interface ClientAppWithStats extends ClientApp {
 const createClientAppSchema = z.object({
   name: z.string().min(1, 'App name is required').max(255, 'App name too long'),
   bundleId: z.string().min(1, 'Bundle ID is required').max(255, 'Bundle ID too long'),
+  iconUrl: z.string().optional(),
+  bannerUrl: z.string().optional(),
 });
 
 type CreateClientAppForm = z.infer<typeof createClientAppSchema>;
@@ -98,9 +101,12 @@ export default function AppsPage() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [appToDelete, setAppToDelete] = useState<ClientAppWithStats | null>(null);
 
+  const [logoUrl, setLogoUrl] = useState('');
+  const [bannerUrl, setBannerUrl] = useState('');
+
   const form = useForm<CreateClientAppForm>({
     resolver: zodResolver(createClientAppSchema),
-    defaultValues: { name: '', bundleId: '' },
+    defaultValues: { name: '', bundleId: '', iconUrl: '', bannerUrl: '' },
   });
 
   const { data: clientApps = [], isLoading } = useQuery<ClientAppWithStats[]>({
@@ -114,7 +120,7 @@ export default function AppsPage() {
   });
 
   const createMutation = useMutation({
-    mutationFn: async (data: { name: string; bundleId: string; userId: number }) => {
+    mutationFn: async (data: { name: string; bundleId: string; userId: number; iconUrl?: string; bannerUrl?: string }) => {
       const response = await apiRequest('POST', '/api/client-apps', data);
       return response.json();
     },
@@ -123,6 +129,8 @@ export default function AppsPage() {
       queryClient.invalidateQueries({ queryKey: ['/api/client-apps', userId] });
       setCreateDialogOpen(false);
       form.reset();
+      setLogoUrl('');
+      setBannerUrl('');
       toast({ title: 'App Created', description: 'Your new app is ready to use' });
     },
     onError: () => {
@@ -148,7 +156,13 @@ export default function AppsPage() {
 
   const onSubmitCreateApp = (data: CreateClientAppForm) => {
     if (!userId) return;
-    createMutation.mutate({ ...data, userId });
+    createMutation.mutate({
+      name: data.name,
+      bundleId: data.bundleId,
+      userId,
+      iconUrl: logoUrl || undefined,
+      bannerUrl: bannerUrl || undefined,
+    });
   };
 
   return (
@@ -163,7 +177,7 @@ export default function AppsPage() {
               New App
             </Button>
           </DialogTrigger>
-          <DialogContent>
+          <DialogContent className="max-h-[85vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>Create New App</DialogTitle>
               <DialogDescription>
@@ -200,6 +214,20 @@ export default function AppsPage() {
                       <FormMessage />
                     </FormItem>
                   )}
+                />
+                <ImageUploadWithPreview
+                  label="Logo"
+                  value={logoUrl}
+                  onChange={setLogoUrl}
+                  placeholder="Upload or paste logo URL"
+                  testId="input-app-logo"
+                />
+                <ImageUploadWithPreview
+                  label="Banner"
+                  value={bannerUrl}
+                  onChange={setBannerUrl}
+                  placeholder="Upload or paste banner URL"
+                  testId="input-app-banner"
                 />
                 <DialogFooter>
                   <Button type="submit" disabled={createMutation.isPending} data-testid="button-submit-app" className="bg-blue-600 hover:bg-blue-700 text-white">
@@ -250,8 +278,16 @@ export default function AppsPage() {
                 className="bg-white dark:bg-[#161429] border border-gray-200 dark:border-white/10 rounded-2xl overflow-hidden hover:border-gray-300 dark:hover:border-white/20 transition-all group"
                 data-testid={`card-app-${app.id}`}
               >
-                <div className={`relative h-24 bg-gradient-to-r ${gradient} p-4`}>
-                  <div className="absolute top-3 right-3">
+                <div className={`relative h-24 ${app.bannerUrl ? '' : `bg-gradient-to-r ${gradient}`} p-4 overflow-hidden`}>
+                  {app.bannerUrl && (
+                    <img
+                      src={app.bannerUrl}
+                      alt={`${app.name} banner`}
+                      className="absolute inset-0 w-full h-full object-cover"
+                      data-testid={`img-banner-${app.id}`}
+                    />
+                  )}
+                  <div className="absolute top-3 right-3 z-10">
                     <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-500/90 text-white" data-testid={`badge-campaigns-${app.id}`}>
                       {app.stats.campaignCount} Campaign{app.stats.campaignCount !== 1 ? 's' : ''}
                     </span>
@@ -260,8 +296,17 @@ export default function AppsPage() {
 
                 <div className="p-4">
                   <div className="flex items-center gap-3 mb-4 -mt-8">
-                    <div className="w-11 h-11 bg-gray-800 dark:bg-[#1e1b30] border-2 border-white dark:border-[#161429] rounded-xl flex items-center justify-center text-lg shadow-lg">
-                      {icon}
+                    <div className="w-11 h-11 bg-gray-800 dark:bg-[#1e1b30] border-2 border-white dark:border-[#161429] rounded-xl flex items-center justify-center text-lg shadow-lg overflow-hidden">
+                      {app.iconUrl ? (
+                        <img
+                          src={app.iconUrl}
+                          alt={`${app.name} logo`}
+                          className="w-full h-full object-cover"
+                          data-testid={`img-logo-${app.id}`}
+                        />
+                      ) : (
+                        icon
+                      )}
                     </div>
                     <div className="pt-5">
                       <Link href={`/apps/${app.id}`}>
