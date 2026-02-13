@@ -1,12 +1,9 @@
-import { useParams, Link } from 'wouter';
+import { useParams, Link, useLocation } from 'wouter';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Switch } from '@/components/ui/switch';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
@@ -15,7 +12,7 @@ import { queryClient, apiRequest } from '@/lib/queryClient';
 import { AppLayout } from '@/components/AppLayout';
 import type { BreadcrumbItem } from '@/components/AppLayout';
 import type { Broadcast, Poll, PollOptionRecord, Contest, Campaign } from '@shared/schema';
-import { ArrowLeft, Plus, Trash2, Clock, Calendar, Radio, BarChart3, Trophy, X, ChevronRight } from 'lucide-react';
+import { ArrowLeft, Plus, Trash2, Clock, BarChart3, Trophy, X, MoreVertical, CheckCircle } from 'lucide-react';
 import { useState } from 'react';
 import { useUser } from '@/contexts/UserContext';
 
@@ -25,18 +22,6 @@ type BroadcastWithRelations = Broadcast & {
   campaign?: Campaign | null;
 };
 
-function getStatusBadge(status: string) {
-  switch (status) {
-    case 'live':
-      return <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-500/20 text-green-400" data-testid="badge-status-live">Live</span>;
-    case 'ended':
-      return <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-500/20 text-gray-400" data-testid="badge-status-ended">Ended</span>;
-    case 'upcoming':
-    default:
-      return <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-500/20 text-yellow-400" data-testid="badge-status-upcoming">Upcoming</span>;
-  }
-}
-
 const CONTEST_TYPES = [
   { value: 'quiz', label: 'Quiz' },
   { value: 'giveaway', label: 'Giveaway' },
@@ -44,8 +29,186 @@ const CONTEST_TYPES = [
   { value: 'prediction', label: 'Prediction' },
 ];
 
+function StatusBadge({ status }: { status: string }) {
+  if (status === 'live') {
+    return (
+      <span className="px-2 py-0.5 bg-white dark:bg-white text-black dark:text-black text-[10px] uppercase font-bold rounded-full flex items-center space-x-1" data-testid="badge-status-live">
+        <div className="w-1.5 h-1.5 bg-black dark:bg-black rounded-full animate-pulse"></div>
+        <span>Live</span>
+      </span>
+    );
+  }
+  if (status === 'upcoming') {
+    return (
+      <span className="px-2 py-0.5 bg-white/10 dark:bg-white/10 text-muted-foreground text-[10px] uppercase font-bold rounded-full border border-white/20 dark:border-white/20" data-testid="badge-status-upcoming">
+        Upcoming
+      </span>
+    );
+  }
+  return (
+    <span className="px-2 py-0.5 bg-white/10 dark:bg-white/10 text-muted-foreground text-[10px] uppercase font-bold rounded-full border border-white/10 dark:border-white/10" data-testid="badge-status-ended">
+      Ended
+    </span>
+  );
+}
+
+function ActivePollCard({ poll, onToggle, onDelete }: {
+  poll: Poll & { options?: PollOptionRecord[] };
+  onToggle: (pollId: number, isActive: boolean) => void;
+  onDelete: (pollId: number) => void;
+}) {
+  const totalVotes = poll.totalVotes || 0;
+  const isActive = poll.isActive;
+
+  return (
+    <div
+      className={`bg-transparent border rounded-lg p-4 ${isActive ? 'border-blue-500/30' : 'border-white/10 dark:border-white/10'}`}
+      data-testid={`card-poll-${poll.id}`}
+    >
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center space-x-2">
+          {isActive && <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>}
+          <span className={`text-xs font-semibold uppercase ${isActive ? 'text-blue-400' : 'text-muted-foreground'}`} data-testid={`badge-poll-active-${poll.id}`}>
+            {isActive ? 'Poll Active' : 'Poll Inactive'}
+          </span>
+        </div>
+        <div className="flex items-center space-x-2">
+          <Switch
+            checked={isActive}
+            onCheckedChange={(checked) => onToggle(poll.id, checked)}
+            data-testid={`switch-poll-${poll.id}`}
+            className="scale-75"
+          />
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <button className="text-xs text-muted-foreground hover:text-foreground" data-testid={`button-delete-poll-${poll.id}`}>
+                <Trash2 className="w-3.5 h-3.5" />
+              </button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Delete Poll?</AlertDialogTitle>
+                <AlertDialogDescription>This will permanently delete this poll and all its votes.</AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogAction onClick={() => onDelete(poll.id)} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                  Delete
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+        </div>
+      </div>
+
+      <h3 className="text-sm font-semibold text-foreground mb-2" data-testid={`text-poll-question-${poll.id}`}>{poll.question}</h3>
+
+      {isActive && poll.options && poll.options.length > 0 ? (
+        <>
+          <div className="space-y-2 mb-3">
+            {poll.options.map((option) => {
+              const percentage = totalVotes > 0 ? Math.round((option.voteCount / totalVotes) * 100) : 0;
+              return (
+                <div key={option.id} data-testid={`poll-option-${option.id}`}>
+                  <div className="flex justify-between text-xs mb-1">
+                    <span className="text-foreground/70">{option.text}</span>
+                    <span className="text-foreground font-semibold">{percentage}%</span>
+                  </div>
+                  <div className="h-1.5 bg-white/10 dark:bg-white/10 rounded-full overflow-hidden">
+                    <div className="h-full bg-blue-500 rounded-full transition-all" style={{ width: `${percentage}%` }} data-testid={`poll-option-bar-${option.id}`}></div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          <div className="flex items-center justify-between text-xs text-muted-foreground">
+            <span>{totalVotes.toLocaleString()} votes</span>
+          </div>
+        </>
+      ) : (
+        poll.options && poll.options.length > 0 && (
+          <div className="space-y-1.5 mb-3 text-xs text-muted-foreground">
+            {poll.options.map((option) => (
+              <div key={option.id} className="flex items-center space-x-2">
+                <CheckCircle className="w-3 h-3" />
+                <span>{option.text}</span>
+              </div>
+            ))}
+          </div>
+        )
+      )}
+    </div>
+  );
+}
+
+function ContestCard({ contest, onToggle, onDelete }: {
+  contest: Contest;
+  onToggle: (contestId: number, isActive: boolean) => void;
+  onDelete: (contestId: number) => void;
+}) {
+  return (
+    <div
+      className={`bg-transparent border rounded-lg p-4 ${contest.isActive ? 'border-purple-500/30' : 'border-white/10 dark:border-white/10'}`}
+      data-testid={`card-contest-${contest.id}`}
+    >
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center space-x-2">
+          {contest.isActive && <div className="w-2 h-2 bg-purple-500 rounded-full"></div>}
+          <span className={`text-xs font-semibold uppercase ${contest.isActive ? 'text-purple-400' : 'text-muted-foreground'}`}>
+            {contest.isActive ? 'Active' : 'Inactive'}
+          </span>
+        </div>
+        <div className="flex items-center space-x-2">
+          <Switch
+            checked={contest.isActive}
+            onCheckedChange={(checked) => onToggle(contest.id, checked)}
+            data-testid={`switch-contest-${contest.id}`}
+            className="scale-75"
+          />
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <button className="text-xs text-muted-foreground hover:text-foreground" data-testid={`button-delete-contest-${contest.id}`}>
+                <Trash2 className="w-3.5 h-3.5" />
+              </button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Delete Contest?</AlertDialogTitle>
+                <AlertDialogDescription>This will permanently delete this contest and all participations.</AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogAction onClick={() => onDelete(contest.id)} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                  Delete
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+        </div>
+      </div>
+
+      <div className="flex items-start space-x-3">
+        <div className={`w-12 h-12 rounded flex items-center justify-center flex-shrink-0 ${contest.isActive ? 'bg-purple-500/20' : 'bg-white/5 dark:bg-white/5'}`}>
+          <Trophy className={`w-5 h-5 ${contest.isActive ? 'text-purple-400' : 'text-muted-foreground'}`} />
+        </div>
+        <div className="flex-1 min-w-0">
+          <h3 className="text-sm font-semibold text-foreground mb-1" data-testid={`text-contest-title-${contest.id}`}>{contest.title}</h3>
+          {contest.description && (
+            <p className="text-xs text-muted-foreground mb-2 truncate">{contest.description}</p>
+          )}
+          <div className="flex items-center justify-between text-xs">
+            {contest.contestType && <span className="text-muted-foreground capitalize">{contest.contestType}</span>}
+            {contest.prize && <span className="text-foreground/70 font-medium">Prize: {contest.prize}</span>}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function BroadcastDetailPage() {
   const params = useParams();
+  const [, setLocation] = useLocation();
   const { userId } = useUser();
   const broadcastId = params.broadcastId;
   const { toast } = useToast();
@@ -60,13 +223,18 @@ export default function BroadcastDetailPage() {
     enabled: !!broadcastId,
   });
 
+  const { data: campaignData } = useQuery<Campaign>({
+    queryKey: ['/api/campaigns', broadcast?.campaignId],
+    enabled: !!broadcast?.campaignId,
+  });
+
   const createPollMutation = useMutation({
     mutationFn: async (data: { question: string; options: string[] }) => {
       return await apiRequest('POST', `/api/broadcasts/${broadcastId}/polls`, data);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/broadcasts', broadcastId] });
-      toast({ title: 'Poll Created', description: 'The poll has been created successfully.' });
+      toast({ title: 'Poll Created' });
       setPollDialogOpen(false);
       setPollForm({ question: '', options: ['', ''] });
     },
@@ -76,12 +244,10 @@ export default function BroadcastDetailPage() {
   });
 
   const deletePollMutation = useMutation({
-    mutationFn: async (pollId: number) => {
-      return await apiRequest('DELETE', `/api/polls/${pollId}`);
-    },
+    mutationFn: async (pollId: number) => apiRequest('DELETE', `/api/polls/${pollId}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/broadcasts', broadcastId] });
-      toast({ title: 'Poll Deleted', description: 'The poll has been deleted successfully.' });
+      toast({ title: 'Poll Deleted' });
     },
     onError: () => {
       toast({ title: 'Error', description: 'Failed to delete poll.', variant: 'destructive' });
@@ -94,7 +260,6 @@ export default function BroadcastDetailPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/broadcasts', broadcastId] });
-      toast({ title: 'Poll Updated', description: 'Poll status has been updated.' });
     },
     onError: () => {
       toast({ title: 'Error', description: 'Failed to update poll.', variant: 'destructive' });
@@ -107,7 +272,7 @@ export default function BroadcastDetailPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/broadcasts', broadcastId] });
-      toast({ title: 'Contest Created', description: 'The contest has been created successfully.' });
+      toast({ title: 'Contest Created' });
       setContestDialogOpen(false);
       setContestForm({ title: '', description: '', prize: '', contestType: 'quiz' });
     },
@@ -117,12 +282,10 @@ export default function BroadcastDetailPage() {
   });
 
   const deleteContestMutation = useMutation({
-    mutationFn: async (contestId: number) => {
-      return await apiRequest('DELETE', `/api/contests/${contestId}`);
-    },
+    mutationFn: async (contestId: number) => apiRequest('DELETE', `/api/contests/${contestId}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/broadcasts', broadcastId] });
-      toast({ title: 'Contest Deleted', description: 'The contest has been deleted successfully.' });
+      toast({ title: 'Contest Deleted' });
     },
     onError: () => {
       toast({ title: 'Error', description: 'Failed to delete contest.', variant: 'destructive' });
@@ -135,7 +298,6 @@ export default function BroadcastDetailPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/broadcasts', broadcastId] });
-      toast({ title: 'Contest Updated', description: 'Contest status has been updated.' });
     },
     onError: () => {
       toast({ title: 'Error', description: 'Failed to update contest.', variant: 'destructive' });
@@ -179,16 +341,8 @@ export default function BroadcastDetailPage() {
     }));
   };
 
-  const { data: campaignData } = useQuery<Campaign>({
-    queryKey: ['/api/campaigns', broadcast?.campaignId],
-    enabled: !!broadcast?.campaignId,
-  });
-
   const buildBreadcrumbs = (): BreadcrumbItem[] => {
     const crumbs: BreadcrumbItem[] = [{ label: 'Broadcasts', href: '/broadcasts' }];
-    if (campaignData) {
-      crumbs.push({ label: campaignData.name, href: `/campaigns/${campaignData.id}` });
-    }
     if (broadcast) crumbs.push({ label: broadcast.broadcastName });
     else crumbs.push({ label: 'Loading...' });
     return crumbs;
@@ -216,131 +370,82 @@ export default function BroadcastDetailPage() {
 
   const polls = broadcast.polls || [];
   const contests = broadcast.contests || [];
+  const activePolls = polls.filter(p => p.isActive);
+  const inactivePolls = polls.filter(p => !p.isActive);
 
   return (
     <AppLayout breadcrumbs={buildBreadcrumbs()}>
-      <div>
-        <div className="mb-6">
-          <div className="flex items-start justify-between gap-4">
-            <div className="flex-1">
-              <div className="flex items-center gap-3 mb-2">
-                <h1 className="text-3xl sm:text-4xl font-bold text-foreground" data-testid="text-broadcast-name">
-                  {broadcast.broadcastName}
-                </h1>
-                {getStatusBadge(broadcast.status)}
+      <div className="-mt-2">
+        <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center space-x-4">
+            <button
+              onClick={() => setLocation('/broadcasts')}
+              className="w-8 h-8 flex items-center justify-center rounded hover:bg-white/10 dark:hover:bg-white/10 text-muted-foreground hover:text-foreground transition"
+              data-testid="button-back"
+            >
+              <ArrowLeft className="w-4 h-4" />
+            </button>
+            <div>
+              <div className="flex items-center space-x-3 mb-1">
+                <h1 className="text-xl font-bold text-foreground" data-testid="text-broadcast-name">{broadcast.broadcastName}</h1>
+                <StatusBadge status={broadcast.status} />
               </div>
-              <p className="text-sm text-muted-foreground font-mono mb-2" data-testid="text-broadcast-id">
-                ID: {broadcast.broadcastId}
-              </p>
-              <div className="flex flex-wrap gap-4 text-sm text-muted-foreground">
-                {broadcast.startTime && (
-                  <div className="flex items-center gap-1">
-                    <Clock className="w-4 h-4" />
-                    <span>Start: {new Date(broadcast.startTime).toLocaleString()}</span>
-                  </div>
+              <div className="flex items-center text-xs text-muted-foreground space-x-2">
+                {campaignData && (
+                  <>
+                    <Link href={`/campaigns/${campaignData.id}`}>
+                      <span className="text-foreground/70 hover:text-foreground cursor-pointer" data-testid="link-campaign">{campaignData.name}</span>
+                    </Link>
+                    <span className="text-muted-foreground/30">/</span>
+                  </>
                 )}
-                {broadcast.endTime && (
-                  <div className="flex items-center gap-1">
-                    <Calendar className="w-4 h-4" />
-                    <span>End: {new Date(broadcast.endTime).toLocaleString()}</span>
-                  </div>
-                )}
-                {broadcast.campaign && (
-                  <Link href={`/campaign/${broadcast.campaignId}/dashboard`}>
-                    <span className="flex items-center gap-1 text-primary hover:underline cursor-pointer" data-testid="link-campaign">
-                      <ChevronRight className="w-4 h-4" />
-                      Campaign: {broadcast.campaign.name}
-                    </span>
-                  </Link>
-                )}
+                <span className="text-muted-foreground" data-testid="text-broadcast-id">{broadcast.broadcastId}</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex items-center space-x-3">
+            <div className="flex items-center space-x-4 px-4 py-2 bg-white/5 dark:bg-white/5 rounded border border-white/10 dark:border-white/10">
+              <div className="text-center">
+                <div className="text-xs text-muted-foreground">Viewers</div>
+                <div className="text-sm font-semibold text-foreground" data-testid="stat-header-viewers">—</div>
+              </div>
+              <div className="w-px h-8 bg-white/10 dark:bg-white/10"></div>
+              <div className="text-center">
+                <div className="text-xs text-muted-foreground">Polls</div>
+                <div className="text-sm font-semibold text-foreground" data-testid="stat-header-polls">{polls.length}</div>
+              </div>
+              <div className="w-px h-8 bg-white/10 dark:bg-white/10"></div>
+              <div className="text-center">
+                <div className="text-xs text-muted-foreground">Contests</div>
+                <div className="text-sm font-semibold text-foreground" data-testid="stat-header-contests">{contests.length}</div>
+              </div>
+              <div className="w-px h-8 bg-white/10 dark:bg-white/10"></div>
+              <div className="text-center">
+                <div className="text-xs text-muted-foreground">Engagement</div>
+                <div className="text-sm font-semibold text-foreground" data-testid="stat-header-engagement">—</div>
               </div>
             </div>
           </div>
         </div>
 
-        <Tabs defaultValue="overview" className="w-full">
-          <TabsList className="grid w-full grid-cols-3 mb-6">
-            <TabsTrigger value="overview" data-testid="tab-overview">
-              <Radio className="w-4 h-4 mr-2" />
-              Overview
-            </TabsTrigger>
-            <TabsTrigger value="polls" data-testid="tab-polls">
-              <BarChart3 className="w-4 h-4 mr-2" />
-              Polls ({polls.length})
-            </TabsTrigger>
-            <TabsTrigger value="contests" data-testid="tab-contests">
-              <Trophy className="w-4 h-4 mr-2" />
-              Contests ({contests.length})
-            </TabsTrigger>
-          </TabsList>
+        {broadcast.description && (
+          <div className="mb-6 text-sm text-muted-foreground" data-testid="text-broadcast-description">
+            {broadcast.description}
+          </div>
+        )}
 
-          <TabsContent value="overview">
-            <Card className="border border-white/10">
-              <CardHeader>
-                <CardTitle>Broadcast Information</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                  <div>
-                    <Label className="text-muted-foreground">Name</Label>
-                    <p className="text-foreground font-medium" data-testid="text-overview-name">{broadcast.broadcastName}</p>
-                  </div>
-                  <div>
-                    <Label className="text-muted-foreground">Status</Label>
-                    <div className="mt-1" data-testid="text-overview-status">{getStatusBadge(broadcast.status)}</div>
-                  </div>
-                  <div>
-                    <Label className="text-muted-foreground">Broadcast ID</Label>
-                    <p className="text-foreground font-mono text-sm" data-testid="text-overview-id">{broadcast.broadcastId}</p>
-                  </div>
-                  <div>
-                    <Label className="text-muted-foreground">Campaign</Label>
-                    <p className="text-foreground" data-testid="text-overview-campaign">
-                      {broadcast.campaign?.name || 'None'}
-                    </p>
-                  </div>
-                  <div>
-                    <Label className="text-muted-foreground">Start Time</Label>
-                    <p className="text-foreground" data-testid="text-overview-start">
-                      {broadcast.startTime ? new Date(broadcast.startTime).toLocaleString() : 'Not set'}
-                    </p>
-                  </div>
-                  <div>
-                    <Label className="text-muted-foreground">End Time</Label>
-                    <p className="text-foreground" data-testid="text-overview-end">
-                      {broadcast.endTime ? new Date(broadcast.endTime).toLocaleString() : 'Not set'}
-                    </p>
-                  </div>
-                  <div>
-                    <Label className="text-muted-foreground">Polls</Label>
-                    <p className="text-foreground" data-testid="text-overview-polls">{polls.length}</p>
-                  </div>
-                  <div>
-                    <Label className="text-muted-foreground">Contests</Label>
-                    <p className="text-foreground" data-testid="text-overview-contests">{contests.length}</p>
-                  </div>
-                </div>
-                {broadcast.metadata != null ? (
-                  <div className="mt-6">
-                    <Label className="text-muted-foreground">Metadata</Label>
-                    <pre className="bg-black/30 rounded-lg p-4 mt-1 text-sm text-foreground overflow-auto" data-testid="text-overview-metadata">
-                      {String(JSON.stringify(broadcast.metadata, null, 2))}
-                    </pre>
-                  </div>
-                ) : null}
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="polls">
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="text-lg font-semibold">Polls</h3>
+        <div className="mb-6" data-testid="section-engagement">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-sm font-semibold text-foreground">Active Engagement</h2>
+            <div className="flex items-center space-x-2">
+              <span className="text-xs text-muted-foreground">{polls.length} poll{polls.length !== 1 ? 's' : ''}</span>
               <Dialog open={pollDialogOpen} onOpenChange={setPollDialogOpen}>
                 <DialogTrigger asChild>
-                  <Button data-testid="button-create-poll" className="gap-2">
-                    <Plus className="w-4 h-4" />
-                    New Poll
-                  </Button>
+                  <button className="px-3 py-1.5 bg-white dark:bg-white text-black dark:text-black rounded text-xs font-medium hover:bg-gray-200 dark:hover:bg-gray-200 transition" data-testid="button-create-poll">
+                    <Plus className="w-3 h-3 inline mr-1.5" />
+                    Add Poll
+                  </button>
                 </DialogTrigger>
                 <DialogContent className="sm:max-w-[500px]">
                   <DialogHeader>
@@ -387,9 +492,7 @@ export default function BroadcastDetailPage() {
                     </div>
                   </div>
                   <DialogFooter>
-                    <Button variant="outline" onClick={() => setPollDialogOpen(false)} data-testid="button-cancel-poll">
-                      Cancel
-                    </Button>
+                    <Button variant="outline" onClick={() => setPollDialogOpen(false)} data-testid="button-cancel-poll">Cancel</Button>
                     <Button onClick={handleCreatePoll} disabled={createPollMutation.isPending} data-testid="button-submit-poll">
                       {createPollMutation.isPending ? 'Creating...' : 'Create Poll'}
                     </Button>
@@ -397,232 +500,162 @@ export default function BroadcastDetailPage() {
                 </DialogContent>
               </Dialog>
             </div>
+          </div>
 
-            {polls.length === 0 ? (
-              <Card className="border-0">
-                <CardContent className="flex flex-col items-center justify-center py-12">
-                  <BarChart3 className="w-12 h-12 text-muted-foreground mb-4" />
-                  <h3 className="text-lg font-semibold mb-2">No polls yet</h3>
-                  <p className="text-muted-foreground mb-4">Create a poll to engage your audience</p>
-                </CardContent>
-              </Card>
-            ) : (
-              <div className="grid gap-4">
-                {polls.map((poll) => {
-                  const totalVotes = poll.totalVotes || 0;
-                  return (
-                    <Card key={poll.id} className="border border-white/10" data-testid={`card-poll-${poll.id}`}>
-                      <CardHeader>
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="flex-1">
-                            <div className="flex items-center gap-2 mb-1">
-                              <CardTitle className="text-base">{poll.question}</CardTitle>
-                              <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${poll.isActive ? 'bg-green-500/20 text-green-400' : 'bg-gray-500/20 text-gray-400'}`} data-testid={`badge-poll-active-${poll.id}`}>
-                                {poll.isActive ? 'Active' : 'Inactive'}
-                              </span>
-                            </div>
-                            <CardDescription>Total votes: {totalVotes}</CardDescription>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <Switch
-                              checked={poll.isActive}
-                              onCheckedChange={(checked) => togglePollMutation.mutate({ pollId: poll.id, isActive: checked })}
-                              data-testid={`switch-poll-${poll.id}`}
-                            />
-                            <AlertDialog>
-                              <AlertDialogTrigger asChild>
-                                <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10" data-testid={`button-delete-poll-${poll.id}`}>
-                                  <Trash2 className="w-4 h-4" />
-                                </Button>
-                              </AlertDialogTrigger>
-                              <AlertDialogContent>
-                                <AlertDialogHeader>
-                                  <AlertDialogTitle>Delete Poll?</AlertDialogTitle>
-                                  <AlertDialogDescription>This will permanently delete this poll and all its votes.</AlertDialogDescription>
-                                </AlertDialogHeader>
-                                <AlertDialogFooter>
-                                  <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                  <AlertDialogAction onClick={() => deletePollMutation.mutate(poll.id)} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
-                                    Delete
-                                  </AlertDialogAction>
-                                </AlertDialogFooter>
-                              </AlertDialogContent>
-                            </AlertDialog>
-                          </div>
-                        </div>
-                      </CardHeader>
-                      {poll.options && poll.options.length > 0 && (
-                        <CardContent>
-                          <div className="space-y-3">
-                            {poll.options.map((option) => {
-                              const percentage = totalVotes > 0 ? Math.round((option.voteCount / totalVotes) * 100) : 0;
-                              return (
-                                <div key={option.id} data-testid={`poll-option-${option.id}`}>
-                                  <div className="flex justify-between text-sm mb-1">
-                                    <span className="text-foreground">{option.text}</span>
-                                    <span className="text-muted-foreground">{option.voteCount} votes ({percentage}%)</span>
-                                  </div>
-                                  <div className="w-full bg-white/5 rounded-full h-2">
-                                    <div
-                                      className="bg-primary rounded-full h-2 transition-all"
-                                      style={{ width: `${percentage}%` }}
-                                      data-testid={`poll-option-bar-${option.id}`}
-                                    />
-                                  </div>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        </CardContent>
-                      )}
-                    </Card>
-                  );
-                })}
-              </div>
-            )}
-          </TabsContent>
+          {polls.length === 0 ? (
+            <div className="bg-transparent border border-white/10 dark:border-white/10 rounded-lg p-8 text-center">
+              <BarChart3 className="w-10 h-10 text-muted-foreground mx-auto mb-3" />
+              <h3 className="text-sm font-semibold text-foreground mb-1">No polls yet</h3>
+              <p className="text-xs text-muted-foreground">Create a poll to engage your audience</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {activePolls.map(poll => (
+                <ActivePollCard
+                  key={poll.id}
+                  poll={poll}
+                  onToggle={(id, active) => togglePollMutation.mutate({ pollId: id, isActive: active })}
+                  onDelete={(id) => deletePollMutation.mutate(id)}
+                />
+              ))}
+              {inactivePolls.map(poll => (
+                <ActivePollCard
+                  key={poll.id}
+                  poll={poll}
+                  onToggle={(id, active) => togglePollMutation.mutate({ pollId: id, isActive: active })}
+                  onDelete={(id) => deletePollMutation.mutate(id)}
+                />
+              ))}
+            </div>
+          )}
+        </div>
 
-          <TabsContent value="contests">
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="text-lg font-semibold">Contests</h3>
-              <Dialog open={contestDialogOpen} onOpenChange={setContestDialogOpen}>
-                <DialogTrigger asChild>
-                  <Button data-testid="button-create-contest" className="gap-2">
-                    <Plus className="w-4 h-4" />
-                    New Contest
-                  </Button>
-                </DialogTrigger>
-                <DialogContent className="sm:max-w-[500px]">
-                  <DialogHeader>
-                    <DialogTitle>Create Contest</DialogTitle>
-                    <DialogDescription>Create a new contest for this broadcast.</DialogDescription>
-                  </DialogHeader>
-                  <div className="grid gap-4 py-4">
+        <div className="mb-6" data-testid="section-contests">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-sm font-semibold text-foreground">Contests & Trivia</h2>
+            <Dialog open={contestDialogOpen} onOpenChange={setContestDialogOpen}>
+              <DialogTrigger asChild>
+                <button className="px-3 py-1.5 bg-transparent border border-white/20 dark:border-white/20 hover:border-white/40 dark:hover:border-white/40 text-foreground rounded text-xs font-medium transition" data-testid="button-create-contest">
+                  <Plus className="w-3 h-3 inline mr-1.5" />
+                  Add Contest
+                </button>
+              </DialogTrigger>
+              <DialogContent className="sm:max-w-[500px]">
+                <DialogHeader>
+                  <DialogTitle>Create Contest</DialogTitle>
+                  <DialogDescription>Create a new contest for this broadcast.</DialogDescription>
+                </DialogHeader>
+                <div className="grid gap-4 py-4">
+                  <div className="grid gap-2">
+                    <Label>Title *</Label>
+                    <Input
+                      data-testid="input-contest-title"
+                      value={contestForm.title}
+                      onChange={(e) => setContestForm(prev => ({ ...prev, title: e.target.value }))}
+                      placeholder="Contest title"
+                    />
+                  </div>
+                  <div className="grid gap-2">
+                    <Label>Description</Label>
+                    <Input
+                      data-testid="input-contest-description"
+                      value={contestForm.description}
+                      onChange={(e) => setContestForm(prev => ({ ...prev, description: e.target.value }))}
+                      placeholder="Brief description"
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
                     <div className="grid gap-2">
-                      <Label htmlFor="contestTitle">Title *</Label>
+                      <Label>Prize</Label>
                       <Input
-                        id="contestTitle"
-                        data-testid="input-contest-title"
-                        value={contestForm.title}
-                        onChange={(e) => setContestForm(prev => ({ ...prev, title: e.target.value }))}
-                        placeholder="Enter contest title"
-                      />
-                    </div>
-                    <div className="grid gap-2">
-                      <Label htmlFor="contestDescription">Description</Label>
-                      <Textarea
-                        id="contestDescription"
-                        data-testid="input-contest-description"
-                        value={contestForm.description}
-                        onChange={(e) => setContestForm(prev => ({ ...prev, description: e.target.value }))}
-                        placeholder="Enter contest description"
-                        rows={3}
-                      />
-                    </div>
-                    <div className="grid gap-2">
-                      <Label htmlFor="contestPrize">Prize</Label>
-                      <Input
-                        id="contestPrize"
                         data-testid="input-contest-prize"
                         value={contestForm.prize}
                         onChange={(e) => setContestForm(prev => ({ ...prev, prize: e.target.value }))}
-                        placeholder="Enter prize description"
+                        placeholder="e.g. $250"
                       />
                     </div>
                     <div className="grid gap-2">
-                      <Label htmlFor="contestType">Contest Type</Label>
-                      <Select
-                        value={contestForm.contestType}
-                        onValueChange={(value) => setContestForm(prev => ({ ...prev, contestType: value }))}
-                      >
+                      <Label>Type</Label>
+                      <Select value={contestForm.contestType} onValueChange={(v) => setContestForm(prev => ({ ...prev, contestType: v }))}>
                         <SelectTrigger data-testid="select-contest-type">
-                          <SelectValue placeholder="Select contest type" />
+                          <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          {CONTEST_TYPES.map((type) => (
-                            <SelectItem key={type.value} value={type.value} data-testid={`option-contest-type-${type.value}`}>
-                              {type.label}
-                            </SelectItem>
+                          {CONTEST_TYPES.map(t => (
+                            <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
                     </div>
                   </div>
-                  <DialogFooter>
-                    <Button variant="outline" onClick={() => setContestDialogOpen(false)} data-testid="button-cancel-contest">
-                      Cancel
-                    </Button>
-                    <Button onClick={handleCreateContest} disabled={createContestMutation.isPending} data-testid="button-submit-contest">
-                      {createContestMutation.isPending ? 'Creating...' : 'Create Contest'}
-                    </Button>
-                  </DialogFooter>
-                </DialogContent>
-              </Dialog>
-            </div>
+                </div>
+                <DialogFooter>
+                  <Button variant="outline" onClick={() => setContestDialogOpen(false)}>Cancel</Button>
+                  <Button onClick={handleCreateContest} disabled={createContestMutation.isPending} data-testid="button-submit-contest">
+                    {createContestMutation.isPending ? 'Creating...' : 'Create Contest'}
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+          </div>
 
-            {contests.length === 0 ? (
-              <Card className="border-0">
-                <CardContent className="flex flex-col items-center justify-center py-12">
-                  <Trophy className="w-12 h-12 text-muted-foreground mb-4" />
-                  <h3 className="text-lg font-semibold mb-2">No contests yet</h3>
-                  <p className="text-muted-foreground mb-4">Create a contest to engage your audience</p>
-                </CardContent>
-              </Card>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {contests.map((contest) => (
-                  <Card key={contest.id} className="border border-white/10" data-testid={`card-contest-${contest.id}`}>
-                    <CardHeader>
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2 mb-1">
-                            <CardTitle className="text-base">{contest.title}</CardTitle>
-                            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${contest.isActive ? 'bg-green-500/20 text-green-400' : 'bg-gray-500/20 text-gray-400'}`} data-testid={`badge-contest-active-${contest.id}`}>
-                              {contest.isActive ? 'Active' : 'Inactive'}
-                            </span>
-                          </div>
-                          <CardDescription className="capitalize">Type: {contest.contestType}</CardDescription>
-                          {contest.prize && <CardDescription>Prize: {contest.prize}</CardDescription>}
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <Switch
-                            checked={contest.isActive}
-                            onCheckedChange={(checked) => toggleContestMutation.mutate({ contestId: contest.id, isActive: checked })}
-                            data-testid={`switch-contest-${contest.id}`}
-                          />
-                          <AlertDialog>
-                            <AlertDialogTrigger asChild>
-                              <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10" data-testid={`button-delete-contest-${contest.id}`}>
-                                <Trash2 className="w-4 h-4" />
-                              </Button>
-                            </AlertDialogTrigger>
-                            <AlertDialogContent>
-                              <AlertDialogHeader>
-                                <AlertDialogTitle>Delete Contest?</AlertDialogTitle>
-                                <AlertDialogDescription>This will permanently delete this contest and all participations.</AlertDialogDescription>
-                              </AlertDialogHeader>
-                              <AlertDialogFooter>
-                                <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                <AlertDialogAction onClick={() => deleteContestMutation.mutate(contest.id)} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
-                                  Delete
-                                </AlertDialogAction>
-                              </AlertDialogFooter>
-                            </AlertDialogContent>
-                          </AlertDialog>
-                        </div>
-                      </div>
-                    </CardHeader>
-                    {contest.description && (
-                      <CardContent>
-                        <p className="text-sm text-muted-foreground" data-testid={`text-contest-description-${contest.id}`}>{contest.description}</p>
-                      </CardContent>
-                    )}
-                  </Card>
-                ))}
+          {contests.length === 0 ? (
+            <div className="bg-transparent border border-white/10 dark:border-white/10 rounded-lg p-8 text-center">
+              <Trophy className="w-10 h-10 text-muted-foreground mx-auto mb-3" />
+              <h3 className="text-sm font-semibold text-foreground mb-1">No contests yet</h3>
+              <p className="text-xs text-muted-foreground">Create a contest to reward your audience</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {contests.map(contest => (
+                <ContestCard
+                  key={contest.id}
+                  contest={contest}
+                  onToggle={(id, active) => toggleContestMutation.mutate({ contestId: id, isActive: active })}
+                  onDelete={(id) => deleteContestMutation.mutate(id)}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="mb-6">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-sm font-semibold text-foreground">Broadcast Details</h2>
+          </div>
+          <div className="bg-transparent border border-white/10 dark:border-white/10 rounded-lg p-5">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+              <div>
+                <div className="text-xs text-muted-foreground mb-1">Status</div>
+                <div className="mt-1"><StatusBadge status={broadcast.status} /></div>
+              </div>
+              <div>
+                <div className="text-xs text-muted-foreground mb-1">Broadcast ID</div>
+                <div className="text-sm text-foreground font-mono">{broadcast.broadcastId}</div>
+              </div>
+              <div>
+                <div className="text-xs text-muted-foreground mb-1">Start Time</div>
+                <div className="text-sm text-foreground">
+                  {broadcast.startTime ? new Date(broadcast.startTime).toLocaleString() : 'Not set'}
+                </div>
+              </div>
+              <div>
+                <div className="text-xs text-muted-foreground mb-1">End Time</div>
+                <div className="text-sm text-foreground">
+                  {broadcast.endTime ? new Date(broadcast.endTime).toLocaleString() : 'Not set'}
+                </div>
+              </div>
+            </div>
+            {broadcast.metadata != null && (
+              <div className="mt-4 pt-4 border-t border-white/10 dark:border-white/10">
+                <div className="text-xs text-muted-foreground mb-2">Metadata</div>
+                <pre className="bg-black/30 dark:bg-black/30 rounded-lg p-3 text-xs text-foreground overflow-auto" data-testid="text-broadcast-metadata">
+                  {String(JSON.stringify(broadcast.metadata, null, 2))}
+                </pre>
               </div>
             )}
-          </TabsContent>
-        </Tabs>
+          </div>
+        </div>
       </div>
     </AppLayout>
   );
