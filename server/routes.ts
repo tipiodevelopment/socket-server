@@ -1035,7 +1035,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Create client app
   app.post('/api/client-apps', async (req, res) => {
     try {
-      const { userId, name, bundleId } = req.body;
+      const { userId, name, bundleId, iconUrl, bannerUrl, description } = req.body;
       
       if (!userId || !name || !bundleId) {
         return res.status(400).json({ 
@@ -1047,14 +1047,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: 'Invalid userId - must be a number' });
       }
       
-      // Generate a unique API key
       const apiKey = `${name.toLowerCase().replace(/\s+/g, '_')}_api_key_${randomUUID().replace(/-/g, '').substring(0, 16)}`;
       
       const app = await storage.createClientApp({
         userId,
         name,
         bundleId,
-        apiKey
+        apiKey,
+        ...(iconUrl && { iconUrl }),
+        ...(bannerUrl && { bannerUrl }),
+        ...(description && { description }),
       });
       res.status(201).json(app);
     } catch (error) {
