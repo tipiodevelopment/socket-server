@@ -1,8 +1,11 @@
-# Real-Time Event Broadcasting System
+# Vio - Real-Time Event Broadcasting Platform
 
 ## Overview
 
-This project is a real-time event broadcasting application for multi-campaign management. It enables administrators to create campaigns and broadcast various real-time events (products, polls, contests) to viewers. The system provides a robust, scalable solution for interactive real-time audience engagement using a full-stack TypeScript environment with a React frontend, an Express backend, and WebSocket-based communication. It features isolated WebSocket channels per campaign, persistent configuration and event storage in PostgreSQL, and a dynamic UI component library. The architecture supports multi-tenant SaaS, allowing different users (agencies/brands) to manage their client applications, channels, and campaigns with complete data isolation.
+Vio is a real-time event broadcasting platform for multi-campaign management. It enables administrators to create campaigns and broadcast various real-time events (products, polls, contests) to viewers. The system provides a robust, scalable solution for interactive real-time audience engagement using a full-stack TypeScript environment with a React frontend, an Express backend, and WebSocket-based communication. It features isolated WebSocket channels per campaign, persistent configuration and event storage in PostgreSQL, and a dynamic UI component library. The architecture supports multi-tenant SaaS, allowing different users (agencies/brands) to manage their client applications, channels, and campaigns with complete data isolation.
+
+**Platform Name:** Vio
+**Logo:** Custom SVG checkmark/V logo (white on gradient background), located at `client/src/components/VioLogo.tsx`
 
 ## User Preferences
 

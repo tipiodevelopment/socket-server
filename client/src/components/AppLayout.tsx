@@ -11,8 +11,8 @@ import {
 } from '@/components/ui/breadcrumb';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { VioLogo } from '@/components/VioLogo';
 import {
-  Rocket,
   LayoutDashboard,
   Smartphone,
   Megaphone,
@@ -76,7 +76,7 @@ export function AppLayout({ children, breadcrumbs = [], title, subtitle, actions
         <div className="flex items-center justify-center h-16">
           <Link href="/">
             <div className="w-10 h-10 bg-gradient-to-br from-purple-500 to-blue-500 rounded-xl flex items-center justify-center cursor-pointer" data-testid="link-home">
-              <Rocket className="w-5 h-5 text-white" />
+              <VioLogo className="w-6 h-6" color="white" />
             </div>
           </Link>
         </div>

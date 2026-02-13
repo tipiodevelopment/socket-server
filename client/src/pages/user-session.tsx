@@ -2,7 +2,8 @@ import { useState, useEffect } from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Link, useLocation } from "wouter";
-import { User, LogOut, LogIn, Rocket, Sun, Moon } from "lucide-react";
+import { User, LogOut, LogIn, Sun, Moon } from "lucide-react";
+import { VioLogo } from "@/components/VioLogo";
 import { useUser } from "@/contexts/UserContext";
 import { useTheme } from "@/contexts/ThemeContext";
 
@@ -68,10 +69,10 @@ export default function UserSessionPage() {
         <div className="w-full max-w-md">
           <div className="text-center mb-8">
             <div className="w-16 h-16 bg-gradient-to-br from-purple-500 to-blue-500 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg shadow-purple-500/20">
-              <Rocket className="w-8 h-8 text-white" />
+              <VioLogo className="w-10 h-10" color="white" />
             </div>
             <h1 className="text-2xl font-bold text-gray-900 dark:text-white" data-testid="text-login-title">
-              Reachu Broadcasting
+              Vio
             </h1>
             <p className="text-sm text-gray-500 dark:text-white/40 mt-1">
               Real-time event management platform
@@ -196,7 +197,7 @@ export default function UserSessionPage() {
           )}
 
           <p className="text-center text-xs text-gray-400 dark:text-white/20 mt-6">
-            Reachu Broadcasting Platform v2.0
+            Vio Platform v2.0
           </p>
         </div>
       </div>

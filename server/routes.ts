@@ -3554,7 +3554,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         campaignId: campaign.id,
         version: '1.0.0',
         brand: {
-          name: campaign.brandName || campaign.name || 'Reachu',
+          name: campaign.brandName || campaign.name || 'Vio',
           iconAsset: campaign.brandIconAsset || 'avatar_default',
           iconUrl: campaign.brandIconUrl ? toAbsoluteUrl(campaign.brandIconUrl, req) : null,
           logoUrl: campaign.brandLogoUrl ? toAbsoluteUrl(campaign.brandLogoUrl, req) : null,
