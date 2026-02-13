@@ -1378,7 +1378,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
       
-      const campaign = await storage.createCampaign(req.body);
+      const campaignData = { ...req.body };
+      if (campaignData.startDate) {
+        campaignData.startDate = new Date(campaignData.startDate);
+      }
+      if (campaignData.endDate) {
+        campaignData.endDate = new Date(campaignData.endDate);
+      }
+      if (campaignData.matchStartTime) {
+        campaignData.matchStartTime = new Date(campaignData.matchStartTime);
+      }
+
+      const campaign = await storage.createCampaign(campaignData);
       res.status(201).json(campaign);
     } catch (error) {
       console.error('Error creating campaign:', error);
