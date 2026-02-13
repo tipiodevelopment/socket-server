@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Campaign Details</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script> window.FontAwesomeConfig = { autoReplaceSvg: 'nest'};</script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/js/all.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        ::-webkit-scrollbar { display: none;}
+        * { font-family: 'Inter', sans-serif; }
+    </style>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        dark: {
+                            950: '#05070a',
+                            900: '#0a0e1a',
+                            800: '#141824',
+                            700: '#1e2433',
+                            600: '#2a3142',
+                            500: '#4b5563',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-black text-gray-100 font-sans antialiased selection:bg-white selection:text-black">
+
+<div class="flex h-screen overflow-hidden">
+    
+    <aside id="sidebar" class="w-16 bg-black border-r border-white/10 flex flex-col items-center py-6">
+        <div class="mb-8">
+            <div class="w-8 h-8 bg-white rounded flex items-center justify-center">
+                <i class="fa-solid fa-tower-broadcast text-black text-sm"></i>
+            </div>
+        </div>
+        
+        <nav class="flex flex-col items-center space-y-4 flex-grow">
+            <a href="#" class="w-10 h-10 flex items-center justify-center rounded hover:bg-white/10 text-gray-400 hover:text-white transition">
+                <i class="fa-solid fa-house text-sm"></i>
+            </a>
+            <a href="#" class="w-10 h-10 flex items-center justify-center rounded hover:bg-white/10 text-gray-400 hover:text-white transition">
+                <i class="fa-solid fa-mobile-screen text-sm"></i>
+            </a>
+            <a href="#" class="w-10 h-10 flex items-center justify-center rounded bg-white text-black">
+                <i class="fa-solid fa-bullhorn text-sm"></i>
+            </a>
+            <a href="#" class="w-10 h-10 flex items-center justify-center rounded hover:bg-white/10 text-gray-400 hover:text-white transition">
+                <i class="fa-solid fa-signal text-sm"></i>
+            </a>
+            <a href="#" class="w-10 h-10 flex items-center justify-center rounded hover:bg-white/10 text-gray-400 hover:text-white transition">
+                <i class="fa-solid fa-puzzle-piece text-sm"></i>
+            </a>
+            <a href="#" class="w-10 h-10 flex items-center justify-center rounded hover:bg-white/10 text-gray-400 hover:text-white transition">
+                <i class="fa-solid fa-chart-line text-sm"></i>
+            </a>
+        </nav>
+        
+        <div class="mt-auto space-y-4">
+            <a href="#" class="w-10 h-10 flex items-center justify-center rounded hover:bg-white/10 text-gray-400 hover:text-white transition">
+                <i class="fa-solid fa-gear text-sm"></i>
+            </a>
+            <div class="w-8 h-8 rounded overflow-hidden border border-white/20">
+                <img src="https://storage.googleapis.com/uxpilot-auth.appspot.com/avatars/avatar-3.jpg" alt="User" class="w-full h-full object-cover">
+            </div>
+        </div>
+    </aside>
+
+    <div class="flex-1 flex flex-col overflow-hidden bg-black">
+        
+        <header id="header" class="h-24 flex items-center justify-between px-8 bg-black border-b border-white/10">
+            <div class="flex items-center space-x-4">
+                <button class="w-8 h-8 flex items-center justify-center rounded hover:bg-white/10 text-gray-400 hover:text-white transition">
+                    <i class="fa-solid fa-arrow-left text-sm"></i>
+                </button>
+                <div>
+                    <div class="flex items-center space-x-3 mb-1">
+                        <h1 class="text-2xl font-bold text-white">El Clásico 2026</h1>
+                        <span class="px-2 py-0.5 bg-white text-black text-[10px] uppercase font-bold rounded-full border border-white">Active</span>
+                    </div>
+                    <div class="flex items-center text-xs text-gray-500 space-x-2">
+                        <span class="text-gray-300">LaLiga Fan App</span>
+                        <span class="text-gray-700">/</span>
+                        <span class="text-gray-300">LaLiga Matchday</span>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="flex items-center space-x-3">
+                <button class="px-4 py-2 bg-transparent border border-white/20 hover:border-white/40 text-white rounded text-sm transition flex items-center space-x-2">
+                    <i class="fa-solid fa-pause text-xs"></i>
+                    <span>Pause</span>
+                </button>
+                <button class="w-8 h-8 flex items-center justify-center rounded hover:bg-white/10 text-gray-400 hover:text-white transition">
+                    <i class="fa-solid fa-ellipsis-vertical"></i>
+                </button>
+            </div>
+        </header>
+
+        <div id="campaign-tabs" class="px-8 pt-6 pb-4 border-b border-white/10">
+            <div class="flex items-center space-x-1">
+                <button class="px-4 py-2 text-white border-b-2 border-white text-sm font-medium">
+                    Overview
+                </button>
+                <button class="px-4 py-2 text-gray-400 hover:text-white border-b-2 border-transparent hover:border-white/20 text-sm font-medium transition">
+                    Broadcasts
+                </button>
+                <button class="px-4 py-2 text-gray-400 hover:text-white border-b-2 border-transparent hover:border-white/20 text-sm font-medium transition">
+                    Components
+                </button>
+                <button class="px-4 py-2 text-gray-400 hover:text-white border-b-2 border-transparent hover:border-white/20 text-sm font-medium transition">
+                    Config
+                </button>
+                <button class="px-4 py-2 text-gray-400 hover:text-white border-b-2 border-transparent hover:border-white/20 text-sm font-medium transition">
+                    Analytics
+                </button>
+            </div>
+        </div>
+
+        <main class="flex-1 overflow-y-auto px-8 py-6">
+            
+            <div id="campaign-info-section" class="mb-8">
+                <div class="grid grid-cols-4 gap-6">
+                    <div class="bg-transparent border border-white/10 rounded-lg p-5">
+                        <div class="text-xs text-gray-400 mb-1 uppercase font-medium">Total Views</div>
+                        <div class="text-2xl font-bold text-white">847,293</div>
+                        <div class="text-xs text-gray-500 mt-1">+12.5% vs last campaign</div>
+                    </div>
+                    <div class="bg-transparent border border-white/10 rounded-lg p-5">
+                        <div class="text-xs text-gray-400 mb-1 uppercase font-medium">Engagement Rate</div>
+                        <div class="text-2xl font-bold text-white">68.4%</div>
+                        <div class="text-xs text-gray-500 mt-1">+5.2% vs last campaign</div>
+                    </div>
+                    <div class="bg-transparent border border-white/10 rounded-lg p-5">
+                        <div class="text-xs text-gray-400 mb-1 uppercase font-medium">Poll Responses</div>
+                        <div class="text-2xl font-bold text-white">579,432</div>
+                        <div class="text-xs text-gray-500 mt-1">Across 24 polls</div>
+                    </div>
+                    <div class="bg-transparent border border-white/10 rounded-lg p-5">
+                        <div class="text-xs text-gray-400 mb-1 uppercase font-medium">Active Broadcasts</div>
+                        <div class="text-2xl font-bold text-white">2</div>
+                        <div class="text-xs text-gray-500 mt-1">1 live, 1 upcoming</div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="campaign-details-section" class="mb-8">
+                <h2 class="text-sm font-semibold text-gray-400 uppercase mb-4">Campaign Details</h2>
+                <div class="bg-transparent border border-white/10 rounded-lg p-6">
+                    <div class="grid grid-cols-2 gap-8">
+                        <div class="space-y-5">
+                            <div>
+                                <div class="text-xs text-gray-500 mb-1 uppercase font-medium">Description</div>
+                                <div class="text-sm text-gray-200">Real Madrid vs Barcelona engagement campaign with live polls, trivia contests, and interactive match predictions</div>
+                            </div>
+                            <div>
+                                <div class="text-xs text-gray-500 mb-1 uppercase font-medium">Match Context</div>
+                                <div class="text-sm text-gray-200">Match ID: LALIGA-2026-021</div>
+                                <div class="text-sm text-gray-200">Real Madrid vs FC Barcelona</div>
+                                <div class="text-sm text-gray-400">Feb 10, 2026 - 21:00 CET</div>
+                            </div>
+                            <div>
+                                <div class="text-xs text-gray-500 mb-1 uppercase font-medium">Campaign Period</div>
+                                <div class="text-sm text-gray-200">Feb 10, 2026 - Feb 11, 2026</div>
+                            </div>
+                        </div>
+                        <div class="space-y-5">
+                            <div>
+                                <div class="text-xs text-gray-500 mb-1 uppercase font-medium">Target Countries</div>
+                                <div class="flex flex-wrap gap-2 mt-2">
+                                    <span class="px-2 py-1 bg-white/5 border border-white/10 rounded text-xs text-gray-300">Spain</span>
+                                    <span class="px-2 py-1 bg-white/5 border border-white/10 rounded text-xs text-gray-300">Mexico</span>
+                                    <span class="px-2 py-1 bg-white/5 border border-white/10 rounded text-xs text-gray-300">Argentina</span>
+                                    <span class="px-2 py-1 bg-white/5 border border-white/10 rounded text-xs text-gray-300">Colombia</span>
+                                </div>
+                            </div>
+                            <div>
+                                <div class="text-xs text-gray-500 mb-1 uppercase font-medium">Audience Targeting</div>
+                                <div class="text-sm text-gray-200">85% of users in target countries</div>
+                            </div>
+                            <div>
+                                <div class="text-xs text-gray-500 mb-1 uppercase font-medium">Branding</div>
+                                <div class="flex items-center space-x-3 mt-2">
+                                    <div class="flex items-center space-x-2">
+                                        <div class="w-8 h-8 rounded" style="background: linear-gradient(135deg, #0066ff, #00ccff);"></div>
+                                        <span class="text-xs text-gray-400">Primary</span>
+                                    </div>
+                                    <div class="flex items-center space-x-2">
+                                        <div class="w-8 h-8 bg-white rounded"></div>
+                                        <span class="text-xs text-gray-400">Secondary</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="broadcasts-section" class="mb-8">
+                <div class="flex items-center justify-between mb-4">
+                    <h2 class="text-sm font-semibold text-gray-400 uppercase">Broadcasts</h2>
+                    <button class="px-4 py-1.5 bg-white hover:bg-gray-200 text-black rounded text-xs transition font-medium flex items-center space-x-2">
+                        <i class="fa-solid fa-plus text-xs"></i>
+                        <span>New Broadcast</span>
+                    </button>
+                </div>
+                <div class="space-y-3">
+                    <div class="bg-transparent border border-white/10 rounded-lg p-5 hover:border-white/30 transition-all cursor-pointer">
+                        <div class="flex justify-between items-start">
+                            <div class="flex-1">
+                                <div class="flex items-center space-x-3 mb-2">
+                                    <h3 class="text-base font-semibold text-white">Main Match Broadcast</h3>
+                                    <span class="px-2 py-0.5 bg-white text-black text-[10px] uppercase font-bold rounded-full">Live</span>
+                                </div>
+                                <div class="text-sm text-gray-400 mb-3">Real Madrid vs Barcelona - Live Commentary</div>
+                                <div class="flex items-center space-x-4 text-xs text-gray-500">
+                                    <div class="flex items-center space-x-1.5">
+                                        <i class="fa-solid fa-chart-simple"></i>
+                                        <span>847K viewers</span>
+                                    </div>
+                                    <div class="flex items-center space-x-1.5">
+                                        <i class="fa-solid fa-square-poll-vertical"></i>
+                                        <span>18 polls</span>
+                                    </div>
+                                    <div class="flex items-center space-x-1.5">
+                                        <i class="fa-solid fa-trophy"></i>
+                                        <span>6 contests</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="flex flex-col items-end space-y-2">
+                                <div class="text-xs text-gray-400">Started 45 mins ago</div>
+                                <button class="px-3 py-1 bg-white/10 hover:bg-white/20 text-white rounded text-xs transition">
+                                    Manage
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="bg-transparent border border-white/10 rounded-lg p-5 hover:border-white/30 transition-all cursor-pointer">
+                        <div class="flex justify-between items-start">
+                            <div class="flex-1">
+                                <div class="flex items-center space-x-3 mb-2">
+                                    <h3 class="text-base font-semibold text-white">Pre-Match Show</h3>
+                                    <span class="px-2 py-0.5 bg-white/10 text-gray-300 text-[10px] uppercase font-bold rounded-full border border-white/20">Upcoming</span>
+                                </div>
+                                <div class="text-sm text-gray-400 mb-3">Team lineups and match predictions</div>
+                                <div class="flex items-center space-x-4 text-xs text-gray-500">
+                                    <div class="flex items-center space-x-1.5">
+                                        <i class="fa-solid fa-square-poll-vertical"></i>
+                                        <span>6 polls</span>
+                                    </div>
+                                    <div class="flex items-center space-x-1.5">
+                                        <i class="fa-solid fa-trophy"></i>
+                                        <span>2 contests</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="flex flex-col items-end space-y-2">
+                                <div class="text-xs text-gray-400">Starts in 30 mins</div>
+                                <button class="px-3 py-1 bg-white/10 hover:bg-white/20 text-white rounded text-xs transition">
+                                    Configure
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="components-section" class="mb-8">
+                <div class="flex items-center justify-between mb-4">
+                    <h2 class="text-sm font-semibold text-gray-400 uppercase">Active Components</h2>
+                    <button class="px-4 py-1.5 bg-transparent border border-white/20 hover:border-white/40 text-white rounded text-xs transition font-medium">
+                        Manage Components
+                    </button>
+                </div>
+                <div class="grid grid-cols-3 gap-4">
+                    <div class="bg-transparent border border-white/10 rounded-lg p-4">
+                        <div class="flex items-start justify-between mb-3">
+                            <div class="w-8 h-8 bg-white/10 rounded flex items-center justify-center">
+                                <i class="fa-solid fa-image text-white text-sm"></i>
+                            </div>
+                            <span class="text-[10px] text-gray-500 uppercase font-medium">Banner</span>
+                        </div>
+                        <div class="text-sm font-medium text-white mb-1">Match Sponsor Banner</div>
+                        <div class="text-xs text-gray-500">Active during broadcast</div>
+                    </div>
+
+                    <div class="bg-transparent border border-white/10 rounded-lg p-4">
+                        <div class="flex items-start justify-between mb-3">
+                            <div class="w-8 h-8 bg-white/10 rounded flex items-center justify-center">
+                                <i class="fa-solid fa-clock text-white text-sm"></i>
+                            </div>
+                            <span class="text-[10px] text-gray-500 uppercase font-medium">Countdown</span>
+                        </div>
+                        <div class="text-sm font-medium text-white mb-1">Kickoff Timer</div>
+                        <div class="text-xs text-gray-500">Pre-match only</div>
+                    </div>
+
+                    <div class="bg-transparent border border-white/10 rounded-lg p-4">
+                        <div class="flex items-start justify-between mb-3">
+                            <div class="w-8 h-8 bg-white/10 rounded flex items-center justify-center">
+                                <i class="fa-solid fa-gift text-white text-sm"></i>
+                            </div>
+                            <span class="text-[10px] text-gray-500 uppercase font-medium">Offer</span>
+                        </div>
+                        <div class="text-sm font-medium text-white mb-1">Jersey Discount</div>
+                        <div class="text-xs text-gray-500">Halftime only</div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="feature-flags-section">
+                <h2 class="text-sm font-semibold text-gray-400 uppercase mb-4">Feature Flags</h2>
+                <div class="bg-transparent border border-white/10 rounded-lg p-6">
+                    <div class="space-y-4">
+                        <div class="flex items-center justify-between py-2">
+                            <div>
+                                <div class="text-sm font-medium text-white mb-0.5">Live Polls</div>
+                                <div class="text-xs text-gray-500">Allow real-time polling during broadcast</div>
+                            </div>
+                            <div class="w-11 h-6 bg-white rounded-full relative cursor-pointer">
+                                <div class="w-5 h-5 bg-black rounded-full absolute top-0.5 right-0.5"></div>
+                            </div>
+                        </div>
+                        <div class="flex items-center justify-between py-2 border-t border-white/5">
+                            <div>
+                                <div class="text-sm font-medium text-white mb-0.5">Contests & Trivia</div>
+                                <div class="text-xs text-gray-500">Enable interactive contests and quizzes</div>
+                            </div>
+                            <div class="w-11 h-6 bg-white rounded-full relative cursor-pointer">
+                                <div class="w-5 h-5 bg-black rounded-full absolute top-0.5 right-0.5"></div>
+                            </div>
+                        </div>
+                        <div class="flex items-center justify-between py-2 border-t border-white/5">
+                            <div>
+                                <div class="text-sm font-medium text-white mb-0.5">Match Predictions</div>
+                                <div class="text-xs text-gray-500">Allow users to predict match outcomes</div>
+                            </div>
+                            <div class="w-11 h-6 bg-white rounded-full relative cursor-pointer">
+                                <div class="w-5 h-5 bg-black rounded-full absolute top-0.5 right-0.5"></div>
+                            </div>
+                        </div>
+                        <div class="flex items-center justify-between py-2 border-t border-white/5">
+                            <div>
+                                <div class="text-sm font-medium text-white mb-0.5">Product Spotlights</div>
+                                <div class="text-xs text-gray-500">Show sponsored product highlights</div>
+                            </div>
+                            <div class="w-11 h-6 bg-white/20 rounded-full relative cursor-pointer">
+                                <div class="w-5 h-5 bg-white/40 rounded-full absolute top-0.5 left-0.5"></div>
+                            </div>
+                        </div>
+                        <div class="flex items-center justify-between py-2 border-t border-white/5">
+                            <div>
+                                <div class="text-sm font-medium text-white mb-0.5">Demo Mode</div>
+                                <div class="text-xs text-gray-500">Test features without affecting live data</div>
+                            </div>
+                            <div class="w-11 h-6 bg-white/20 rounded-full relative cursor-pointer">
+                                <div class="w-5 h-5 bg-white/40 rounded-full absolute top-0.5 left-0.5"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        </main>
+    </div>
+</div>
+
+</body>
+</html>

@@ -1,9 +1,9 @@
-import { useParams, Link } from "wouter";
-import { useQuery } from "@tanstack/react-query";
+import { useParams, Link, useLocation } from "wouter";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { BarChart3, Zap, Calendar, Settings as SettingsIcon, Activity, Radio } from "lucide-react";
-import { Campaign } from "@shared/schema";
+import { ArrowLeft, Pause, Play, MoreVertical, BarChart3, Radio, Puzzle, Settings, Activity } from "lucide-react";
+import { Campaign, ClientApp, Channel, Sponsor } from "@shared/schema";
 import { OverviewTab } from "@/components/dashboard/OverviewTab";
 import { EventsTab } from "@/components/dashboard/EventsTab";
 import { ScheduledTab } from "@/components/dashboard/ScheduledTab";
@@ -13,15 +13,101 @@ import { SettingsTab } from "@/components/dashboard/SettingsTab";
 import { AppLayout } from "@/components/AppLayout";
 import type { BreadcrumbItem } from "@/components/AppLayout";
 import { useUser } from "@/contexts/UserContext";
+import { useToast } from "@/hooks/use-toast";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+
+type CampaignStatus = 'active' | 'upcoming' | 'ended' | 'paused';
+
+function getCampaignStatus(campaign: Campaign): CampaignStatus {
+  if (campaign.isPaused === 'true') return 'paused';
+  const now = new Date();
+  if (campaign.endDate && new Date(campaign.endDate) < now) return 'ended';
+  if (campaign.startDate && new Date(campaign.startDate) > now) return 'upcoming';
+  return 'active';
+}
+
+const STATUS_STYLES: Record<CampaignStatus, string> = {
+  active: 'bg-white text-black border-white',
+  upcoming: 'bg-blue-500/20 text-blue-400 border-blue-500/30',
+  ended: 'bg-gray-500/20 text-gray-400 border-gray-500/30',
+  paused: 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30',
+};
+
+const TABS = [
+  { value: 'overview', label: 'Overview', icon: BarChart3 },
+  { value: 'broadcasts', label: 'Broadcasts', icon: Radio },
+  { value: 'components', label: 'Components', icon: Puzzle },
+  { value: 'config', label: 'Config', icon: Settings },
+  { value: 'analytics', label: 'Analytics', icon: Activity },
+] as const;
 
 export default function CampaignDashboard() {
   const params = useParams();
   const { userId } = useUser();
+  const { toast } = useToast();
+  const [, navigate] = useLocation();
   const campaignId = params.campaignId ? parseInt(params.campaignId) : (params.id ? parseInt(params.id) : null);
+  const [activeTab, setActiveTab] = useState<string>('overview');
 
   const { data: campaign, isLoading } = useQuery<Campaign>({
     queryKey: ['/api/campaigns', campaignId],
     enabled: !!campaignId
+  });
+
+  const { data: clientApps = [] } = useQuery<ClientApp[]>({
+    queryKey: ['/api/client-apps', userId],
+    queryFn: async () => {
+      const res = await fetch(`/api/client-apps?userId=${userId}`);
+      if (!res.ok) throw new Error('Failed');
+      return res.json();
+    },
+    enabled: !!userId,
+  });
+
+  const { data: allChannels = [] } = useQuery<Channel[]>({
+    queryKey: ['/api/channels', userId],
+    queryFn: async () => {
+      const res = await fetch(`/api/channels?userId=${userId}`);
+      if (!res.ok) throw new Error('Failed');
+      return res.json();
+    },
+    enabled: !!userId,
+  });
+
+  const { data: sponsors = [] } = useQuery<Sponsor[]>({
+    queryKey: ['/api/sponsors', userId],
+    queryFn: async () => {
+      const res = await fetch(`/api/sponsors?userId=${userId}`);
+      if (!res.ok) throw new Error('Failed');
+      return res.json();
+    },
+    enabled: !!userId,
+  });
+
+  const togglePauseMutation = useMutation({
+    mutationFn: async () => {
+      return await apiRequest('PATCH', `/api/campaigns/${campaignId}/toggle-pause`, {});
+    },
+    onSuccess: async (data: any) => {
+      const isPaused = data.isPaused === 'true';
+      toast({
+        title: isPaused ? 'Campaign Paused' : 'Campaign Resumed',
+        description: isPaused
+          ? 'All components are now hidden from viewers'
+          : 'Campaign is now active and broadcasting',
+      });
+      await queryClient.invalidateQueries({
+        queryKey: ['/api/campaigns', campaignId],
+        refetchType: 'active'
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: 'Error',
+        description: error.message || 'Failed to toggle campaign state.',
+        variant: 'destructive',
+      });
+    },
   });
 
   const breadcrumbs: BreadcrumbItem[] = [
@@ -53,106 +139,139 @@ export default function CampaignDashboard() {
     );
   }
 
-  const backHref = '/campaigns';
+  const status = getCampaignStatus(campaign);
+  const isPaused = campaign.isPaused === 'true';
+
+  const app = campaign.clientAppId
+    ? clientApps.find(a => a.id === campaign.clientAppId)
+    : campaign.channelId
+      ? clientApps.find(a => a.id === allChannels.find(c => c.id === campaign.channelId)?.clientAppId)
+      : undefined;
+  const channel = campaign.channelId ? allChannels.find(c => c.id === campaign.channelId) : undefined;
+  const sponsor = campaign.sponsorId ? sponsors.find(s => s.id === campaign.sponsorId) : undefined;
 
   return (
-    <AppLayout
-      breadcrumbs={breadcrumbs}
-    >
-      <div className="mb-6">
-        <div className="flex items-start justify-between gap-4">
-          <div className="flex-1">
-            {campaign.logo && (
-              <img
-                src={campaign.logo}
-                alt={campaign.name}
-                className="w-16 h-16 object-contain mb-4 rounded-lg"
-              />
-            )}
-            <h1 className="text-3xl sm:text-4xl font-bold text-foreground mb-2" data-testid="text-campaign-name">
-              {campaign.name}
-            </h1>
-            {campaign.description && (
-              <p className="text-muted-foreground">{campaign.description}</p>
-            )}
+    <AppLayout breadcrumbs={breadcrumbs}>
+      <div className="mb-6 pb-6 border-b border-gray-200 dark:border-white/10">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <button
+              onClick={() => navigate('/campaigns')}
+              className="w-8 h-8 flex items-center justify-center rounded hover:bg-gray-100 dark:hover:bg-white/10 text-gray-400 hover:text-gray-600 dark:hover:text-white transition"
+              data-testid="button-back"
+            >
+              <ArrowLeft className="w-4 h-4" />
+            </button>
+            <div>
+              <div className="flex items-center gap-3 mb-1">
+                {sponsor?.avatarUrl && (
+                  <img
+                    src={sponsor.avatarUrl}
+                    alt={sponsor.name}
+                    className="w-8 h-8 rounded-full object-cover border border-gray-200 dark:border-white/10"
+                    data-testid="img-campaign-sponsor"
+                  />
+                )}
+                <h1 className="text-2xl font-bold text-gray-900 dark:text-white" data-testid="text-campaign-name">
+                  {campaign.name}
+                </h1>
+                <span
+                  className={`px-2 py-0.5 text-[10px] uppercase font-bold rounded-full border ${STATUS_STYLES[status]}`}
+                  data-testid="badge-campaign-status"
+                >
+                  {status}
+                </span>
+              </div>
+              {(app || channel) && (
+                <div className="flex items-center text-xs text-gray-400 dark:text-gray-500 gap-2">
+                  {app && <span className="text-gray-500 dark:text-gray-300" data-testid="text-campaign-app">{app.name}</span>}
+                  {app && channel && <span className="text-gray-300 dark:text-gray-700">/</span>}
+                  {channel && <span className="text-gray-500 dark:text-gray-300" data-testid="text-campaign-channel">{channel.name}</span>}
+                </div>
+              )}
+            </div>
           </div>
 
-          <div className="flex gap-2">
-            <Link href={`/campaign/${campaign.name}/${campaign.id}`}>
-              <Button variant="outline" size="sm" data-testid="button-view-live">
-                <Activity className="w-4 h-4 mr-2" />
-                View Live
-              </Button>
-            </Link>
+          <div className="flex items-center gap-3">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => togglePauseMutation.mutate()}
+              disabled={togglePauseMutation.isPending || status === 'ended'}
+              className="gap-2 border-gray-200 dark:border-white/20 hover:border-gray-300 dark:hover:border-white/40"
+              data-testid="button-toggle-pause"
+            >
+              {isPaused ? (
+                <>
+                  <Play className="w-3.5 h-3.5" />
+                  <span>Resume</span>
+                </>
+              ) : (
+                <>
+                  <Pause className="w-3.5 h-3.5" />
+                  <span>Pause</span>
+                </>
+              )}
+            </Button>
+            <button
+              className="w-8 h-8 flex items-center justify-center rounded hover:bg-gray-100 dark:hover:bg-white/10 text-gray-400 hover:text-gray-600 dark:hover:text-white transition"
+              data-testid="button-more-options"
+            >
+              <MoreVertical className="w-4 h-4" />
+            </button>
           </div>
         </div>
       </div>
 
-      <Tabs defaultValue="overview" className="w-full">
-        <TabsList className="grid w-full grid-cols-3 sm:grid-cols-7 mb-6">
-          <TabsTrigger value="overview" data-testid="tab-overview">
-            <BarChart3 className="w-4 h-4 mr-2" />
-            Overview
-          </TabsTrigger>
-          <TabsTrigger value="broadcasts" data-testid="tab-broadcasts">
-            <Radio className="w-4 h-4 mr-2" />
-            Broadcasts
-          </TabsTrigger>
-          <TabsTrigger value="events" data-testid="tab-events">
-            <Zap className="w-4 h-4 mr-2" />
-            Events
-          </TabsTrigger>
-          <TabsTrigger value="scheduled" data-testid="tab-scheduled">
-            <Calendar className="w-4 h-4 mr-2" />
-            Scheduled
-          </TabsTrigger>
-          <TabsTrigger value="components" data-testid="tab-components">
-            <Activity className="w-4 h-4 mr-2" />
-            Components
-          </TabsTrigger>
-          <TabsTrigger value="integrations" data-testid="tab-integrations">
-            Integrations
-          </TabsTrigger>
-          <TabsTrigger value="settings" data-testid="tab-settings">
-            <SettingsIcon className="w-4 h-4 mr-2" />
-            Settings
-          </TabsTrigger>
-        </TabsList>
+      <div className="border-b border-gray-200 dark:border-white/10 mb-6">
+        <div className="flex items-center gap-1">
+          {TABS.map(tab => (
+            <button
+              key={tab.value}
+              onClick={() => setActiveTab(tab.value)}
+              data-testid={`tab-${tab.value}`}
+              className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-all ${
+                activeTab === tab.value
+                  ? 'text-gray-900 dark:text-white border-gray-900 dark:border-white'
+                  : 'text-gray-400 border-transparent hover:text-gray-600 dark:hover:text-white hover:border-gray-300 dark:hover:border-white/20'
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+      </div>
 
-        <TabsContent value="overview">
+      <div>
+        {activeTab === 'overview' && (
           <OverviewTab campaignId={campaignId!} campaign={campaign} />
-        </TabsContent>
-
-        <TabsContent value="broadcasts">
+        )}
+        {activeTab === 'broadcasts' && (
           <BroadcastsTab campaignId={campaignId!} />
-        </TabsContent>
-
-        <TabsContent value="events">
-          <EventsTab campaignId={campaignId!} campaign={campaign} />
-        </TabsContent>
-
-        <TabsContent value="scheduled">
-          <ScheduledTab campaignId={campaignId!} />
-        </TabsContent>
-
-        <TabsContent value="components">
+        )}
+        {activeTab === 'components' && (
           <ComponentsTab campaignId={campaignId!} />
-        </TabsContent>
-
-        <TabsContent value="integrations">
-          <IntegrationsTab campaignId={campaignId!} campaign={campaign} />
-        </TabsContent>
-
-        <TabsContent value="settings">
-          <SettingsTab campaignId={campaignId!} campaign={campaign} />
-        </TabsContent>
-      </Tabs>
+        )}
+        {activeTab === 'config' && (
+          <div className="space-y-8">
+            <EventsTab campaignId={campaignId!} campaign={campaign} />
+            <ScheduledTab campaignId={campaignId!} />
+            <IntegrationsTab campaignId={campaignId!} campaign={campaign} />
+            <SettingsTab campaignId={campaignId!} campaign={campaign} />
+          </div>
+        )}
+        {activeTab === 'analytics' && (
+          <div className="flex flex-col items-center justify-center py-16">
+            <Activity className="w-12 h-12 text-gray-300 dark:text-white/20 mb-4" />
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-1">Analytics Coming Soon</h3>
+            <p className="text-sm text-gray-500 dark:text-white/40">Campaign analytics and reporting will be available here.</p>
+          </div>
+        )}
+      </div>
     </AppLayout>
   );
 }
 
-import { useState } from 'react';
-import { useMutation } from '@tanstack/react-query';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -177,10 +296,8 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { useToast } from '@/hooks/use-toast';
-import { queryClient, apiRequest } from '@/lib/queryClient';
 import type { Broadcast } from '@shared/schema';
-import { Plus, Trash2, Clock, Filter } from 'lucide-react';
+import { Plus, Trash2, Clock, Filter, Calendar } from 'lucide-react';
 
 function getStatusBadge(status: string) {
   switch (status) {
@@ -281,26 +398,27 @@ function BroadcastsTab({ campaignId }: { campaignId: number }) {
 
   return (
     <div>
-      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 mb-6">
+      <div className="flex items-center justify-between mb-4">
         <div className="flex gap-2 flex-wrap">
           {filterOptions.map((option) => (
-            <Button
+            <button
               key={option.value}
-              variant={statusFilter === option.value ? 'default' : 'outline'}
-              size="sm"
               onClick={() => setStatusFilter(option.value)}
-              data-testid={`filter-${option.value}`}
-              className="gap-1.5"
+              data-testid={`filter-broadcast-${option.value}`}
+              className={`px-3.5 py-1.5 text-sm rounded-md transition-all ${
+                statusFilter === option.value
+                  ? 'bg-white dark:bg-white/10 text-gray-900 dark:text-white font-medium shadow-sm'
+                  : 'text-gray-500 dark:text-white/40 hover:text-gray-700 dark:hover:text-white/60 hover:bg-gray-100 dark:hover:bg-white/5'
+              }`}
             >
-              {option.value === 'all' && <Filter className="w-3.5 h-3.5" />}
               {option.label}
-            </Button>
+            </button>
           ))}
         </div>
 
         <Dialog open={createOpen} onOpenChange={setCreateOpen}>
           <DialogTrigger asChild>
-            <Button data-testid="button-create-broadcast" className="gap-2">
+            <Button data-testid="button-create-broadcast" size="sm" className="gap-2">
               <Plus className="w-4 h-4" />
               New Broadcast
             </Button>
@@ -366,50 +484,62 @@ function BroadcastsTab({ campaignId }: { campaignId: number }) {
       </div>
 
       {isLoading ? (
-        <div className="text-center py-12">
-          <p className="text-muted-foreground">Loading broadcasts...</p>
+        <div className="space-y-3">
+          {[1, 2, 3].map(i => (
+            <div key={i} className="h-24 bg-gray-100 dark:bg-white/5 rounded-lg animate-pulse" />
+          ))}
         </div>
       ) : broadcasts.length === 0 ? (
-        <Card className="border-0">
-          <CardContent className="flex flex-col items-center justify-center py-12">
-            <Radio className="w-12 h-12 text-muted-foreground mb-4" />
-            <h3 className="text-lg font-semibold mb-2">No broadcasts yet</h3>
-            <p className="text-muted-foreground mb-4">Create your first broadcast for this campaign</p>
-            <Button onClick={() => setCreateOpen(true)} data-testid="button-create-first-broadcast">
-              <Plus className="w-4 h-4 mr-2" />
-              Create Broadcast
-            </Button>
-          </CardContent>
-        </Card>
+        <div className="flex flex-col items-center justify-center py-16">
+          <Radio className="w-12 h-12 text-gray-300 dark:text-white/20 mb-4" />
+          <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-1">No broadcasts yet</h3>
+          <p className="text-sm text-gray-500 dark:text-white/40 mb-4">Create your first broadcast for this campaign</p>
+          <Button onClick={() => setCreateOpen(true)} data-testid="button-create-first-broadcast" size="sm" className="gap-2">
+            <Plus className="w-4 h-4" />
+            Create Broadcast
+          </Button>
+        </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="space-y-3">
           {broadcasts.map((broadcast) => (
-            <Card
+            <div
               key={broadcast.broadcastId}
-              className="border border-white/10 hover:border-white/20 transition-all"
+              className="bg-white dark:bg-transparent border border-gray-200 dark:border-white/10 rounded-lg p-5 hover:border-gray-300 dark:hover:border-white/30 transition-all cursor-pointer"
               data-testid={`card-broadcast-${broadcast.broadcastId}`}
             >
-              <CardHeader>
-                <div className="flex items-start justify-between gap-2">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2 mb-2">
-                      <CardTitle className="text-lg">{broadcast.broadcastName}</CardTitle>
-                      {getStatusBadge(broadcast.status)}
-                    </div>
-                    <CardDescription className="text-xs font-mono">
-                      ID: {broadcast.broadcastId}
-                    </CardDescription>
+              <div className="flex justify-between items-start">
+                <div className="flex-1">
+                  <div className="flex items-center gap-3 mb-2">
+                    <h3 className="text-base font-semibold text-gray-900 dark:text-white">{broadcast.broadcastName}</h3>
+                    {getStatusBadge(broadcast.status)}
                   </div>
+                  <div className="flex items-center gap-4 text-xs text-gray-500 dark:text-gray-500">
+                    <span className="font-mono">ID: {broadcast.broadcastId}</span>
+                    {broadcast.startTime && (
+                      <span className="flex items-center gap-1">
+                        <Clock className="w-3.5 h-3.5" />
+                        {new Date(broadcast.startTime).toLocaleString()}
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Link href={broadcastDetailHref(broadcast.broadcastId)}>
+                    <button
+                      className="px-3 py-1.5 bg-gray-100 dark:bg-white/10 hover:bg-gray-200 dark:hover:bg-white/20 text-gray-700 dark:text-white rounded text-xs transition"
+                      data-testid={`button-manage-broadcast-${broadcast.broadcastId}`}
+                    >
+                      Manage
+                    </button>
+                  </Link>
                   <AlertDialog>
                     <AlertDialogTrigger asChild>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10"
+                      <button
+                        className="p-1.5 text-gray-400 hover:text-red-500 dark:hover:text-red-400 rounded hover:bg-red-50 dark:hover:bg-red-500/10 transition"
                         data-testid={`button-delete-broadcast-${broadcast.broadcastId}`}
                       >
                         <Trash2 className="w-4 h-4" />
-                      </Button>
+                      </button>
                     </AlertDialogTrigger>
                     <AlertDialogContent>
                       <AlertDialogHeader>
@@ -430,30 +560,8 @@ function BroadcastsTab({ campaignId }: { campaignId: number }) {
                     </AlertDialogContent>
                   </AlertDialog>
                 </div>
-              </CardHeader>
-              <CardContent>
-                <div className="flex flex-col gap-2 text-sm text-muted-foreground mb-4">
-                  {broadcast.startTime && (
-                    <div className="flex items-center gap-1">
-                      <Clock className="w-4 h-4" />
-                      <span>Start: {new Date(broadcast.startTime).toLocaleString()}</span>
-                    </div>
-                  )}
-                  {broadcast.endTime && (
-                    <div className="flex items-center gap-1">
-                      <Calendar className="w-4 h-4" />
-                      <span>End: {new Date(broadcast.endTime).toLocaleString()}</span>
-                    </div>
-                  )}
-                </div>
-                <Link href={broadcastDetailHref(broadcast.broadcastId)}>
-                  <Button variant="default" size="sm" className="w-full" data-testid={`button-manage-broadcast-${broadcast.broadcastId}`}>
-                    <Radio className="w-4 h-4 mr-1" />
-                    Manage Broadcast
-                  </Button>
-                </Link>
-              </CardContent>
-            </Card>
+              </div>
+            </div>
           ))}
         </div>
       )}
