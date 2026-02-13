@@ -1416,8 +1416,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: 'Invalid userId parameter' });
       }
       
-      const campaigns = await storage.getUserCampaigns(userId);
-      res.json(campaigns);
+      const userCampaigns = await storage.getUserCampaigns(userId);
+      const countMap = await storage.getBroadcastCountsForCampaigns(userCampaigns.map(c => c.id));
+
+      const enriched = userCampaigns.map(c => ({
+        ...c,
+        broadcastCount: countMap.get(c.id) || 0,
+      }));
+
+      res.json(enriched);
     } catch (error) {
       console.error('Error fetching campaigns:', error);
       res.status(500).json({ message: 'Error fetching campaigns' });

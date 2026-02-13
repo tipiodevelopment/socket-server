@@ -1,7 +1,7 @@
 import { WebSocketEvent, Campaign, InsertCampaign, Event, InsertEvent, CampaignFormState, InsertFormState, ScheduledComponent, InsertScheduledComponent, Component, InsertComponent, CampaignComponent, InsertCampaignComponent, AppComponent, InsertAppComponent, User, InsertUser, ClientApp, InsertClientApp, Channel, InsertChannel, CampaignTranslation, InsertCampaignTranslation, CampaignEngagementConfig, InsertCampaignEngagementConfig, CampaignUiConfig, InsertCampaignUiConfig, CampaignFeatureFlags, InsertCampaignFeatureFlags, SdkTranslation, InsertSdkTranslation, Broadcast, InsertBroadcast, Poll, InsertPoll, PollOptionRecord, InsertPollOption, PollVote, InsertPollVote, Contest, InsertContest, ContestParticipation, InsertContestParticipation, Sponsor, InsertSponsor } from "@shared/schema";
 import { db } from "./db";
 import { campaigns, events, campaignFormState, scheduledComponents, components, campaignComponents, appComponents, users, clientApps, channels, campaignTranslations, campaignEngagementConfig, campaignUiConfig, campaignFeatureFlags, sdkTranslations, broadcasts, polls, pollOptions, pollVotes, contests, contestParticipations, sponsors } from "@shared/schema";
-import { eq, desc, and, gte, ne, isNull, sql, lte } from "drizzle-orm";
+import { eq, desc, and, gte, ne, isNull, sql, lte, inArray } from "drizzle-orm";
 
 export interface IStorage {
   addEvent(event: WebSocketEvent): Promise<void>;
@@ -348,6 +348,16 @@ export class MemStorage implements IStorage {
     return await db.select().from(campaigns)
       .where(eq(campaigns.userId, userId))
       .orderBy(desc(campaigns.createdAt));
+  }
+
+  async getBroadcastCountsForCampaigns(campaignIds: number[]): Promise<Map<number, number>> {
+    if (campaignIds.length === 0) return new Map();
+    const rows = await db
+      .select({ campaignId: broadcasts.campaignId, count: sql<number>`count(*)::int` })
+      .from(broadcasts)
+      .where(inArray(broadcasts.campaignId, campaignIds))
+      .groupBy(broadcasts.campaignId);
+    return new Map(rows.map(r => [r.campaignId!, r.count]));
   }
 
   async updateCampaign(id: number, campaign: Partial<InsertCampaign>): Promise<Campaign | undefined> {
