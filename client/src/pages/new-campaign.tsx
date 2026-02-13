@@ -1,79 +1,44 @@
-import { useState, useEffect } from 'react';
-import { Link, useLocation } from 'wouter';
+import { useState } from 'react';
+import { useLocation } from 'wouter';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { apiRequest, queryClient } from '@/lib/queryClient';
 import { useToast } from '@/hooks/use-toast';
+import { useUser } from '@/contexts/UserContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import type { Campaign, ReachuChannel, TipioLivestream } from '@shared/schema';
-import { ArrowLeft, Rocket, ShoppingBag, Radio } from 'lucide-react';
-import { ImageUploadWithPreview } from '@/components/ImageUploadWithPreview';
-
-const USER_SESSION_KEY = "reachu_simulated_user_id";
+import { AppLayout } from '@/components/AppLayout';
+import type { Campaign, ClientApp } from '@shared/schema';
+import { Megaphone, Calendar, ImageIcon } from 'lucide-react';
 
 export default function NewCampaignPage() {
   const { toast } = useToast();
   const [, setLocation] = useLocation();
-  const [currentUserId, setCurrentUserId] = useState<number | null>(null);
-  const [formData, setFormData] = useState({
-    name: '',
-    logo: '',
-    description: ''
+  const { userId } = useUser();
+
+  const searchParams = new URLSearchParams(window.location.search);
+  const preselectedAppId = searchParams.get('appId');
+
+  const [name, setName] = useState('');
+  const [description, setDescription] = useState('');
+  const [logo, setLogo] = useState('');
+  const [selectedAppId, setSelectedAppId] = useState<string>(preselectedAppId || '');
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+
+  const { data: clientApps = [] } = useQuery<ClientApp[]>({
+    queryKey: ['/api/client-apps', userId],
+    queryFn: async () => {
+      const res = await fetch(`/api/client-apps?userId=${userId}`);
+      if (!res.ok) throw new Error('Failed');
+      return res.json();
+    },
+    enabled: !!userId,
   });
 
-  // Load userId from localStorage for multi-tenant scoping
-  useEffect(() => {
-    const storedUserId = localStorage.getItem(USER_SESSION_KEY);
-    if (storedUserId) {
-      fetch('/api/users/ensure', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ reachuUserId: storedUserId })
-      })
-        .then(res => res.json())
-        .then(user => setCurrentUserId(user.id))
-        .catch((err) => {
-          console.error('Failed to load user:', err);
-          setLocation('/user-session');
-        });
-    } else {
-      // No user session, redirect to user-session page
-      setLocation('/user-session');
-    }
-  }, [setLocation]);
-
-  // Integration states
-  const [enableReachu, setEnableReachu] = useState(false);
-  const [enableTipio, setEnableTipio] = useState(false);
-  
-  // Reachu states
-  const [reachuApiKey, setReachuApiKey] = useState('');
-  const [selectedChannelId, setSelectedChannelId] = useState<string>('');
-  
-  // Tipio livestream states
-  const [tipioLivestream, setTipioLivestream] = useState<Partial<TipioLivestream>>({
-    title: '',
-    liveStreamId: '',
-    hls: null,
-    player: '',
-    thumbnail: '',
-    broadcasting: false,
-    date: '',
-    end_date: '',
-    streamDone: null,
-    videoId: ''
-  });
-
-  // Fetch Reachu channels when enabled
-  const { data: reachuChannels, isLoading: loadingChannels } = useQuery<ReachuChannel[]>({
-    queryKey: ['/api/reachu/channels'],
-    enabled: enableReachu
-  });
+  const preselectedApp = clientApps.find(a => a.id === parseInt(preselectedAppId || ''));
 
   const createMutation = useMutation<Campaign, Error, any>({
     mutationFn: async (data) => {
@@ -81,369 +46,202 @@ export default function NewCampaignPage() {
       return response.json();
     },
     onSuccess: (newCampaign) => {
-      toast({
-        title: "Campaign Created",
-        description: "Your new campaign is ready to use",
+      toast({ title: 'Campaign Created', description: 'Your new campaign is ready.' });
+      queryClient.invalidateQueries({
+        predicate: (query) => {
+          const key = query.queryKey[0] as string;
+          return key === '/api/campaigns' || key === '/api/client-apps';
+        }
       });
-      // Invalidate all campaign queries (including tenant-scoped ones)
-      queryClient.invalidateQueries({ 
-        predicate: (query) => query.queryKey[0] === '/api/campaigns'
-      });
-      setLocation(`/campaign/${newCampaign.id}/dashboard`);
+      setLocation(`/campaigns/${newCampaign.id}`);
     },
     onError: () => {
-      toast({
-        title: "Error",
-        description: "Could not create campaign",
-        variant: "destructive",
-      });
+      toast({ title: 'Error', description: 'Could not create campaign', variant: 'destructive' });
     }
   });
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    
-    // Require userId for multi-tenant scoping
-    if (!currentUserId) {
-      toast({
-        title: "Session Required",
-        description: "Please log in to create a campaign",
-        variant: "destructive",
-      });
-      setLocation('/user-session');
-      return;
-    }
-    
-    const campaignData: any = {
-      ...formData,
-      userId: currentUserId, // Required for multi-tenant scoping
-      ...(enableReachu && {
-        reachuChannelId: selectedChannelId,
-        reachuApiKey: reachuApiKey
-      }),
-      ...(enableTipio && {
-        tipioLivestreamData: tipioLivestream
-      })
+    if (!name.trim() || !userId) return;
+
+    const data: any = {
+      name: name.trim(),
+      description: description.trim() || undefined,
+      logo: logo.trim() || undefined,
+      userId,
+      startDate: startDate || undefined,
+      endDate: endDate || undefined,
     };
-    
-    createMutation.mutate(campaignData);
+
+    if (selectedAppId && selectedAppId !== 'none') {
+      data.clientAppId = parseInt(selectedAppId);
+    }
+
+    createMutation.mutate(data);
   };
 
+  const breadcrumbs = preselectedApp
+    ? [
+        { label: 'Apps', href: '/apps' },
+        { label: preselectedApp.name, href: `/apps/${preselectedApp.id}` },
+        { label: 'New Campaign' },
+      ]
+    : [
+        { label: 'Campaigns', href: '/campaigns' },
+        { label: 'New Campaign' },
+      ];
+
   return (
-    <div className="min-h-screen">
-      {/* Header */}
-      <header className="bg-card/60 backdrop-blur-xl border-0">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-2 sm:space-x-3">
-              <div className="w-8 h-8 sm:w-10 sm:h-10 bg-primary rounded-lg flex items-center justify-center">
-                <Rocket className="w-5 h-5 sm:w-6 sm:h-6 text-primary-foreground" />
+    <AppLayout breadcrumbs={breadcrumbs}>
+      <div className="max-w-2xl mx-auto">
+        <div className="flex items-center gap-3 mb-8">
+          <div className="w-10 h-10 rounded-xl bg-purple-500/10 dark:bg-purple-500/20 flex items-center justify-center">
+            <Megaphone className="w-5 h-5 text-purple-500" />
+          </div>
+          <div>
+            <h1 className="text-xl font-semibold text-gray-900 dark:text-gray-100" data-testid="text-page-title">
+              Create New Campaign
+            </h1>
+            <p className="text-sm text-gray-500 dark:text-gray-400">
+              Set up a new campaign to manage broadcasts and events.
+            </p>
+          </div>
+        </div>
+
+        <form onSubmit={handleSubmit} className="space-y-6">
+          <div className="bg-white dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-xl p-6 space-y-5">
+            <h2 className="text-sm font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+              Basic Information
+            </h2>
+
+            <div className="space-y-2">
+              <Label htmlFor="name" className="text-gray-700 dark:text-gray-300">Campaign Name *</Label>
+              <Input
+                id="name"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="e.g. Summer Sale 2026"
+                required
+                data-testid="input-campaign-name"
+                className="bg-gray-50 dark:bg-gray-700 border-gray-200 dark:border-gray-600 text-gray-900 dark:text-white"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="description" className="text-gray-700 dark:text-gray-300">Description</Label>
+              <Textarea
+                id="description"
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder="Brief description of the campaign"
+                rows={3}
+                data-testid="input-campaign-description"
+                className="bg-gray-50 dark:bg-gray-700 border-gray-200 dark:border-gray-600 text-gray-900 dark:text-white"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="logo" className="text-gray-700 dark:text-gray-300">
+                <span className="flex items-center gap-2">
+                  <ImageIcon className="w-4 h-4" /> Logo URL
+                </span>
+              </Label>
+              <Input
+                id="logo"
+                value={logo}
+                onChange={(e) => setLogo(e.target.value)}
+                placeholder="https://example.com/logo.png"
+                data-testid="input-campaign-logo"
+                className="bg-gray-50 dark:bg-gray-700 border-gray-200 dark:border-gray-600 text-gray-900 dark:text-white"
+              />
+            </div>
+          </div>
+
+          <div className="bg-white dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-xl p-6 space-y-5">
+            <h2 className="text-sm font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+              App & Schedule
+            </h2>
+
+            <div className="space-y-2">
+              <Label className="text-gray-700 dark:text-gray-300">Assign to App</Label>
+              <Select value={selectedAppId} onValueChange={setSelectedAppId}>
+                <SelectTrigger
+                  data-testid="select-app"
+                  className="bg-gray-50 dark:bg-gray-700 border-gray-200 dark:border-gray-600 text-gray-900 dark:text-white"
+                >
+                  <SelectValue placeholder="Select an app (optional)" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">No app</SelectItem>
+                  {clientApps.map((app) => (
+                    <SelectItem key={app.id} value={String(app.id)} data-testid={`option-app-${app.id}`}>
+                      {app.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-gray-400 dark:text-gray-500">
+                Link this campaign to an app to share components and branding.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="startDate" className="text-gray-700 dark:text-gray-300">
+                  <span className="flex items-center gap-2">
+                    <Calendar className="w-4 h-4" /> Start Date
+                  </span>
+                </Label>
+                <Input
+                  id="startDate"
+                  type="datetime-local"
+                  value={startDate}
+                  onChange={(e) => setStartDate(e.target.value)}
+                  data-testid="input-start-date"
+                  className="bg-gray-50 dark:bg-gray-700 border-gray-200 dark:border-gray-600 text-gray-900 dark:text-white"
+                />
               </div>
-              <div>
-                <h1 className="text-base sm:text-xl font-bold text-foreground">Campaign Manager</h1>
-                <p className="text-xs sm:text-sm text-muted-foreground hidden sm:block">Create a new event campaign</p>
+
+              <div className="space-y-2">
+                <Label htmlFor="endDate" className="text-gray-700 dark:text-gray-300">
+                  <span className="flex items-center gap-2">
+                    <Calendar className="w-4 h-4" /> End Date
+                  </span>
+                </Label>
+                <Input
+                  id="endDate"
+                  type="datetime-local"
+                  value={endDate}
+                  onChange={(e) => setEndDate(e.target.value)}
+                  data-testid="input-end-date"
+                  className="bg-gray-50 dark:bg-gray-700 border-gray-200 dark:border-gray-600 text-gray-900 dark:text-white"
+                />
               </div>
             </div>
           </div>
-        </div>
-      </header>
 
-      {/* Main Content */}
-      <main className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Back Button */}
-        <Link href="/">
-          <Button variant="ghost" className="mb-6 gap-2" data-testid="button-back">
-            <ArrowLeft className="w-4 h-4" />
-            Back to campaigns
-          </Button>
-        </Link>
-
-        {/* Form Card */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-2xl">Create New Campaign</CardTitle>
-            <CardDescription>
-              Fill in the information for your new event campaign. You can add more configuration options after creation.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <form onSubmit={handleSubmit} className="space-y-6">
-              {/* Basic Information Section */}
-              <div className="space-y-4">
-                <h3 className="text-lg font-semibold">Basic Information</h3>
-                
-                <div>
-                  <Label htmlFor="name">Campaign Name *</Label>
-                  <Input
-                    id="name"
-                    value={formData.name}
-                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                    placeholder="e.g. Champions League 2024"
-                    required
-                    data-testid="input-campaign-name"
-                    className="border-0 mt-2"
-                  />
-                  <p className="text-sm text-muted-foreground mt-1">
-                    Choose a descriptive name for your campaign
-                  </p>
-                </div>
-
-                <div>
-                  <ImageUploadWithPreview
-                    label="Campaign Logo"
-                    value={formData.logo}
-                    onChange={(url) => setFormData({ ...formData, logo: url })}
-                    placeholder="https://example.com/logo.png"
-                    testId="input-campaign-logo"
-                  />
-                  <p className="text-sm text-muted-foreground mt-1">
-                    Optional: Add a logo to display on all events
-                  </p>
-                </div>
-
-                <div>
-                  <Label htmlFor="description">Description</Label>
-                  <Textarea
-                    id="description"
-                    value={formData.description}
-                    onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                    placeholder="Brief description of the campaign"
-                    rows={4}
-                    data-testid="input-campaign-description"
-                    className="border-0 mt-2"
-                  />
-                  <p className="text-sm text-muted-foreground mt-1">
-                    Provide a brief description of what this campaign is about
-                  </p>
-                </div>
-              </div>
-
-              {/* Reachu Integration Section */}
-              <div className="space-y-4 pt-6 border-t border-white/10">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <ShoppingBag className="w-5 h-5 text-primary" />
-                    <div>
-                      <h3 className="text-lg font-semibold">Reachu.io Integration</h3>
-                      <p className="text-sm text-muted-foreground">Connect to your e-commerce channel</p>
-                    </div>
-                  </div>
-                  <Switch
-                    checked={enableReachu}
-                    onCheckedChange={setEnableReachu}
-                    data-testid="switch-reachu"
-                  />
-                </div>
-
-                {enableReachu && (
-                  <div className="space-y-4 pl-4 sm:pl-8">
-                    <div>
-                      <Label htmlFor="reachu-api-key">API Key *</Label>
-                      <Input
-                        id="reachu-api-key"
-                        type="password"
-                        value={reachuApiKey}
-                        onChange={(e) => setReachuApiKey(e.target.value)}
-                        placeholder="Enter your Reachu API key"
-                        className="mt-2"
-                        data-testid="input-reachu-api-key"
-                      />
-                      <p className="text-sm text-muted-foreground mt-1">
-                        Your API key to authenticate with Reachu
-                      </p>
-                    </div>
-
-                    {reachuApiKey && (
-                      <div>
-                        <Label htmlFor="reachu-channel">Select Channel *</Label>
-                        {loadingChannels ? (
-                          <div className="text-sm text-muted-foreground mt-2">Loading channels...</div>
-                        ) : (
-                          <>
-                            <Select
-                              value={selectedChannelId}
-                              onValueChange={setSelectedChannelId}
-                            >
-                              <SelectTrigger className="mt-2" data-testid="select-reachu-channel">
-                                <SelectValue placeholder="Choose a channel" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {reachuChannels?.map((channel) => (
-                                  <SelectItem 
-                                    key={channel.id} 
-                                    value={channel.id}
-                                    data-testid={`channel-option-${channel.id}`}
-                                  >
-                                    {channel.name} ({channel.productCount} products)
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                            <p className="text-sm text-muted-foreground mt-1">
-                              Choose which product channel to connect
-                            </p>
-                          </>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-
-              {/* Tipio Livestream Section */}
-              <div className="space-y-4 pt-6 border-t border-white/10">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <Radio className="w-5 h-5 text-primary" />
-                    <div>
-                      <h3 className="text-lg font-semibold">Tipio Livestream</h3>
-                      <p className="text-sm text-muted-foreground">Configure live streaming event</p>
-                    </div>
-                  </div>
-                  <Switch
-                    checked={enableTipio}
-                    onCheckedChange={setEnableTipio}
-                    data-testid="switch-tipio"
-                  />
-                </div>
-
-                {enableTipio && (
-                  <div className="space-y-4 pl-4 sm:pl-8">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div>
-                        <Label htmlFor="tipio-title">Title *</Label>
-                        <Input
-                          id="tipio-title"
-                          value={tipioLivestream.title}
-                          onChange={(e) => setTipioLivestream({ ...tipioLivestream, title: e.target.value })}
-                          placeholder="Livestream title"
-                          className="mt-2"
-                          data-testid="input-tipio-title"
-                        />
-                      </div>
-
-                      <div>
-                        <Label htmlFor="tipio-live-stream-id">Live Stream ID (Vimeo) *</Label>
-                        <Input
-                          id="tipio-live-stream-id"
-                          value={tipioLivestream.liveStreamId}
-                          onChange={(e) => setTipioLivestream({ ...tipioLivestream, liveStreamId: e.target.value })}
-                          placeholder="e.g. 5404404"
-                          className="mt-2"
-                          data-testid="input-tipio-stream-id"
-                        />
-                      </div>
-
-                      <div>
-                        <Label htmlFor="tipio-video-id">Video ID *</Label>
-                        <Input
-                          id="tipio-video-id"
-                          value={tipioLivestream.videoId}
-                          onChange={(e) => setTipioLivestream({ ...tipioLivestream, videoId: e.target.value })}
-                          placeholder="e.g. 1091391964"
-                          className="mt-2"
-                          data-testid="input-tipio-video-id"
-                        />
-                      </div>
-
-                      <div>
-                        <Label htmlFor="tipio-player">Player URL *</Label>
-                        <Input
-                          id="tipio-player"
-                          value={tipioLivestream.player}
-                          onChange={(e) => setTipioLivestream({ ...tipioLivestream, player: e.target.value })}
-                          placeholder="https://vimeo.com/..."
-                          className="mt-2"
-                          data-testid="input-tipio-player"
-                        />
-                      </div>
-
-                      <div>
-                        <Label htmlFor="tipio-thumbnail">Thumbnail URL *</Label>
-                        <Input
-                          id="tipio-thumbnail"
-                          value={tipioLivestream.thumbnail}
-                          onChange={(e) => setTipioLivestream({ ...tipioLivestream, thumbnail: e.target.value })}
-                          placeholder="https://..."
-                          className="mt-2"
-                          data-testid="input-tipio-thumbnail"
-                        />
-                      </div>
-
-                      <div>
-                        <Label htmlFor="tipio-hls">HLS URL (optional)</Label>
-                        <Input
-                          id="tipio-hls"
-                          value={tipioLivestream.hls || ''}
-                          onChange={(e) => setTipioLivestream({ ...tipioLivestream, hls: e.target.value || null })}
-                          placeholder="https://live-ak2.vimeocdn.com/..."
-                          className="mt-2"
-                          data-testid="input-tipio-hls"
-                        />
-                      </div>
-
-                      <div>
-                        <Label htmlFor="tipio-start-date">Start Date *</Label>
-                        <Input
-                          id="tipio-start-date"
-                          type="datetime-local"
-                          value={tipioLivestream.date}
-                          onChange={(e) => setTipioLivestream({ ...tipioLivestream, date: e.target.value })}
-                          className="mt-2"
-                          data-testid="input-tipio-start-date"
-                        />
-                      </div>
-
-                      <div>
-                        <Label htmlFor="tipio-end-date">End Date *</Label>
-                        <Input
-                          id="tipio-end-date"
-                          type="datetime-local"
-                          value={tipioLivestream.end_date}
-                          onChange={(e) => setTipioLivestream({ ...tipioLivestream, end_date: e.target.value })}
-                          className="mt-2"
-                          data-testid="input-tipio-end-date"
-                        />
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-2">
-                      <Switch
-                        checked={tipioLivestream.broadcasting || false}
-                        onCheckedChange={(checked) => setTipioLivestream({ ...tipioLivestream, broadcasting: checked })}
-                        data-testid="switch-tipio-broadcasting"
-                      />
-                      <Label>Broadcasting Active</Label>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* Action Buttons */}
-              <div className="flex flex-col sm:flex-row justify-end gap-3 pt-4 border-t border-white/10">
-                <Link href="/" className="w-full sm:w-auto">
-                  <Button 
-                    type="button" 
-                    variant="outline" 
-                    data-testid="button-cancel"
-                    className="border-0 w-full sm:w-auto"
-                  >
-                    Cancel
-                  </Button>
-                </Link>
-                <Button 
-                  type="submit" 
-                  disabled={createMutation.isPending}
-                  data-testid="button-submit-campaign"
-                  className="gap-2 w-full sm:w-auto"
-                >
-                  {createMutation.isPending ? 'Creating...' : 'Create Campaign'}
-                </Button>
-              </div>
-            </form>
-          </CardContent>
-        </Card>
-      </main>
-    </div>
+          <div className="flex justify-end gap-3 pt-2">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setLocation(preselectedAppId ? `/apps/${preselectedAppId}` : '/campaigns')}
+              data-testid="button-cancel"
+              className="border-gray-200 dark:border-gray-600 text-gray-700 dark:text-gray-300"
+            >
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              disabled={createMutation.isPending || !name.trim()}
+              data-testid="button-create-campaign"
+              className="bg-purple-600 hover:bg-purple-700 text-white gap-2"
+            >
+              <Megaphone className="w-4 h-4" />
+              {createMutation.isPending ? 'Creating...' : 'Create Campaign'}
+            </Button>
+          </div>
+        </form>
+      </div>
+    </AppLayout>
   );
 }

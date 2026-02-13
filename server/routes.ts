@@ -1258,9 +1258,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Create campaign (requires userId for multi-tenant scoping)
   app.post('/api/campaigns', async (req, res) => {
     try {
-      const { userId } = req.body;
+      const { userId, clientAppId } = req.body;
       
-      // Require userId for multi-tenant scoping
       if (!userId) {
         return res.status(400).json({ 
           message: 'userId is required in request body for multi-tenant scoping' 
@@ -1269,6 +1268,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       if (typeof userId !== 'number' || isNaN(userId)) {
         return res.status(400).json({ message: 'Invalid userId - must be a number' });
+      }
+
+      if (clientAppId) {
+        const app = await storage.getClientApp(clientAppId);
+        if (!app) {
+          return res.status(404).json({ message: 'Client app not found' });
+        }
+        if (app.userId !== userId) {
+          return res.status(403).json({ message: 'Access denied - app does not belong to this user' });
+        }
       }
       
       const campaign = await storage.createCampaign(req.body);

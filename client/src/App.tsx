@@ -20,6 +20,7 @@ import AppDetailPage from "@/pages/app-detail";
 import DashboardPage from "@/pages/dashboard";
 import CampaignsPage from "@/pages/campaigns";
 import BroadcastsPage from "@/pages/broadcasts";
+import NewCampaignPage from "@/pages/new-campaign";
 import NotFound from "@/pages/not-found";
 
 function Router() {
@@ -40,6 +41,9 @@ function Router() {
 
       <Route path="/campaigns">
         <RequireAuth><CampaignsPage /></RequireAuth>
+      </Route>
+      <Route path="/campaigns/new">
+        <RequireAuth><NewCampaignPage /></RequireAuth>
       </Route>
       <Route path="/campaigns/:campaignId">
         <RequireAuth><CampaignDashboard /></RequireAuth>

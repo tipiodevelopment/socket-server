@@ -1,14 +1,8 @@
-import { Link, useLocation } from 'wouter';
+import { Link } from 'wouter';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
-import {
-  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger,
-} from '@/components/ui/dialog';
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription,
   AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
@@ -22,12 +16,8 @@ import { Plus, Megaphone, Trash2, ChevronRight, Filter, Smartphone } from 'lucid
 
 export default function CampaignsPage() {
   const { toast } = useToast();
-  const [, setLocation] = useLocation();
   const { userId } = useUser();
-  const [createOpen, setCreateOpen] = useState(false);
   const [appFilter, setAppFilter] = useState<string>('all');
-  const [newName, setNewName] = useState('');
-  const [newDescription, setNewDescription] = useState('');
 
   const { data: campaigns = [], isLoading } = useQuery<Campaign[]>({
     queryKey: ['/api/campaigns', userId],
@@ -63,39 +53,27 @@ export default function CampaignsPage() {
   channels.forEach(ch => { if (ch.clientAppId) channelToAppMap.set(ch.id, ch.clientAppId); });
 
   const getAppForCampaign = (campaign: Campaign): ClientApp | undefined => {
-    if (!campaign.channelId) return undefined;
-    const appId = channelToAppMap.get(campaign.channelId);
-    if (!appId) return undefined;
-    return clientApps.find(a => a.id === appId);
+    if (campaign.clientAppId) {
+      return clientApps.find(a => a.id === campaign.clientAppId);
+    }
+    if (campaign.channelId) {
+      const appId = channelToAppMap.get(campaign.channelId);
+      if (appId) return clientApps.find(a => a.id === appId);
+    }
+    return undefined;
+  };
+
+  const getCampaignAppId = (campaign: Campaign): number | undefined => {
+    if (campaign.clientAppId) return campaign.clientAppId;
+    if (campaign.channelId) return channelToAppMap.get(campaign.channelId);
+    return undefined;
   };
 
   const filteredCampaigns = appFilter === 'all'
     ? campaigns
     : appFilter === 'unassigned'
-      ? campaigns.filter(c => !c.channelId || !channelToAppMap.has(c.channelId))
-      : campaigns.filter(c => {
-          if (!c.channelId) return false;
-          const appId = channelToAppMap.get(c.channelId);
-          return appId === parseInt(appFilter);
-        });
-
-  const createMutation = useMutation({
-    mutationFn: async (data: { name: string; description: string; userId: number }) => {
-      const response = await apiRequest('POST', '/api/campaigns', data);
-      return response.json();
-    },
-    onSuccess: (newCampaign) => {
-      queryClient.invalidateQueries({ queryKey: ['/api/campaigns', userId] });
-      setCreateOpen(false);
-      setNewName('');
-      setNewDescription('');
-      toast({ title: 'Campaign Created' });
-      setLocation(`/campaigns/${newCampaign.id}`);
-    },
-    onError: () => {
-      toast({ title: 'Error', description: 'Failed to create campaign', variant: 'destructive' });
-    },
-  });
+      ? campaigns.filter(c => !getCampaignAppId(c))
+      : campaigns.filter(c => getCampaignAppId(c) === parseInt(appFilter));
 
   const deleteMutation = useMutation({
     mutationFn: async (id: number) => apiRequest('DELETE', `/api/campaigns/${id}`),
@@ -108,57 +86,17 @@ export default function CampaignsPage() {
     },
   });
 
-  const handleCreate = () => {
-    if (!newName.trim() || !userId) return;
-    createMutation.mutate({ name: newName, description: newDescription, userId });
-  };
-
   return (
     <AppLayout
       breadcrumbs={[{ label: 'Campaigns' }]}
       title="Campaigns"
       subtitle={`${campaigns.length} campaign${campaigns.length !== 1 ? 's' : ''} total`}
       actions={
-        <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-          <DialogTrigger asChild>
-            <Button data-testid="button-create-campaign" className="gap-2">
-              <Plus className="w-4 h-4" /> New Campaign
-            </Button>
-          </DialogTrigger>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Create Campaign</DialogTitle>
-              <DialogDescription>Create a new campaign to manage broadcasts and events.</DialogDescription>
-            </DialogHeader>
-            <div className="grid gap-4 py-4">
-              <div className="grid gap-2">
-                <Label>Campaign Name *</Label>
-                <Input
-                  data-testid="input-campaign-name"
-                  value={newName}
-                  onChange={(e) => setNewName(e.target.value)}
-                  placeholder="e.g. Summer Sale 2026"
-                />
-              </div>
-              <div className="grid gap-2">
-                <Label>Description</Label>
-                <Textarea
-                  data-testid="input-campaign-description"
-                  value={newDescription}
-                  onChange={(e) => setNewDescription(e.target.value)}
-                  placeholder="Optional description"
-                  rows={3}
-                />
-              </div>
-            </div>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setCreateOpen(false)}>Cancel</Button>
-              <Button onClick={handleCreate} disabled={createMutation.isPending || !newName.trim()} data-testid="button-submit-campaign">
-                {createMutation.isPending ? 'Creating...' : 'Create Campaign'}
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+        <Link href="/campaigns/new">
+          <Button data-testid="button-create-campaign" className="gap-2">
+            <Plus className="w-4 h-4" /> New Campaign
+          </Button>
+        </Link>
       }
     >
       {clientApps.length > 1 && (
@@ -210,9 +148,11 @@ export default function CampaignsPage() {
               {appFilter !== 'all' ? 'No campaigns match this filter.' : 'Create your first campaign to get started.'}
             </p>
             {appFilter === 'all' && (
-              <Button onClick={() => setCreateOpen(true)} data-testid="button-create-first-campaign">
-                <Plus className="w-4 h-4 mr-2" /> Create Campaign
-              </Button>
+              <Link href="/campaigns/new">
+                <Button data-testid="button-create-first-campaign">
+                  <Plus className="w-4 h-4 mr-2" /> Create Campaign
+                </Button>
+              </Link>
             )}
           </CardContent>
         </Card>
