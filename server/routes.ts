@@ -2961,7 +2961,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (status) filters.status = status as string;
       if (campaignId) filters.campaignId = parseInt(campaignId as string);
       const broadcastsList = await storage.getAllBroadcasts(filters);
-      res.json(broadcastsList);
+
+      const broadcastIds = broadcastsList.map(b => b.broadcastId);
+      const engagementCounts = await storage.getBroadcastEngagementCounts(broadcastIds);
+
+      const campaignIds = [...new Set(broadcastsList.map(b => b.campaignId).filter((id): id is number => id !== null))];
+      const campaignNames = new Map<number, string>();
+      for (const cId of campaignIds) {
+        const c = await storage.getCampaign(cId);
+        if (c) campaignNames.set(cId, c.name);
+      }
+
+      const enriched = broadcastsList.map(b => {
+        const counts = engagementCounts.get(b.broadcastId);
+        return {
+          ...b,
+          pollCount: counts?.pollCount ?? 0,
+          activePollCount: counts?.activePollCount ?? 0,
+          contestCount: counts?.contestCount ?? 0,
+          campaignName: b.campaignId ? campaignNames.get(b.campaignId) ?? null : null,
+        };
+      });
+
+      res.json(enriched);
     } catch (error) {
       console.error('Error listing broadcasts:', error);
       res.status(500).json({ message: 'Error listing broadcasts' });
@@ -2985,7 +3007,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post('/api/broadcasts', async (req, res) => {
     try {
-      const { broadcastName, campaignId, channelId, startTime, endTime, metadata, createdBy } = req.body;
+      const { broadcastName, description, campaignId, channelId, startTime, endTime, metadata, createdBy } = req.body;
 
       if (!broadcastName) {
         return res.status(400).json({ message: 'broadcastName is required' });
@@ -3002,6 +3024,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const broadcast = await storage.createBroadcast({
         broadcastId,
         broadcastName,
+        description: description || null,
         campaignId: campaignId || null,
         channelId: channelId || null,
         startTime: startTime ? new Date(startTime) : null,
@@ -3020,10 +3043,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.put('/api/broadcasts/:broadcastId', async (req, res) => {
     try {
-      const { broadcastName, campaignId, channelId, startTime, endTime, status, metadata } = req.body;
+      const { broadcastName, description, campaignId, channelId, startTime, endTime, status, metadata } = req.body;
       const updateData: any = {};
 
       if (broadcastName !== undefined) updateData.broadcastName = broadcastName;
+      if (description !== undefined) updateData.description = description;
       if (campaignId !== undefined) updateData.campaignId = campaignId;
       if (channelId !== undefined) updateData.channelId = channelId;
       if (startTime !== undefined) updateData.startTime = startTime ? new Date(startTime) : null;

@@ -162,6 +162,9 @@ export interface IStorage {
   getBroadcastPollsCount(broadcastId: string): Promise<number>;
   getBroadcastContestsPaginated(broadcastId: string, options: { limit: number; offset: number }): Promise<Contest[]>;
   getBroadcastContestsCount(broadcastId: string): Promise<number>;
+
+  // Enrichment: poll/contest counts for multiple broadcasts
+  getBroadcastEngagementCounts(broadcastIds: string[]): Promise<Map<string, { pollCount: number; activePollCount: number; contestCount: number }>>;
 }
 
 export class MemStorage implements IStorage {
@@ -1148,6 +1151,43 @@ export class MemStorage implements IStorage {
       .from(contests)
       .where(eq(contests.broadcastId, broadcastId));
     return result?.count ?? 0;
+  }
+
+  async getBroadcastEngagementCounts(broadcastIds: string[]): Promise<Map<string, { pollCount: number; activePollCount: number; contestCount: number }>> {
+    const result = new Map<string, { pollCount: number; activePollCount: number; contestCount: number }>();
+    if (broadcastIds.length === 0) return result;
+
+    const pollCounts = await db
+      .select({
+        broadcastId: polls.broadcastId,
+        total: sql<number>`count(*)::int`,
+        active: sql<number>`count(*) filter (where ${polls.isActive} = true)::int`,
+      })
+      .from(polls)
+      .where(inArray(polls.broadcastId, broadcastIds))
+      .groupBy(polls.broadcastId);
+
+    const contestCounts = await db
+      .select({
+        broadcastId: contests.broadcastId,
+        total: sql<number>`count(*)::int`,
+      })
+      .from(contests)
+      .where(inArray(contests.broadcastId, broadcastIds))
+      .groupBy(contests.broadcastId);
+
+    const contestMap = new Map(contestCounts.map(c => [c.broadcastId, c.total]));
+
+    for (const id of broadcastIds) {
+      const pollRow = pollCounts.find(p => p.broadcastId === id);
+      result.set(id, {
+        pollCount: pollRow?.total ?? 0,
+        activePollCount: pollRow?.active ?? 0,
+        contestCount: contestMap.get(id) ?? 0,
+      });
+    }
+
+    return result;
   }
 }
 

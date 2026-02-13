@@ -201,6 +201,7 @@ export const appComponents = pgTable("app_components", {
 export const broadcasts = pgTable("broadcasts", {
   broadcastId: varchar("broadcast_id", { length: 255 }).primaryKey(),
   broadcastName: varchar("broadcast_name", { length: 255 }).notNull(),
+  description: text("description"),
   campaignId: integer("campaign_id").references(() => campaigns.id, { onDelete: 'cascade' }),
   channelId: integer("channel_id").references(() => channels.id, { onDelete: 'set null' }),
   startTime: timestamp("start_time"),

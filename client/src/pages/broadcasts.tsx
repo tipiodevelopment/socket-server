@@ -1,8 +1,7 @@
-import { Link, useLocation } from 'wouter';
+import { Link } from 'wouter';
 import { useQuery, useMutation } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
@@ -10,51 +9,215 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger,
 } from '@/components/ui/dialog';
-import {
-  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription,
-  AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
-} from '@/components/ui/alert-dialog';
 import { useToast } from '@/hooks/use-toast';
 import { queryClient, apiRequest } from '@/lib/queryClient';
 import { useUser } from '@/contexts/UserContext';
 import { AppLayout } from '@/components/AppLayout';
 import type { Broadcast, Campaign } from '@shared/schema';
-import { Plus, Radio, Trash2, ChevronRight, Clock, Calendar, Filter, Megaphone } from 'lucide-react';
+import { Plus, Radio, Clock, BarChart3, Trophy, Search } from 'lucide-react';
 
-function getStatusBadge(status: string) {
-  const styles: Record<string, string> = {
-    live: 'bg-green-500/20 text-green-400',
-    upcoming: 'bg-yellow-500/20 text-yellow-400',
-    ended: 'bg-gray-500/20 text-gray-400',
-  };
+type EnrichedBroadcast = Broadcast & {
+  pollCount: number;
+  activePollCount: number;
+  contestCount: number;
+  campaignName: string | null;
+};
+
+function formatTimeAgo(date: Date): string {
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffMins = Math.floor(diffMs / 60000);
+  if (diffMins < 1) return 'Just now';
+  if (diffMins < 60) return `${diffMins} min${diffMins !== 1 ? 's' : ''} ago`;
+  const diffHours = Math.floor(diffMins / 60);
+  if (diffHours < 24) return `${diffHours} hr${diffHours !== 1 ? 's' : ''} ago`;
+  const diffDays = Math.floor(diffHours / 24);
+  return `${diffDays} day${diffDays !== 1 ? 's' : ''} ago`;
+}
+
+function formatTimeUntil(date: Date): string {
+  const now = new Date();
+  const diffMs = date.getTime() - now.getTime();
+  if (diffMs < 0) return formatTimeAgo(date);
+  const diffMins = Math.floor(diffMs / 60000);
+  if (diffMins < 60) return `Starts in ${diffMins} min${diffMins !== 1 ? 's' : ''}`;
+  const diffHours = Math.floor(diffMins / 60);
+  if (diffHours < 24) return `Starts in ${diffHours} hr${diffHours !== 1 ? 's' : ''}`;
+  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+function LiveBroadcastCard({ broadcast }: { broadcast: EnrichedBroadcast }) {
   return (
-    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${styles[status] || styles.ended}`}>
-      {status}
-    </span>
+    <Link href={`/broadcasts/${broadcast.broadcastId}`}>
+      <div
+        className="bg-transparent border border-white/10 dark:border-white/10 rounded-lg p-5 hover:border-white/30 dark:hover:border-white/30 transition-all cursor-pointer"
+        data-testid={`card-broadcast-${broadcast.broadcastId}`}
+      >
+        <div className="flex justify-between items-start mb-4">
+          <div className="flex-1">
+            <div className="flex items-center space-x-3 mb-2">
+              <h3 className="text-base font-semibold text-foreground" data-testid={`text-broadcast-name-${broadcast.broadcastId}`}>{broadcast.broadcastName}</h3>
+              <span className="px-2 py-0.5 bg-white dark:bg-white text-black dark:text-black text-[10px] uppercase font-bold rounded-full" data-testid={`badge-status-${broadcast.broadcastId}`}>Live</span>
+              {broadcast.startTime && (
+                <span className="flex items-center space-x-1 text-xs text-muted-foreground">
+                  <div className="w-2 h-2 bg-white dark:bg-white rounded-full animate-pulse"></div>
+                  <span>{formatTimeAgo(new Date(broadcast.startTime))}</span>
+                </span>
+              )}
+            </div>
+            {broadcast.description && (
+              <div className="text-sm text-muted-foreground mb-3" data-testid={`text-broadcast-desc-${broadcast.broadcastId}`}>{broadcast.description}</div>
+            )}
+            {broadcast.campaignName && (
+              <div className="flex items-center space-x-2 text-xs text-muted-foreground mb-3">
+                <span className="text-foreground/70">{broadcast.campaignName}</span>
+              </div>
+            )}
+          </div>
+          <span className="px-4 py-1.5 bg-white hover:bg-gray-200 text-black dark:bg-white dark:hover:bg-gray-200 dark:text-black rounded text-xs font-medium" data-testid={`button-manage-broadcast-${broadcast.broadcastId}`}>
+            Manage
+          </span>
+        </div>
+        <div className="grid grid-cols-5 gap-4 pt-4 border-t border-white/5 dark:border-white/5">
+          <div>
+            <div className="text-xs text-muted-foreground mb-1">Viewers</div>
+            <div className="text-lg font-semibold text-foreground">—</div>
+          </div>
+          <div>
+            <div className="text-xs text-muted-foreground mb-1">Active Polls</div>
+            <div className="text-lg font-semibold text-foreground" data-testid={`stat-active-polls-${broadcast.broadcastId}`}>{broadcast.activePollCount}</div>
+          </div>
+          <div>
+            <div className="text-xs text-muted-foreground mb-1">Total Polls</div>
+            <div className="text-lg font-semibold text-foreground" data-testid={`stat-total-polls-${broadcast.broadcastId}`}>{broadcast.pollCount}</div>
+          </div>
+          <div>
+            <div className="text-xs text-muted-foreground mb-1">Contests</div>
+            <div className="text-lg font-semibold text-foreground" data-testid={`stat-contests-${broadcast.broadcastId}`}>{broadcast.contestCount}</div>
+          </div>
+          <div>
+            <div className="text-xs text-muted-foreground mb-1">Engagement</div>
+            <div className="text-lg font-semibold text-foreground">—</div>
+          </div>
+        </div>
+      </div>
+    </Link>
+  );
+}
+
+function UpcomingBroadcastCard({ broadcast }: { broadcast: EnrichedBroadcast }) {
+  return (
+    <Link href={`/broadcasts/${broadcast.broadcastId}`}>
+      <div
+        className="bg-transparent border border-white/10 dark:border-white/10 rounded-lg p-5 hover:border-white/30 dark:hover:border-white/30 transition-all cursor-pointer"
+        data-testid={`card-broadcast-${broadcast.broadcastId}`}
+      >
+        <div className="flex justify-between items-start">
+          <div className="flex-1">
+            <div className="flex items-center space-x-3 mb-2">
+              <h3 className="text-base font-semibold text-foreground" data-testid={`text-broadcast-name-${broadcast.broadcastId}`}>{broadcast.broadcastName}</h3>
+              <span className="px-2 py-0.5 bg-white/10 dark:bg-white/10 text-muted-foreground text-[10px] uppercase font-bold rounded-full border border-white/20 dark:border-white/20" data-testid={`badge-status-${broadcast.broadcastId}`}>Upcoming</span>
+            </div>
+            {broadcast.description && (
+              <div className="text-sm text-muted-foreground mb-3" data-testid={`text-broadcast-desc-${broadcast.broadcastId}`}>{broadcast.description}</div>
+            )}
+            {broadcast.campaignName && (
+              <div className="flex items-center space-x-2 text-xs text-muted-foreground mb-3">
+                <span className="text-foreground/70">{broadcast.campaignName}</span>
+              </div>
+            )}
+            <div className="flex items-center space-x-4 text-xs text-muted-foreground">
+              {broadcast.startTime && (
+                <div className="flex items-center space-x-1.5">
+                  <Clock className="w-3 h-3" />
+                  <span>{formatTimeUntil(new Date(broadcast.startTime))}</span>
+                </div>
+              )}
+              <div className="flex items-center space-x-1.5">
+                <BarChart3 className="w-3 h-3" />
+                <span>{broadcast.pollCount} poll{broadcast.pollCount !== 1 ? 's' : ''}</span>
+              </div>
+              <div className="flex items-center space-x-1.5">
+                <Trophy className="w-3 h-3" />
+                <span>{broadcast.contestCount} contest{broadcast.contestCount !== 1 ? 's' : ''}</span>
+              </div>
+            </div>
+          </div>
+          <span className="px-4 py-1.5 bg-transparent border border-white/20 dark:border-white/20 hover:border-white/40 dark:hover:border-white/40 text-foreground rounded text-xs font-medium" data-testid={`button-configure-broadcast-${broadcast.broadcastId}`}>
+            Configure
+          </span>
+        </div>
+      </div>
+    </Link>
+  );
+}
+
+function EndedBroadcastCard({ broadcast }: { broadcast: EnrichedBroadcast }) {
+  return (
+    <Link href={`/broadcasts/${broadcast.broadcastId}`}>
+      <div
+        className="bg-transparent border border-white/10 dark:border-white/10 rounded-lg p-5 hover:border-white/30 dark:hover:border-white/30 transition-all cursor-pointer opacity-60"
+        data-testid={`card-broadcast-${broadcast.broadcastId}`}
+      >
+        <div className="flex justify-between items-start">
+          <div className="flex-1">
+            <div className="flex items-center space-x-3 mb-2">
+              <h3 className="text-base font-semibold text-foreground" data-testid={`text-broadcast-name-${broadcast.broadcastId}`}>{broadcast.broadcastName}</h3>
+              <span className="px-2 py-0.5 bg-white/10 dark:bg-white/10 text-muted-foreground text-[10px] uppercase font-bold rounded-full border border-white/10 dark:border-white/10" data-testid={`badge-status-${broadcast.broadcastId}`}>Ended</span>
+            </div>
+            {broadcast.description && (
+              <div className="text-sm text-muted-foreground mb-3" data-testid={`text-broadcast-desc-${broadcast.broadcastId}`}>{broadcast.description}</div>
+            )}
+            {broadcast.campaignName && (
+              <div className="flex items-center space-x-2 text-xs text-muted-foreground mb-3">
+                <span className="text-foreground/70">{broadcast.campaignName}</span>
+              </div>
+            )}
+            <div className="flex items-center space-x-4 text-xs text-muted-foreground">
+              {broadcast.endTime && (
+                <div className="flex items-center space-x-1.5">
+                  <Clock className="w-3 h-3" />
+                  <span>Ended {formatTimeAgo(new Date(broadcast.endTime))}</span>
+                </div>
+              )}
+              <div className="flex items-center space-x-1.5">
+                <BarChart3 className="w-3 h-3" />
+                <span>{broadcast.pollCount} poll{broadcast.pollCount !== 1 ? 's' : ''}</span>
+              </div>
+              <div className="flex items-center space-x-1.5">
+                <Trophy className="w-3 h-3" />
+                <span>{broadcast.contestCount} contest{broadcast.contestCount !== 1 ? 's' : ''}</span>
+              </div>
+            </div>
+          </div>
+          <span className="px-4 py-1.5 bg-transparent border border-white/20 dark:border-white/20 hover:border-white/40 dark:hover:border-white/40 text-foreground rounded text-xs font-medium" data-testid={`button-view-broadcast-${broadcast.broadcastId}`}>
+            View Report
+          </span>
+        </div>
+      </div>
+    </Link>
   );
 }
 
 export default function BroadcastsPage() {
   const { toast } = useToast();
-  const [, setLocation] = useLocation();
   const { userId } = useUser();
   const [statusFilter, setStatusFilter] = useState<string>('all');
-  const [campaignFilter, setCampaignFilter] = useState<string>('all');
+  const [searchQuery, setSearchQuery] = useState('');
   const [createOpen, setCreateOpen] = useState(false);
   const [formData, setFormData] = useState({
     broadcastName: '',
+    description: '',
     campaignId: '',
     startTime: '',
     endTime: '',
     metadata: '',
   });
 
-  const { data: broadcasts = [], isLoading } = useQuery<Broadcast[]>({
-    queryKey: ['/api/broadcasts', 'all', statusFilter],
+  const { data: broadcasts = [], isLoading } = useQuery<EnrichedBroadcast[]>({
+    queryKey: ['/api/broadcasts', 'all'],
     queryFn: async () => {
-      const params = new URLSearchParams();
-      if (statusFilter !== 'all') params.set('status', statusFilter);
-      const res = await fetch(`/api/broadcasts?${params.toString()}`);
+      const res = await fetch('/api/broadcasts');
       if (!res.ok) throw new Error('Failed');
       return res.json();
     },
@@ -71,14 +234,26 @@ export default function BroadcastsPage() {
     enabled: !!userId,
   });
 
-  const campaignMap = new Map<number, Campaign>();
-  campaigns.forEach(c => campaignMap.set(c.id, c));
+  const filtered = useMemo(() => {
+    let list = broadcasts;
+    if (statusFilter !== 'all') {
+      list = list.filter(b => b.status === statusFilter);
+    }
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      list = list.filter(b =>
+        b.broadcastName.toLowerCase().includes(q) ||
+        (b.description && b.description.toLowerCase().includes(q)) ||
+        (b.campaignName && b.campaignName.toLowerCase().includes(q)) ||
+        b.broadcastId.toLowerCase().includes(q)
+      );
+    }
+    return list;
+  }, [broadcasts, statusFilter, searchQuery]);
 
-  const filteredBroadcasts = campaignFilter === 'all'
-    ? broadcasts
-    : broadcasts.filter(b => b.campaignId === parseInt(campaignFilter));
-
-  const campaignsWithBroadcasts = Array.from(new Set(broadcasts.map(b => b.campaignId).filter((id): id is number => id !== null)));
+  const liveBroadcasts = filtered.filter(b => b.status === 'live');
+  const upcomingBroadcasts = filtered.filter(b => b.status === 'upcoming');
+  const endedBroadcasts = filtered.filter(b => b.status === 'ended');
 
   const createMutation = useMutation({
     mutationFn: async (data: Record<string, unknown>) => {
@@ -88,21 +263,10 @@ export default function BroadcastsPage() {
       queryClient.invalidateQueries({ queryKey: ['/api/broadcasts'] });
       toast({ title: 'Broadcast Created' });
       setCreateOpen(false);
-      setFormData({ broadcastName: '', campaignId: '', startTime: '', endTime: '', metadata: '' });
+      setFormData({ broadcastName: '', description: '', campaignId: '', startTime: '', endTime: '', metadata: '' });
     },
     onError: () => {
       toast({ title: 'Error', description: 'Failed to create broadcast', variant: 'destructive' });
-    },
-  });
-
-  const deleteMutation = useMutation({
-    mutationFn: async (broadcastId: string) => apiRequest('DELETE', `/api/broadcasts/${broadcastId}`),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/broadcasts'] });
-      toast({ title: 'Broadcast Deleted' });
-    },
-    onError: () => {
-      toast({ title: 'Error', description: 'Failed to delete broadcast', variant: 'destructive' });
     },
   });
 
@@ -118,6 +282,7 @@ export default function BroadcastsPage() {
     }
     createMutation.mutate({
       broadcastName: formData.broadcastName,
+      description: formData.description || undefined,
       campaignId: parseInt(formData.campaignId),
       startTime: formData.startTime || undefined,
       endTime: formData.endTime || undefined,
@@ -128,20 +293,22 @@ export default function BroadcastsPage() {
 
   const statusOptions = [
     { value: 'all', label: 'All' },
-    { value: 'upcoming', label: 'Upcoming' },
     { value: 'live', label: 'Live' },
+    { value: 'upcoming', label: 'Upcoming' },
     { value: 'ended', label: 'Ended' },
   ];
+
+  const hasResults = filtered.length > 0;
 
   return (
     <AppLayout
       breadcrumbs={[{ label: 'Broadcasts' }]}
       title="Broadcasts"
-      subtitle={`${broadcasts.length} broadcast${broadcasts.length !== 1 ? 's' : ''} total`}
+      subtitle="All broadcasts across campaigns"
       actions={
         <Dialog open={createOpen} onOpenChange={setCreateOpen}>
           <DialogTrigger asChild>
-            <Button data-testid="button-create-broadcast" className="gap-2" disabled={campaigns.length === 0}>
+            <Button data-testid="button-create-broadcast" className="gap-2 bg-white hover:bg-gray-200 text-black dark:bg-white dark:hover:bg-gray-200 dark:text-black font-medium" disabled={campaigns.length === 0}>
               <Plus className="w-4 h-4" /> New Broadcast
             </Button>
           </DialogTrigger>
@@ -158,6 +325,15 @@ export default function BroadcastsPage() {
                   value={formData.broadcastName}
                   onChange={(e) => setFormData(prev => ({ ...prev, broadcastName: e.target.value }))}
                   placeholder="Enter broadcast name"
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label>Description</Label>
+                <Input
+                  data-testid="input-broadcast-description"
+                  value={formData.description}
+                  onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
+                  placeholder="Brief description of the broadcast"
                 />
               </div>
               <div className="grid gap-2">
@@ -214,165 +390,98 @@ export default function BroadcastsPage() {
         </Dialog>
       }
     >
-      <div className="flex flex-col sm:flex-row gap-4 mb-6">
-        <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-sm text-muted-foreground">Status:</span>
+      <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center space-x-2">
           {statusOptions.map((opt) => (
-            <Button
+            <button
               key={opt.value}
-              size="sm"
-              variant={statusFilter === opt.value ? 'default' : 'outline'}
+              className={`px-3 py-1.5 rounded text-xs font-medium transition ${
+                statusFilter === opt.value
+                  ? 'bg-white text-black dark:bg-white dark:text-black'
+                  : 'bg-transparent border border-white/20 dark:border-white/20 hover:border-white/40 dark:hover:border-white/40 text-muted-foreground'
+              }`}
               onClick={() => setStatusFilter(opt.value)}
               data-testid={`filter-status-${opt.value}`}
             >
               {opt.label}
-            </Button>
+            </button>
           ))}
         </div>
-
-        {campaignsWithBroadcasts.length > 1 && (
-          <div className="flex items-center gap-2 flex-wrap">
-            <Filter className="w-4 h-4 text-muted-foreground" />
-            <span className="text-sm text-muted-foreground">Campaign:</span>
-            <div className="flex gap-1.5 flex-wrap">
-              <Button
-                size="sm"
-                variant={campaignFilter === 'all' ? 'default' : 'outline'}
-                onClick={() => setCampaignFilter('all')}
-                data-testid="filter-campaign-all"
-              >
-                All
-              </Button>
-              {campaignsWithBroadcasts.map((cId) => {
-                const c = campaignMap.get(cId);
-                return (
-                  <Button
-                    key={cId}
-                    size="sm"
-                    variant={campaignFilter === String(cId) ? 'default' : 'outline'}
-                    onClick={() => setCampaignFilter(String(cId))}
-                    data-testid={`filter-campaign-${cId}`}
-                  >
-                    {c?.name || `Campaign #${cId}`}
-                  </Button>
-                );
-              })}
-            </div>
+        <div className="flex items-center space-x-3">
+          <div className="relative">
+            <Input
+              type="text"
+              placeholder="Search broadcasts..."
+              className="w-64 px-3 py-1.5 bg-transparent border border-white/20 dark:border-white/20 rounded text-sm placeholder-gray-500 focus:border-white/40 dark:focus:border-white/40 pr-8"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              data-testid="input-search-broadcasts"
+            />
+            <Search className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground w-3.5 h-3.5" />
           </div>
-        )}
+        </div>
       </div>
 
       {isLoading ? (
         <div className="text-center py-12">
           <p className="text-muted-foreground">Loading broadcasts...</p>
         </div>
-      ) : filteredBroadcasts.length === 0 ? (
-        <Card className="border-0">
-          <CardContent className="flex flex-col items-center justify-center py-12">
-            <Radio className="w-12 h-12 text-muted-foreground mb-4" />
-            <h3 className="text-lg font-semibold mb-2">No broadcasts found</h3>
-            <p className="text-muted-foreground mb-4 text-center max-w-md">
-              {statusFilter !== 'all' || campaignFilter !== 'all'
-                ? 'No broadcasts match your filters.'
+      ) : !hasResults ? (
+        <div className="flex flex-col items-center justify-center py-16">
+          <Radio className="w-12 h-12 text-muted-foreground mb-4" />
+          <h3 className="text-lg font-semibold mb-2 text-foreground">No broadcasts found</h3>
+          <p className="text-muted-foreground mb-4 text-center max-w-md text-sm">
+            {searchQuery
+              ? 'No broadcasts match your search.'
+              : statusFilter !== 'all'
+                ? `No ${statusFilter} broadcasts.`
                 : campaigns.length === 0
-                  ? 'Create a campaign first, then add broadcasts to it.'
+                  ? 'Create a campaign first, then add broadcasts.'
                   : 'Create your first broadcast to get started.'}
-            </p>
-            {campaigns.length > 0 && statusFilter === 'all' && campaignFilter === 'all' && (
-              <Button onClick={() => setCreateOpen(true)} data-testid="button-create-first-broadcast">
-                <Plus className="w-4 h-4 mr-2" /> Create Broadcast
-              </Button>
-            )}
-          </CardContent>
-        </Card>
+          </p>
+          {campaigns.length > 0 && !searchQuery && statusFilter === 'all' && (
+            <Button onClick={() => setCreateOpen(true)} className="bg-white hover:bg-gray-200 text-black dark:bg-white dark:hover:bg-gray-200 dark:text-black" data-testid="button-create-first-broadcast">
+              <Plus className="w-4 h-4 mr-2" /> Create Broadcast
+            </Button>
+          )}
+        </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {filteredBroadcasts.map((broadcast) => {
-            const campaign = broadcast.campaignId ? campaignMap.get(broadcast.campaignId) : undefined;
-            return (
-              <Card
-                key={broadcast.broadcastId}
-                className="border border-white/10 hover:border-white/20 transition-all group"
-                data-testid={`card-broadcast-${broadcast.broadcastId}`}
-              >
-                <Link href={`/broadcasts/${broadcast.broadcastId}`}>
-                  <CardHeader className="cursor-pointer">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 mb-1">
-                          <CardTitle className="text-lg truncate">{broadcast.broadcastName}</CardTitle>
-                          {getStatusBadge(broadcast.status)}
-                        </div>
-                        <CardDescription className="text-xs font-mono">
-                          ID: {broadcast.broadcastId}
-                        </CardDescription>
-                      </div>
-                      <ChevronRight className="w-5 h-5 text-muted-foreground group-hover:text-foreground transition-colors shrink-0" />
-                    </div>
-                  </CardHeader>
-                </Link>
-                <CardContent>
-                  <div className="flex flex-col gap-2 text-sm text-muted-foreground mb-3">
-                    <div className="flex items-center gap-1">
-                      <Megaphone className="w-3.5 h-3.5" />
-                      <span className="text-xs">
-                        {campaign ? campaign.name : `Campaign #${broadcast.campaignId}`}
-                      </span>
-                    </div>
-                    {broadcast.startTime && (
-                      <div className="flex items-center gap-1">
-                        <Clock className="w-3.5 h-3.5" />
-                        <span className="text-xs">Start: {new Date(broadcast.startTime).toLocaleString()}</span>
-                      </div>
-                    )}
-                    {broadcast.endTime && (
-                      <div className="flex items-center gap-1">
-                        <Calendar className="w-3.5 h-3.5" />
-                        <span className="text-xs">End: {new Date(broadcast.endTime).toLocaleString()}</span>
-                      </div>
-                    )}
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <Link href={`/broadcasts/${broadcast.broadcastId}`}>
-                      <Button variant="default" size="sm" className="gap-1.5" data-testid={`button-manage-broadcast-${broadcast.broadcastId}`}>
-                        <Radio className="w-3.5 h-3.5" />
-                        Manage
-                      </Button>
-                    </Link>
-                    <AlertDialog>
-                      <AlertDialogTrigger asChild>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-7 w-7 text-destructive hover:text-destructive hover:bg-destructive/10"
-                          data-testid={`button-delete-broadcast-${broadcast.broadcastId}`}
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </Button>
-                      </AlertDialogTrigger>
-                      <AlertDialogContent>
-                        <AlertDialogHeader>
-                          <AlertDialogTitle>Delete Broadcast?</AlertDialogTitle>
-                          <AlertDialogDescription>
-                            Delete "{broadcast.broadcastName}"? All polls and contests will be permanently deleted.
-                          </AlertDialogDescription>
-                        </AlertDialogHeader>
-                        <AlertDialogFooter>
-                          <AlertDialogCancel>Cancel</AlertDialogCancel>
-                          <AlertDialogAction
-                            onClick={() => deleteMutation.mutate(broadcast.broadcastId)}
-                            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                          >
-                            Delete
-                          </AlertDialogAction>
-                        </AlertDialogFooter>
-                      </AlertDialogContent>
-                    </AlertDialog>
-                  </div>
-                </CardContent>
-              </Card>
-            );
-          })}
+        <div>
+          {(statusFilter === 'all' || statusFilter === 'live') && liveBroadcasts.length > 0 && (
+            <div className="mb-8" data-testid="section-live-broadcasts">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">Live Now</h2>
+                <span className="text-xs text-muted-foreground">{liveBroadcasts.length} broadcast{liveBroadcasts.length !== 1 ? 's' : ''}</span>
+              </div>
+              <div className="space-y-3">
+                {liveBroadcasts.map(b => <LiveBroadcastCard key={b.broadcastId} broadcast={b} />)}
+              </div>
+            </div>
+          )}
+
+          {(statusFilter === 'all' || statusFilter === 'upcoming') && upcomingBroadcasts.length > 0 && (
+            <div className="mb-8" data-testid="section-upcoming-broadcasts">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">Upcoming</h2>
+                <span className="text-xs text-muted-foreground">{upcomingBroadcasts.length} broadcast{upcomingBroadcasts.length !== 1 ? 's' : ''}</span>
+              </div>
+              <div className="space-y-3">
+                {upcomingBroadcasts.map(b => <UpcomingBroadcastCard key={b.broadcastId} broadcast={b} />)}
+              </div>
+            </div>
+          )}
+
+          {(statusFilter === 'all' || statusFilter === 'ended') && endedBroadcasts.length > 0 && (
+            <div className="mb-8" data-testid="section-ended-broadcasts">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">Recently Ended</h2>
+                <span className="text-xs text-muted-foreground">{endedBroadcasts.length} broadcast{endedBroadcasts.length !== 1 ? 's' : ''}</span>
+              </div>
+              <div className="space-y-3">
+                {endedBroadcasts.map(b => <EndedBroadcastCard key={b.broadcastId} broadcast={b} />)}
+              </div>
+            </div>
+          )}
         </div>
       )}
     </AppLayout>
