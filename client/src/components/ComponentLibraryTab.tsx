@@ -366,7 +366,7 @@ export function ComponentLibraryTab() {
   );
 }
 
-function ComponentForm({
+export function ComponentForm({
   component,
   onSubmit,
   onCancel,

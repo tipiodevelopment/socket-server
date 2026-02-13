@@ -12,6 +12,7 @@ import DocsPage from "@/pages/docs";
 import CampaignViewerPage from "@/pages/campaign-viewer";
 import AdvancedCampaignPage from "@/pages/advanced-campaign";
 import ComponentsPage from "@/pages/components";
+import ComponentDetailPage from "@/pages/component-detail";
 import CampaignDashboard from "@/pages/campaign-dashboard";
 import UserSessionPage from "@/pages/user-session";
 import BroadcastDetailPage from "@/pages/broadcast-detail";
@@ -62,6 +63,9 @@ function Router() {
       </Route>
       <Route path="/components">
         <RequireAuth><ComponentsPage /></RequireAuth>
+      </Route>
+      <Route path="/components/:id">
+        <RequireAuth><ComponentDetailPage /></RequireAuth>
       </Route>
       <Route path="/docs" component={DocsPage} />
 
