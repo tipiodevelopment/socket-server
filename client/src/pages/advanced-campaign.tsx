@@ -298,20 +298,9 @@ export default function AdvancedCampaign() {
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <div>
-                    <Label className="text-gray-300">Liveshow ID</Label>
-                    <Input 
-                      value={campaign.tipioLiveshowId || ''} 
-                      placeholder="No liveshow configured"
-                      className="bg-gray-700 border-0 text-white"
-                      disabled
-                      data-testid="input-tipio-liveshow-id"
-                    />
+                    <Label className="text-gray-300">Tipio Integration</Label>
+                    <p className="text-sm text-gray-400">Livestream data managed via campaign settings</p>
                   </div>
-                  {campaign.tipioLiveshowId && (
-                    <Badge className="bg-purple-600 border-0" data-testid="badge-tipio-connected">
-                      ✓ Connected to Tipio
-                    </Badge>
-                  )}
                 </CardContent>
               </Card>
             </TabsContent>
@@ -1138,16 +1127,13 @@ function ScheduledComponentForm({
               <Label htmlFor="liveshowId" className="text-gray-300">Liveshow ID</Label>
               <Input
                 id="liveshowId"
-                placeholder={campaign?.tipioLiveshowId || 'liveshow_123'}
-                value={config.liveshowId || campaign?.tipioLiveshowId || ''}
+                placeholder="liveshow_123"
+                value={config.liveshowId || ''}
                 onChange={(e) => setConfig({ ...config, liveshowId: e.target.value })}
                 required
                 className="bg-gray-700 border-0 text-white"
                 data-testid="input-liveshowId"
               />
-              {campaign?.tipioLiveshowId && (
-                <p className="text-xs text-gray-400">Using campaign's Tipio liveshow ID by default</p>
-              )}
             </div>
           </>
         );

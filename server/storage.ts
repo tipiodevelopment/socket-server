@@ -1,6 +1,6 @@
-import { WebSocketEvent, Campaign, InsertCampaign, Event, InsertEvent, CampaignFormState, InsertFormState, ScheduledComponent, InsertScheduledComponent, Component, InsertComponent, CampaignComponent, InsertCampaignComponent, User, InsertUser, ClientApp, InsertClientApp, Channel, InsertChannel, CampaignTranslation, InsertCampaignTranslation, CampaignEngagementConfig, InsertCampaignEngagementConfig, CampaignUiConfig, InsertCampaignUiConfig, CampaignFeatureFlags, InsertCampaignFeatureFlags, SdkTranslation, InsertSdkTranslation, Broadcast, InsertBroadcast, Poll, InsertPoll, PollOptionRecord, InsertPollOption, PollVote, InsertPollVote, Contest, InsertContest, ContestParticipation, InsertContestParticipation } from "@shared/schema";
+import { WebSocketEvent, Campaign, InsertCampaign, Event, InsertEvent, CampaignFormState, InsertFormState, ScheduledComponent, InsertScheduledComponent, Component, InsertComponent, CampaignComponent, InsertCampaignComponent, AppComponent, InsertAppComponent, User, InsertUser, ClientApp, InsertClientApp, Channel, InsertChannel, CampaignTranslation, InsertCampaignTranslation, CampaignEngagementConfig, InsertCampaignEngagementConfig, CampaignUiConfig, InsertCampaignUiConfig, CampaignFeatureFlags, InsertCampaignFeatureFlags, SdkTranslation, InsertSdkTranslation, Broadcast, InsertBroadcast, Poll, InsertPoll, PollOptionRecord, InsertPollOption, PollVote, InsertPollVote, Contest, InsertContest, ContestParticipation, InsertContestParticipation } from "@shared/schema";
 import { db } from "./db";
-import { campaigns, events, campaignFormState, scheduledComponents, components, campaignComponents, users, clientApps, channels, campaignTranslations, campaignEngagementConfig, campaignUiConfig, campaignFeatureFlags, sdkTranslations, broadcasts, polls, pollOptions, pollVotes, contests, contestParticipations } from "@shared/schema";
+import { campaigns, events, campaignFormState, scheduledComponents, components, campaignComponents, appComponents, users, clientApps, channels, campaignTranslations, campaignEngagementConfig, campaignUiConfig, campaignFeatureFlags, sdkTranslations, broadcasts, polls, pollOptions, pollVotes, contests, contestParticipations } from "@shared/schema";
 import { eq, desc, and, gte, ne, isNull, sql, lte } from "drizzle-orm";
 
 export interface IStorage {
@@ -75,6 +75,11 @@ export interface IStorage {
   removeComponentFromCampaign(campaignId: number, componentId: string): Promise<void>;
   validateComponentAvailability(componentId: string, isTemplate: boolean, campaignId?: number): Promise<{ available: boolean; activeCampaignId?: number }>;
   
+  // App component methods
+  getAppComponents(clientAppId: number): Promise<Array<AppComponent & { component: Component }>>;
+  addComponentToApp(appComponent: InsertAppComponent): Promise<AppComponent>;
+  removeComponentFromApp(clientAppId: number, componentId: string): Promise<void>;
+
   // Campaign translation methods
   getCampaignTranslations(campaignId: number): Promise<CampaignTranslation[]>;
   upsertCampaignTranslation(translation: InsertCampaignTranslation): Promise<CampaignTranslation>;
@@ -596,6 +601,28 @@ export class MemStorage implements IStorage {
     return { available: true };
   }
   
+  // App component methods
+  async getAppComponents(clientAppId: number): Promise<Array<AppComponent & { component: Component }>> {
+    const results = await db.select()
+      .from(appComponents)
+      .innerJoin(components, eq(appComponents.componentId, components.id))
+      .where(eq(appComponents.clientAppId, clientAppId));
+    return results.map(r => ({ ...r.app_components, component: r.components }));
+  }
+
+  async addComponentToApp(appComponent: InsertAppComponent): Promise<AppComponent> {
+    const [result] = await db.insert(appComponents).values(appComponent).returning();
+    return result;
+  }
+
+  async removeComponentFromApp(clientAppId: number, componentId: string): Promise<void> {
+    await db.delete(appComponents)
+      .where(and(
+        eq(appComponents.clientAppId, clientAppId),
+        eq(appComponents.componentId, componentId)
+      ));
+  }
+
   // Campaign translation methods
   async getCampaignTranslations(campaignId: number): Promise<CampaignTranslation[]> {
     return db.select()

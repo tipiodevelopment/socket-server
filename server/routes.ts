@@ -967,24 +967,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const allCampaigns = await storage.getUserCampaigns(userId);
       const allBroadcasts = await storage.getAllBroadcasts();
 
-      const campaignsByChannelId = new Map<number, typeof allCampaigns>();
-      for (const campaign of allCampaigns) {
-        if (campaign.channelId) {
-          const list = campaignsByChannelId.get(campaign.channelId) || [];
-          list.push(campaign);
-          campaignsByChannelId.set(campaign.channelId, list);
-        }
-      }
-
       const result = apps.map((app) => {
         const appChannels = allChannels.filter(ch => ch.clientAppId === app.id);
         const appChannelIds = new Set(appChannels.map(ch => ch.id));
 
-        const appCampaigns: typeof allCampaigns = [];
-        for (const ch of appChannels) {
-          const chCampaigns = campaignsByChannelId.get(ch.id) || [];
-          appCampaigns.push(...chCampaigns);
-        }
+        const appCampaigns = allCampaigns.filter(c =>
+          c.clientAppId === app.id || (c.channelId && appChannelIds.has(c.channelId))
+        );
         const appCampaignIds = new Set(appCampaigns.map(c => c.id));
 
         const appBroadcasts = allBroadcasts.filter(b =>
@@ -1179,6 +1168,64 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error('Error fetching channels:', error);
       res.status(500).json({ message: 'Error fetching channels' });
+    }
+  });
+
+  // Get components assigned to an app
+  app.get('/api/client-apps/:id/components', async (req, res) => {
+    try {
+      const appId = parseInt(req.params.id);
+      const appComps = await storage.getAppComponents(appId);
+      res.json(appComps);
+    } catch (error) {
+      console.error('Error fetching app components:', error);
+      res.status(500).json({ message: 'Error fetching app components' });
+    }
+  });
+
+  // Add component to app
+  app.post('/api/client-apps/:id/components', async (req, res) => {
+    try {
+      const clientAppId = parseInt(req.params.id);
+      const { componentId, customConfig } = req.body;
+      if (!componentId) {
+        return res.status(400).json({ message: 'componentId is required' });
+      }
+      const appComp = await storage.addComponentToApp({ clientAppId, componentId, customConfig });
+      res.status(201).json(appComp);
+    } catch (error) {
+      console.error('Error adding component to app:', error);
+      res.status(500).json({ message: 'Error adding component to app' });
+    }
+  });
+
+  // Remove component from app
+  app.delete('/api/client-apps/:id/components/:componentId', async (req, res) => {
+    try {
+      const clientAppId = parseInt(req.params.id);
+      const componentId = req.params.componentId;
+      await storage.removeComponentFromApp(clientAppId, componentId);
+      res.json({ message: 'Component removed from app' });
+    } catch (error) {
+      console.error('Error removing component from app:', error);
+      res.status(500).json({ message: 'Error removing component from app' });
+    }
+  });
+
+  // Get campaigns for a specific app (includes both clientAppId-linked and channel-linked)
+  app.get('/api/client-apps/:id/campaigns', async (req, res) => {
+    try {
+      const appId = parseInt(req.params.id);
+      const appChannels = await storage.getClientAppChannels(appId);
+      const appChannelIds = new Set(appChannels.map(ch => ch.id));
+      const allCampaigns = await storage.getAllCampaigns();
+      const appCampaigns = allCampaigns.filter(c =>
+        c.clientAppId === appId || (c.channelId && appChannelIds.has(c.channelId))
+      );
+      res.json(appCampaigns);
+    } catch (error) {
+      console.error('Error fetching app campaigns:', error);
+      res.status(500).json({ message: 'Error fetching app campaigns' });
     }
   });
 

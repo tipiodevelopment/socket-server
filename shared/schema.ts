@@ -20,6 +20,9 @@ export const clientApps = pgTable("client_apps", {
   bundleId: varchar("bundle_id", { length: 255 }).notNull().unique(),
   apiKey: text("api_key").notNull().unique(),
   reachuApiKey: text("reachu_api_key"),
+  description: text("description"),
+  status: varchar("status", { length: 20 }).notNull().default('active'),
+  iconUrl: text("icon_url"),
   createdAt: timestamp("created_at").defaultNow().notNull()
 });
 
@@ -35,6 +38,7 @@ export const channels = pgTable("channels", {
 export const campaigns = pgTable("campaigns", {
   id: serial("id").primaryKey(),
   userId: integer("user_id").notNull().references(() => users.id, { onDelete: 'cascade' }),
+  clientAppId: integer("client_app_id").references(() => clientApps.id, { onDelete: 'cascade' }),
   channelId: integer("channel_id").references(() => channels.id, { onDelete: 'cascade' }),
   name: varchar("name", { length: 255 }).notNull(),
   logo: text("logo"),
@@ -44,7 +48,6 @@ export const campaigns = pgTable("campaigns", {
   isPaused: varchar("is_paused", { length: 10 }).notNull().default('false'),
   reachuChannelId: varchar("reachu_channel_id", { length: 255 }),
   reachuApiKey: text("reachu_api_key"),
-  tipioLiveshowId: varchar("tipio_liveshow_id", { length: 255 }),
   tipioLivestreamData: json("tipio_livestream_data"),
   isSegmented: varchar("is_segmented", { length: 10 }).notNull().default('false'),
   targetCountries: text("target_countries").array(),
@@ -171,6 +174,15 @@ export const campaignComponents = pgTable("campaign_components", {
   updatedAt: timestamp("updated_at").defaultNow().notNull()
 });
 
+// App Components - Links components to apps (components are shared across all app campaigns)
+export const appComponents = pgTable("app_components", {
+  id: serial("id").primaryKey(),
+  clientAppId: integer("client_app_id").notNull().references(() => clientApps.id, { onDelete: 'cascade' }),
+  componentId: varchar("component_id", { length: 50 }).notNull().references(() => components.id, { onDelete: 'cascade' }),
+  customConfig: json("custom_config"),
+  createdAt: timestamp("created_at").defaultNow().notNull()
+});
+
 // Broadcasts - represents live events/matches that campaigns are associated with
 export const broadcasts = pgTable("broadcasts", {
   broadcastId: varchar("broadcast_id", { length: 255 }).primaryKey(),
@@ -283,7 +295,9 @@ export const clientAppsRelations = relations(clientApps, ({ one, many }) => ({
     fields: [clientApps.userId],
     references: [users.id]
   }),
-  channels: many(channels)
+  channels: many(channels),
+  campaigns: many(campaigns),
+  appComponents: many(appComponents)
 }));
 
 export const channelsRelations = relations(channels, ({ one, many }) => ({
@@ -298,6 +312,10 @@ export const campaignsRelations = relations(campaigns, ({ one, many }) => ({
   user: one(users, {
     fields: [campaigns.userId],
     references: [users.id]
+  }),
+  clientApp: one(clientApps, {
+    fields: [campaigns.clientAppId],
+    references: [clientApps.id]
   }),
   channel: one(channels, {
     fields: [campaigns.channelId],
@@ -371,7 +389,19 @@ export const scheduledComponentsRelations = relations(scheduledComponents, ({ on
 }));
 
 export const componentsRelations = relations(components, ({ many }) => ({
-  campaignComponents: many(campaignComponents)
+  campaignComponents: many(campaignComponents),
+  appComponents: many(appComponents)
+}));
+
+export const appComponentsRelations = relations(appComponents, ({ one }) => ({
+  clientApp: one(clientApps, {
+    fields: [appComponents.clientAppId],
+    references: [clientApps.id]
+  }),
+  component: one(components, {
+    fields: [appComponents.componentId],
+    references: [components.id]
+  })
 }));
 
 export const campaignComponentsRelations = relations(campaignComponents, ({ one }) => ({
@@ -502,6 +532,11 @@ export const insertCampaignComponentSchema = createInsertSchema(campaignComponen
   updatedAt: true 
 });
 
+export const insertAppComponentSchema = createInsertSchema(appComponents).omit({ 
+  id: true,
+  createdAt: true 
+});
+
 export const insertCampaignTranslationSchema = createInsertSchema(campaignTranslations).omit({ 
   id: true 
 });
@@ -618,6 +653,8 @@ export type Component = typeof components.$inferSelect;
 export type InsertComponent = z.infer<typeof insertComponentSchema>;
 export type CampaignComponent = typeof campaignComponents.$inferSelect;
 export type InsertCampaignComponent = z.infer<typeof insertCampaignComponentSchema>;
+export type AppComponent = typeof appComponents.$inferSelect;
+export type InsertAppComponent = z.infer<typeof insertAppComponentSchema>;
 export type CampaignTranslation = typeof campaignTranslations.$inferSelect;
 export type InsertCampaignTranslation = z.infer<typeof insertCampaignTranslationSchema>;
 export type CampaignEngagementConfig = typeof campaignEngagementConfig.$inferSelect;

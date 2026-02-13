@@ -74,25 +74,9 @@ export function IntegrationsTab({ campaignId, campaign }: IntegrationsTabProps) 
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="tipio-liveshow-id">Liveshow ID</Label>
-            <Input 
-              id="tipio-liveshow-id"
-              value={campaign.tipioLiveshowId || ''} 
-              placeholder="No liveshow configured"
-              disabled
-              data-testid="input-tipio-liveshow-id"
-            />
+            <Label>Tipio Integration</Label>
+            <p className="text-sm text-muted-foreground">Livestream data managed via campaign settings</p>
           </div>
-          {campaign.tipioLiveshowId && (
-            <Badge variant="default" className="bg-purple-600" data-testid="badge-tipio-connected">
-              ✓ Connected to Tipio
-            </Badge>
-          )}
-          {!campaign.tipioLiveshowId && (
-            <div className="text-sm text-muted-foreground">
-              No Tipio liveshow connected. Configure this integration during campaign creation.
-            </div>
-          )}
           
           {/* Show livestream data if available */}
           {campaign.tipioLivestreamData ? (

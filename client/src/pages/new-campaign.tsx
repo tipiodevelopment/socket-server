@@ -122,7 +122,6 @@ export default function NewCampaignPage() {
         reachuApiKey: reachuApiKey
       }),
       ...(enableTipio && {
-        tipioLiveshowId: tipioLivestream.liveStreamId,
         tipioLivestreamData: tipioLivestream
       })
     };
