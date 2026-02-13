@@ -1,6 +1,6 @@
-import { WebSocketEvent, Campaign, InsertCampaign, Event, InsertEvent, CampaignFormState, InsertFormState, ScheduledComponent, InsertScheduledComponent, Component, InsertComponent, CampaignComponent, InsertCampaignComponent, AppComponent, InsertAppComponent, User, InsertUser, ClientApp, InsertClientApp, Channel, InsertChannel, CampaignTranslation, InsertCampaignTranslation, CampaignEngagementConfig, InsertCampaignEngagementConfig, CampaignUiConfig, InsertCampaignUiConfig, CampaignFeatureFlags, InsertCampaignFeatureFlags, SdkTranslation, InsertSdkTranslation, Broadcast, InsertBroadcast, Poll, InsertPoll, PollOptionRecord, InsertPollOption, PollVote, InsertPollVote, Contest, InsertContest, ContestParticipation, InsertContestParticipation } from "@shared/schema";
+import { WebSocketEvent, Campaign, InsertCampaign, Event, InsertEvent, CampaignFormState, InsertFormState, ScheduledComponent, InsertScheduledComponent, Component, InsertComponent, CampaignComponent, InsertCampaignComponent, AppComponent, InsertAppComponent, User, InsertUser, ClientApp, InsertClientApp, Channel, InsertChannel, CampaignTranslation, InsertCampaignTranslation, CampaignEngagementConfig, InsertCampaignEngagementConfig, CampaignUiConfig, InsertCampaignUiConfig, CampaignFeatureFlags, InsertCampaignFeatureFlags, SdkTranslation, InsertSdkTranslation, Broadcast, InsertBroadcast, Poll, InsertPoll, PollOptionRecord, InsertPollOption, PollVote, InsertPollVote, Contest, InsertContest, ContestParticipation, InsertContestParticipation, Sponsor, InsertSponsor } from "@shared/schema";
 import { db } from "./db";
-import { campaigns, events, campaignFormState, scheduledComponents, components, campaignComponents, appComponents, users, clientApps, channels, campaignTranslations, campaignEngagementConfig, campaignUiConfig, campaignFeatureFlags, sdkTranslations, broadcasts, polls, pollOptions, pollVotes, contests, contestParticipations } from "@shared/schema";
+import { campaigns, events, campaignFormState, scheduledComponents, components, campaignComponents, appComponents, users, clientApps, channels, campaignTranslations, campaignEngagementConfig, campaignUiConfig, campaignFeatureFlags, sdkTranslations, broadcasts, polls, pollOptions, pollVotes, contests, contestParticipations, sponsors } from "@shared/schema";
 import { eq, desc, and, gte, ne, isNull, sql, lte } from "drizzle-orm";
 
 export interface IStorage {
@@ -24,6 +24,13 @@ export interface IStorage {
   updateClientApp(id: number, clientApp: Partial<InsertClientApp>): Promise<ClientApp | undefined>;
   deleteClientApp(id: number): Promise<void>;
   
+  // Sponsor methods
+  createSponsor(sponsor: InsertSponsor): Promise<Sponsor>;
+  getSponsor(id: number): Promise<Sponsor | undefined>;
+  getUserSponsors(userId: number): Promise<Sponsor[]>;
+  updateSponsor(id: number, sponsor: Partial<InsertSponsor>): Promise<Sponsor | undefined>;
+  deleteSponsor(id: number): Promise<void>;
+
   // Channel methods
   createChannel(channel: InsertChannel): Promise<Channel>;
   getChannel(id: number): Promise<Channel | undefined>;
@@ -241,6 +248,35 @@ export class MemStorage implements IStorage {
 
   async deleteClientApp(id: number): Promise<void> {
     await db.delete(clientApps).where(eq(clientApps.id, id));
+  }
+
+  // Sponsor methods (database-backed)
+  async createSponsor(sponsor: InsertSponsor): Promise<Sponsor> {
+    const [newSponsor] = await db.insert(sponsors).values(sponsor).returning();
+    return newSponsor;
+  }
+
+  async getSponsor(id: number): Promise<Sponsor | undefined> {
+    const [sponsor] = await db.select().from(sponsors).where(eq(sponsors.id, id));
+    return sponsor || undefined;
+  }
+
+  async getUserSponsors(userId: number): Promise<Sponsor[]> {
+    return await db.select().from(sponsors)
+      .where(eq(sponsors.userId, userId))
+      .orderBy(desc(sponsors.createdAt));
+  }
+
+  async updateSponsor(id: number, data: Partial<InsertSponsor>): Promise<Sponsor | undefined> {
+    const [updated] = await db.update(sponsors)
+      .set(data)
+      .where(eq(sponsors.id, id))
+      .returning();
+    return updated || undefined;
+  }
+
+  async deleteSponsor(id: number): Promise<void> {
+    await db.delete(sponsors).where(eq(sponsors.id, id));
   }
 
   // Channel methods (database-backed)

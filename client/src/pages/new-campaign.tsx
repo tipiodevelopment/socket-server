@@ -10,8 +10,9 @@ import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { AppLayout } from '@/components/AppLayout';
-import type { Campaign, ClientApp } from '@shared/schema';
-import { Megaphone, Calendar, ImageIcon } from 'lucide-react';
+import { ImageUploadWithPreview } from '@/components/ImageUploadWithPreview';
+import type { Campaign, ClientApp, Sponsor } from '@shared/schema';
+import { Megaphone, Calendar } from 'lucide-react';
 
 export default function NewCampaignPage() {
   const { toast } = useToast();
@@ -25,6 +26,7 @@ export default function NewCampaignPage() {
   const [description, setDescription] = useState('');
   const [logo, setLogo] = useState('');
   const [selectedAppId, setSelectedAppId] = useState<string>(preselectedAppId || '');
+  const [selectedSponsorId, setSelectedSponsorId] = useState<string>('');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
 
@@ -38,7 +40,18 @@ export default function NewCampaignPage() {
     enabled: !!userId,
   });
 
+  const { data: sponsorsList = [] } = useQuery<Sponsor[]>({
+    queryKey: ['/api/sponsors', userId],
+    queryFn: async () => {
+      const res = await fetch(`/api/sponsors?userId=${userId}`);
+      if (!res.ok) throw new Error('Failed');
+      return res.json();
+    },
+    enabled: !!userId,
+  });
+
   const preselectedApp = clientApps.find(a => a.id === parseInt(preselectedAppId || ''));
+  const selectedSponsor = sponsorsList.find(s => s.id === parseInt(selectedSponsorId || ''));
 
   const createMutation = useMutation<Campaign, Error, any>({
     mutationFn: async (data) => {
@@ -75,6 +88,10 @@ export default function NewCampaignPage() {
 
     if (selectedAppId && selectedAppId !== 'none') {
       data.clientAppId = parseInt(selectedAppId);
+    }
+
+    if (selectedSponsorId && selectedSponsorId !== 'none') {
+      data.sponsorId = parseInt(selectedSponsorId);
     }
 
     createMutation.mutate(data);
@@ -140,26 +157,18 @@ export default function NewCampaignPage() {
               />
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="logo" className="text-gray-700 dark:text-gray-300">
-                <span className="flex items-center gap-2">
-                  <ImageIcon className="w-4 h-4" /> Logo URL
-                </span>
-              </Label>
-              <Input
-                id="logo"
-                value={logo}
-                onChange={(e) => setLogo(e.target.value)}
-                placeholder="https://example.com/logo.png"
-                data-testid="input-campaign-logo"
-                className="bg-gray-50 dark:bg-gray-700 border-gray-200 dark:border-gray-600 text-gray-900 dark:text-white"
-              />
-            </div>
+            <ImageUploadWithPreview
+              label="Logo"
+              value={logo}
+              onChange={setLogo}
+              placeholder="Upload or paste logo URL"
+              testId="input-campaign-logo"
+            />
           </div>
 
           <div className="bg-white dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-xl p-6 space-y-5">
             <h2 className="text-sm font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-              App & Schedule
+              App & Sponsor
             </h2>
 
             <div className="space-y-2">
@@ -184,6 +193,59 @@ export default function NewCampaignPage() {
                 Link this campaign to an app to share components and branding.
               </p>
             </div>
+
+            <div className="space-y-2">
+              <Label className="text-gray-700 dark:text-gray-300">Sponsor</Label>
+              <Select value={selectedSponsorId} onValueChange={setSelectedSponsorId}>
+                <SelectTrigger
+                  data-testid="select-sponsor"
+                  className="bg-gray-50 dark:bg-gray-700 border-gray-200 dark:border-gray-600 text-gray-900 dark:text-white"
+                >
+                  <SelectValue placeholder="Select a sponsor (optional)" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">No sponsor</SelectItem>
+                  {sponsorsList.map((sponsor) => (
+                    <SelectItem key={sponsor.id} value={String(sponsor.id)} data-testid={`option-sponsor-${sponsor.id}`}>
+                      <span className="flex items-center gap-2">
+                        {sponsor.logoUrl && (
+                          <img src={sponsor.logoUrl} alt="" className="w-4 h-4 rounded object-cover" />
+                        )}
+                        {sponsor.primaryColor && (
+                          <span className="w-3 h-3 rounded-full border border-white/20" style={{ backgroundColor: sponsor.primaryColor }} />
+                        )}
+                        {sponsor.name}
+                      </span>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {selectedSponsor && (
+                <div className="flex items-center gap-3 p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg mt-2">
+                  {selectedSponsor.logoUrl && (
+                    <img src={selectedSponsor.logoUrl} alt={selectedSponsor.name} className="w-8 h-8 rounded object-cover" data-testid="img-selected-sponsor" />
+                  )}
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-gray-900 dark:text-white" data-testid="text-selected-sponsor">{selectedSponsor.name}</p>
+                  </div>
+                  {selectedSponsor.primaryColor && (
+                    <span className="w-5 h-5 rounded-full border border-gray-200 dark:border-gray-600" style={{ backgroundColor: selectedSponsor.primaryColor }} />
+                  )}
+                  {selectedSponsor.secondaryColor && (
+                    <span className="w-5 h-5 rounded-full border border-gray-200 dark:border-gray-600" style={{ backgroundColor: selectedSponsor.secondaryColor }} />
+                  )}
+                </div>
+              )}
+              <p className="text-xs text-gray-400 dark:text-gray-500">
+                The sponsor's branding (colors, logo, avatar) will be used in the SDK.
+              </p>
+            </div>
+          </div>
+
+          <div className="bg-white dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-xl p-6 space-y-5">
+            <h2 className="text-sm font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+              Schedule
+            </h2>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-2">

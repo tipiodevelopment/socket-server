@@ -27,6 +27,7 @@ import {
   ChevronRight,
   Sun,
   Moon,
+  Award,
 } from 'lucide-react';
 import { useState } from 'react';
 
@@ -49,6 +50,7 @@ const NAV_ITEMS = [
   { href: '/', label: 'Dashboard', icon: LayoutDashboard, exact: true },
   { href: '/apps', label: 'Apps', icon: Smartphone },
   { href: '/campaigns', label: 'Campaigns', icon: Megaphone },
+  { href: '/sponsors', label: 'Sponsors', icon: Award },
   { href: '/broadcasts', label: 'Broadcasts', icon: Radio },
   { href: '/components', label: 'Components', icon: ShoppingBag },
   { href: '/docs', label: 'Docs', icon: FileText },

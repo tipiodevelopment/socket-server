@@ -36,11 +36,24 @@ export const channels = pgTable("channels", {
   createdAt: timestamp("created_at").defaultNow().notNull()
 });
 
+export const sponsors = pgTable("sponsors", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull().references(() => users.id, { onDelete: 'cascade' }),
+  name: varchar("name", { length: 255 }).notNull(),
+  description: text("description"),
+  logoUrl: text("logo_url"),
+  avatarUrl: text("avatar_url"),
+  primaryColor: varchar("primary_color", { length: 20 }),
+  secondaryColor: varchar("secondary_color", { length: 20 }),
+  createdAt: timestamp("created_at").defaultNow().notNull()
+});
+
 export const campaigns = pgTable("campaigns", {
   id: serial("id").primaryKey(),
   userId: integer("user_id").notNull().references(() => users.id, { onDelete: 'cascade' }),
   clientAppId: integer("client_app_id").references(() => clientApps.id, { onDelete: 'cascade' }),
   channelId: integer("channel_id").references(() => channels.id, { onDelete: 'cascade' }),
+  sponsorId: integer("sponsor_id").references(() => sponsors.id, { onDelete: 'set null' }),
   name: varchar("name", { length: 255 }).notNull(),
   logo: text("logo"),
   description: text("description"),
@@ -288,7 +301,16 @@ export const contestParticipations = pgTable("contest_participations", {
 // Relations
 export const usersRelations = relations(users, ({ many }) => ({
   campaigns: many(campaigns),
-  clientApps: many(clientApps)
+  clientApps: many(clientApps),
+  sponsors: many(sponsors)
+}));
+
+export const sponsorsRelations = relations(sponsors, ({ one, many }) => ({
+  user: one(users, {
+    fields: [sponsors.userId],
+    references: [users.id]
+  }),
+  campaigns: many(campaigns)
 }));
 
 export const clientAppsRelations = relations(clientApps, ({ one, many }) => ({
@@ -321,6 +343,10 @@ export const campaignsRelations = relations(campaigns, ({ one, many }) => ({
   channel: one(channels, {
     fields: [campaigns.channelId],
     references: [channels.id]
+  }),
+  sponsor: one(sponsors, {
+    fields: [campaigns.sponsorId],
+    references: [sponsors.id]
   }),
   events: many(events),
   formStates: many(campaignFormState),
@@ -481,6 +507,11 @@ export const insertUserSchema = createInsertSchema(users).omit({
   createdAt: true 
 });
 
+export const insertSponsorSchema = createInsertSchema(sponsors).omit({ 
+  id: true,
+  createdAt: true 
+});
+
 export const insertClientAppSchema = createInsertSchema(clientApps).omit({ 
   id: true,
   createdAt: true 
@@ -637,6 +668,8 @@ export const participateInputSchema = z.object({
 // Types
 export type User = typeof users.$inferSelect;
 export type InsertUser = z.infer<typeof insertUserSchema>;
+export type Sponsor = typeof sponsors.$inferSelect;
+export type InsertSponsor = z.infer<typeof insertSponsorSchema>;
 export type ClientApp = typeof clientApps.$inferSelect;
 export type InsertClientApp = z.infer<typeof insertClientAppSchema>;
 export type Channel = typeof channels.$inferSelect;

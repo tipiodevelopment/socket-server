@@ -1032,6 +1032,92 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Sponsor CRUD endpoints
+
+  app.get('/api/sponsors', async (req, res) => {
+    try {
+      const userId = parseInt(req.query.userId as string);
+      if (!userId || isNaN(userId)) {
+        return res.status(400).json({ message: 'userId query param is required' });
+      }
+      const result = await storage.getUserSponsors(userId);
+      res.json(result);
+    } catch (error) {
+      console.error('Error fetching sponsors:', error);
+      res.status(500).json({ message: 'Error fetching sponsors' });
+    }
+  });
+
+  app.get('/api/sponsors/:id', async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const sponsor = await storage.getSponsor(id);
+      if (!sponsor) return res.status(404).json({ message: 'Sponsor not found' });
+      res.json(sponsor);
+    } catch (error) {
+      console.error('Error fetching sponsor:', error);
+      res.status(500).json({ message: 'Error fetching sponsor' });
+    }
+  });
+
+  app.post('/api/sponsors', async (req, res) => {
+    try {
+      const { userId, name, description, logoUrl, avatarUrl, primaryColor, secondaryColor } = req.body;
+      if (!userId || !name) {
+        return res.status(400).json({ message: 'userId and name are required' });
+      }
+      const sponsor = await storage.createSponsor({
+        userId,
+        name,
+        description: description || null,
+        logoUrl: logoUrl || null,
+        avatarUrl: avatarUrl || null,
+        primaryColor: primaryColor || null,
+        secondaryColor: secondaryColor || null,
+      });
+      res.status(201).json(sponsor);
+    } catch (error) {
+      console.error('Error creating sponsor:', error);
+      res.status(400).json({ message: 'Error creating sponsor' });
+    }
+  });
+
+  app.patch('/api/sponsors/:id', async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const { userId, ...updateData } = req.body;
+      if (!userId) return res.status(400).json({ message: 'userId is required' });
+
+      const existing = await storage.getSponsor(id);
+      if (!existing) return res.status(404).json({ message: 'Sponsor not found' });
+      if (existing.userId !== userId) return res.status(403).json({ message: 'Access denied' });
+
+      const sponsor = await storage.updateSponsor(id, updateData);
+      res.json(sponsor);
+    } catch (error) {
+      console.error('Error updating sponsor:', error);
+      res.status(500).json({ message: 'Error updating sponsor' });
+    }
+  });
+
+  app.delete('/api/sponsors/:id', async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const userId = parseInt(req.query.userId as string);
+      if (!userId) return res.status(400).json({ message: 'userId is required' });
+
+      const existing = await storage.getSponsor(id);
+      if (!existing) return res.status(404).json({ message: 'Sponsor not found' });
+      if (existing.userId !== userId) return res.status(403).json({ message: 'Access denied' });
+
+      await storage.deleteSponsor(id);
+      res.json({ message: 'Sponsor deleted' });
+    } catch (error) {
+      console.error('Error deleting sponsor:', error);
+      res.status(500).json({ message: 'Error deleting sponsor' });
+    }
+  });
+
   // Create client app
   app.post('/api/client-apps', async (req, res) => {
     try {
@@ -3353,6 +3439,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
         };
       }
 
+      // Include sponsor branding if campaign has a sponsor
+      if (campaign.sponsorId) {
+        const sponsor = await storage.getSponsor(campaign.sponsorId);
+        if (sponsor) {
+          config.sponsor = {
+            id: sponsor.id,
+            name: sponsor.name,
+            logoUrl: sponsor.logoUrl ? toAbsoluteUrl(sponsor.logoUrl, req) : null,
+            avatarUrl: sponsor.avatarUrl ? toAbsoluteUrl(sponsor.avatarUrl, req) : null,
+            primaryColor: sponsor.primaryColor || null,
+            secondaryColor: sponsor.secondaryColor || null,
+          };
+        }
+      }
+
       res.json(config);
     } catch (error) {
       console.error('Error fetching SDK config:', error);
@@ -3452,7 +3553,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
           ttl: 300,
           version: '1.0.0'
         }
-      };
+      } as any;
+
+      // Include sponsor branding if campaign has a sponsor
+      if (campaign.sponsorId) {
+        const sponsor = await storage.getSponsor(campaign.sponsorId);
+        if (sponsor) {
+          config.sponsor = {
+            id: sponsor.id,
+            name: sponsor.name,
+            logoUrl: sponsor.logoUrl ? toAbsoluteUrl(sponsor.logoUrl, req) : null,
+            avatarUrl: sponsor.avatarUrl ? toAbsoluteUrl(sponsor.avatarUrl, req) : null,
+            primaryColor: sponsor.primaryColor || null,
+            secondaryColor: sponsor.secondaryColor || null,
+          };
+        }
+      }
       
       res.set('Cache-Control', 'public, max-age=300');
       res.json(config);
