@@ -67,60 +67,60 @@
 }
 
 .dark {
-  --background: hsl(235, 30%, 7%);
-  --foreground: hsl(0, 0%, 100%);
+  --background: #0a0e1a;
+  --foreground: hsl(220, 20%, 93%);
 
-  --card: rgba(30, 30, 50, 0.6);
-  --card-foreground: hsl(0, 0%, 100%);
-  --popover: rgba(40, 40, 60, 0.95);
-  --popover-foreground: hsl(0, 0%, 100%);
+  --card: #141824;
+  --card-foreground: hsl(220, 20%, 93%);
+  --popover: #1e2433;
+  --popover-foreground: hsl(220, 20%, 93%);
 
-  --primary: #0066FF;
-  --primary-foreground: hsl(0, 0%, 100%);
-  --primary-hover: #0052CC;
+  --primary: hsl(0, 0%, 100%);
+  --primary-foreground: #0a0e1a;
+  --primary-hover: hsl(220, 10%, 90%);
 
-  --secondary: #A855F7;
-  --secondary-foreground: hsl(0, 0%, 100%);
+  --secondary: #1e2433;
+  --secondary-foreground: hsl(220, 20%, 93%);
 
-  --muted: rgba(255, 255, 255, 0.1);
-  --muted-foreground: rgba(255, 255, 255, 0.7);
+  --muted: #1e2433;
+  --muted-foreground: hsl(220, 10%, 55%);
 
-  --accent: #0066FF;
-  --accent-foreground: hsl(0, 0%, 100%);
+  --accent: #1e2433;
+  --accent-foreground: hsl(220, 20%, 93%);
 
   --destructive: #EF4444;
   --destructive-foreground: hsl(0, 0%, 100%);
   --success: #10B981;
   --warning: #F59E0B;
 
-  --border: rgba(255, 255, 255, 0.1);
-  --input: rgba(255, 255, 255, 0.05);
-  --ring: #0066FF;
+  --border: #2a3142;
+  --input: #1e2433;
+  --ring: hsl(220, 10%, 50%);
 
-  --chart-1: #0066FF;
-  --chart-2: #A855F7;
+  --chart-1: hsl(220, 10%, 70%);
+  --chart-2: hsl(220, 10%, 55%);
   --chart-3: #10B981;
   --chart-4: #F59E0B;
   --chart-5: #EF4444;
 
-  --sidebar-background: hsl(235, 25%, 8%);
-  --sidebar-foreground: hsl(0, 0%, 100%);
-  --sidebar-primary: #0066FF;
-  --sidebar-primary-foreground: hsl(0, 0%, 100%);
-  --sidebar-accent: #0066FF;
-  --sidebar-accent-foreground: hsl(0, 0%, 100%);
-  --sidebar-border: rgba(255, 255, 255, 0.1);
-  --sidebar-ring: #0066FF;
+  --sidebar-background: #141824;
+  --sidebar-foreground: hsl(220, 20%, 93%);
+  --sidebar-primary: hsl(0, 0%, 100%);
+  --sidebar-primary-foreground: #0a0e1a;
+  --sidebar-accent: #1e2433;
+  --sidebar-accent-foreground: hsl(220, 20%, 93%);
+  --sidebar-border: #2a3142;
+  --sidebar-ring: hsl(220, 10%, 50%);
 
   /* Theme-specific surface colors */
-  --surface-primary: hsl(235, 25%, 10%);
-  --surface-secondary: hsl(235, 25%, 8%);
-  --surface-elevated: rgba(30, 30, 50, 0.6);
-  --text-primary: hsl(0, 0%, 100%);
-  --text-secondary: rgba(255, 255, 255, 0.7);
-  --text-tertiary: rgba(255, 255, 255, 0.4);
-  --border-subtle: rgba(255, 255, 255, 0.1);
-  --border-strong: rgba(255, 255, 255, 0.2);
+  --surface-primary: #141824;
+  --surface-secondary: #0a0e1a;
+  --surface-elevated: #141824;
+  --text-primary: hsl(220, 20%, 93%);
+  --text-secondary: hsl(220, 10%, 55%);
+  --text-tertiary: hsl(220, 10%, 40%);
+  --border-subtle: #2a3142;
+  --border-strong: hsl(220, 15%, 25%);
 }
 
 @layer base {
@@ -137,8 +137,7 @@
   }
 
   .dark body {
-    background: linear-gradient(135deg, #1a0f2e 0%, #0f1729 100%);
-    background-attachment: fixed;
+    background: #0a0e1a;
   }
 
   html, body, #root {
@@ -220,14 +219,13 @@
 
 /* Primary button style */
 .btn-primary {
-  background: #0066FF;
-  color: white;
+  background: var(--primary);
+  color: var(--primary-foreground);
   transition: all 0.2s ease;
 }
 
 .btn-primary:hover {
-  background: #0052CC;
-  filter: brightness(1.1);
+  background: var(--primary-hover);
 }
 
 /* Secondary button style */
@@ -245,8 +243,8 @@
 /* Input focus states */
 input:focus, textarea:focus, select:focus {
   outline: none;
-  border-color: #0066FF;
-  box-shadow: 0 0 0 3px rgba(0, 102, 255, 0.2);
+  border-color: hsl(220, 10%, 50%);
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.08);
 }
 
 /* Backdrop blur utilities */

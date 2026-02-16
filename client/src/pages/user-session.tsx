@@ -24,9 +24,9 @@ export default function UserSessionPage() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-gray-50 dark:bg-[#0d0b1a] flex items-center justify-center transition-colors">
+      <div className="min-h-screen bg-gray-50 dark:bg-[#0a0e1a] flex items-center justify-center transition-colors">
         <div className="animate-pulse">
-          <div className="w-10 h-10 bg-gradient-to-br from-purple-500 to-blue-500 rounded-xl mx-auto" />
+          <div className="w-10 h-10 bg-white rounded-xl mx-auto" />
           <p className="text-gray-500 dark:text-white/50 text-sm mt-4">Loading...</p>
         </div>
       </div>
@@ -54,7 +54,7 @@ export default function UserSessionPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-[#0d0b1a] flex flex-col transition-colors">
+    <div className="min-h-screen bg-gray-50 dark:bg-[#0a0e1a] flex flex-col transition-colors">
       <div className="absolute top-4 right-4">
         <button
           onClick={toggleTheme}
@@ -68,7 +68,7 @@ export default function UserSessionPage() {
       <div className="flex-1 flex items-center justify-center p-6">
         <div className="w-full max-w-md">
           <div className="text-center mb-8">
-            <div className="w-16 h-16 bg-gradient-to-br from-purple-500 to-blue-500 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg shadow-purple-500/20">
+            <div className="w-16 h-16 bg-white rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg">
               <VioLogo className="w-10 h-10" color="white" />
             </div>
             <h1 className="text-2xl font-bold text-gray-900 dark:text-white" data-testid="text-login-title">
@@ -82,7 +82,7 @@ export default function UserSessionPage() {
           {currentUser && !showForm ? (
             <div className="bg-white dark:bg-white/[0.03] border border-gray-200 dark:border-white/10 rounded-2xl p-6 shadow-sm dark:shadow-none">
               <div className="flex items-center gap-3 pb-4 border-b border-gray-100 dark:border-white/5">
-                <div className="h-12 w-12 rounded-full bg-gradient-to-br from-blue-500 to-purple-500 flex items-center justify-center">
+                <div className="h-12 w-12 rounded-full bg-white flex items-center justify-center">
                   <User className="h-6 w-6 text-white" />
                 </div>
                 <div>
@@ -93,7 +93,7 @@ export default function UserSessionPage() {
 
               <div className="space-y-3 mt-4">
                 <Link href="/apps">
-                  <Button className="w-full bg-blue-600 hover:bg-blue-700 text-white h-11" data-testid="button-apps">
+                  <Button className="w-full bg-white hover:bg-gray-200 text-[#0a0e1a] h-11" data-testid="button-apps">
                     Go to My Apps
                   </Button>
                 </Link>
@@ -139,7 +139,7 @@ export default function UserSessionPage() {
                     onChange={(e) => setReachuUserId(e.target.value)}
                     onKeyPress={(e) => e.key === 'Enter' && !isSubmitting && handleLogin()}
                     disabled={isSubmitting}
-                    className="h-11 bg-gray-50 dark:bg-white/5 border-gray-200 dark:border-white/10 text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-white/30 focus:border-blue-500"
+                    className="h-11 bg-gray-50 dark:bg-white/5 border-gray-200 dark:border-white/10 text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-white/30 focus:border-gray-500"
                     data-testid="input-user-id"
                   />
                 </div>
@@ -153,7 +153,7 @@ export default function UserSessionPage() {
                 <Button
                   onClick={handleLogin}
                   disabled={!reachuUserId.trim() || isSubmitting}
-                  className="w-full bg-blue-600 hover:bg-blue-700 text-white h-11 font-medium"
+                  className="w-full bg-white hover:bg-gray-200 text-[#0a0e1a] h-11 font-medium"
                   data-testid="button-start-session"
                 >
                   <LogIn className="h-4 w-4 mr-2" />

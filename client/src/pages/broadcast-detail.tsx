@@ -62,13 +62,13 @@ function ActivePollCard({ poll, onToggle, onDelete }: {
 
   return (
     <div
-      className={`bg-transparent border rounded-lg p-4 ${isActive ? 'border-blue-500/30' : 'border-white/10 dark:border-white/10'}`}
+      className={`bg-transparent border rounded-lg p-4 ${isActive ? 'border-white/20' : 'border-white/10 dark:border-white/10'}`}
       data-testid={`card-poll-${poll.id}`}
     >
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center space-x-2">
-          {isActive && <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>}
-          <span className={`text-xs font-semibold uppercase ${isActive ? 'text-blue-400' : 'text-muted-foreground'}`} data-testid={`badge-poll-active-${poll.id}`}>
+          {isActive && <div className="w-2 h-2 bg-white rounded-full animate-pulse"></div>}
+          <span className={`text-xs font-semibold uppercase ${isActive ? 'text-gray-300 dark:text-gray-300' : 'text-muted-foreground'}`} data-testid={`badge-poll-active-${poll.id}`}>
             {isActive ? 'Poll Active' : 'Poll Inactive'}
           </span>
         </div>
@@ -115,7 +115,7 @@ function ActivePollCard({ poll, onToggle, onDelete }: {
                     <span className="text-foreground font-semibold">{percentage}%</span>
                   </div>
                   <div className="h-1.5 bg-white/10 dark:bg-white/10 rounded-full overflow-hidden">
-                    <div className="h-full bg-blue-500 rounded-full transition-all" style={{ width: `${percentage}%` }} data-testid={`poll-option-bar-${option.id}`}></div>
+                    <div className="h-full bg-white rounded-full transition-all" style={{ width: `${percentage}%` }} data-testid={`poll-option-bar-${option.id}`}></div>
                   </div>
                 </div>
               );
@@ -148,13 +148,13 @@ function ContestCard({ contest, onToggle, onDelete }: {
 }) {
   return (
     <div
-      className={`bg-transparent border rounded-lg p-4 ${contest.isActive ? 'border-purple-500/30' : 'border-white/10 dark:border-white/10'}`}
+      className={`bg-transparent border rounded-lg p-4 ${contest.isActive ? 'border-white/20' : 'border-white/10 dark:border-white/10'}`}
       data-testid={`card-contest-${contest.id}`}
     >
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center space-x-2">
-          {contest.isActive && <div className="w-2 h-2 bg-purple-500 rounded-full"></div>}
-          <span className={`text-xs font-semibold uppercase ${contest.isActive ? 'text-purple-400' : 'text-muted-foreground'}`}>
+          {contest.isActive && <div className="w-2 h-2 bg-white rounded-full"></div>}
+          <span className={`text-xs font-semibold uppercase ${contest.isActive ? 'text-gray-300 dark:text-gray-300' : 'text-muted-foreground'}`}>
             {contest.isActive ? 'Active' : 'Inactive'}
           </span>
         </div>
@@ -188,8 +188,8 @@ function ContestCard({ contest, onToggle, onDelete }: {
       </div>
 
       <div className="flex items-start space-x-3">
-        <div className={`w-12 h-12 rounded flex items-center justify-center flex-shrink-0 ${contest.isActive ? 'bg-purple-500/20' : 'bg-white/5 dark:bg-white/5'}`}>
-          <Trophy className={`w-5 h-5 ${contest.isActive ? 'text-purple-400' : 'text-muted-foreground'}`} />
+        <div className={`w-12 h-12 rounded flex items-center justify-center flex-shrink-0 ${contest.isActive ? 'bg-white/10 dark:bg-white/10' : 'bg-white/5 dark:bg-white/5'}`}>
+          <Trophy className={`w-5 h-5 ${contest.isActive ? 'text-gray-300 dark:text-gray-300' : 'text-muted-foreground'}`} />
         </div>
         <div className="flex-1 min-w-0">
           <h3 className="text-sm font-semibold text-foreground mb-1" data-testid={`text-contest-title-${contest.id}`}>{contest.title}</h3>

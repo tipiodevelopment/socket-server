@@ -71,12 +71,12 @@ export function AppLayout({ children, breadcrumbs = [], title, subtitle, actions
   const pageTitle = title || currentPage?.label || 'Dashboard';
 
   return (
-    <div className="min-h-screen flex bg-background dark:bg-[#0d0b1a]">
-      <aside className="hidden md:flex flex-col w-16 bg-white dark:bg-[#12101f] border-r border-gray-200 dark:border-white/5 fixed top-0 left-0 h-full z-50 shadow-sm dark:shadow-none">
+    <div className="min-h-screen flex bg-background">
+      <aside className="hidden md:flex flex-col w-16 bg-white dark:bg-[#141824] border-r border-gray-200 dark:border-[#2a3142] fixed top-0 left-0 h-full z-50 shadow-sm dark:shadow-none">
         <div className="flex items-center justify-center h-16">
           <Link href="/">
-            <div className="w-10 h-10 bg-gradient-to-br from-purple-500 to-blue-500 rounded-xl flex items-center justify-center cursor-pointer" data-testid="link-home">
-              <VioLogo className="w-6 h-6" color="white" />
+            <div className="w-10 h-10 bg-white dark:bg-white rounded-xl flex items-center justify-center cursor-pointer" data-testid="link-home">
+              <VioLogo className="w-6 h-6" color="#0a0e1a" />
             </div>
           </Link>
         </div>
@@ -89,8 +89,8 @@ export function AppLayout({ children, breadcrumbs = [], title, subtitle, actions
                 <div
                   className={`w-10 h-10 rounded-xl flex items-center justify-center cursor-pointer transition-all group relative ${
                     active
-                      ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/30'
-                      : 'text-gray-400 dark:text-white/40 hover:text-gray-600 dark:hover:text-white/70 hover:bg-gray-100 dark:hover:bg-white/5'
+                      ? 'bg-gray-900 dark:bg-white text-white dark:text-[#0a0e1a]'
+                      : 'text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-[#1e2433]'
                   }`}
                   data-testid={`nav-${item.label.toLowerCase()}`}
                 >
@@ -104,10 +104,10 @@ export function AppLayout({ children, breadcrumbs = [], title, subtitle, actions
           })}
         </nav>
 
-        <div className="flex flex-col items-center gap-2 py-4 border-t border-gray-200 dark:border-white/5">
+        <div className="flex flex-col items-center gap-2 py-4 border-t border-gray-200 dark:border-[#2a3142]">
           <button
             onClick={toggleTheme}
-            className="w-10 h-10 rounded-xl flex items-center justify-center text-gray-400 dark:text-white/40 hover:text-gray-600 dark:hover:text-white/70 hover:bg-gray-100 dark:hover:bg-white/5 transition-all group relative"
+            className="w-10 h-10 rounded-xl flex items-center justify-center text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-[#1e2433] transition-all group relative"
             data-testid="button-theme-toggle"
           >
             {theme === 'dark' ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
@@ -117,7 +117,7 @@ export function AppLayout({ children, breadcrumbs = [], title, subtitle, actions
           </button>
           <button
             onClick={logout}
-            className="w-10 h-10 rounded-xl flex items-center justify-center text-gray-400 dark:text-white/40 hover:text-gray-600 dark:hover:text-white/70 hover:bg-gray-100 dark:hover:bg-white/5 transition-all group relative"
+            className="w-10 h-10 rounded-xl flex items-center justify-center text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-[#1e2433] transition-all group relative"
             data-testid="button-logout"
           >
             <LogOut className="w-5 h-5" />
@@ -125,14 +125,14 @@ export function AppLayout({ children, breadcrumbs = [], title, subtitle, actions
               Logout
             </div>
           </button>
-          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-purple-500 flex items-center justify-center text-white text-xs font-bold">
+          <div className="w-8 h-8 rounded-full bg-white dark:bg-white flex items-center justify-center text-gray-900 dark:text-[#0a0e1a] text-xs font-bold border-2 border-white">
             {(reachuUserId || 'U').charAt(0).toUpperCase()}
           </div>
         </div>
       </aside>
 
       <div className="flex-1 md:ml-16 flex flex-col min-h-screen">
-        <header className="sticky top-0 z-40 bg-white/80 dark:bg-[#0d0b1a]/80 backdrop-blur-xl border-b border-gray-200 dark:border-white/5">
+        <header className="sticky top-0 z-40 bg-white/80 dark:bg-[#141824]/80 backdrop-blur-xl border-b border-gray-200 dark:border-[#2a3142]">
           <div className="flex items-center justify-between h-14 px-4 sm:px-6">
             <div className="flex items-center gap-3">
               <Button
@@ -167,16 +167,16 @@ export function AppLayout({ children, breadcrumbs = [], title, subtitle, actions
                 <Search className="w-4 h-4 text-gray-400 dark:text-white/30 absolute left-3" />
                 <Input
                   placeholder="Search..."
-                  className="w-48 lg:w-64 pl-9 h-9 bg-gray-100 dark:bg-white/5 border-gray-200 dark:border-white/10 text-sm text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-white/30 focus:border-blue-500/50"
+                  className="w-48 lg:w-64 pl-9 h-9 bg-gray-100 dark:bg-[#1e2433] border-gray-200 dark:border-[#2a3142] text-sm text-gray-900 dark:text-gray-100 placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:border-gray-400 dark:focus:border-gray-500"
                   data-testid="input-search"
                 />
               </div>
-              <button className="w-9 h-9 rounded-lg flex items-center justify-center text-gray-400 dark:text-white/40 hover:text-gray-600 dark:hover:text-white/70 hover:bg-gray-100 dark:hover:bg-white/5 transition-all relative" data-testid="button-notifications">
+              <button className="w-9 h-9 rounded-lg flex items-center justify-center text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-[#1e2433] transition-all relative" data-testid="button-notifications">
                 <Bell className="w-5 h-5" />
               </button>
               <button
                 onClick={toggleTheme}
-                className="md:hidden w-9 h-9 rounded-lg flex items-center justify-center text-gray-400 dark:text-white/40 hover:text-gray-600 dark:hover:text-white/70 hover:bg-gray-100 dark:hover:bg-white/5 transition-all"
+                className="md:hidden w-9 h-9 rounded-lg flex items-center justify-center text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-[#1e2433] transition-all"
                 data-testid="button-theme-toggle-mobile"
               >
                 {theme === 'dark' ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
@@ -186,7 +186,7 @@ export function AppLayout({ children, breadcrumbs = [], title, subtitle, actions
           </div>
 
           {mobileMenuOpen && (
-            <div className="md:hidden border-t border-gray-200 dark:border-white/5 bg-white dark:bg-[#12101f] px-3 py-2">
+            <div className="md:hidden border-t border-gray-200 dark:border-[#2a3142] bg-white dark:bg-[#141824] px-3 py-2">
               {NAV_ITEMS.map((item) => (
                 <Link key={item.href} href={item.href}>
                   <Button

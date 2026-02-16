@@ -130,7 +130,7 @@ export function ComponentLibraryTab() {
           </div>
           <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
             <DialogTrigger asChild>
-              <Button className="bg-blue-600 hover:bg-blue-700 border-0" data-testid="button-create-component">
+              <Button className="bg-white hover:bg-gray-200 text-[#0a0e1a] border-0" data-testid="button-create-component">
                 <Plus className="w-4 h-4 mr-2" />
                 New Component
               </Button>
@@ -168,7 +168,7 @@ export function ComponentLibraryTab() {
             </p>
             <Button
               onClick={() => setIsCreateOpen(true)}
-              className="bg-blue-600 hover:bg-blue-700"
+              className="bg-white hover:bg-gray-200 text-[#0a0e1a]"
               data-testid="button-create-first-component"
             >
               <Plus className="w-4 h-4 mr-2" />
@@ -272,7 +272,7 @@ export function ComponentLibraryTab() {
                           Used in <span className="font-semibold text-white">{componentUsage[component.id].length}</span> campaign{componentUsage[component.id].length !== 1 ? 's' : ''}:
                           <div className="mt-1 flex flex-wrap gap-1">
                             {componentUsage[component.id].map((usage) => (
-                              <span key={usage.campaignId} className="inline-block px-2 py-0.5 rounded-full text-xs bg-blue-500/20 text-blue-300">
+                              <span key={usage.campaignId} className="inline-block px-2 py-0.5 rounded-full text-xs bg-white/10 text-gray-300">
                                 {usage.campaignName}
                               </span>
                             ))}
@@ -1049,7 +1049,7 @@ export function ComponentForm({
                             console.log('Removiendo color de fondo...');
                             setConfig({ ...config, backgroundColor: 'rgba(0, 0, 0, 0)' });
                           }}
-                          className="text-xs text-purple-400 hover:text-purple-300 underline"
+                          className="text-xs text-gray-300 hover:text-gray-200 underline"
                           data-testid="button-remove-background"
                         >
                           Quitar color de fondo
@@ -1542,7 +1542,7 @@ export function ComponentForm({
         <Button 
           type="submit" 
           disabled={isLoading} 
-          className="flex-1 bg-blue-600 hover:bg-blue-700" 
+          className="flex-1 bg-white hover:bg-gray-200 text-[#0a0e1a]" 
           data-testid="button-submit"
         >
           {isLoading ? 'Saving...' : component ? 'Update Component' : 'Create Component'}

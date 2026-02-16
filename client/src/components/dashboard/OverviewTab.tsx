@@ -542,7 +542,7 @@ export function OverviewTab({ campaignId, campaign }: OverviewTabProps) {
                       variant="ghost"
                       size="sm"
                       onClick={() => setEditingConfigFor(cc)}
-                      className="h-8 px-2 text-purple-400 hover:text-purple-300 hover:bg-purple-950"
+                      className="h-8 px-2 text-gray-300 dark:text-gray-300 hover:text-gray-200 hover:bg-white/10"
                       data-testid={`overview-customize-${cc.id}`}
                       title="Customize for this campaign"
                     >
@@ -831,8 +831,8 @@ interface StatCardProps {
 function StatCard({ icon, label, value, color, testId }: StatCardProps) {
   const colorClasses = {
     green: "bg-green-500/10 text-green-500",
-    blue: "bg-blue-500/10 text-blue-500",
-    purple: "bg-purple-500/10 text-purple-500",
+    blue: "bg-white/10 text-gray-300",
+    purple: "bg-white/10 text-gray-300",
     cyan: "bg-cyan-500/10 text-cyan-500",
   };
 

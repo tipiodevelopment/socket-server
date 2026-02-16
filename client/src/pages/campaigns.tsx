@@ -29,7 +29,7 @@ const STATUS_CONFIG: Record<CampaignStatus, { label: string; className: string }
   },
   upcoming: {
     label: 'UPCOMING',
-    className: 'bg-blue-500/20 text-blue-400 border-blue-500/30',
+    className: 'bg-white/10 text-gray-300 border-white/20',
   },
   ended: {
     label: 'ENDED',

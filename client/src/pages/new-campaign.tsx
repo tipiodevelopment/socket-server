@@ -112,8 +112,8 @@ export default function NewCampaignPage() {
     <AppLayout breadcrumbs={breadcrumbs}>
       <div className="max-w-2xl mx-auto">
         <div className="flex items-center gap-3 mb-8">
-          <div className="w-10 h-10 rounded-xl bg-purple-500/10 dark:bg-purple-500/20 flex items-center justify-center">
-            <Megaphone className="w-5 h-5 text-purple-500" />
+          <div className="w-10 h-10 rounded-xl bg-white/10 dark:bg-white/10 flex items-center justify-center">
+            <Megaphone className="w-5 h-5 text-gray-300" />
           </div>
           <div>
             <h1 className="text-xl font-semibold text-gray-900 dark:text-gray-100" data-testid="text-page-title">
@@ -296,7 +296,7 @@ export default function NewCampaignPage() {
               type="submit"
               disabled={createMutation.isPending || !name.trim()}
               data-testid="button-create-campaign"
-              className="bg-purple-600 hover:bg-purple-700 text-white gap-2"
+              className="bg-white hover:bg-gray-200 text-[#0a0e1a] gap-2"
             >
               <Megaphone className="w-4 h-4" />
               {createMutation.isPending ? 'Creating...' : 'Create Campaign'}

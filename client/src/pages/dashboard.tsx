@@ -34,12 +34,12 @@ function getDaysUntil(date: Date): string {
 }
 
 const APP_GRADIENTS = [
-  'from-purple-600/80 to-purple-900/80',
-  'from-blue-600/80 to-blue-900/80',
-  'from-orange-500/80 to-orange-800/80',
-  'from-emerald-600/80 to-emerald-900/80',
-  'from-pink-600/80 to-pink-900/80',
-  'from-cyan-600/80 to-cyan-900/80',
+  'from-gray-700 to-gray-800',
+  'from-gray-600 to-gray-800',
+  'from-gray-600 to-gray-700',
+  'from-gray-500 to-gray-700',
+  'from-gray-600 to-gray-800',
+  'from-gray-500 to-gray-800',
 ];
 
 const APP_ICONS = ['⚽', '🏀', '🏐', '🏈', '⚾', '🎾', '🏓', '🎯'];
@@ -117,7 +117,7 @@ export default function DashboardPage() {
       headerBreadcrumbHref="/apps"
       actions={
         <Link href="/campaigns">
-          <Button size="sm" className="gap-1.5 bg-blue-600 hover:bg-blue-700 text-white h-9 px-4" data-testid="button-new-campaign">
+          <Button size="sm" className="gap-1.5 bg-white hover:bg-gray-200 text-[#0a0e1a] h-9 px-4" data-testid="button-new-campaign">
             <Plus className="w-4 h-4" /> New Campaign
           </Button>
         </Link>
@@ -126,8 +126,8 @@ export default function DashboardPage() {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
         <StatCard
           icon={<Radio className="w-5 h-5" />}
-          iconBg="bg-purple-500/20"
-          iconColor="text-purple-400"
+          iconBg="bg-white/10 dark:bg-white/10"
+          iconColor="text-gray-300 dark:text-gray-300"
           value={liveBroadcasts.length}
           label="Live Broadcasts"
           change={12}
@@ -135,8 +135,8 @@ export default function DashboardPage() {
         />
         <StatCard
           icon={<Megaphone className="w-5 h-5" />}
-          iconBg="bg-blue-500/20"
-          iconColor="text-blue-400"
+          iconBg="bg-white/10 dark:bg-white/10"
+          iconColor="text-gray-300 dark:text-gray-300"
           value={activeCampaigns.length}
           label="Active Campaigns"
           change={8}
@@ -180,12 +180,12 @@ export default function DashboardPage() {
 
         {clientApps.length === 0 ? (
           <div className="rounded-xl border border-gray-200 dark:border-white/5 bg-white dark:bg-white/[0.02] p-8 text-center">
-            <div className="w-12 h-12 rounded-xl bg-purple-500/20 flex items-center justify-center mx-auto mb-3">
-              <Activity className="w-6 h-6 text-purple-400" />
+            <div className="w-12 h-12 rounded-xl bg-white/10 dark:bg-white/10 flex items-center justify-center mx-auto mb-3">
+              <Activity className="w-6 h-6 text-gray-300 dark:text-gray-300" />
             </div>
             <p className="text-gray-500 dark:text-white/50 text-sm mb-4">No client apps yet. Create your first app to get started.</p>
             <Link href="/apps">
-              <Button size="sm" className="gap-1.5 bg-blue-600 hover:bg-blue-700">
+              <Button size="sm" className="gap-1.5 bg-white hover:bg-gray-200 text-[#0a0e1a]">
                 <Plus className="w-4 h-4" /> Create App
               </Button>
             </Link>
@@ -217,7 +217,7 @@ export default function DashboardPage() {
                       <h3 className="text-white font-semibold text-base">{app.name}</h3>
                       <p className="text-white/60 text-xs mt-0.5">{app.bundleId}</p>
                     </div>
-                    <div className="bg-white dark:bg-[#161429] p-4 border border-gray-200 dark:border-white/5 border-t-0 rounded-b-xl">
+                    <div className="bg-white dark:bg-[#141824] p-4 border border-gray-200 dark:border-white/5 border-t-0 rounded-b-xl">
                       <div className="flex items-center justify-between">
                         <div>
                           <p className="text-[10px] text-gray-400 dark:text-white/30 uppercase tracking-wider">Active Broadcasts</p>
@@ -230,7 +230,7 @@ export default function DashboardPage() {
                       </div>
                       <div className="mt-3 w-full bg-gray-200 dark:bg-white/10 rounded-full h-1.5">
                         <div
-                          className="bg-gradient-to-r from-blue-400 to-purple-400 h-1.5 rounded-full transition-all"
+                          className="bg-white h-1.5 rounded-full transition-all"
                           style={{ width: `${Math.min(appCampaigns.length * 15, 100)}%` }}
                         />
                       </div>
@@ -327,7 +327,7 @@ export default function DashboardPage() {
                         </td>
                         <td className="py-3 px-4">
                           <Link href={`/broadcasts/${broadcast.broadcastId}`}>
-                            <Button size="sm" variant="outline" className="border-blue-500/30 text-blue-400 hover:bg-blue-500/10 text-xs h-7 px-3" data-testid={`button-manage-broadcast-${broadcast.broadcastId}`}>
+                            <Button size="sm" variant="outline" className="border-white/20 text-gray-300 dark:text-gray-300 hover:bg-white/10 text-xs h-7 px-3" data-testid={`button-manage-broadcast-${broadcast.broadcastId}`}>
                               Manage
                             </Button>
                           </Link>
@@ -350,7 +350,7 @@ export default function DashboardPage() {
               <p className="text-sm text-gray-400 dark:text-white/40">Scheduled campaigns for the next 7 days</p>
             </div>
             <Link href="/campaigns">
-              <Button variant="ghost" size="sm" className="gap-1 text-blue-400 hover:text-blue-300 text-xs" data-testid="link-view-all-campaigns">
+              <Button variant="ghost" size="sm" className="gap-1 text-gray-300 dark:text-gray-300 hover:text-gray-200 text-xs" data-testid="link-view-all-campaigns">
                 View All <ChevronRight className="w-3.5 h-3.5" />
               </Button>
             </Link>
@@ -411,7 +411,7 @@ export default function DashboardPage() {
                   </div>
                   <div className="px-4 pb-4 flex items-center gap-2">
                     <Link href={`/campaigns/${campaign.id}`} className="flex-1">
-                      <Button className="w-full bg-blue-600 hover:bg-blue-700 text-white text-xs h-9" data-testid={`button-configure-campaign-${campaign.id}`}>
+                      <Button className="w-full bg-white hover:bg-gray-200 text-[#0a0e1a] text-xs h-9" data-testid={`button-configure-campaign-${campaign.id}`}>
                         Configure
                       </Button>
                     </Link>

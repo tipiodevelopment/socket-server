@@ -285,7 +285,7 @@ struct ContestEvent: Codable {
               The server sends real-time events for products, polls, and contests.
             </p>
             
-            <div className="bg-blue-50 dark:bg-primary/10 border border-blue-200 dark:border-blue-500/20 rounded-xl p-4">
+            <div className="bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/20 rounded-xl p-4">
               <h4 className="font-semibold mb-2 text-primary">Connection Information</h4>
               <div className="space-y-3 text-sm">
                 <div>
@@ -299,10 +299,10 @@ struct ContestEvent: Codable {
                   <code className="font-mono text-xs block text-green-600 dark:text-green-400">
                     {`${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/ws/10`} → Campaign 10
                   </code>
-                  <code className="font-mono text-xs block text-blue-600 dark:text-blue-400">
+                  <code className="font-mono text-xs block text-gray-600 dark:text-gray-300">
                     {`${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/ws/25`} → Campaign 25
                   </code>
-                  <code className="font-mono text-xs block text-purple-600 dark:text-purple-400">
+                  <code className="font-mono text-xs block text-gray-600 dark:text-gray-300">
                     {`${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/ws/123`} → Campaign 123
                   </code>
                 </div>
@@ -361,7 +361,7 @@ struct ContestEvent: Codable {
             <div className="bg-gray-100 dark:bg-black/30 border border-gray-200 dark:border-white/10 rounded-xl p-4 mt-4">
               <h4 className="font-semibold mb-2 text-sm text-gray-900 dark:text-white">Usage Example:</h4>
               <pre className="bg-gray-900 dark:bg-black/50 rounded-xl p-3 overflow-x-auto text-xs">
-                <code className="text-blue-400">{`// Initialize with your campaign ID
+                <code className="text-gray-300">{`// Initialize with your campaign ID
 let wsManager = WebSocketManager(campaignId: 10)
 wsManager.connect()
 
@@ -501,7 +501,7 @@ wsManager.connect()
         <div className="bg-white dark:bg-white/[0.03] border border-gray-200 dark:border-white/10 rounded-2xl overflow-hidden">
           <div className="p-6">
             <h2 className="flex items-center space-x-2 text-lg font-semibold text-gray-900 dark:text-white mb-4">
-              <svg className="w-6 h-6 text-blue-600 dark:text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-6 h-6 text-gray-600 dark:text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
               </svg>
               <span>Campaign Lifecycle</span>
@@ -511,8 +511,8 @@ wsManager.connect()
             </p>
             
             <div className="space-y-4">
-              <div className="bg-blue-50 dark:bg-blue-500/10 border border-blue-200 dark:border-blue-500/20 rounded-xl p-4">
-                <h4 className="font-semibold mb-2 text-blue-700 dark:text-blue-400 flex items-center space-x-2">
+              <div className="bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/20 rounded-xl p-4">
+                <h4 className="font-semibold mb-2 text-gray-700 dark:text-gray-300 flex items-center space-x-2">
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M14 5l7 7m0 0l-7 7m7-7H3"></path>
                   </svg>
@@ -550,23 +550,23 @@ wsManager.connect()
                 </pre>
               </div>
 
-              <div className="bg-purple-50 dark:bg-purple-500/10 border border-purple-200 dark:border-purple-500/20 rounded-xl p-4">
-                <h4 className="font-semibold mb-2 text-purple-700 dark:text-purple-400">Component Behavior</h4>
+              <div className="bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/20 rounded-xl p-4">
+                <h4 className="font-semibold mb-2 text-gray-700 dark:text-gray-300">Component Behavior</h4>
                 <ul className="text-sm space-y-2 text-gray-600 dark:text-muted-foreground">
                   <li className="flex items-start space-x-2">
-                    <span className="text-purple-600 dark:text-purple-400 mt-1">•</span>
+                    <span className="text-gray-600 dark:text-gray-300 mt-1">•</span>
                     <span><strong>Before start date:</strong> Components will not activate, even if manually toggled</span>
                   </li>
                   <li className="flex items-start space-x-2">
-                    <span className="text-purple-600 dark:text-purple-400 mt-1">•</span>
+                    <span className="text-gray-600 dark:text-gray-300 mt-1">•</span>
                     <span><strong>During campaign:</strong> Components can be activated/deactivated via manual toggle or scheduling</span>
                   </li>
                   <li className="flex items-start space-x-2">
-                    <span className="text-purple-600 dark:text-purple-400 mt-1">•</span>
+                    <span className="text-gray-600 dark:text-gray-300 mt-1">•</span>
                     <span><strong>After end date:</strong> All components are automatically hidden</span>
                   </li>
                   <li className="flex items-start space-x-2">
-                    <span className="text-purple-600 dark:text-purple-400 mt-1">•</span>
+                    <span className="text-gray-600 dark:text-gray-300 mt-1">•</span>
                     <span><strong>Manual toggle:</strong> Admins can activate/deactivate components anytime during the active campaign period</span>
                   </li>
                 </ul>
@@ -585,7 +585,7 @@ wsManager.connect()
               <span>Implementation Tips</span>
             </h2>
             <div className="space-y-4">
-              <div className="bg-blue-50 dark:bg-primary/10 border border-blue-200 dark:border-blue-500/20 rounded-xl p-4">
+              <div className="bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/20 rounded-xl p-4">
                 <h4 className="font-semibold mb-2 text-primary">Best Practices</h4>
                 <ul className="text-sm space-y-2 text-gray-600 dark:text-muted-foreground">
                   <li className="flex items-start space-x-2">
@@ -694,10 +694,10 @@ wsManager.connect()
         </div>
 
         {/* Dynamic Components Documentation */}
-        <div className="bg-white dark:bg-white/[0.03] border border-gray-200 dark:border-white/10 rounded-2xl overflow-hidden bg-gradient-to-br from-blue-50/50 dark:from-blue-500/10 to-purple-50/50 dark:to-purple-500/10">
+        <div className="bg-white dark:bg-white/[0.03] border border-gray-200 dark:border-white/10 rounded-2xl overflow-hidden bg-gradient-to-br from-gray-50/50 dark:from-white/5 to-gray-50/50 dark:to-white/5">
           <div className="p-6 space-y-6">
             <h2 className="flex items-center space-x-2 text-2xl font-semibold text-gray-900 dark:text-white">
-              <svg className="w-8 h-8 text-blue-600 dark:text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-8 h-8 text-gray-600 dark:text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z"></path>
               </svg>
               <span>Dynamic Components System</span>
@@ -757,7 +757,7 @@ wsManager.connect()
               
               <div className="space-y-4">
                 <div className="bg-gray-100 dark:bg-black/30 border border-gray-200 dark:border-white/10 rounded-xl p-4">
-                  <h4 className="font-semibold mb-2 text-blue-700 dark:text-blue-400">1. component_status_changed</h4>
+                  <h4 className="font-semibold mb-2 text-gray-700 dark:text-gray-300">1. component_status_changed</h4>
                   <p className="text-sm text-gray-600 dark:text-muted-foreground mb-2">
                     Fired when a component is activated or deactivated:
                   </p>
@@ -778,7 +778,7 @@ wsManager.connect()
                 </div>
 
                 <div className="bg-gray-100 dark:bg-black/30 border border-gray-200 dark:border-white/10 rounded-xl p-4">
-                  <h4 className="font-semibold mb-2 text-purple-700 dark:text-purple-400">2. component_config_updated</h4>
+                  <h4 className="font-semibold mb-2 text-gray-700 dark:text-gray-300">2. component_config_updated</h4>
                   <p className="text-sm text-gray-600 dark:text-muted-foreground mb-2">
                     Fired when a component's configuration is edited:
                   </p>
@@ -916,16 +916,16 @@ func openWebLink(_ link: String?) {
               </div>
             </div>
 
-            <div className="bg-blue-50 dark:bg-blue-500/10 border border-blue-200 dark:border-blue-500/20 rounded-xl p-4">
-              <h4 className="font-semibold mb-2 text-blue-700 dark:text-blue-400">Component Types Available</h4>
+            <div className="bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/20 rounded-xl p-4">
+              <h4 className="font-semibold mb-2 text-gray-700 dark:text-gray-300">Component Types Available</h4>
               <ul className="text-sm space-y-1 text-gray-600 dark:text-muted-foreground">
                 <li className="flex items-center space-x-2">
-                  <span className="text-blue-500">•</span>
-                  <span><code className="text-blue-600 dark:text-blue-300">banner</code> - Simple promotional banner</span>
+                  <span className="text-gray-500">•</span>
+                  <span><code className="text-gray-600 dark:text-gray-300">banner</code> - Simple promotional banner</span>
                 </li>
                 <li className="flex items-center space-x-2">
-                  <span className="text-purple-500">•</span>
-                  <span><code className="text-purple-600 dark:text-purple-300">offer_banner</code> - Premium banner with countdown and badges</span>
+                  <span className="text-gray-500">•</span>
+                  <span><code className="text-gray-600 dark:text-gray-300">offer_banner</code> - Premium banner with countdown and badges</span>
                 </li>
                 <li className="flex items-center space-x-2">
                   <span className="text-green-500">•</span>
@@ -953,7 +953,7 @@ func openWebLink(_ link: String?) {
         </div>
 
         {/* Geographic Targeting & User Segmentation */}
-        <div className="bg-white dark:bg-white/[0.03] border border-gray-200 dark:border-white/10 rounded-2xl overflow-hidden bg-gradient-to-br from-green-50/50 dark:from-green-500/10 to-blue-50/50 dark:to-blue-500/10">
+        <div className="bg-white dark:bg-white/[0.03] border border-gray-200 dark:border-white/10 rounded-2xl overflow-hidden bg-gradient-to-br from-green-50/50 dark:from-green-500/10 to-gray-50/50 dark:to-white/5">
           <div className="p-6 space-y-6">
             <h2 className="flex items-center space-x-2 text-2xl font-semibold text-gray-900 dark:text-white">
               <svg className="w-8 h-8 text-green-600 dark:text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -981,8 +981,8 @@ func openWebLink(_ link: String?) {
             </div>
 
             <div className="space-y-3">
-              <div className="bg-blue-50 dark:bg-blue-500/10 border border-blue-200 dark:border-blue-500/20 rounded-xl p-4">
-                <h4 className="font-semibold mb-2 text-blue-700 dark:text-blue-400">🌍 Geographic Targeting</h4>
+              <div className="bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/20 rounded-xl p-4">
+                <h4 className="font-semibold mb-2 text-gray-700 dark:text-gray-300">🌍 Geographic Targeting</h4>
                 <p className="text-sm text-gray-600 dark:text-muted-foreground mb-2">
                   Select which countries can see your campaign:
                 </p>
@@ -991,8 +991,8 @@ func openWebLink(_ link: String?) {
                 </p>
               </div>
 
-              <div className="bg-purple-50 dark:bg-purple-500/10 border border-purple-200 dark:border-purple-500/20 rounded-xl p-4">
-                <h4 className="font-semibold mb-2 text-purple-700 dark:text-purple-400">📊 User Percentage (A/B Testing)</h4>
+              <div className="bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/20 rounded-xl p-4">
+                <h4 className="font-semibold mb-2 text-gray-700 dark:text-gray-300">📊 User Percentage (A/B Testing)</h4>
                 <p className="text-sm text-gray-600 dark:text-muted-foreground">
                   Set 1-100% to control how many users see the campaign. Uses deterministic hashing to ensure the same user always gets the same result.
                 </p>
@@ -1031,15 +1031,15 @@ URLSession.shared.dataTask(with: url) { data, response, error in
             <div className="space-y-3">
               <h4 className="font-semibold text-gray-900 dark:text-white">Use Cases</h4>
               <div className="space-y-2">
-                <div className="bg-blue-50/50 dark:bg-primary/5 border border-gray-200 dark:border-white/10 rounded-lg p-3">
+                <div className="bg-gray-50/50 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-lg p-3">
                   <p className="text-sm font-medium text-primary">A/B Testing</p>
                   <p className="text-xs text-gray-500 dark:text-white/40">Enable segmentation, set percentage to 50%, reach all countries</p>
                 </div>
-                <div className="bg-blue-50/50 dark:bg-primary/5 border border-gray-200 dark:border-white/10 rounded-lg p-3">
+                <div className="bg-gray-50/50 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-lg p-3">
                   <p className="text-sm font-medium text-primary">Regional Campaign</p>
                   <p className="text-xs text-gray-500 dark:text-white/40">Enable segmentation, select Mexico (MX), set percentage to 100%</p>
                 </div>
-                <div className="bg-blue-50/50 dark:bg-primary/5 border border-gray-200 dark:border-white/10 rounded-lg p-3">
+                <div className="bg-gray-50/50 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-lg p-3">
                   <p className="text-sm font-medium text-primary">Market Testing</p>
                   <p className="text-xs text-gray-500 dark:text-white/40">Enable segmentation, select multiple countries (BR, CO, AR), set percentage to 25%</p>
                 </div>
@@ -1071,10 +1071,10 @@ URLSession.shared.dataTask(with: url) { data, response, error in
         </div>
 
         {/* Dynamic Configuration System */}
-        <div className="bg-white dark:bg-white/[0.03] border border-gray-200 dark:border-white/10 rounded-2xl overflow-hidden bg-gradient-to-br from-purple-50/50 dark:from-purple-500/10 to-pink-50/50 dark:to-pink-500/10">
+        <div className="bg-white dark:bg-white/[0.03] border border-gray-200 dark:border-white/10 rounded-2xl overflow-hidden bg-gradient-to-br from-gray-50/50 dark:from-white/5 to-gray-50/50 dark:to-white/5">
           <div className="p-6 space-y-6">
             <h2 className="flex items-center space-x-2 text-2xl font-semibold text-gray-900 dark:text-white">
-              <svg className="w-8 h-8 text-purple-600 dark:text-purple-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-8 h-8 text-gray-600 dark:text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path>
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
               </svg>
@@ -1082,7 +1082,7 @@ URLSession.shared.dataTask(with: url) { data, response, error in
             </h2>
 
             <div>
-              <h3 className="text-lg font-semibold mb-3 text-purple-600 dark:text-purple-500">Overview</h3>
+              <h3 className="text-lg font-semibold mb-3 text-gray-600 dark:text-gray-300">Overview</h3>
               <p className="text-gray-600 dark:text-muted-foreground mb-4">
                 The Dynamic Configuration System allows you to customize brand identity, engagement settings, UI themes, and feature flags for each campaign. All configurations are accessible via SDK endpoints and update in real-time via WebSocket.
               </p>
@@ -1092,8 +1092,8 @@ URLSession.shared.dataTask(with: url) { data, response, error in
             <div className="space-y-4">
               <h4 className="font-semibold text-lg text-gray-900 dark:text-white">SDK Configuration Endpoints</h4>
               
-              <div className="bg-purple-50 dark:bg-purple-500/10 border border-purple-200 dark:border-purple-500/20 rounded-xl p-4">
-                <h5 className="font-semibold mb-2 text-purple-700 dark:text-purple-400">GET /v1/campaigns/:campaignId/config</h5>
+              <div className="bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/20 rounded-xl p-4">
+                <h5 className="font-semibold mb-2 text-gray-700 dark:text-gray-300">GET /v1/campaigns/:campaignId/config</h5>
                 <p className="text-sm text-gray-600 dark:text-muted-foreground mb-3">
                   Returns the complete dynamic configuration for a campaign including brand, engagement, UI, and feature flags.
                 </p>
@@ -1147,8 +1147,8 @@ GET ${window.location.protocol}//${window.location.host}/v1/campaigns/3/config?a
                 </pre>
               </div>
 
-              <div className="bg-blue-50 dark:bg-blue-500/10 border border-blue-200 dark:border-blue-500/20 rounded-xl p-4">
-                <h5 className="font-semibold mb-2 text-blue-700 dark:text-blue-400">GET /v1/engagement/config</h5>
+              <div className="bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/20 rounded-xl p-4">
+                <h5 className="font-semibold mb-2 text-gray-700 dark:text-gray-300">GET /v1/engagement/config</h5>
                 <p className="text-sm text-gray-600 dark:text-muted-foreground mb-3">
                   Returns engagement configuration for a specific match. Useful for match-specific settings.
                 </p>
@@ -1202,7 +1202,7 @@ GET ${window.location.protocol}//${window.location.host}/v1/localization/en?apiK
               
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="bg-gray-100 dark:bg-black/30 border border-gray-200 dark:border-white/10 rounded-xl p-4">
-                  <h5 className="font-semibold mb-2 text-purple-700 dark:text-purple-400">🏢 Brand Configuration</h5>
+                  <h5 className="font-semibold mb-2 text-gray-700 dark:text-gray-300">🏢 Brand Configuration</h5>
                   <ul className="text-sm space-y-1 text-gray-600 dark:text-muted-foreground">
                     <li>• <strong>Brand Name:</strong> Display name for SDK</li>
                     <li>• <strong>Icon Asset:</strong> Built-in icon identifier</li>
@@ -1212,7 +1212,7 @@ GET ${window.location.protocol}//${window.location.host}/v1/localization/en?apiK
                 </div>
 
                 <div className="bg-gray-100 dark:bg-black/30 border border-gray-200 dark:border-white/10 rounded-xl p-4">
-                  <h5 className="font-semibold mb-2 text-blue-700 dark:text-blue-400">⚡ Engagement Settings</h5>
+                  <h5 className="font-semibold mb-2 text-gray-700 dark:text-gray-300">⚡ Engagement Settings</h5>
                   <ul className="text-sm space-y-1 text-gray-600 dark:text-muted-foreground">
                     <li>• <strong>Demo Mode:</strong> Test mode for development</li>
                     <li>• <strong>Poll Duration:</strong> Default poll time (seconds)</li>
@@ -1299,15 +1299,15 @@ private func handleConfigUpdated(_ json: [String: Any]) {
             <div className="space-y-3">
               <h4 className="font-semibold text-gray-900 dark:text-white">Caching Guidelines</h4>
               <div className="space-y-2">
-                <div className="bg-blue-50/50 dark:bg-primary/5 border border-gray-200 dark:border-white/10 rounded-lg p-3">
+                <div className="bg-gray-50/50 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-lg p-3">
                   <p className="text-sm font-medium text-primary">Configuration Endpoint</p>
                   <p className="text-xs text-gray-500 dark:text-white/40">Cache-Control: max-age=300 (5 minutes)</p>
                 </div>
-                <div className="bg-blue-50/50 dark:bg-primary/5 border border-gray-200 dark:border-white/10 rounded-lg p-3">
+                <div className="bg-gray-50/50 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-lg p-3">
                   <p className="text-sm font-medium text-primary">Localization Endpoint</p>
                   <p className="text-xs text-gray-500 dark:text-white/40">Cache-Control: max-age=3600 (1 hour)</p>
                 </div>
-                <div className="bg-blue-50/50 dark:bg-primary/5 border border-gray-200 dark:border-white/10 rounded-lg p-3">
+                <div className="bg-gray-50/50 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-lg p-3">
                   <p className="text-sm font-medium text-primary">Real-Time Updates</p>
                   <p className="text-xs text-gray-500 dark:text-white/40">Listen for config:updated WebSocket events to invalidate cache</p>
                 </div>

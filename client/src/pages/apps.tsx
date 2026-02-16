@@ -74,23 +74,23 @@ function formatViewers(num: number): string {
 }
 
 const APP_GRADIENTS = [
-  'from-purple-600 to-indigo-800',
-  'from-blue-500 to-cyan-700',
-  'from-amber-600 to-yellow-800',
-  'from-emerald-500 to-teal-700',
-  'from-orange-500 to-red-700',
-  'from-pink-500 to-purple-700',
+  'from-gray-700 to-gray-800',
+  'from-gray-600 to-gray-800',
+  'from-gray-600 to-gray-700',
+  'from-gray-500 to-gray-700',
+  'from-gray-600 to-gray-700',
+  'from-gray-600 to-gray-800',
 ];
 
 const APP_ICONS = ['⚽', '🏀', '🏎️', '⚾', '🏐', '🏈', '🎾', '🏓'];
 
 const PROGRESS_COLORS = [
   'from-green-400 to-emerald-500',
-  'from-blue-400 to-blue-600',
+  'from-gray-300 to-gray-400',
   'from-amber-400 to-orange-500',
   'from-emerald-400 to-green-600',
   'from-orange-400 to-red-500',
-  'from-purple-400 to-pink-500',
+  'from-gray-300 to-gray-500',
 ];
 
 export default function AppsPage() {
@@ -172,7 +172,7 @@ export default function AppsPage() {
       actions={
         <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
           <DialogTrigger asChild>
-            <Button data-testid="button-create-app" className="gap-2 bg-blue-600 hover:bg-blue-700 text-white">
+            <Button data-testid="button-create-app" className="gap-2 bg-white hover:bg-gray-200 text-[#0a0e1a]">
               <Plus className="w-4 h-4" />
               New App
             </Button>
@@ -230,7 +230,7 @@ export default function AppsPage() {
                   testId="input-app-banner"
                 />
                 <DialogFooter>
-                  <Button type="submit" disabled={createMutation.isPending} data-testid="button-submit-app" className="bg-blue-600 hover:bg-blue-700 text-white">
+                  <Button type="submit" disabled={createMutation.isPending} data-testid="button-submit-app" className="bg-white hover:bg-gray-200 text-[#0a0e1a]">
                     {createMutation.isPending ? 'Creating...' : 'Create App'}
                   </Button>
                 </DialogFooter>
@@ -260,7 +260,7 @@ export default function AppsPage() {
           <p className="text-gray-500 dark:text-white/40 mb-4 max-w-md mx-auto">
             Create your first app to start managing campaigns and broadcasts
           </p>
-          <Button onClick={() => setCreateDialogOpen(true)} className="bg-blue-600 hover:bg-blue-700 text-white" data-testid="button-create-first-app">
+          <Button onClick={() => setCreateDialogOpen(true)} className="bg-white hover:bg-gray-200 text-[#0a0e1a]" data-testid="button-create-first-app">
             <Plus className="w-4 h-4 mr-2" />
             Create App
           </Button>
@@ -275,7 +275,7 @@ export default function AppsPage() {
             return (
               <div
                 key={app.id}
-                className="bg-white dark:bg-[#161429] border border-gray-200 dark:border-white/10 rounded-2xl overflow-hidden hover:border-gray-300 dark:hover:border-white/20 transition-all group"
+                className="bg-white dark:bg-[#141824] border border-gray-200 dark:border-white/10 rounded-2xl overflow-hidden hover:border-gray-300 dark:hover:border-white/20 transition-all group"
                 data-testid={`card-app-${app.id}`}
               >
                 <div className={`relative h-24 ${app.bannerUrl ? '' : `bg-gradient-to-r ${gradient}`} p-4 overflow-hidden`}>
@@ -296,7 +296,7 @@ export default function AppsPage() {
 
                 <div className="p-4">
                   <div className="flex items-center gap-3 mb-4 -mt-8">
-                    <div className="w-11 h-11 bg-gray-800 dark:bg-[#1e1b30] border-2 border-white dark:border-[#161429] rounded-xl flex items-center justify-center text-lg shadow-lg overflow-hidden">
+                    <div className="w-11 h-11 bg-gray-800 dark:bg-[#1e2433] border-2 border-white dark:border-[#141824] rounded-xl flex items-center justify-center text-lg shadow-lg overflow-hidden">
                       {app.iconUrl ? (
                         <img
                           src={app.iconUrl}
@@ -310,7 +310,7 @@ export default function AppsPage() {
                     </div>
                     <div className="pt-5">
                       <Link href={`/apps/${app.id}`}>
-                        <h3 className="text-sm font-semibold text-gray-900 dark:text-white hover:text-blue-600 dark:hover:text-blue-400 transition-colors cursor-pointer" data-testid={`text-app-name-${app.id}`}>
+                        <h3 className="text-sm font-semibold text-gray-900 dark:text-white hover:text-gray-600 dark:hover:text-gray-300 transition-colors cursor-pointer" data-testid={`text-app-name-${app.id}`}>
                           {app.name}
                         </h3>
                       </Link>
