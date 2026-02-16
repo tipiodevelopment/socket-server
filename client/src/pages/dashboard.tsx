@@ -42,7 +42,6 @@ const APP_GRADIENTS = [
   'from-gray-500 to-gray-800',
 ];
 
-const APP_ICONS = ['⚽', '🏀', '🏐', '🏈', '⚾', '🎾', '🏓', '🎯'];
 
 export default function DashboardPage() {
   const { userId } = useUser();
@@ -197,7 +196,6 @@ export default function DashboardPage() {
               const appBroadcasts = getBroadcastsForApp(app.id);
               const activeBroadcasts = appBroadcasts.filter(b => b.status === 'live');
               const gradient = APP_GRADIENTS[index % APP_GRADIENTS.length];
-              const icon = APP_ICONS[index % APP_ICONS.length];
 
               return (
                 <Link key={app.id} href={`/apps/${app.id}`}>
@@ -211,8 +209,8 @@ export default function DashboardPage() {
                           {appCampaigns.length} Campaign{appCampaigns.length !== 1 ? 's' : ''}
                         </span>
                       </div>
-                      <div className="w-12 h-12 rounded-xl bg-white/20 backdrop-blur-sm flex items-center justify-center text-2xl mb-3">
-                        {icon}
+                      <div className="w-12 h-12 rounded-xl bg-white/20 backdrop-blur-sm flex items-center justify-center mb-3">
+                        <Radio className="w-5 h-5 text-white" />
                       </div>
                       <h3 className="text-white font-semibold text-base">{app.name}</h3>
                       <p className="text-white/60 text-xs mt-0.5">{app.bundleId}</p>

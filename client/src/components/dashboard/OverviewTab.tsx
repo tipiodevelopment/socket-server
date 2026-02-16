@@ -102,7 +102,7 @@ export function OverviewTab({ campaignId, campaign }: OverviewTabProps) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/events', campaignId] });
       toast({
-        title: '🎉 Product Event Sent!',
+        title: 'Product Event Sent!',
         description: `"${quickProduct.name}" broadcasted to viewers`,
       });
     },
@@ -132,7 +132,7 @@ export function OverviewTab({ campaignId, campaign }: OverviewTabProps) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/events', campaignId] });
       toast({
-        title: '📊 Poll Event Sent!',
+        title: 'Poll Event Sent!',
         description: `"${quickPoll.question}" is now live`,
       });
     },
@@ -160,7 +160,7 @@ export function OverviewTab({ campaignId, campaign }: OverviewTabProps) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/events', campaignId] });
       toast({
-        title: '🏆 Contest Event Sent!',
+        title: 'Contest Event Sent!',
         description: `"${quickContest.name}" is now active`,
       });
     },
@@ -297,7 +297,7 @@ export function OverviewTab({ campaignId, campaign }: OverviewTabProps) {
     onSuccess: async (data: any) => {
       const isPaused = data.isPaused === 'true';
       toast({
-        title: isPaused ? '⏸️ Campaign Paused' : '▶️ Campaign Resumed',
+        title: isPaused ? 'Campaign Paused' : 'Campaign Resumed',
         description: isPaused 
           ? 'All components are now hidden from viewers'
           : 'Campaign is now active and broadcasting',
@@ -329,9 +329,9 @@ export function OverviewTab({ campaignId, campaign }: OverviewTabProps) {
     onSuccess: (_, event) => {
       queryClient.invalidateQueries({ queryKey: ['/api/events', campaignId] });
       const eventNames: Record<string, string> = {
-        product: '🛍️ Product',
-        poll: '📊 Poll',
-        contest: '🏆 Contest'
+        product: 'Product',
+        poll: 'Poll',
+        contest: 'Contest'
       };
       toast({
         title: `${eventNames[event.type] || event.type} Re-broadcasted!`,

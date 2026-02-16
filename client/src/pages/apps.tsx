@@ -82,7 +82,6 @@ const APP_GRADIENTS = [
   'from-gray-600 to-gray-800',
 ];
 
-const APP_ICONS = ['⚽', '🏀', '🏎️', '⚾', '🏐', '🏈', '🎾', '🏓'];
 
 const PROGRESS_COLORS = [
   'from-green-400 to-emerald-500',
@@ -269,7 +268,6 @@ export default function AppsPage() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {clientApps.map((app, index) => {
             const gradient = APP_GRADIENTS[index % APP_GRADIENTS.length];
-            const icon = APP_ICONS[index % APP_ICONS.length];
             const progressColor = PROGRESS_COLORS[index % PROGRESS_COLORS.length];
 
             return (
@@ -305,7 +303,7 @@ export default function AppsPage() {
                           data-testid={`img-logo-${app.id}`}
                         />
                       ) : (
-                        icon
+                        <Smartphone className="w-5 h-5 text-white" />
                       )}
                     </div>
                     <div className="pt-5">

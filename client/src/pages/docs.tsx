@@ -992,7 +992,7 @@ func openWebLink(_ link: String?) {
               </div>
 
               <div className="bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/20 rounded-xl p-4">
-                <h4 className="font-semibold mb-2 text-gray-700 dark:text-gray-300">📊 User Percentage (A/B Testing)</h4>
+                <h4 className="font-semibold mb-2 text-gray-700 dark:text-gray-300">User Percentage (A/B Testing)</h4>
                 <p className="text-sm text-gray-600 dark:text-muted-foreground">
                   Set 1-100% to control how many users see the campaign. Uses deterministic hashing to ensure the same user always gets the same result.
                 </p>
@@ -1047,7 +1047,7 @@ URLSession.shared.dataTask(with: url) { data, response, error in
             </div>
 
             <div className="bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/20 rounded-xl p-4">
-              <h4 className="font-semibold mb-2 text-amber-600 dark:text-amber-500">⚡ Important Notes</h4>
+              <h4 className="font-semibold mb-2 text-amber-600 dark:text-amber-500">Important Notes</h4>
               <ul className="text-sm space-y-2 text-gray-600 dark:text-muted-foreground">
                 <li className="flex items-start space-x-2">
                   <span className="text-amber-500 mt-1">•</span>
@@ -1212,7 +1212,7 @@ GET ${window.location.protocol}//${window.location.host}/v1/localization/en?apiK
                 </div>
 
                 <div className="bg-gray-100 dark:bg-black/30 border border-gray-200 dark:border-white/10 rounded-xl p-4">
-                  <h5 className="font-semibold mb-2 text-gray-700 dark:text-gray-300">⚡ Engagement Settings</h5>
+                  <h5 className="font-semibold mb-2 text-gray-700 dark:text-gray-300">Engagement Settings</h5>
                   <ul className="text-sm space-y-1 text-gray-600 dark:text-muted-foreground">
                     <li>• <strong>Demo Mode:</strong> Test mode for development</li>
                     <li>• <strong>Poll Duration:</strong> Default poll time (seconds)</li>
@@ -1223,7 +1223,7 @@ GET ${window.location.protocol}//${window.location.host}/v1/localization/en?apiK
                 </div>
 
                 <div className="bg-gray-100 dark:bg-black/30 border border-gray-200 dark:border-white/10 rounded-xl p-4">
-                  <h5 className="font-semibold mb-2 text-pink-700 dark:text-pink-400">🎨 UI Theme</h5>
+                  <h5 className="font-semibold mb-2 text-gray-700 dark:text-gray-300">UI Theme</h5>
                   <ul className="text-sm space-y-1 text-gray-600 dark:text-muted-foreground">
                     <li>• <strong>Primary Color:</strong> Main accent color</li>
                     <li>• <strong>Secondary Color:</strong> Secondary accent</li>
@@ -1232,7 +1232,7 @@ GET ${window.location.protocol}//${window.location.host}/v1/localization/en?apiK
                 </div>
 
                 <div className="bg-gray-100 dark:bg-black/30 border border-gray-200 dark:border-white/10 rounded-xl p-4">
-                  <h5 className="font-semibold mb-2 text-amber-600 dark:text-amber-400">🚀 Feature Flags</h5>
+                  <h5 className="font-semibold mb-2 text-gray-700 dark:text-gray-300">Feature Flags</h5>
                   <ul className="text-sm space-y-1 text-gray-600 dark:text-muted-foreground">
                     <li>• <strong>Live Streaming:</strong> Enable/disable streaming</li>
                     <li>• <strong>Product Catalog:</strong> Show products</li>
