@@ -12,7 +12,7 @@ import { queryClient, apiRequest } from '@/lib/queryClient';
 import { AppLayout } from '@/components/AppLayout';
 import type { BreadcrumbItem } from '@/components/AppLayout';
 import type { Broadcast, Poll, PollOptionRecord, Contest, Campaign } from '@shared/schema';
-import { ArrowLeft, Plus, Trash2, Clock, BarChart3, Trophy, X, MoreVertical, CheckCircle } from 'lucide-react';
+import { ArrowLeft, Plus, Trash2, Clock, BarChart3, Trophy, X, MoreVertical, CheckCircle, Play, SkipBack, SkipForward, Maximize2, Send, ShoppingBag, Megaphone } from 'lucide-react';
 import { useState } from 'react';
 import { useUser } from '@/contexts/UserContext';
 
@@ -29,26 +29,228 @@ const CONTEST_TYPES = [
   { value: 'prediction', label: 'Prediction' },
 ];
 
+const HARDCODED_ADS = [
+  {
+    id: 1,
+    name: 'Nike Jersey Flash Sale',
+    description: '50% off official team jerseys - Limited time',
+    image: 'https://storage.googleapis.com/uxpilot-auth.appspot.com/67260ce1bc-6fd10625fa126365dc69.png',
+    startTime: '32:00',
+    duration: '30s',
+    adType: 'Clickable Banner',
+  },
+  {
+    id: 2,
+    name: 'Gatorade Halftime Special',
+    description: 'Refresh like the pros - Special offer inside',
+    image: 'https://storage.googleapis.com/uxpilot-auth.appspot.com/906bb61311-d5ac1f9b4086d5c739dd.png',
+    startTime: '45:00',
+    duration: '45s',
+    adType: 'Video Ad',
+  },
+  {
+    id: 3,
+    name: 'EA Sports FC 24',
+    description: 'Pre-order now and get exclusive content',
+    image: 'https://storage.googleapis.com/uxpilot-auth.appspot.com/5c880ebcfa-f0b7f68a577bb1335e4b.png',
+    startTime: '79:30',
+    duration: '30s',
+    adType: 'Interactive',
+  },
+];
+
+const HARDCODED_PRODUCTS = [
+  {
+    id: 1,
+    name: 'Real Madrid Home Jersey',
+    subtitle: 'Official 2025/26 Season',
+    price: 89.99,
+    originalPrice: 119.99,
+    image: 'https://storage.googleapis.com/uxpilot-auth.appspot.com/67260ce1bc-6fd10625fa126365dc69.png',
+    status: 'active',
+  },
+  {
+    id: 2,
+    name: 'Gatorade Pack (12x)',
+    subtitle: 'Mixed Flavors Bundle',
+    price: 24.99,
+    originalPrice: null,
+    image: 'https://storage.googleapis.com/uxpilot-auth.appspot.com/906bb61311-d5ac1f9b4086d5c739dd.png',
+    status: 'active',
+  },
+  {
+    id: 3,
+    name: 'EA Sports FC 24',
+    subtitle: 'Ultimate Edition',
+    price: 69.99,
+    originalPrice: null,
+    image: 'https://storage.googleapis.com/uxpilot-auth.appspot.com/5c880ebcfa-f0b7f68a577bb1335e4b.png',
+    status: 'scheduled',
+  },
+  {
+    id: 4,
+    name: 'Nike Match Ball',
+    subtitle: 'Official LaLiga Ball',
+    price: 149.99,
+    originalPrice: null,
+    image: 'https://storage.googleapis.com/uxpilot-auth.appspot.com/67260ce1bc-6fd10625fa126365dc69.png',
+    status: 'active',
+  },
+];
+
+const TIMELINE_EVENTS = [
+  { id: 1, type: 'poll', label: 'Poll: Who will score first?', time: '10:45', status: 'Active', position: 12 },
+  { id: 2, type: 'contest', label: 'Contest: Predict Score', time: '25:30', status: 'Scheduled', position: 28 },
+  { id: 3, type: 'ad', label: 'Ad: Nike Jersey Sale', time: '32:00', status: 'Scheduled', position: 35 },
+  { id: 4, type: 'poll', label: 'Poll: Best Player', time: '52:15', status: 'Scheduled', position: 58 },
+  { id: 5, type: 'contest', label: 'Contest: Final Score Trivia', time: '65:00', status: 'Scheduled', position: 72 },
+  { id: 6, type: 'ad', label: 'Ad: Post-Match Offer', time: '79:30', status: 'Scheduled', position: 88 },
+  { id: 7, type: 'poll', label: 'Poll: Match Rating', time: '85:00', status: 'Scheduled', position: 94 },
+];
+
+const CHAT_MESSAGES = [
+  { id: 1, user: 'Carlos_RM', time: '2m ago', message: 'This match is incredible! 🔥' },
+  { id: 2, user: 'MariaFCB', time: '3m ago', message: 'Benzema is on fire today!' },
+  { id: 3, user: 'JuanLaLiga', time: '4m ago', message: 'I voted for Lewandowski in the poll' },
+  { id: 4, user: 'Sofia_Madrid', time: '5m ago', message: "Who's ready for the contest? 🏆" },
+  { id: 5, user: 'PedroBarça', time: '6m ago', message: 'Great save by Courtois!' },
+  { id: 6, user: 'Miguel_ES', time: '7m ago', message: 'This is why we love El Clásico ⚽' },
+  { id: 7, user: 'LauraFan', time: '8m ago', message: "Can't believe the pace of this game!" },
+  { id: 8, user: 'DiegoMadrid', time: '9m ago', message: 'Vinicius Jr is unstoppable! 🚀' },
+];
+
 function StatusBadge({ status }: { status: string }) {
   if (status === 'live') {
     return (
-      <span className="px-2 py-0.5 bg-white dark:bg-white text-black dark:text-black text-[10px] uppercase font-bold rounded-full flex items-center space-x-1" data-testid="badge-status-live">
-        <div className="w-1.5 h-1.5 bg-black dark:bg-black rounded-full animate-pulse"></div>
+      <span className="px-2 py-0.5 bg-white text-black text-[10px] uppercase font-bold rounded-full flex items-center space-x-1" data-testid="badge-status-live">
+        <div className="w-1.5 h-1.5 bg-black rounded-full animate-pulse"></div>
         <span>Live</span>
       </span>
     );
   }
   if (status === 'upcoming') {
     return (
-      <span className="px-2 py-0.5 bg-white/10 dark:bg-white/10 text-muted-foreground text-[10px] uppercase font-bold rounded-full border border-white/20 dark:border-white/20" data-testid="badge-status-upcoming">
+      <span className="px-2 py-0.5 bg-white/10 text-gray-400 text-[10px] uppercase font-bold rounded-full border border-white/20" data-testid="badge-status-upcoming">
         Upcoming
       </span>
     );
   }
   return (
-    <span className="px-2 py-0.5 bg-white/10 dark:bg-white/10 text-muted-foreground text-[10px] uppercase font-bold rounded-full border border-white/10 dark:border-white/10" data-testid="badge-status-ended">
+    <span className="px-2 py-0.5 bg-white/10 text-gray-400 text-[10px] uppercase font-bold rounded-full border border-white/10" data-testid="badge-status-ended">
       Ended
     </span>
+  );
+}
+
+function EventTimeline() {
+  const currentPosition = 50.4;
+
+  return (
+    <div className="mb-6" data-testid="section-timeline">
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="text-sm font-semibold text-white">Event Timeline</h2>
+        <div className="flex items-center space-x-2">
+          <button className="px-3 py-1.5 bg-white text-black rounded text-xs font-medium hover:bg-gray-200 transition" data-testid="button-add-event">
+            <Plus className="w-3 h-3 inline mr-1.5" />
+            Add Event
+          </button>
+          <button className="w-8 h-8 flex items-center justify-center rounded border border-white/20 hover:border-white/40 text-gray-400 hover:text-white transition" data-testid="button-expand-timeline">
+            <Maximize2 className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      </div>
+
+      <div className="bg-transparent border border-white/10 rounded-lg p-6">
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center space-x-4">
+            <div className="text-xs text-gray-500">Current Time</div>
+            <div className="text-2xl font-bold text-white">45:23</div>
+            <div className="px-2 py-1 bg-white/10 rounded text-xs text-gray-300">1st Half</div>
+          </div>
+          <div className="flex items-center space-x-2">
+            <button className="w-8 h-8 flex items-center justify-center rounded border border-white/20 hover:border-white/40 text-white transition" data-testid="button-backward">
+              <SkipBack className="w-3.5 h-3.5" />
+            </button>
+            <button className="w-8 h-8 flex items-center justify-center rounded border border-white/20 hover:border-white/40 text-white transition" data-testid="button-play">
+              <Play className="w-3.5 h-3.5" />
+            </button>
+            <button className="w-8 h-8 flex items-center justify-center rounded border border-white/20 hover:border-white/40 text-white transition" data-testid="button-forward">
+              <SkipForward className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </div>
+
+        <div className="relative">
+          <div className="h-2 bg-white/5 rounded-full overflow-hidden mb-8">
+            <div className="h-full bg-white rounded-full" style={{ width: `${currentPosition}%` }}></div>
+          </div>
+
+          <div className="relative h-32">
+            <div className="absolute left-0 top-0 bottom-0 w-px bg-white/20"></div>
+            <div className="absolute left-1/4 top-0 bottom-0 w-px bg-white/10"></div>
+            <div className="absolute left-1/2 top-0 bottom-0 w-px bg-white/20"></div>
+            <div className="absolute left-3/4 top-0 bottom-0 w-px bg-white/10"></div>
+            <div className="absolute right-0 top-0 bottom-0 w-px bg-white/20"></div>
+
+            <div className="absolute left-0 -top-5 text-xs text-gray-500">00:00</div>
+            <div className="absolute left-1/4 -top-5 text-xs text-gray-500">22:30</div>
+            <div className="absolute left-1/2 -top-5 text-xs text-gray-500">45:00</div>
+            <div className="absolute left-3/4 -top-5 text-xs text-gray-500">67:30</div>
+            <div className="absolute right-0 -top-5 text-xs text-gray-500">90:00</div>
+
+            {TIMELINE_EVENTS.map((event, i) => {
+              const topValues = [16, 48, 32, 16, 24, 40, 8];
+              const colorMap: Record<string, string> = { poll: 'bg-blue-500', contest: 'bg-purple-500', ad: 'bg-green-500' };
+              const isPast = event.position <= currentPosition;
+              return (
+                <div
+                  key={event.id}
+                  className="absolute group cursor-pointer"
+                  style={{ left: `${event.position}%`, top: `${topValues[i]}px` }}
+                  data-testid={`timeline-event-${event.id}`}
+                >
+                  <div className={`w-3 h-3 ${colorMap[event.type]} rounded-full border-2 border-black ${!isPast ? 'opacity-50' : ''}`}></div>
+                  <div className="absolute left-1/2 -translate-x-1/2 top-6 opacity-0 group-hover:opacity-100 transition bg-black border border-white/20 rounded p-2 text-xs whitespace-nowrap z-10">
+                    <div className="font-semibold text-white mb-1">{event.label}</div>
+                    <div className="text-gray-400">{event.time} - {event.status}</div>
+                  </div>
+                </div>
+              );
+            })}
+
+            <div
+              className="absolute group cursor-pointer"
+              style={{ left: `${currentPosition}%`, top: '16px' }}
+              data-testid="timeline-current-position"
+            >
+              <div className="w-4 h-4 bg-white rounded-full border-2 border-black animate-pulse"></div>
+              <div className="absolute left-1/2 -translate-x-1/2 top-6 opacity-0 group-hover:opacity-100 transition bg-black border border-white/20 rounded p-2 text-xs whitespace-nowrap z-10">
+                <div className="font-semibold text-white mb-1">Current Position</div>
+                <div className="text-gray-400">45:23 - Live</div>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between mt-6 pt-4 border-t border-white/10">
+            <div className="flex items-center space-x-4">
+              <div className="flex items-center space-x-2">
+                <div className="w-3 h-3 bg-blue-500 rounded-full"></div>
+                <span className="text-xs text-gray-400">Polls</span>
+              </div>
+              <div className="flex items-center space-x-2">
+                <div className="w-3 h-3 bg-purple-500 rounded-full"></div>
+                <span className="text-xs text-gray-400">Contests</span>
+              </div>
+              <div className="flex items-center space-x-2">
+                <div className="w-3 h-3 bg-green-500 rounded-full"></div>
+                <span className="text-xs text-gray-400">Ads</span>
+              </div>
+            </div>
+            <div className="text-xs text-gray-500">{TIMELINE_EVENTS.length} scheduled events</div>
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -62,14 +264,14 @@ function ActivePollCard({ poll, onToggle, onDelete }: {
 
   return (
     <div
-      className={`bg-transparent border rounded-lg p-4 ${isActive ? 'border-white/20' : 'border-white/10 dark:border-white/10'}`}
+      className={`bg-transparent border rounded-lg p-4 ${isActive ? 'border-blue-500/30' : 'border-white/10'}`}
       data-testid={`card-poll-${poll.id}`}
     >
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center space-x-2">
-          {isActive && <div className="w-2 h-2 bg-white rounded-full animate-pulse"></div>}
-          <span className={`text-xs font-semibold uppercase ${isActive ? 'text-gray-300 dark:text-gray-300' : 'text-muted-foreground'}`} data-testid={`badge-poll-active-${poll.id}`}>
-            {isActive ? 'Poll Active' : 'Poll Inactive'}
+          {isActive && <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>}
+          <span className={`text-xs font-semibold uppercase ${isActive ? 'text-blue-400' : 'text-gray-400'}`} data-testid={`badge-poll-active-${poll.id}`}>
+            {isActive ? 'Poll Active' : 'Poll Scheduled'}
           </span>
         </div>
         <div className="flex items-center space-x-2">
@@ -81,7 +283,7 @@ function ActivePollCard({ poll, onToggle, onDelete }: {
           />
           <AlertDialog>
             <AlertDialogTrigger asChild>
-              <button className="text-xs text-muted-foreground hover:text-foreground" data-testid={`button-delete-poll-${poll.id}`}>
+              <button className="text-xs text-gray-400 hover:text-white" data-testid={`button-delete-poll-${poll.id}`}>
                 <Trash2 className="w-3.5 h-3.5" />
               </button>
             </AlertDialogTrigger>
@@ -101,7 +303,7 @@ function ActivePollCard({ poll, onToggle, onDelete }: {
         </div>
       </div>
 
-      <h3 className="text-sm font-semibold text-foreground mb-2" data-testid={`text-poll-question-${poll.id}`}>{poll.question}</h3>
+      <h3 className="text-sm font-semibold text-white mb-2" data-testid={`text-poll-question-${poll.id}`}>{poll.question}</h3>
 
       {isActive && poll.options && poll.options.length > 0 ? (
         <>
@@ -111,23 +313,23 @@ function ActivePollCard({ poll, onToggle, onDelete }: {
               return (
                 <div key={option.id} data-testid={`poll-option-${option.id}`}>
                   <div className="flex justify-between text-xs mb-1">
-                    <span className="text-foreground/70">{option.text}</span>
-                    <span className="text-foreground font-semibold">{percentage}%</span>
+                    <span className="text-gray-300">{option.text}</span>
+                    <span className="text-white font-semibold">{percentage}%</span>
                   </div>
-                  <div className="h-1.5 bg-white/10 dark:bg-white/10 rounded-full overflow-hidden">
-                    <div className="h-full bg-white rounded-full transition-all" style={{ width: `${percentage}%` }} data-testid={`poll-option-bar-${option.id}`}></div>
+                  <div className="h-1.5 bg-white/10 rounded-full overflow-hidden">
+                    <div className="h-full bg-blue-500 rounded-full transition-all" style={{ width: `${percentage}%` }} data-testid={`poll-option-bar-${option.id}`}></div>
                   </div>
                 </div>
               );
             })}
           </div>
-          <div className="flex items-center justify-between text-xs text-muted-foreground">
+          <div className="flex items-center justify-between text-xs text-gray-500">
             <span>{totalVotes.toLocaleString()} votes</span>
           </div>
         </>
       ) : (
         poll.options && poll.options.length > 0 && (
-          <div className="space-y-1.5 mb-3 text-xs text-muted-foreground">
+          <div className="space-y-1.5 mb-3 text-xs text-gray-400">
             {poll.options.map((option) => (
               <div key={option.id} className="flex items-center space-x-2">
                 <CheckCircle className="w-3 h-3" />
@@ -148,14 +350,14 @@ function ContestCard({ contest, onToggle, onDelete }: {
 }) {
   return (
     <div
-      className={`bg-transparent border rounded-lg p-4 ${contest.isActive ? 'border-white/20' : 'border-white/10 dark:border-white/10'}`}
+      className={`bg-transparent border rounded-lg p-4 ${contest.isActive ? 'border-purple-500/30' : 'border-white/10'}`}
       data-testid={`card-contest-${contest.id}`}
     >
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center space-x-2">
-          {contest.isActive && <div className="w-2 h-2 bg-white rounded-full"></div>}
-          <span className={`text-xs font-semibold uppercase ${contest.isActive ? 'text-gray-300 dark:text-gray-300' : 'text-muted-foreground'}`}>
-            {contest.isActive ? 'Active' : 'Inactive'}
+          {contest.isActive && <div className="w-2 h-2 bg-purple-500 rounded-full"></div>}
+          <span className={`text-xs font-semibold uppercase ${contest.isActive ? 'text-purple-400' : 'text-gray-400'}`}>
+            {contest.isActive ? 'Active' : 'Scheduled'}
           </span>
         </div>
         <div className="flex items-center space-x-2">
@@ -167,7 +369,7 @@ function ContestCard({ contest, onToggle, onDelete }: {
           />
           <AlertDialog>
             <AlertDialogTrigger asChild>
-              <button className="text-xs text-muted-foreground hover:text-foreground" data-testid={`button-delete-contest-${contest.id}`}>
+              <button className="text-xs text-gray-400 hover:text-white" data-testid={`button-delete-contest-${contest.id}`}>
                 <Trash2 className="w-3.5 h-3.5" />
               </button>
             </AlertDialogTrigger>
@@ -188,21 +390,212 @@ function ContestCard({ contest, onToggle, onDelete }: {
       </div>
 
       <div className="flex items-start space-x-3">
-        <div className={`w-12 h-12 rounded flex items-center justify-center flex-shrink-0 ${contest.isActive ? 'bg-white/10 dark:bg-white/10' : 'bg-white/5 dark:bg-white/5'}`}>
-          <Trophy className={`w-5 h-5 ${contest.isActive ? 'text-gray-300 dark:text-gray-300' : 'text-muted-foreground'}`} />
+        <div className={`w-12 h-12 rounded flex items-center justify-center flex-shrink-0 ${contest.isActive ? 'bg-purple-500/20' : 'bg-white/5'}`}>
+          <Trophy className={`w-5 h-5 ${contest.isActive ? 'text-purple-400' : 'text-gray-400'}`} />
         </div>
         <div className="flex-1 min-w-0">
-          <h3 className="text-sm font-semibold text-foreground mb-1" data-testid={`text-contest-title-${contest.id}`}>{contest.title}</h3>
+          <h3 className="text-sm font-semibold text-white mb-1" data-testid={`text-contest-title-${contest.id}`}>{contest.title}</h3>
           {contest.description && (
-            <p className="text-xs text-muted-foreground mb-2 truncate">{contest.description}</p>
+            <p className="text-xs text-gray-400 mb-2 truncate">{contest.description}</p>
           )}
           <div className="flex items-center justify-between text-xs">
-            {contest.contestType && <span className="text-muted-foreground capitalize">{contest.contestType}</span>}
-            {contest.prize && <span className="text-foreground/70 font-medium">Prize: {contest.prize}</span>}
+            {contest.contestType && <span className="text-gray-500 capitalize">{contest.contestType}</span>}
+            {contest.prize && <span className="text-gray-300 font-medium">Prize: {contest.prize}</span>}
           </div>
         </div>
       </div>
     </div>
+  );
+}
+
+function ScheduledAdsSection() {
+  return (
+    <div className="mb-6" data-testid="section-ads">
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="text-sm font-semibold text-white">Scheduled Ads</h2>
+        <button className="px-3 py-1.5 bg-transparent border border-white/20 hover:border-white/40 text-white rounded text-xs font-medium transition" data-testid="button-add-ad">
+          <Plus className="w-3 h-3 inline mr-1.5" />
+          Add Ad
+        </button>
+      </div>
+
+      <div className="space-y-3">
+        {HARDCODED_ADS.map((ad) => (
+          <div key={ad.id} className="bg-transparent border border-white/10 rounded-lg p-4 flex items-center justify-between" data-testid={`card-ad-${ad.id}`}>
+            <div className="flex items-center space-x-4">
+              <div className="w-16 h-16 bg-white/5 rounded overflow-hidden flex-shrink-0">
+                <img className="w-full h-full object-cover" src={ad.image} alt={ad.name} />
+              </div>
+              <div>
+                <h3 className="text-sm font-semibold text-white mb-1">{ad.name}</h3>
+                <p className="text-xs text-gray-400 mb-2">{ad.description}</p>
+                <div className="flex items-center space-x-3 text-xs text-gray-500">
+                  <span>Starts at {ad.startTime}</span>
+                  <span className="text-gray-700">•</span>
+                  <span>Duration: {ad.duration}</span>
+                  <span className="text-gray-700">•</span>
+                  <span className="text-green-400">{ad.adType}</span>
+                </div>
+              </div>
+            </div>
+            <button className="px-3 py-1.5 bg-transparent border border-white/20 hover:border-white/40 text-white rounded text-xs font-medium transition" data-testid={`button-edit-ad-${ad.id}`}>
+              Edit
+            </button>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ShoppableProductsSection() {
+  const activeCount = HARDCODED_PRODUCTS.filter(p => p.status === 'active').length;
+
+  return (
+    <div className="mb-6" data-testid="section-products">
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="text-sm font-semibold text-white">Shoppable Products</h2>
+        <button className="px-3 py-1.5 bg-transparent border border-white/20 hover:border-white/40 text-white rounded text-xs font-medium transition" data-testid="button-add-product">
+          <Plus className="w-3 h-3 inline mr-1.5" />
+          Add Product
+        </button>
+      </div>
+
+      <div className="grid grid-cols-4 gap-4">
+        {HARDCODED_PRODUCTS.map((product) => (
+          <div key={product.id} className="bg-transparent border border-white/10 rounded-lg overflow-hidden hover:border-white/30 transition cursor-pointer" data-testid={`card-product-${product.id}`}>
+            <div className="h-40 bg-white/5 overflow-hidden flex items-center justify-center p-4">
+              <img className="w-full h-full object-contain" src={product.image} alt={product.name} />
+            </div>
+            <div className="p-3">
+              <h3 className="text-xs font-semibold text-white mb-1">{product.name}</h3>
+              <p className="text-[10px] text-gray-400 mb-2">{product.subtitle}</p>
+              <div className="flex items-center justify-between">
+                <div>
+                  <span className="text-sm font-bold text-white">${product.price}</span>
+                  {product.originalPrice && (
+                    <span className="text-[10px] text-gray-500 line-through ml-1">${product.originalPrice}</span>
+                  )}
+                </div>
+                <span className={`px-2 py-0.5 text-[10px] font-semibold rounded ${
+                  product.status === 'active'
+                    ? 'bg-green-500/20 text-green-400'
+                    : 'bg-gray-500/20 text-gray-400'
+                }`}>
+                  {product.status === 'active' ? 'Active' : 'Scheduled'}
+                </span>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div className="mt-4 p-4 bg-white/5 border border-white/10 rounded-lg">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center space-x-6">
+            <div>
+              <div className="text-xs text-gray-500 mb-1">Products Active</div>
+              <div className="text-lg font-bold text-white">{activeCount}</div>
+            </div>
+            <div className="w-px h-10 bg-white/10"></div>
+            <div>
+              <div className="text-xs text-gray-500 mb-1">Total Views</div>
+              <div className="text-lg font-bold text-white">142K</div>
+            </div>
+            <div className="w-px h-10 bg-white/10"></div>
+            <div>
+              <div className="text-xs text-gray-500 mb-1">Click-through Rate</div>
+              <div className="text-lg font-bold text-white">12.4%</div>
+            </div>
+            <div className="w-px h-10 bg-white/10"></div>
+            <div>
+              <div className="text-xs text-gray-500 mb-1">Revenue</div>
+              <div className="text-lg font-bold text-green-400">$18,450</div>
+            </div>
+          </div>
+          <button className="px-3 py-1.5 bg-transparent border border-white/20 hover:border-white/40 text-white rounded text-xs font-medium transition" data-testid="button-view-analytics">
+            View Analytics
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function LiveChatSidebar() {
+  const [activeTab, setActiveTab] = useState<'chat' | 'analytics'>('chat');
+
+  return (
+    <aside className="w-80 bg-black border-l border-white/10 flex flex-col overflow-hidden flex-shrink-0" data-testid="sidebar-live-chat">
+      <div className="flex border-b border-white/10">
+        <button
+          className={`flex-1 px-4 py-3 text-xs font-semibold transition ${activeTab === 'chat' ? 'text-white bg-white/5 border-b-2 border-white' : 'text-gray-400 hover:text-white'}`}
+          onClick={() => setActiveTab('chat')}
+          data-testid="tab-live-chat"
+        >
+          Live Chat
+        </button>
+        <button
+          className={`flex-1 px-4 py-3 text-xs font-semibold transition ${activeTab === 'analytics' ? 'text-white bg-white/5 border-b-2 border-white' : 'text-gray-400 hover:text-white'}`}
+          onClick={() => setActiveTab('analytics')}
+          data-testid="tab-analytics"
+        >
+          Analytics
+        </button>
+      </div>
+
+      <div className="flex-1 overflow-y-auto p-4 space-y-3">
+        {activeTab === 'chat' ? (
+          CHAT_MESSAGES.map((msg) => (
+            <div key={msg.id} className="flex items-start space-x-2" data-testid={`chat-message-${msg.id}`}>
+              <div className="w-6 h-6 rounded bg-white/10 flex items-center justify-center flex-shrink-0">
+                <span className="text-[9px] text-gray-400 font-semibold">{msg.user.charAt(0)}</span>
+              </div>
+              <div className="flex-1">
+                <div className="flex items-center space-x-2 mb-1">
+                  <span className="text-xs font-semibold text-white">{msg.user}</span>
+                  <span className="text-[10px] text-gray-500">{msg.time}</span>
+                </div>
+                <p className="text-xs text-gray-300">{msg.message}</p>
+              </div>
+            </div>
+          ))
+        ) : (
+          <div className="space-y-4 pt-2">
+            <div className="p-3 bg-white/5 rounded-lg border border-white/10">
+              <div className="text-xs text-gray-500 mb-1">Peak Viewers</div>
+              <div className="text-lg font-bold text-white">847K</div>
+            </div>
+            <div className="p-3 bg-white/5 rounded-lg border border-white/10">
+              <div className="text-xs text-gray-500 mb-1">Avg. Watch Time</div>
+              <div className="text-lg font-bold text-white">38:12</div>
+            </div>
+            <div className="p-3 bg-white/5 rounded-lg border border-white/10">
+              <div className="text-xs text-gray-500 mb-1">Messages/min</div>
+              <div className="text-lg font-bold text-white">1,240</div>
+            </div>
+            <div className="p-3 bg-white/5 rounded-lg border border-white/10">
+              <div className="text-xs text-gray-500 mb-1">Poll Participation</div>
+              <div className="text-lg font-bold text-white">68.4%</div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div className="p-4 border-t border-white/10">
+        <div className="flex items-center space-x-2">
+          <input
+            type="text"
+            placeholder="Type a message..."
+            className="flex-1 px-3 py-2 bg-white/5 border border-white/10 rounded text-xs text-white placeholder-gray-500 focus:outline-none focus:border-white/30"
+            data-testid="input-chat-message"
+          />
+          <button className="w-9 h-9 flex items-center justify-center rounded bg-white text-black hover:bg-gray-200 transition" data-testid="button-send-message">
+            <Send className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      </div>
+    </aside>
   );
 }
 
@@ -341,18 +734,11 @@ export default function BroadcastDetailPage() {
     }));
   };
 
-  const buildBreadcrumbs = (): BreadcrumbItem[] => {
-    const crumbs: BreadcrumbItem[] = [{ label: 'Broadcasts', href: '/broadcasts' }];
-    if (broadcast) crumbs.push({ label: broadcast.broadcastName });
-    else crumbs.push({ label: 'Loading...' });
-    return crumbs;
-  };
-
   if (isLoading) {
     return (
-      <AppLayout breadcrumbs={buildBreadcrumbs()}>
+      <AppLayout>
         <div className="text-center py-12">
-          <p className="text-muted-foreground">Loading broadcast...</p>
+          <p className="text-gray-400">Loading broadcast...</p>
         </div>
       </AppLayout>
     );
@@ -360,9 +746,9 @@ export default function BroadcastDetailPage() {
 
   if (!broadcast) {
     return (
-      <AppLayout breadcrumbs={buildBreadcrumbs()}>
+      <AppLayout>
         <div className="text-center py-12">
-          <p className="text-foreground">Broadcast not found</p>
+          <p className="text-white">Broadcast not found</p>
         </div>
       </AppLayout>
     );
@@ -374,288 +760,251 @@ export default function BroadcastDetailPage() {
   const inactivePolls = polls.filter(p => !p.isActive);
 
   return (
-    <AppLayout breadcrumbs={buildBreadcrumbs()}>
-      <div className="-mt-2">
-        <div className="flex items-center justify-between mb-6">
-          <div className="flex items-center space-x-4">
-            <button
-              onClick={() => setLocation('/broadcasts')}
-              className="w-8 h-8 flex items-center justify-center rounded hover:bg-white/10 dark:hover:bg-white/10 text-muted-foreground hover:text-foreground transition"
-              data-testid="button-back"
-            >
-              <ArrowLeft className="w-4 h-4" />
-            </button>
-            <div>
-              <div className="flex items-center space-x-3 mb-1">
-                <h1 className="text-xl font-bold text-foreground" data-testid="text-broadcast-name">{broadcast.broadcastName}</h1>
-                <StatusBadge status={broadcast.status} />
+    <AppLayout>
+      <div className="-mx-8 -mt-6 flex h-[calc(100vh-64px)] overflow-hidden">
+        <main className="flex-1 overflow-y-auto px-8 py-6">
+          <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center space-x-4">
+              <button
+                onClick={() => setLocation('/broadcasts')}
+                className="w-8 h-8 flex items-center justify-center rounded hover:bg-white/10 text-gray-400 hover:text-white transition"
+                data-testid="button-back"
+              >
+                <ArrowLeft className="w-4 h-4" />
+              </button>
+              <div>
+                <div className="flex items-center space-x-3 mb-1">
+                  <h1 className="text-xl font-bold text-white" data-testid="text-broadcast-name">{broadcast.broadcastName}</h1>
+                  <StatusBadge status={broadcast.status} />
+                </div>
+                <div className="flex items-center text-xs text-gray-500 space-x-2">
+                  {campaignData && (
+                    <>
+                      <Link href={`/campaigns/${campaignData.id}`}>
+                        <span className="text-gray-300 hover:text-white cursor-pointer" data-testid="link-campaign">{campaignData.name}</span>
+                      </Link>
+                      <span className="text-gray-700">/</span>
+                    </>
+                  )}
+                  <span className="text-gray-300" data-testid="text-broadcast-id">{broadcast.broadcastId}</span>
+                </div>
               </div>
-              <div className="flex items-center text-xs text-muted-foreground space-x-2">
-                {campaignData && (
-                  <>
-                    <Link href={`/campaigns/${campaignData.id}`}>
-                      <span className="text-foreground/70 hover:text-foreground cursor-pointer" data-testid="link-campaign">{campaignData.name}</span>
-                    </Link>
-                    <span className="text-muted-foreground/30">/</span>
-                  </>
-                )}
-                <span className="text-muted-foreground" data-testid="text-broadcast-id">{broadcast.broadcastId}</span>
+            </div>
+
+            <div className="flex items-center space-x-3">
+              <div className="flex items-center space-x-4 px-4 py-2 bg-white/5 rounded border border-white/10">
+                <div className="text-center">
+                  <div className="text-xs text-gray-500">Viewers</div>
+                  <div className="text-sm font-semibold text-white" data-testid="stat-header-viewers">847K</div>
+                </div>
+                <div className="w-px h-8 bg-white/10"></div>
+                <div className="text-center">
+                  <div className="text-xs text-gray-500">Engagement</div>
+                  <div className="text-sm font-semibold text-white" data-testid="stat-header-engagement">68.4%</div>
+                </div>
+                <div className="w-px h-8 bg-white/10"></div>
+                <div className="text-center">
+                  <div className="text-xs text-gray-500">Duration</div>
+                  <div className="text-sm font-semibold text-white" data-testid="stat-header-duration">45:23</div>
+                </div>
               </div>
+              <button className="w-10 h-10 flex items-center justify-center rounded border border-white/20 hover:border-white/40 text-gray-400 hover:text-white transition" data-testid="button-more-options">
+                <MoreVertical className="w-4 h-4" />
+              </button>
             </div>
           </div>
 
-          <div className="flex items-center space-x-3">
-            <div className="flex items-center space-x-4 px-4 py-2 bg-white/5 dark:bg-white/5 rounded border border-white/10 dark:border-white/10">
-              <div className="text-center">
-                <div className="text-xs text-muted-foreground">Viewers</div>
-                <div className="text-sm font-semibold text-foreground" data-testid="stat-header-viewers">—</div>
-              </div>
-              <div className="w-px h-8 bg-white/10 dark:bg-white/10"></div>
-              <div className="text-center">
-                <div className="text-xs text-muted-foreground">Polls</div>
-                <div className="text-sm font-semibold text-foreground" data-testid="stat-header-polls">{polls.length}</div>
-              </div>
-              <div className="w-px h-8 bg-white/10 dark:bg-white/10"></div>
-              <div className="text-center">
-                <div className="text-xs text-muted-foreground">Contests</div>
-                <div className="text-sm font-semibold text-foreground" data-testid="stat-header-contests">{contests.length}</div>
-              </div>
-              <div className="w-px h-8 bg-white/10 dark:bg-white/10"></div>
-              <div className="text-center">
-                <div className="text-xs text-muted-foreground">Engagement</div>
-                <div className="text-sm font-semibold text-foreground" data-testid="stat-header-engagement">—</div>
+          <EventTimeline />
+
+          <div className="mb-6" data-testid="section-engagement">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-sm font-semibold text-white">Active Engagement</h2>
+              <div className="flex items-center space-x-2">
+                <span className="text-xs text-gray-500">{activePolls.length} active</span>
+                <Dialog open={pollDialogOpen} onOpenChange={setPollDialogOpen}>
+                  <DialogTrigger asChild>
+                    <button className="px-3 py-1.5 bg-white text-black rounded text-xs font-medium hover:bg-gray-200 transition" data-testid="button-create-poll">
+                      <Plus className="w-3 h-3 inline mr-1.5" />
+                      Add Poll
+                    </button>
+                  </DialogTrigger>
+                  <DialogContent className="sm:max-w-[500px]">
+                    <DialogHeader>
+                      <DialogTitle>Create Poll</DialogTitle>
+                      <DialogDescription>Create a new poll for this broadcast.</DialogDescription>
+                    </DialogHeader>
+                    <div className="grid gap-4 py-4">
+                      <div className="grid gap-2">
+                        <Label htmlFor="pollQuestion">Question *</Label>
+                        <Input
+                          id="pollQuestion"
+                          data-testid="input-poll-question"
+                          value={pollForm.question}
+                          onChange={(e) => setPollForm(prev => ({ ...prev, question: e.target.value }))}
+                          placeholder="Enter poll question"
+                        />
+                      </div>
+                      <div className="grid gap-2">
+                        <Label>Options (min 2)</Label>
+                        {pollForm.options.map((option, index) => (
+                          <div key={index} className="flex gap-2">
+                            <Input
+                              data-testid={`input-poll-option-${index}`}
+                              value={option}
+                              onChange={(e) => updatePollOption(index, e.target.value)}
+                              placeholder={`Option ${index + 1}`}
+                            />
+                            {pollForm.options.length > 2 && (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => removePollOption(index)}
+                                data-testid={`button-remove-option-${index}`}
+                              >
+                                <X className="w-4 h-4" />
+                              </Button>
+                            )}
+                          </div>
+                        ))}
+                        <Button variant="outline" size="sm" onClick={addPollOption} data-testid="button-add-option" className="gap-1">
+                          <Plus className="w-3 h-3" />
+                          Add Option
+                        </Button>
+                      </div>
+                    </div>
+                    <DialogFooter>
+                      <Button variant="outline" onClick={() => setPollDialogOpen(false)} data-testid="button-cancel-poll">Cancel</Button>
+                      <Button onClick={handleCreatePoll} disabled={createPollMutation.isPending} data-testid="button-submit-poll">
+                        {createPollMutation.isPending ? 'Creating...' : 'Create Poll'}
+                      </Button>
+                    </DialogFooter>
+                  </DialogContent>
+                </Dialog>
               </div>
             </div>
-          </div>
-        </div>
 
-        {broadcast.description && (
-          <div className="mb-6 text-sm text-muted-foreground" data-testid="text-broadcast-description">
-            {broadcast.description}
+            {polls.length === 0 ? (
+              <div className="bg-transparent border border-white/10 rounded-lg p-8 text-center">
+                <BarChart3 className="w-10 h-10 text-gray-500 mx-auto mb-3" />
+                <h3 className="text-sm font-semibold text-white mb-1">No polls yet</h3>
+                <p className="text-xs text-gray-400">Create a poll to engage your audience</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {activePolls.map(poll => (
+                  <ActivePollCard
+                    key={poll.id}
+                    poll={poll}
+                    onToggle={(id, active) => togglePollMutation.mutate({ pollId: id, isActive: active })}
+                    onDelete={(id) => deletePollMutation.mutate(id)}
+                  />
+                ))}
+                {inactivePolls.map(poll => (
+                  <ActivePollCard
+                    key={poll.id}
+                    poll={poll}
+                    onToggle={(id, active) => togglePollMutation.mutate({ pollId: id, isActive: active })}
+                    onDelete={(id) => deletePollMutation.mutate(id)}
+                  />
+                ))}
+              </div>
+            )}
           </div>
-        )}
 
-        <div className="mb-6" data-testid="section-engagement">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-sm font-semibold text-foreground">Active Engagement</h2>
-            <div className="flex items-center space-x-2">
-              <span className="text-xs text-muted-foreground">{polls.length} poll{polls.length !== 1 ? 's' : ''}</span>
-              <Dialog open={pollDialogOpen} onOpenChange={setPollDialogOpen}>
+          <div className="mb-6" data-testid="section-contests">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-sm font-semibold text-white">Contests & Trivia</h2>
+              <Dialog open={contestDialogOpen} onOpenChange={setContestDialogOpen}>
                 <DialogTrigger asChild>
-                  <button className="px-3 py-1.5 bg-white dark:bg-white text-black dark:text-black rounded text-xs font-medium hover:bg-gray-200 dark:hover:bg-gray-200 transition" data-testid="button-create-poll">
+                  <button className="px-3 py-1.5 bg-transparent border border-white/20 hover:border-white/40 text-white rounded text-xs font-medium transition" data-testid="button-create-contest">
                     <Plus className="w-3 h-3 inline mr-1.5" />
-                    Add Poll
+                    Add Contest
                   </button>
                 </DialogTrigger>
                 <DialogContent className="sm:max-w-[500px]">
                   <DialogHeader>
-                    <DialogTitle>Create Poll</DialogTitle>
-                    <DialogDescription>Create a new poll for this broadcast.</DialogDescription>
+                    <DialogTitle>Create Contest</DialogTitle>
+                    <DialogDescription>Create a new contest for this broadcast.</DialogDescription>
                   </DialogHeader>
                   <div className="grid gap-4 py-4">
                     <div className="grid gap-2">
-                      <Label htmlFor="pollQuestion">Question *</Label>
+                      <Label>Title *</Label>
                       <Input
-                        id="pollQuestion"
-                        data-testid="input-poll-question"
-                        value={pollForm.question}
-                        onChange={(e) => setPollForm(prev => ({ ...prev, question: e.target.value }))}
-                        placeholder="Enter poll question"
+                        data-testid="input-contest-title"
+                        value={contestForm.title}
+                        onChange={(e) => setContestForm(prev => ({ ...prev, title: e.target.value }))}
+                        placeholder="Contest title"
                       />
                     </div>
                     <div className="grid gap-2">
-                      <Label>Options (min 2)</Label>
-                      {pollForm.options.map((option, index) => (
-                        <div key={index} className="flex gap-2">
-                          <Input
-                            data-testid={`input-poll-option-${index}`}
-                            value={option}
-                            onChange={(e) => updatePollOption(index, e.target.value)}
-                            placeholder={`Option ${index + 1}`}
-                          />
-                          {pollForm.options.length > 2 && (
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              onClick={() => removePollOption(index)}
-                              data-testid={`button-remove-option-${index}`}
-                            >
-                              <X className="w-4 h-4" />
-                            </Button>
-                          )}
-                        </div>
-                      ))}
-                      <Button variant="outline" size="sm" onClick={addPollOption} data-testid="button-add-option" className="gap-1">
-                        <Plus className="w-3 h-3" />
-                        Add Option
-                      </Button>
+                      <Label>Description</Label>
+                      <Input
+                        data-testid="input-contest-description"
+                        value={contestForm.description}
+                        onChange={(e) => setContestForm(prev => ({ ...prev, description: e.target.value }))}
+                        placeholder="Brief description"
+                      />
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="grid gap-2">
+                        <Label>Prize</Label>
+                        <Input
+                          data-testid="input-contest-prize"
+                          value={contestForm.prize}
+                          onChange={(e) => setContestForm(prev => ({ ...prev, prize: e.target.value }))}
+                          placeholder="e.g. $250"
+                        />
+                      </div>
+                      <div className="grid gap-2">
+                        <Label>Type</Label>
+                        <Select value={contestForm.contestType} onValueChange={(v) => setContestForm(prev => ({ ...prev, contestType: v }))}>
+                          <SelectTrigger data-testid="select-contest-type">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {CONTEST_TYPES.map(t => (
+                              <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
                     </div>
                   </div>
                   <DialogFooter>
-                    <Button variant="outline" onClick={() => setPollDialogOpen(false)} data-testid="button-cancel-poll">Cancel</Button>
-                    <Button onClick={handleCreatePoll} disabled={createPollMutation.isPending} data-testid="button-submit-poll">
-                      {createPollMutation.isPending ? 'Creating...' : 'Create Poll'}
+                    <Button variant="outline" onClick={() => setContestDialogOpen(false)}>Cancel</Button>
+                    <Button onClick={handleCreateContest} disabled={createContestMutation.isPending} data-testid="button-submit-contest">
+                      {createContestMutation.isPending ? 'Creating...' : 'Create Contest'}
                     </Button>
                   </DialogFooter>
                 </DialogContent>
               </Dialog>
             </div>
-          </div>
 
-          {polls.length === 0 ? (
-            <div className="bg-transparent border border-white/10 dark:border-white/10 rounded-lg p-8 text-center">
-              <BarChart3 className="w-10 h-10 text-muted-foreground mx-auto mb-3" />
-              <h3 className="text-sm font-semibold text-foreground mb-1">No polls yet</h3>
-              <p className="text-xs text-muted-foreground">Create a poll to engage your audience</p>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {activePolls.map(poll => (
-                <ActivePollCard
-                  key={poll.id}
-                  poll={poll}
-                  onToggle={(id, active) => togglePollMutation.mutate({ pollId: id, isActive: active })}
-                  onDelete={(id) => deletePollMutation.mutate(id)}
-                />
-              ))}
-              {inactivePolls.map(poll => (
-                <ActivePollCard
-                  key={poll.id}
-                  poll={poll}
-                  onToggle={(id, active) => togglePollMutation.mutate({ pollId: id, isActive: active })}
-                  onDelete={(id) => deletePollMutation.mutate(id)}
-                />
-              ))}
-            </div>
-          )}
-        </div>
-
-        <div className="mb-6" data-testid="section-contests">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-sm font-semibold text-foreground">Contests & Trivia</h2>
-            <Dialog open={contestDialogOpen} onOpenChange={setContestDialogOpen}>
-              <DialogTrigger asChild>
-                <button className="px-3 py-1.5 bg-transparent border border-white/20 dark:border-white/20 hover:border-white/40 dark:hover:border-white/40 text-foreground rounded text-xs font-medium transition" data-testid="button-create-contest">
-                  <Plus className="w-3 h-3 inline mr-1.5" />
-                  Add Contest
-                </button>
-              </DialogTrigger>
-              <DialogContent className="sm:max-w-[500px]">
-                <DialogHeader>
-                  <DialogTitle>Create Contest</DialogTitle>
-                  <DialogDescription>Create a new contest for this broadcast.</DialogDescription>
-                </DialogHeader>
-                <div className="grid gap-4 py-4">
-                  <div className="grid gap-2">
-                    <Label>Title *</Label>
-                    <Input
-                      data-testid="input-contest-title"
-                      value={contestForm.title}
-                      onChange={(e) => setContestForm(prev => ({ ...prev, title: e.target.value }))}
-                      placeholder="Contest title"
-                    />
-                  </div>
-                  <div className="grid gap-2">
-                    <Label>Description</Label>
-                    <Input
-                      data-testid="input-contest-description"
-                      value={contestForm.description}
-                      onChange={(e) => setContestForm(prev => ({ ...prev, description: e.target.value }))}
-                      placeholder="Brief description"
-                    />
-                  </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="grid gap-2">
-                      <Label>Prize</Label>
-                      <Input
-                        data-testid="input-contest-prize"
-                        value={contestForm.prize}
-                        onChange={(e) => setContestForm(prev => ({ ...prev, prize: e.target.value }))}
-                        placeholder="e.g. $250"
-                      />
-                    </div>
-                    <div className="grid gap-2">
-                      <Label>Type</Label>
-                      <Select value={contestForm.contestType} onValueChange={(v) => setContestForm(prev => ({ ...prev, contestType: v }))}>
-                        <SelectTrigger data-testid="select-contest-type">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {CONTEST_TYPES.map(t => (
-                            <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </div>
-                </div>
-                <DialogFooter>
-                  <Button variant="outline" onClick={() => setContestDialogOpen(false)}>Cancel</Button>
-                  <Button onClick={handleCreateContest} disabled={createContestMutation.isPending} data-testid="button-submit-contest">
-                    {createContestMutation.isPending ? 'Creating...' : 'Create Contest'}
-                  </Button>
-                </DialogFooter>
-              </DialogContent>
-            </Dialog>
-          </div>
-
-          {contests.length === 0 ? (
-            <div className="bg-transparent border border-white/10 dark:border-white/10 rounded-lg p-8 text-center">
-              <Trophy className="w-10 h-10 text-muted-foreground mx-auto mb-3" />
-              <h3 className="text-sm font-semibold text-foreground mb-1">No contests yet</h3>
-              <p className="text-xs text-muted-foreground">Create a contest to reward your audience</p>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {contests.map(contest => (
-                <ContestCard
-                  key={contest.id}
-                  contest={contest}
-                  onToggle={(id, active) => toggleContestMutation.mutate({ contestId: id, isActive: active })}
-                  onDelete={(id) => deleteContestMutation.mutate(id)}
-                />
-              ))}
-            </div>
-          )}
-        </div>
-
-        <div className="mb-6">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-sm font-semibold text-foreground">Broadcast Details</h2>
-          </div>
-          <div className="bg-transparent border border-white/10 dark:border-white/10 rounded-lg p-5">
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-              <div>
-                <div className="text-xs text-muted-foreground mb-1">Status</div>
-                <div className="mt-1"><StatusBadge status={broadcast.status} /></div>
+            {contests.length === 0 ? (
+              <div className="bg-transparent border border-white/10 rounded-lg p-8 text-center">
+                <Trophy className="w-10 h-10 text-gray-500 mx-auto mb-3" />
+                <h3 className="text-sm font-semibold text-white mb-1">No contests yet</h3>
+                <p className="text-xs text-gray-400">Create a contest to reward your audience</p>
               </div>
-              <div>
-                <div className="text-xs text-muted-foreground mb-1">Broadcast ID</div>
-                <div className="text-sm text-foreground font-mono">{broadcast.broadcastId}</div>
-              </div>
-              <div>
-                <div className="text-xs text-muted-foreground mb-1">Start Time</div>
-                <div className="text-sm text-foreground">
-                  {broadcast.startTime ? new Date(broadcast.startTime).toLocaleString() : 'Not set'}
-                </div>
-              </div>
-              <div>
-                <div className="text-xs text-muted-foreground mb-1">End Time</div>
-                <div className="text-sm text-foreground">
-                  {broadcast.endTime ? new Date(broadcast.endTime).toLocaleString() : 'Not set'}
-                </div>
-              </div>
-            </div>
-            {broadcast.metadata != null && (
-              <div className="mt-4 pt-4 border-t border-white/10 dark:border-white/10">
-                <div className="text-xs text-muted-foreground mb-2">Metadata</div>
-                <pre className="bg-black/30 dark:bg-black/30 rounded-lg p-3 text-xs text-foreground overflow-auto" data-testid="text-broadcast-metadata">
-                  {String(JSON.stringify(broadcast.metadata, null, 2))}
-                </pre>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {contests.map(contest => (
+                  <ContestCard
+                    key={contest.id}
+                    contest={contest}
+                    onToggle={(id, active) => toggleContestMutation.mutate({ contestId: id, isActive: active })}
+                    onDelete={(id) => deleteContestMutation.mutate(id)}
+                  />
+                ))}
               </div>
             )}
           </div>
-        </div>
+
+          <ScheduledAdsSection />
+          <ShoppableProductsSection />
+        </main>
+
+        <LiveChatSidebar />
       </div>
     </AppLayout>
   );
