@@ -2966,20 +2966,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const engagementCounts = await storage.getBroadcastEngagementCounts(broadcastIds);
 
       const campaignIds = [...new Set(broadcastsList.map(b => b.campaignId).filter((id): id is number => id !== null))];
-      const campaignNames = new Map<number, string>();
+      const campaignInfo = new Map<number, { name: string; clientAppName: string | null }>();
       for (const cId of campaignIds) {
         const c = await storage.getCampaign(cId);
-        if (c) campaignNames.set(cId, c.name);
+        if (c) {
+          let clientAppName: string | null = null;
+          if (c.clientAppId) {
+            const app = await storage.getClientApp(c.clientAppId);
+            if (app) clientAppName = app.name;
+          }
+          campaignInfo.set(cId, { name: c.name, clientAppName });
+        }
       }
 
       const enriched = broadcastsList.map(b => {
         const counts = engagementCounts.get(b.broadcastId);
+        const info = b.campaignId ? campaignInfo.get(b.campaignId) : null;
         return {
           ...b,
           pollCount: counts?.pollCount ?? 0,
           activePollCount: counts?.activePollCount ?? 0,
           contestCount: counts?.contestCount ?? 0,
-          campaignName: b.campaignId ? campaignNames.get(b.campaignId) ?? null : null,
+          campaignName: info?.name ?? null,
+          clientAppName: info?.clientAppName ?? null,
         };
       });
 
