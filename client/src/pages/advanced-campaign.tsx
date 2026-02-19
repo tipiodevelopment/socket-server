@@ -648,7 +648,7 @@ function DynamicComponentsTab({
   });
 
   const availableComponents = allComponents.filter(
-    (comp) => !campaignComponents.some((cc) => cc.componentId === comp.id)
+    (comp) => comp.isTemplate === 'true'
   );
 
   const getComponentTypeLabel = (type: string) => {
@@ -974,11 +974,12 @@ function ScheduledComponentForm({
     initialData?.data ? (typeof initialData.data === 'object' ? initialData.data as Record<string, any> : {}) : {}
   );
 
-  // Fetch available components from library
-  const { data: availableComponents, isLoading: componentsLoading } = useQuery<Component[]>({
+  // Fetch available template components from library
+  const { data: allComponentsForForm, isLoading: componentsLoading } = useQuery<Component[]>({
     queryKey: ['/api/components'],
     enabled: type === 'custom_component'
   });
+  const availableComponents = allComponentsForForm?.filter(c => c.isTemplate === 'true');
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
