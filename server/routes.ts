@@ -1438,10 +1438,102 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!campaign) {
         return res.status(404).json({ message: 'Campaign not found' });
       }
-      res.json(campaign);
+      let clientAppName: string | null = null;
+      let channelName: string | null = null;
+      if (campaign.clientAppId) {
+        const clientApp = await storage.getClientApp(campaign.clientAppId);
+        if (clientApp) clientAppName = clientApp.name;
+      }
+      if (campaign.channelId) {
+        const channel = await storage.getChannel(campaign.channelId);
+        if (channel) channelName = channel.name;
+      }
+      res.json({ ...campaign, clientAppName, channelName });
     } catch (error) {
       console.error('Error fetching campaign:', error);
       res.status(500).json({ message: 'Error fetching campaign' });
+    }
+  });
+
+  app.get('/api/campaigns/:id/stats', async (req, res) => {
+    try {
+      const campaignId = parseInt(req.params.id);
+      const campaign = await storage.getCampaign(campaignId);
+      if (!campaign) {
+        return res.status(404).json({ message: 'Campaign not found' });
+      }
+      const broadcasts = await storage.getCampaignBroadcasts(campaignId);
+      let totalViews = 0;
+      let totalEngagement = 0;
+      let engagementCount = 0;
+      let totalPollResponses = 0;
+      let liveBroadcasts = 0;
+      let upcomingBroadcasts = 0;
+      let endedBroadcasts = 0;
+      let totalPolls = 0;
+      let totalContests = 0;
+
+      for (const broadcast of broadcasts) {
+        if (broadcast.metadata && typeof broadcast.metadata === 'object') {
+          const meta = broadcast.metadata as Record<string, unknown>;
+          if (meta.viewers) totalViews += Number(meta.viewers) || 0;
+          if (meta.engagement) {
+            totalEngagement += Number(meta.engagement) || 0;
+            engagementCount++;
+          }
+        }
+        if (broadcast.status === 'live') liveBroadcasts++;
+        else if (broadcast.status === 'upcoming') upcomingBroadcasts++;
+        else if (broadcast.status === 'ended') endedBroadcasts++;
+
+        const polls = await storage.getBroadcastPolls(broadcast.broadcastId);
+        totalPolls += polls.length;
+        for (const poll of polls) {
+          totalPollResponses += poll.totalVotes || 0;
+        }
+        const contests = await storage.getBroadcastContests(broadcast.broadcastId);
+        totalContests += contests.length;
+      }
+
+      res.json({
+        totalViews,
+        engagementRate: engagementCount > 0 ? Math.round((totalEngagement / engagementCount) * 10) / 10 : 0,
+        totalPollResponses,
+        totalPolls,
+        totalContests,
+        liveBroadcasts,
+        upcomingBroadcasts,
+        endedBroadcasts,
+        totalBroadcasts: broadcasts.length,
+      });
+    } catch (error) {
+      console.error('Error fetching campaign stats:', error);
+      res.status(500).json({ message: 'Error fetching campaign stats' });
+    }
+  });
+
+  app.get('/api/campaigns/:id/broadcasts', async (req, res) => {
+    try {
+      const campaignId = parseInt(req.params.id);
+      const campaign = await storage.getCampaign(campaignId);
+      if (!campaign) {
+        return res.status(404).json({ message: 'Campaign not found' });
+      }
+      const broadcasts = await storage.getCampaignBroadcasts(campaignId);
+      const enriched = await Promise.all(broadcasts.map(async (broadcast) => {
+        const polls = await storage.getBroadcastPolls(broadcast.broadcastId);
+        const contests = await storage.getBroadcastContests(broadcast.broadcastId);
+        return {
+          ...broadcast,
+          pollCount: polls.length,
+          activePollCount: polls.filter(p => p.isActive).length,
+          contestCount: contests.length,
+        };
+      }));
+      res.json(enriched);
+    } catch (error) {
+      console.error('Error fetching campaign broadcasts:', error);
+      res.status(500).json({ message: 'Error fetching campaign broadcasts' });
     }
   });
 

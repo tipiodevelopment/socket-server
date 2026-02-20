@@ -3,7 +3,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, Pause, Play, MoreVertical, BarChart3, Radio, Puzzle, Settings, Activity } from "lucide-react";
-import { Campaign, ClientApp, Channel, Sponsor } from "@shared/schema";
+import { Campaign, Sponsor } from "@shared/schema";
 import { OverviewTab } from "@/components/dashboard/OverviewTab";
 import { EventsTab } from "@/components/dashboard/EventsTab";
 import { ScheduledTab } from "@/components/dashboard/ScheduledTab";
@@ -49,29 +49,9 @@ export default function CampaignDashboard() {
   const campaignId = params.campaignId ? parseInt(params.campaignId) : (params.id ? parseInt(params.id) : null);
   const [activeTab, setActiveTab] = useState<string>('overview');
 
-  const { data: campaign, isLoading } = useQuery<Campaign>({
+  const { data: campaign, isLoading } = useQuery<Campaign & { clientAppName?: string | null; channelName?: string | null }>({
     queryKey: ['/api/campaigns', campaignId],
     enabled: !!campaignId
-  });
-
-  const { data: clientApps = [] } = useQuery<ClientApp[]>({
-    queryKey: ['/api/client-apps', userId],
-    queryFn: async () => {
-      const res = await fetch(`/api/client-apps?userId=${userId}`);
-      if (!res.ok) throw new Error('Failed');
-      return res.json();
-    },
-    enabled: !!userId,
-  });
-
-  const { data: allChannels = [] } = useQuery<Channel[]>({
-    queryKey: ['/api/channels', userId],
-    queryFn: async () => {
-      const res = await fetch(`/api/channels?userId=${userId}`);
-      if (!res.ok) throw new Error('Failed');
-      return res.json();
-    },
-    enabled: !!userId,
   });
 
   const { data: sponsors = [] } = useQuery<Sponsor[]>({
@@ -142,12 +122,8 @@ export default function CampaignDashboard() {
   const status = getCampaignStatus(campaign);
   const isPaused = campaign.isPaused === 'true';
 
-  const app = campaign.clientAppId
-    ? clientApps.find(a => a.id === campaign.clientAppId)
-    : campaign.channelId
-      ? clientApps.find(a => a.id === allChannels.find(c => c.id === campaign.channelId)?.clientAppId)
-      : undefined;
-  const channel = campaign.channelId ? allChannels.find(c => c.id === campaign.channelId) : undefined;
+  const appName = campaign.clientAppName || null;
+  const channelName = campaign.channelName || null;
   const sponsor = campaign.sponsorId ? sponsors.find(s => s.id === campaign.sponsorId) : undefined;
 
   return (
@@ -182,11 +158,11 @@ export default function CampaignDashboard() {
                   {status}
                 </span>
               </div>
-              {(app || channel) && (
+              {(appName || channelName) && (
                 <div className="flex items-center text-xs text-gray-400 dark:text-gray-500 gap-2">
-                  {app && <span className="text-gray-500 dark:text-gray-300" data-testid="text-campaign-app">{app.name}</span>}
-                  {app && channel && <span className="text-gray-300 dark:text-gray-700">/</span>}
-                  {channel && <span className="text-gray-500 dark:text-gray-300" data-testid="text-campaign-channel">{channel.name}</span>}
+                  {appName && <span className="text-gray-500 dark:text-gray-300" data-testid="text-campaign-app">{appName}</span>}
+                  {appName && channelName && <span className="text-gray-300 dark:text-gray-700">/</span>}
+                  {channelName && <span className="text-gray-500 dark:text-gray-300" data-testid="text-campaign-channel">{channelName}</span>}
                 </div>
               )}
             </div>
@@ -244,7 +220,7 @@ export default function CampaignDashboard() {
 
       <div>
         {activeTab === 'overview' && (
-          <OverviewTab campaignId={campaignId!} campaign={campaign} />
+          <OverviewTab campaignId={campaignId!} campaign={campaign} onNavigateTab={setActiveTab} />
         )}
         {activeTab === 'broadcasts' && (
           <BroadcastsTab campaignId={campaignId!} />
