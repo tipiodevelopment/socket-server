@@ -1,0 +1,59 @@
+1. Dashboard Global (nivel plataforma)
+KPIs principales (tarjetas grandes): Total de Apps activas, Total de Campañas (activas/pausadas/finalizadas), Total de Broadcasts (live/upcoming/ended), Total de Usuarios únicos enganchados (userId distintos en pollVotes + contestParticipations)
+Gráfica de actividad temporal: Línea o barras mostrando broadcasts por día/semana/mes con selector de rango
+Engagement overview: Total de votos en polls, total de participaciones en contests, tasa de engagement global (participaciones / vistas estimadas)
+Top 5 Campañas por engagement (tabla con nombre, app, total polls, total contests, total votos, total participaciones)
+Top 5 Componentes más usados (por cantidad de campañas que los tienen vinculados, agrupados por tipo)
+Distribución geográfica: Mapa o tabla mostrando campañas por targetCountries
+2. Analytics por Client App (drill-down desde global)
+Header: Nombre del app, bundleId, status, fecha de creación
+KPIs: Campañas activas, Canales, Broadcasts totales, Componentes vinculados (appComponents), Usuarios enganchados
+Lista de campañas con mini-sparklines de engagement
+Componentes del app (appComponents): tabla con tipo, nombre, config, campañas que lo usan
+3. Analytics por Campaña (drill-down desde app)
+Header: Nombre, sponsor (logo + nombre), período (startDate–endDate), status (activa/pausada/expirada), match info si existe
+KPIs: Total broadcasts, Polls creados, Contests creados, Votos totales, Participaciones totales, Componentes activos, Feature flags habilitados
+Engagement timeline: Gráfica temporal mostrando votos y participaciones por día/hora durante la duración de la campaña
+Polls performance: Tabla con cada poll (pregunta, broadcast, total votos, distribución de votos por opción como mini barras horizontales, estado activo/inactivo, duración)
+Contests performance: Tabla con cada contest (título, tipo, premio, total participaciones, broadcast asociado, estado)
+Componentes activos: Grid de componentes vinculados con:
+Tipo + nombre de instancia
+Tiempo activo acumulado (si tiene activatedAt)
+Ventana programada (scheduledTime → endTime)
+Estado actual (active/inactive)
+Número de veces que se activó/desactivó
+Scheduled Components: Timeline visual mostrando componentes programados con su estado (pending/sent/cancelled)
+Feature Flags audit: Log de cambios de feature flags (polls, contests, predictions, products, live streaming)
+Segmentación: Países target, porcentaje de targeting, si tiene segmentación activa
+4. Analytics por Broadcast (drill-down desde campaña)
+Header: Nombre, status (live/upcoming/ended), canal, duración (startTime–endTime), metadata
+KPIs: Polls en este broadcast, Contests en este broadcast, Total votos, Total participaciones, Usuarios únicos participantes
+Timeline de engagement: Gráfica temporal mostrando cuándo ocurrieron los votos y participaciones durante el broadcast (por minuto si es corto, por hora si es largo)
+Detalle de cada Poll:
+Pregunta completa
+Opciones con voteCount y porcentaje visual (barras)
+Distribución temporal de votos
+Usuarios únicos que votaron
+Estado y programación (scheduledStartTime, scheduledEndTime, videoStartTime, videoEndTime)
+Detalle de cada Contest:
+Título, descripción, premio
+Total participaciones
+Tipo de contest
+Respuestas (answers JSON) si aplica, con distribución
+Estado y programación
+5. Comparativas y Cross-Analysis
+Comparar campañas: Seleccionar 2-4 campañas y ver side-by-side sus métricas de engagement
+Comparar broadcasts: Comparar engagement entre broadcasts del mismo campaña
+Mejores horarios: Análisis de qué horarios generan más engagement basado en timestamps de votos y participaciones
+Rendimiento de sponsors: Por sponsor, total de campañas, engagement promedio, reach estimado
+Interacciones y UX
+Filtros globales: Rango de fechas, Client App, Campaña, Status
+Exportar datos (CSV placeholder)
+Refresh en tiempo real para broadcasts live (usar WebSocket existente)
+Tablas con sort y paginación
+Tooltips informativos en cada KPI explicando el cálculo
+Skeleton/loading states mientras cargan los datos
+Todo responsive y con data-testid en cada elemento interactivo
+Datos y Backend necesarios
+Los endpoints de analytics deben agregar datos desde: campaigns, broadcasts, polls, pollOptions, pollVotes, contests, contestParticipations, campaignComponents, components, appComponents, scheduledComponents. Usar queries SQL optimizadas con JOINs y agrupaciones, no hacer N+1 queries. Exponer como /api/analytics/* endpoints.
+
