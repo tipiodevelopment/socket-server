@@ -7,6 +7,7 @@ Vio is a real-time event broadcasting platform designed for multi-campaign manag
 ## User Preferences
 
 Preferred communication style: Simple, everyday language (Spanish).
+Publishing rule: Every time the app is published, update the `.cursorrules` file with the latest project details, architecture changes, new endpoints, and any relevant implementation notes.
 
 ## System Architecture
 
