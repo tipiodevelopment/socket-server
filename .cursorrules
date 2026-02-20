@@ -6,17 +6,19 @@ Vio is a multi-tenant SaaS platform for managing real-time event broadcasts with
 
 ## Tech Stack
 
-- **Frontend:** React 18 + Vite + TypeScript, Tailwind CSS, Radix UI / shadcn/ui, TanStack Query v5, Wouter routing, Lucide React icons
+- **Frontend:** React 18 + Vite + TypeScript, Tailwind CSS, Radix UI / shadcn/ui, TanStack Query v5, Wouter routing, Lucide React icons, Recharts (analytics charts)
 - **Backend:** Express.js + TypeScript, Drizzle ORM, PostgreSQL (Neon Serverless), ws WebSockets
 - **Auth:** JWT Bearer tokens (admin APIs), API keys (SDK endpoints), session-based (dashboard)
 - **Storage:** Replit Object Storage for file uploads, Uppy as upload client
+- **Docs:** OpenAPI 3.0 specification (`openapi.yaml`, ~5700 lines, 80 endpoints)
 
 ## Project Structure
 
 ```
 shared/schema.ts           — Single source of truth: Drizzle tables, Zod schemas, TypeScript types
-server/routes.ts            — All API routes (~3800 lines)
+server/routes.ts            — All API routes (~4000 lines)
 server/storage.ts           — IStorage interface + DatabaseStorage implementation
+server/analytics.ts         — Analytics endpoints (8 SQL-based endpoints)
 server/db.ts                — Drizzle database connection
 server/scheduler.ts         — In-memory component scheduler
 server/middleware/           — Rate limiter, broadcast validator
@@ -26,8 +28,10 @@ client/src/components/AppLayout.tsx — Main shell (sidebar nav + header + conte
 client/src/components/ui/    — shadcn/ui component library
 client/src/components/dashboard/ — Campaign dashboard tab components
 client/src/pages/            — All page components
+client/src/pages/analytics.tsx — Full analytics page with drill-down views
 client/src/contexts/         — ThemeContext (dark/light), UserContext (session)
 client/src/lib/queryClient.ts — TanStack Query config + apiRequest helper
+openapi.yaml                — OpenAPI 3.0 specification (80 endpoints, 17 tag groups)
 ```
 
 ## Data Model Hierarchy
@@ -39,6 +43,10 @@ Key tables: `users`, `sponsors`, `client_apps`, `channels`, `campaigns`, `compon
 Configuration tables: `campaign_translations`, `campaign_engagement_config`, `campaign_ui_config`, `campaign_feature_flags`, `sdk_translations`
 
 All schemas, insert schemas, and types are exported from `shared/schema.ts`.
+
+### Known Schema Issues (Pending Migration)
+- Boolean flags stored as `varchar("true"/"false")` instead of proper `boolean` columns (e.g., `campaigns.isPaused`, `isSegmented`, feature flags). Should be migrated to `boolean` with defaults.
+- Some foreign key columns may lack indexes for analytics-heavy queries (e.g., `poll_votes.broadcast_id`, `contest_participations.user_id`).
 
 ## API Layers
 
@@ -62,6 +70,24 @@ Mobile SDK integration endpoints.
 - `/v1/offers` — Product offers with geo-targeting
 - `/v1/localization/:language` — i18n strings
 
+### Analytics APIs (`/api/analytics/*`) — Session-based
+SQL-based analytics with drill-down hierarchy: Global → App → Campaign → Broadcast.
+- `/api/analytics/overview` — Platform-wide KPIs (apps, campaigns, broadcasts, engagement totals)
+- `/api/analytics/engagement` — Top campaigns, top components, broadcast activity (30 days)
+- `/api/analytics/geographic` — Geographic distribution by target countries
+- `/api/analytics/apps/:appId` — Per-app detail with campaign breakdown
+- `/api/analytics/campaigns/:campaignId` — Campaign detail: polls with vote distribution, contests, components, engagement timeline
+- `/api/analytics/broadcasts/:broadcastId` — Broadcast detail: poll results, contests, vote timeline
+- `/api/analytics/sponsors` — Sponsor performance ranking
+- `/api/analytics/compare` — Side-by-side comparison (campaigns or broadcasts by IDs)
+
+### OpenAPI Documentation
+Full OpenAPI 3.0 spec at `openapi.yaml` with 17 tag groups:
+- Admin API (Bearer): Broadcasts, Polls, Contests
+- SDK: Discovery, Configuration, Engagement, Localization, Offers
+- Dashboard: Apps, Channels, Campaigns, Sponsors, Components, Broadcasts (internal), Events, File Upload
+- Analytics: All analytics endpoints
+
 ## Design System — Monochromatic Dark Theme
 
 - **Background:** `#0a0e1a` (solid, no gradients)
@@ -71,9 +97,18 @@ Mobile SDK integration endpoints.
 - **Status badges:** Live = white bg + pulse dot, Upcoming = bordered, Ended = low opacity
 - **Broadcast colors:** Blue = polls, Purple = contests, Green = ads
 - **Icons:** Lucide React only (never FontAwesome, never emojis)
+- **Charts:** Recharts with white/gray fills, `#2a3142` grid lines, tooltip bg `#141824`
 - **No blue/purple gradients** — strict monochromatic palette
 
 ## Key Pages & Their Purpose
+
+### Analytics (`/analytics`)
+Full analytics dashboard with drill-down navigation (no page reload, state-based):
+- **Global Dashboard:** 8 KPI stat cards, broadcast activity bar chart (30 days), geographic distribution, top campaigns table (clickable for drill-down), top components progress bars, sponsor performance
+- **App Drill-Down:** App KPIs, campaign list with engagement totals
+- **Campaign Drill-Down:** 6 KPI cards, engagement timeline (line chart: votes + participations), polls with vote distribution bars, contests list, components grid, segmentation info
+- **Broadcast Drill-Down:** 5 KPIs, vote timeline bar chart, poll results with vote bars, contest results
+- Error and loading states for all data fetching. Route protected by RequireAuth.
 
 ### Broadcast Detail (`/broadcasts/:broadcastId`)
 Full broadcast management view with split layout:
@@ -89,10 +124,13 @@ Full broadcast management view with split layout:
 4-column grid, type icons, filter pills, Templates-only toggle. Detail page at `/components/:id` with iOS Swift integration code and campaign usage.
 
 ### Campaign Dashboard (`/campaigns/:campaignId`)
-Tabbed: Overview, Events, Scheduled, Components, Integrations, Settings. Components tab filters to templates only.
+Tabbed: Overview, Events, Scheduled, Components, Integrations, Settings. Components tab filters to templates only. Tab navigation via callback-based `onNavigateTab` prop (not DOM manipulation).
 
 ### Sponsor Management (`/sponsors`)
 CRUD with logo/avatar uploads + primary/secondary color config.
+
+### API Documentation (`/docs`)
+Interactive OpenAPI documentation viewer.
 
 ## Conventions & Rules
 
@@ -104,17 +142,20 @@ CRUD with logo/avatar uploads + primary/secondary color config.
 - Use `apiRequest` from `@/lib/queryClient` for mutations
 - Always invalidate query cache after mutations
 - Always add `data-testid` to interactive and display elements
+- For hierarchical query keys use arrays: `queryKey: ['/api/resource', id]` not template literals
 
 ### Database
 - Schema changes: edit `shared/schema.ts` then run `npm run db:push`
 - Never write raw SQL migrations
 - Use `npm run db:push --force` if data-loss warning appears
 - Never change primary key column types (serial ↔ varchar)
+- Analytics queries use direct `db.execute(sql\`...\`)` for performance (not storage interface)
 
 ### Routing
 - Frontend: Wouter (`Link`, `useLocation`, `useParams`)
 - Use `@/components/AppLayout` as page wrapper
 - Register new routes in `client/src/App.tsx`
+- Protected routes wrap with `<RequireAuth>`
 
 ### Styling
 - Tailwind CSS utility classes
@@ -133,11 +174,16 @@ CRUD with logo/avatar uploads + primary/secondary color config.
 - All DB operations go through `IStorage` in `server/storage.ts`
 - Routes in `server/routes.ts` should be thin — delegate to storage
 - Validate request bodies with Zod schemas before passing to storage
+- Analytics is the exception — uses direct SQL via `server/analytics.ts`
 
 ## WebSocket Architecture
 
 Isolated channels per campaign: `/ws/:campaignId`
 Events broadcast include: component updates, poll results, broadcast status changes, config updates.
+
+## Sidebar Navigation Order
+
+Dashboard → Apps → Campaigns → Sponsors → Broadcasts → Components → Analytics → Docs
 
 ## Environment
 
@@ -145,3 +191,15 @@ Events broadcast include: component updates, poll results, broadcast status chan
 - DB: PostgreSQL via `DATABASE_URL`
 - Object storage: Replit built-in, env vars `PUBLIC_OBJECT_SEARCH_PATHS`, `PRIVATE_OBJECT_DIR`
 - Session: `SESSION_SECRET` env var
+- Auth: JWT tokens use `SESSION_SECRET` for signing
+
+## Architect Review Notes (Feb 2026)
+
+Pending improvements identified by architecture review:
+1. **Critical:** Migrate varchar boolean flags to proper `boolean` columns with defaults and NOT NULL
+2. **Critical:** Remove default JWT secret fallback — should hard-fail if `SESSION_SECRET` is missing
+3. **Important:** Add missing indexes on high-fanout FK columns used by analytics queries
+4. **Important:** Wrap multi-step storage operations in database transactions
+5. **Important:** Audit and enforce auth consistently across all route groups
+6. **Minor:** Restrict CORS in production
+7. **Minor:** Optimize scheduler to avoid N+1 query patterns
