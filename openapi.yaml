@@ -1,0 +1,5724 @@
+openapi: 3.0.3
+info:
+  title: Vio API
+  version: 1.0.0
+  description: >-
+    A comprehensive API for the Vio real-time event broadcasting and engagement
+    platform. Includes Admin APIs for broadcast management, SDK APIs for
+    mobile/web integration, Dashboard APIs for internal use, and Analytics APIs
+    for data insights.
+
+servers:
+  - url: /
+
+tags:
+  - name: Admin API - Broadcasts
+    description: Broadcast management endpoints (Bearer auth required)
+  - name: Admin API - Polls
+    description: Poll management endpoints for broadcasts (Bearer auth required)
+  - name: Admin API - Contests
+    description: Contest management endpoints for broadcasts (Bearer auth required)
+  - name: SDK - Discovery
+    description: SDK auto-discovery and campaign lookup (API Key auth)
+  - name: SDK - Configuration
+    description: SDK and campaign configuration retrieval (API Key auth)
+  - name: SDK - Engagement
+    description: Public engagement endpoints for voting and contest participation (rate-limited)
+  - name: SDK - Localization
+    description: Localized string retrieval for SDK clients (API Key auth)
+  - name: SDK - Offers
+    description: Offer retrieval for SDK clients (API Key auth)
+  - name: Dashboard - Users & Auth
+    description: User management and authentication endpoints
+  - name: Dashboard - Client Apps
+    description: Client application management
+  - name: Dashboard - Sponsors
+    description: Sponsor management
+  - name: Dashboard - Campaigns
+    description: Campaign management, configuration, and lifecycle
+  - name: Dashboard - Broadcasts
+    description: Dashboard broadcast, poll, and contest management
+  - name: Dashboard - Components
+    description: Component library and campaign component management
+  - name: Dashboard - Events
+    description: Event tracking and WebSocket event triggers
+  - name: Dashboard - Objects
+    description: File upload and object storage management
+  - name: Analytics
+    description: Analytics and reporting endpoints (planned)
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT Bearer token for Admin API endpoints (/v1/*)
+    ApiKeyQuery:
+      type: apiKey
+      in: query
+      name: apiKey
+      description: API key passed as query parameter for SDK endpoints
+    ApiKeyHeader:
+      type: apiKey
+      in: header
+      name: X-Api-Key
+      description: API key passed in header for SDK endpoints
+    BundleIdHeader:
+      type: apiKey
+      in: header
+      name: X-App-Bundle-ID
+      description: Bundle ID in header for SDK auto-discovery
+
+  schemas:
+    User:
+      type: object
+      properties:
+        id:
+          type: integer
+        reachuUserId:
+          type: string
+        email:
+          type: string
+          nullable: true
+        name:
+          type: string
+          nullable: true
+        firebaseToken:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+
+    InsertUser:
+      type: object
+      required:
+        - reachuUserId
+      properties:
+        reachuUserId:
+          type: string
+        email:
+          type: string
+        name:
+          type: string
+        firebaseToken:
+          type: string
+
+    ClientApp:
+      type: object
+      properties:
+        id:
+          type: integer
+        userId:
+          type: integer
+        name:
+          type: string
+        bundleId:
+          type: string
+        apiKey:
+          type: string
+        reachuApiKey:
+          type: string
+          nullable: true
+        description:
+          type: string
+          nullable: true
+        status:
+          type: string
+          enum: [active, inactive]
+        iconUrl:
+          type: string
+          nullable: true
+        bannerUrl:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+
+    InsertClientApp:
+      type: object
+      required:
+        - userId
+        - name
+        - bundleId
+        - apiKey
+      properties:
+        userId:
+          type: integer
+        name:
+          type: string
+        bundleId:
+          type: string
+        apiKey:
+          type: string
+        reachuApiKey:
+          type: string
+        description:
+          type: string
+        status:
+          type: string
+        iconUrl:
+          type: string
+        bannerUrl:
+          type: string
+
+    Channel:
+      type: object
+      properties:
+        id:
+          type: integer
+        clientAppId:
+          type: integer
+        name:
+          type: string
+        description:
+          type: string
+          nullable: true
+        dynamicConfig:
+          type: object
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+
+    Sponsor:
+      type: object
+      properties:
+        id:
+          type: integer
+        userId:
+          type: integer
+        name:
+          type: string
+        description:
+          type: string
+          nullable: true
+        logoUrl:
+          type: string
+          nullable: true
+        avatarUrl:
+          type: string
+          nullable: true
+        primaryColor:
+          type: string
+          nullable: true
+        secondaryColor:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+
+    InsertSponsor:
+      type: object
+      required:
+        - userId
+        - name
+      properties:
+        userId:
+          type: integer
+        name:
+          type: string
+        description:
+          type: string
+        logoUrl:
+          type: string
+        avatarUrl:
+          type: string
+        primaryColor:
+          type: string
+        secondaryColor:
+          type: string
+
+    Campaign:
+      type: object
+      properties:
+        id:
+          type: integer
+        userId:
+          type: integer
+        clientAppId:
+          type: integer
+          nullable: true
+        channelId:
+          type: integer
+          nullable: true
+        sponsorId:
+          type: integer
+          nullable: true
+        name:
+          type: string
+        logo:
+          type: string
+          nullable: true
+        description:
+          type: string
+          nullable: true
+        startDate:
+          type: string
+          format: date-time
+          nullable: true
+        endDate:
+          type: string
+          format: date-time
+          nullable: true
+        isPaused:
+          type: string
+          enum: ['true', 'false']
+        matchId:
+          type: string
+          nullable: true
+        matchName:
+          type: string
+          nullable: true
+        matchStartTime:
+          type: string
+          format: date-time
+          nullable: true
+        brandName:
+          type: string
+          nullable: true
+        brandIconAsset:
+          type: string
+          nullable: true
+        brandIconUrl:
+          type: string
+          nullable: true
+        brandLogoUrl:
+          type: string
+          nullable: true
+        isSegmented:
+          type: string
+          enum: ['true', 'false']
+        targetCountries:
+          type: array
+          items:
+            type: string
+          nullable: true
+        targetPercentage:
+          type: integer
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+
+    InsertCampaign:
+      type: object
+      required:
+        - userId
+        - name
+      properties:
+        userId:
+          type: integer
+        clientAppId:
+          type: integer
+        channelId:
+          type: integer
+        sponsorId:
+          type: integer
+        name:
+          type: string
+        logo:
+          type: string
+        description:
+          type: string
+        startDate:
+          type: string
+          format: date-time
+        endDate:
+          type: string
+          format: date-time
+        isPaused:
+          type: string
+        matchId:
+          type: string
+        matchName:
+          type: string
+        matchStartTime:
+          type: string
+          format: date-time
+        brandName:
+          type: string
+        brandIconAsset:
+          type: string
+        brandIconUrl:
+          type: string
+        brandLogoUrl:
+          type: string
+        isSegmented:
+          type: string
+        targetCountries:
+          type: array
+          items:
+            type: string
+        targetPercentage:
+          type: integer
+
+    UpdateCampaign:
+      type: object
+      properties:
+        name:
+          type: string
+        logo:
+          type: string
+        description:
+          type: string
+        startDate:
+          type: string
+          format: date-time
+          nullable: true
+        endDate:
+          type: string
+          format: date-time
+          nullable: true
+        isPaused:
+          type: string
+        matchId:
+          type: string
+          nullable: true
+        matchName:
+          type: string
+          nullable: true
+        matchStartTime:
+          type: string
+          format: date-time
+          nullable: true
+        isSegmented:
+          type: string
+        targetCountries:
+          type: array
+          items:
+            type: string
+          nullable: true
+        targetPercentage:
+          type: integer
+          minimum: 1
+          maximum: 100
+          nullable: true
+
+    Broadcast:
+      type: object
+      properties:
+        broadcastId:
+          type: string
+        broadcastName:
+          type: string
+        description:
+          type: string
+          nullable: true
+        campaignId:
+          type: integer
+          nullable: true
+        channelId:
+          type: integer
+          nullable: true
+        startTime:
+          type: string
+          format: date-time
+          nullable: true
+        endTime:
+          type: string
+          format: date-time
+          nullable: true
+        status:
+          type: string
+          enum: [upcoming, live, ended]
+        metadata:
+          type: object
+          nullable: true
+        createdBy:
+          type: integer
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    InsertBroadcast:
+      type: object
+      required:
+        - broadcastName
+      properties:
+        broadcastName:
+          type: string
+        description:
+          type: string
+        campaignId:
+          type: integer
+        channelId:
+          type: integer
+        startTime:
+          type: string
+          format: date-time
+        endTime:
+          type: string
+          format: date-time
+        metadata:
+          type: object
+
+    Poll:
+      type: object
+      properties:
+        id:
+          type: integer
+        broadcastId:
+          type: string
+        question:
+          type: string
+        startTime:
+          type: string
+          format: date-time
+          nullable: true
+        endTime:
+          type: string
+          format: date-time
+          nullable: true
+        isActive:
+          type: boolean
+        totalVotes:
+          type: integer
+        videoStartTime:
+          type: integer
+          nullable: true
+        videoEndTime:
+          type: integer
+          nullable: true
+        broadcastStartTime:
+          type: string
+          format: date-time
+          nullable: true
+        scheduledStartTime:
+          type: string
+          format: date-time
+          nullable: true
+        scheduledEndTime:
+          type: string
+          format: date-time
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        options:
+          type: array
+          items:
+            $ref: '#/components/schemas/PollOption'
+
+    PollOption:
+      type: object
+      properties:
+        id:
+          type: integer
+        pollId:
+          type: integer
+        text:
+          type: string
+        voteCount:
+          type: integer
+        displayOrder:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+
+    CreatePollInput:
+      type: object
+      required:
+        - question
+        - options
+      properties:
+        question:
+          type: string
+        options:
+          type: array
+          items:
+            type: object
+            required:
+              - text
+            properties:
+              text:
+                type: string
+        startTime:
+          type: string
+          format: date-time
+        endTime:
+          type: string
+          format: date-time
+        isActive:
+          type: boolean
+        videoStartTime:
+          type: integer
+        videoEndTime:
+          type: integer
+        broadcastStartTime:
+          type: string
+          format: date-time
+
+    PollVote:
+      type: object
+      properties:
+        id:
+          type: integer
+        pollId:
+          type: integer
+        optionId:
+          type: integer
+        userId:
+          type: string
+        broadcastId:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+
+    VoteInput:
+      type: object
+      required:
+        - optionId
+        - userId
+        - broadcastId
+      properties:
+        optionId:
+          type: integer
+        userId:
+          type: string
+        broadcastId:
+          type: string
+
+    PollResults:
+      type: object
+      properties:
+        poll:
+          $ref: '#/components/schemas/Poll'
+        results:
+          type: array
+          items:
+            type: object
+            properties:
+              optionId:
+                type: integer
+              text:
+                type: string
+              voteCount:
+                type: integer
+              percentage:
+                type: number
+                format: float
+        totalVotes:
+          type: integer
+
+    Contest:
+      type: object
+      properties:
+        id:
+          type: integer
+        broadcastId:
+          type: string
+        title:
+          type: string
+        description:
+          type: string
+          nullable: true
+        prize:
+          type: string
+          nullable: true
+        contestType:
+          type: string
+        startTime:
+          type: string
+          format: date-time
+          nullable: true
+        endTime:
+          type: string
+          format: date-time
+          nullable: true
+        isActive:
+          type: boolean
+        videoStartTime:
+          type: integer
+          nullable: true
+        videoEndTime:
+          type: integer
+          nullable: true
+        broadcastStartTime:
+          type: string
+          format: date-time
+          nullable: true
+        scheduledStartTime:
+          type: string
+          format: date-time
+          nullable: true
+        scheduledEndTime:
+          type: string
+          format: date-time
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    CreateContestInput:
+      type: object
+      required:
+        - title
+        - contestType
+      properties:
+        title:
+          type: string
+        description:
+          type: string
+        prize:
+          type: string
+        contestType:
+          type: string
+        startTime:
+          type: string
+          format: date-time
+        endTime:
+          type: string
+          format: date-time
+        isActive:
+          type: boolean
+        videoStartTime:
+          type: integer
+        videoEndTime:
+          type: integer
+        broadcastStartTime:
+          type: string
+          format: date-time
+
+    ContestParticipation:
+      type: object
+      properties:
+        id:
+          type: integer
+        contestId:
+          type: integer
+        userId:
+          type: string
+        broadcastId:
+          type: string
+        answers:
+          type: object
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+
+    ParticipateInput:
+      type: object
+      required:
+        - userId
+        - broadcastId
+      properties:
+        userId:
+          type: string
+        broadcastId:
+          type: string
+        answers:
+          type: object
+
+    Component:
+      type: object
+      properties:
+        id:
+          type: string
+        type:
+          type: string
+        name:
+          type: string
+        config:
+          type: object
+        isTemplate:
+          type: string
+          enum: ['true', 'false']
+        createdAt:
+          type: string
+          format: date-time
+
+    InsertComponent:
+      type: object
+      required:
+        - type
+        - name
+        - config
+      properties:
+        type:
+          type: string
+        name:
+          type: string
+        config:
+          type: object
+        isTemplate:
+          type: string
+
+    CampaignComponent:
+      type: object
+      properties:
+        id:
+          type: integer
+        campaignId:
+          type: integer
+        componentId:
+          type: string
+        instanceName:
+          type: string
+          nullable: true
+        status:
+          type: string
+          enum: [active, inactive]
+        customConfig:
+          type: object
+          nullable: true
+        scheduledTime:
+          type: string
+          format: date-time
+          nullable: true
+        endTime:
+          type: string
+          format: date-time
+          nullable: true
+        activatedAt:
+          type: string
+          format: date-time
+          nullable: true
+        matchId:
+          type: string
+          nullable: true
+        updatedAt:
+          type: string
+          format: date-time
+
+    ScheduledComponent:
+      type: object
+      properties:
+        id:
+          type: integer
+        campaignId:
+          type: integer
+        type:
+          type: string
+        scheduledTime:
+          type: string
+          format: date-time
+        endTime:
+          type: string
+          format: date-time
+          nullable: true
+        data:
+          type: object
+        status:
+          type: string
+          enum: [pending, sent, cancelled]
+        createdAt:
+          type: string
+          format: date-time
+
+    CampaignFeatureFlags:
+      type: object
+      properties:
+        enableLiveStreaming:
+          type: string
+          enum: ['true', 'false']
+        enableProductCatalog:
+          type: string
+          enum: ['true', 'false']
+        enableEngagement:
+          type: string
+          enum: ['true', 'false']
+        enablePolls:
+          type: string
+          enum: ['true', 'false']
+        enableContests:
+          type: string
+          enum: ['true', 'false']
+
+    CampaignEngagementConfig:
+      type: object
+      properties:
+        demoMode:
+          type: string
+          enum: ['true', 'false']
+        defaultPollDuration:
+          type: integer
+        defaultContestDuration:
+          type: integer
+        maxVotesPerPoll:
+          type: integer
+        maxContestsPerMatch:
+          type: integer
+        enableRealTimeUpdates:
+          type: string
+          enum: ['true', 'false']
+        updateInterval:
+          type: integer
+
+    CampaignUiConfig:
+      type: object
+      properties:
+        primaryColor:
+          type: string
+        secondaryColor:
+          type: string
+        componentConfigs:
+          type: object
+          nullable: true
+
+    WebSocketEvent:
+      type: object
+      properties:
+        type:
+          type: string
+          enum: [product, poll, contest]
+        data:
+          type: object
+        campaignLogo:
+          type: string
+          nullable: true
+        timestamp:
+          type: integer
+
+    FormState:
+      type: object
+      properties:
+        id:
+          type: integer
+        campaignId:
+          type: integer
+        formType:
+          type: string
+        formData:
+          type: object
+        updatedAt:
+          type: string
+          format: date-time
+
+    AnalyticsOverview:
+      type: object
+      properties:
+        totalApps:
+          type: integer
+        totalCampaigns:
+          type: integer
+        totalBroadcasts:
+          type: integer
+        totalPolls:
+          type: integer
+        totalContests:
+          type: integer
+        totalVotes:
+          type: integer
+        totalParticipations:
+          type: integer
+        activeCampaigns:
+          type: integer
+
+    AnalyticsEngagement:
+      type: object
+      properties:
+        totalVotes:
+          type: integer
+        totalParticipations:
+          type: integer
+        averageVotesPerPoll:
+          type: number
+        topCampaigns:
+          type: array
+          items:
+            type: object
+            properties:
+              campaignId:
+                type: integer
+              name:
+                type: string
+              votes:
+                type: integer
+              participations:
+                type: integer
+
+    Error:
+      type: object
+      properties:
+        message:
+          type: string
+      required:
+        - message
+
+    SuccessResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+
+paths:
+  # ============================================================
+  # Admin API - Broadcasts
+  # ============================================================
+  /v1/broadcasts:
+    post:
+      tags:
+        - Admin API - Broadcasts
+      summary: Create broadcast
+      description: Creates a new broadcast. A broadcast represents a live event or match.
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InsertBroadcast'
+            example:
+              broadcastName: "Champions League Final"
+              campaignId: 1
+              channelId: 1
+              startTime: "2026-03-01T20:00:00Z"
+              endTime: "2026-03-01T22:00:00Z"
+              metadata:
+                sport: "football"
+      responses:
+        '201':
+          description: Broadcast created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Broadcast'
+        '400':
+          description: Invalid request body
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                message: "broadcastName is required"
+        '401':
+          description: Unauthorized - Bearer token missing or invalid
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                message: "Bearer token required"
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                message: "Error creating broadcast"
+    get:
+      tags:
+        - Admin API - Broadcasts
+      summary: List broadcasts
+      description: Retrieves a list of all broadcasts, optionally filtered by status or campaignId.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [upcoming, live, ended]
+          description: Filter by broadcast status
+        - name: campaignId
+          in: query
+          schema:
+            type: integer
+          description: Filter by campaign ID
+      responses:
+        '200':
+          description: List of broadcasts
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Broadcast'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /v1/broadcasts/{broadcastId}:
+    get:
+      tags:
+        - Admin API - Broadcasts
+      summary: Get broadcast
+      description: Retrieves a single broadcast by its ID.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: broadcastId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: The broadcast ID
+      responses:
+        '200':
+          description: Broadcast details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Broadcast'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Broadcast not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                message: "Broadcast not found"
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    put:
+      tags:
+        - Admin API - Broadcasts
+      summary: Update broadcast
+      description: Updates an existing broadcast's details.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: broadcastId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InsertBroadcast'
+      responses:
+        '200':
+          description: Broadcast updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Broadcast'
+        '400':
+          description: Invalid request body
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Broadcast not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    delete:
+      tags:
+        - Admin API - Broadcasts
+      summary: Delete broadcast
+      description: Deletes a broadcast and all associated polls and contests.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: broadcastId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Broadcast deleted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+              example:
+                success: true
+                message: "Broadcast deleted"
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Broadcast not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /v1/campaigns/{campaignId}/broadcasts:
+    get:
+      tags:
+        - Admin API - Broadcasts
+      summary: Get campaign broadcasts
+      description: Retrieves all broadcasts associated with a specific campaign.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: campaignId
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: The campaign ID
+      responses:
+        '200':
+          description: List of broadcasts for the campaign
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Broadcast'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  # ============================================================
+  # Admin API - Polls
+  # ============================================================
+  /v1/broadcasts/{broadcastId}/polls:
+    post:
+      tags:
+        - Admin API - Polls
+      summary: Create poll
+      description: Creates a new poll for a broadcast with options. Supports video time-based and scheduled activation.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: broadcastId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreatePollInput'
+            example:
+              question: "Who will score the next goal?"
+              options:
+                - text: "Team A"
+                - text: "Team B"
+                - text: "No one"
+              isActive: true
+              videoStartTime: 120
+              videoEndTime: 180
+      responses:
+        '201':
+          description: Poll created with options
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Poll'
+        '400':
+          description: Invalid request body
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                message: "question and options are required"
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Broadcast not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    get:
+      tags:
+        - Admin API - Polls
+      summary: List broadcast polls
+      description: Retrieves all polls for a specific broadcast, including their options.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: broadcastId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: List of polls with options
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Poll'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /v1/polls/{pollId}:
+    put:
+      tags:
+        - Admin API - Polls
+      summary: Update poll
+      description: Updates an existing poll's question, options, timing, or active status.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: pollId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                question:
+                  type: string
+                startTime:
+                  type: string
+                  format: date-time
+                endTime:
+                  type: string
+                  format: date-time
+                isActive:
+                  type: boolean
+                videoStartTime:
+                  type: integer
+                videoEndTime:
+                  type: integer
+                broadcastStartTime:
+                  type: string
+                  format: date-time
+                options:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                      text:
+                        type: string
+      responses:
+        '200':
+          description: Poll updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Poll'
+        '400':
+          description: Invalid request body
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Poll not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    delete:
+      tags:
+        - Admin API - Polls
+      summary: Delete poll
+      description: Deletes a poll and all associated votes and options.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: pollId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Poll deleted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+              example:
+                success: true
+                message: "Poll deleted"
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Poll not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /v1/polls/{pollId}/results:
+    get:
+      tags:
+        - Admin API - Polls
+      summary: Get poll results
+      description: Retrieves poll results including vote counts and percentages for each option.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: pollId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Poll results with percentages
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PollResults'
+              example:
+                poll:
+                  id: 1
+                  question: "Who will score the next goal?"
+                  totalVotes: 150
+                results:
+                  - optionId: 1
+                    text: "Team A"
+                    voteCount: 80
+                    percentage: 53.33
+                  - optionId: 2
+                    text: "Team B"
+                    voteCount: 70
+                    percentage: 46.67
+                totalVotes: 150
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Poll not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  # ============================================================
+  # Admin API - Contests
+  # ============================================================
+  /v1/broadcasts/{broadcastId}/contests:
+    post:
+      tags:
+        - Admin API - Contests
+      summary: Create contest
+      description: Creates a new contest for a broadcast. Supports video time-based and scheduled activation.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: broadcastId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateContestInput'
+            example:
+              title: "Halftime Prediction Contest"
+              description: "Predict the final score"
+              prize: "$100 Gift Card"
+              contestType: "prediction"
+              isActive: true
+      responses:
+        '201':
+          description: Contest created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Contest'
+        '400':
+          description: Invalid request body
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Broadcast not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    get:
+      tags:
+        - Admin API - Contests
+      summary: List broadcast contests
+      description: Retrieves all contests for a specific broadcast.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: broadcastId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: List of contests
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Contest'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /v1/contests/{contestId}:
+    put:
+      tags:
+        - Admin API - Contests
+      summary: Update contest
+      description: Updates an existing contest's details, timing, or active status.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: contestId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                title:
+                  type: string
+                description:
+                  type: string
+                prize:
+                  type: string
+                contestType:
+                  type: string
+                startTime:
+                  type: string
+                  format: date-time
+                endTime:
+                  type: string
+                  format: date-time
+                isActive:
+                  type: boolean
+                videoStartTime:
+                  type: integer
+                videoEndTime:
+                  type: integer
+                broadcastStartTime:
+                  type: string
+                  format: date-time
+      responses:
+        '200':
+          description: Contest updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Contest'
+        '400':
+          description: Invalid request body
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Contest not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    delete:
+      tags:
+        - Admin API - Contests
+      summary: Delete contest
+      description: Deletes a contest and all associated participations.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: contestId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Contest deleted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+              example:
+                success: true
+                message: "Contest deleted"
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Contest not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /v1/contests/{contestId}/participations:
+    get:
+      tags:
+        - Admin API - Contests
+      summary: Get contest participations
+      description: Retrieves all participations for a specific contest.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: contestId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: List of contest participations
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ContestParticipation'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Contest not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  # ============================================================
+  # SDK - Discovery
+  # ============================================================
+  /v1/sdk/campaigns:
+    get:
+      tags:
+        - SDK - Discovery
+      summary: Auto-discover campaigns
+      description: >-
+        Discovers active campaigns for an app using its bundle ID or API key.
+        Returns campaigns matching the app and optionally a specific matchId.
+        Used by mobile/web SDKs to automatically find relevant campaigns.
+      security:
+        - BundleIdHeader: []
+        - ApiKeyQuery: []
+      parameters:
+        - name: X-App-Bundle-ID
+          in: header
+          schema:
+            type: string
+          description: The app's bundle ID for auto-discovery
+        - name: apiKey
+          in: query
+          schema:
+            type: string
+          description: API key as alternative to bundle ID
+        - name: matchId
+          in: query
+          schema:
+            type: string
+          description: Optional match ID to filter campaigns
+      responses:
+        '200':
+          description: List of discovered campaigns with full configuration
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  campaigns:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Campaign'
+                  app:
+                    $ref: '#/components/schemas/ClientApp'
+        '400':
+          description: Missing required identifier
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                message: "X-App-Bundle-ID header or apiKey query parameter is required"
+        '404':
+          description: App not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                message: "No app found with the provided bundle ID"
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /v1/sdk/config:
+    get:
+      tags:
+        - SDK - Discovery
+      summary: Get SDK config
+      description: >-
+        Retrieves the SDK configuration for a specific campaign.
+        Includes components, UI config, feature flags, and engagement settings.
+      security:
+        - ApiKeyQuery: []
+      parameters:
+        - name: apiKey
+          in: query
+          required: true
+          schema:
+            type: string
+          description: API key for authentication
+        - name: campaignId
+          in: query
+          required: true
+          schema:
+            type: integer
+          description: Campaign ID to get config for
+      responses:
+        '200':
+          description: SDK configuration
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  campaign:
+                    $ref: '#/components/schemas/Campaign'
+                  components:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/CampaignComponent'
+                  featureFlags:
+                    $ref: '#/components/schemas/CampaignFeatureFlags'
+                  uiConfig:
+                    $ref: '#/components/schemas/CampaignUiConfig'
+                  engagementConfig:
+                    $ref: '#/components/schemas/CampaignEngagementConfig'
+        '400':
+          description: Missing required parameters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Invalid API key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Campaign not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  # ============================================================
+  # SDK - Configuration
+  # ============================================================
+  /v1/campaigns/{campaignId}/config:
+    get:
+      tags:
+        - SDK - Configuration
+      summary: Get full campaign config
+      description: >-
+        Retrieves the complete campaign configuration including components,
+        UI config, feature flags, engagement settings, and active broadcasts.
+      security:
+        - ApiKeyQuery: []
+      parameters:
+        - name: campaignId
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: apiKey
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: matchId
+          in: query
+          schema:
+            type: string
+          description: Optional match ID for filtering match-specific content
+      responses:
+        '200':
+          description: Full campaign configuration
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  campaign:
+                    $ref: '#/components/schemas/Campaign'
+                  components:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/CampaignComponent'
+                  featureFlags:
+                    $ref: '#/components/schemas/CampaignFeatureFlags'
+                  uiConfig:
+                    $ref: '#/components/schemas/CampaignUiConfig'
+                  engagementConfig:
+                    $ref: '#/components/schemas/CampaignEngagementConfig'
+                  broadcasts:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Broadcast'
+        '401':
+          description: Invalid API key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Campaign not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /v1/engagement/config:
+    get:
+      tags:
+        - SDK - Configuration
+      summary: Get engagement config
+      description: >-
+        Retrieves the engagement configuration for a campaign by match ID.
+        Returns polls, contests, and engagement settings.
+      security:
+        - ApiKeyQuery: []
+      parameters:
+        - name: apiKey
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: matchId
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Match ID to find the campaign
+      responses:
+        '200':
+          description: Engagement configuration
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  campaign:
+                    $ref: '#/components/schemas/Campaign'
+                  engagementConfig:
+                    $ref: '#/components/schemas/CampaignEngagementConfig'
+                  broadcasts:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Broadcast'
+        '400':
+          description: Missing required parameters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                message: "apiKey and matchId are required"
+        '404':
+          description: Campaign not found for match
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  # ============================================================
+  # SDK - Engagement
+  # ============================================================
+  /v1/engagement/polls/{pollId}/vote:
+    post:
+      tags:
+        - SDK - Engagement
+      summary: Vote on a poll
+      description: >-
+        Submits a vote for a poll option. Each user can only vote once per poll.
+        Rate-limited to prevent abuse.
+      parameters:
+        - name: pollId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VoteInput'
+            example:
+              optionId: 1
+              userId: "user-abc-123"
+              broadcastId: "match-2026-03-01"
+      responses:
+        '200':
+          description: Vote recorded successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  vote:
+                    $ref: '#/components/schemas/PollVote'
+                  updatedPoll:
+                    $ref: '#/components/schemas/Poll'
+        '400':
+          description: Invalid vote or poll not active
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                message: "Poll is not active"
+        '404':
+          description: Poll or option not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: User already voted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                message: "User has already voted on this poll"
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /v1/engagement/polls:
+    get:
+      tags:
+        - SDK - Engagement
+      summary: Get active polls
+      description: >-
+        Retrieves active polls for a broadcast. Supports pagination and
+        video time filtering for time-based poll activation.
+      parameters:
+        - name: broadcastId
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Broadcast ID to get polls for
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 10
+          description: Maximum number of polls to return
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+          description: Number of polls to skip
+        - name: currentVideoTime
+          in: query
+          schema:
+            type: integer
+          description: Current video playback time in seconds for time-based filtering
+      responses:
+        '200':
+          description: List of active polls with options
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  polls:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Poll'
+                  total:
+                    type: integer
+                  limit:
+                    type: integer
+                  offset:
+                    type: integer
+        '400':
+          description: Missing broadcastId
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                message: "broadcastId query parameter is required"
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /v1/engagement/contests/{contestId}/participate:
+    post:
+      tags:
+        - SDK - Engagement
+      summary: Participate in a contest
+      description: >-
+        Submits a participation entry for a contest. Each user can only
+        participate once per contest. Rate-limited to prevent abuse.
+      parameters:
+        - name: contestId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ParticipateInput'
+            example:
+              userId: "user-abc-123"
+              broadcastId: "match-2026-03-01"
+              answers:
+                prediction: "2-1"
+      responses:
+        '200':
+          description: Participation recorded
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  participation:
+                    $ref: '#/components/schemas/ContestParticipation'
+        '400':
+          description: Invalid participation or contest not active
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Contest not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: User already participated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                message: "User has already participated in this contest"
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /v1/engagement/contests:
+    get:
+      tags:
+        - SDK - Engagement
+      summary: Get active contests
+      description: >-
+        Retrieves active contests for a broadcast. Supports pagination and
+        video time filtering for time-based contest activation.
+      parameters:
+        - name: broadcastId
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Broadcast ID to get contests for
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 10
+          description: Maximum number of contests to return
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+          description: Number of contests to skip
+        - name: currentVideoTime
+          in: query
+          schema:
+            type: integer
+          description: Current video playback time in seconds for time-based filtering
+      responses:
+        '200':
+          description: List of active contests
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  contests:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Contest'
+                  total:
+                    type: integer
+                  limit:
+                    type: integer
+                  offset:
+                    type: integer
+        '400':
+          description: Missing broadcastId
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  # ============================================================
+  # SDK - Localization
+  # ============================================================
+  /v1/localization/{language}:
+    get:
+      tags:
+        - SDK - Localization
+      summary: Get localized strings
+      description: >-
+        Retrieves localized UI strings for the specified language.
+        Returns global translations, optionally merged with campaign-specific
+        and match-specific overrides.
+      security:
+        - ApiKeyQuery: []
+      parameters:
+        - name: language
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Language code (e.g., en, es, fr, de)
+          example: en
+        - name: apiKey
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: campaignId
+          in: query
+          schema:
+            type: integer
+          description: Optional campaign ID for campaign-specific translations
+        - name: matchId
+          in: query
+          schema:
+            type: string
+          description: Optional match ID for match-specific translations
+      responses:
+        '200':
+          description: Localized string map
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  language:
+                    type: string
+                  translations:
+                    type: object
+                    additionalProperties:
+                      type: string
+                  dateFormat:
+                    type: string
+                  timeFormat:
+                    type: string
+              example:
+                language: en
+                translations:
+                  poll_title: "Vote Now"
+                  contest_title: "Enter Contest"
+                  sponsor_badge: "Sponsored by"
+                dateFormat: "dd.MM.yyyy"
+                timeFormat: "HH:mm"
+        '401':
+          description: Invalid API key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  # ============================================================
+  # SDK - Offers
+  # ============================================================
+  /v1/offers:
+    get:
+      tags:
+        - SDK - Offers
+      summary: Get offers
+      description: >-
+        Retrieves available offers for a campaign. Supports placement filtering
+        and user-based segmentation.
+      security:
+        - ApiKeyQuery: []
+      parameters:
+        - name: apiKey
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: campaignId
+          in: query
+          required: true
+          schema:
+            type: integer
+        - name: placement
+          in: query
+          schema:
+            type: string
+          description: Filter offers by placement location
+        - name: userId
+          in: query
+          schema:
+            type: string
+          description: User ID for segmented offer targeting
+        - name: userCountry
+          in: query
+          schema:
+            type: string
+          description: User country code for geographic targeting
+      responses:
+        '200':
+          description: List of available offers
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  offers:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                        title:
+                          type: string
+                        description:
+                          type: string
+                        imageUrl:
+                          type: string
+                        actionUrl:
+                          type: string
+                        placement:
+                          type: string
+        '400':
+          description: Missing required parameters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Invalid API key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  # ============================================================
+  # Dashboard - Events
+  # ============================================================
+  /api/status:
+    get:
+      tags:
+        - Dashboard - Events
+      summary: Health check
+      description: Returns server status and connection information.
+      responses:
+        '200':
+          description: Server status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  server:
+                    type: string
+                  wsPort:
+                    type: string
+                  httpPort:
+                    type: integer
+              example:
+                server: running
+                wsPort: same as http
+                httpPort: 5000
+
+  /api/events:
+    get:
+      tags:
+        - Dashboard - Events
+      summary: Get recent events
+      description: Retrieves recent WebSocket events, optionally filtered by campaign.
+      parameters:
+        - name: campaignId
+          in: query
+          schema:
+            type: integer
+          description: Filter events by campaign ID
+      responses:
+        '200':
+          description: List of events
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/WebSocketEvent'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    post:
+      tags:
+        - Dashboard - Events
+      summary: Create event
+      description: Creates and broadcasts a WebSocket event.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WebSocketEvent'
+      responses:
+        '200':
+          description: Event created and broadcast
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  event:
+                    $ref: '#/components/schemas/WebSocketEvent'
+        '400':
+          description: Invalid event data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/events/{campaignId}:
+    get:
+      tags:
+        - Dashboard - Events
+      summary: Get campaign events
+      description: Retrieves events for a specific campaign with optional deduplication.
+      parameters:
+        - name: campaignId
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: includeAll
+          in: query
+          schema:
+            type: boolean
+            default: false
+          description: Include all events without deduplication
+      responses:
+        '200':
+          description: List of campaign events
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/WebSocketEvent'
+        '400':
+          description: Invalid campaign ID
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    post:
+      tags:
+        - Dashboard - Events
+      summary: Create campaign event
+      description: Creates and broadcasts a WebSocket event for a specific campaign.
+      parameters:
+        - name: campaignId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                type:
+                  type: string
+                data:
+                  type: object
+      responses:
+        '200':
+          description: Event created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/events/product:
+    post:
+      tags:
+        - Dashboard - Events
+      summary: Trigger product event
+      description: Creates and broadcasts a product event via WebSocket.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - name
+              properties:
+                campaignId:
+                  type: integer
+                productId:
+                  type: string
+                name:
+                  type: string
+                description:
+                  type: string
+                price:
+                  type: number
+                currency:
+                  type: string
+                  default: USD
+                imageUrl:
+                  type: string
+                campaignLogo:
+                  type: string
+      responses:
+        '200':
+          description: Product event sent
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  event:
+                    $ref: '#/components/schemas/WebSocketEvent'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Campaign not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/events/poll:
+    post:
+      tags:
+        - Dashboard - Events
+      summary: Trigger poll event
+      description: Creates and broadcasts a poll event via WebSocket.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - question
+                - options
+              properties:
+                campaignId:
+                  type: integer
+                question:
+                  type: string
+                options:
+                  oneOf:
+                    - type: string
+                      description: Comma-separated options (legacy)
+                    - type: array
+                      items:
+                        type: object
+                        properties:
+                          text:
+                            type: string
+                          imageUrl:
+                            type: string
+                duration:
+                  type: integer
+                imageUrl:
+                  type: string
+                campaignLogo:
+                  type: string
+      responses:
+        '200':
+          description: Poll event sent
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  event:
+                    $ref: '#/components/schemas/WebSocketEvent'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/events/contest:
+    post:
+      tags:
+        - Dashboard - Events
+      summary: Trigger contest event
+      description: Creates and broadcasts a contest event via WebSocket.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - name
+              properties:
+                campaignId:
+                  type: integer
+                name:
+                  type: string
+                prize:
+                  type: string
+                deadline:
+                  type: string
+                maxParticipants:
+                  type: integer
+                campaignLogo:
+                  type: string
+      responses:
+        '200':
+          description: Contest event sent
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  event:
+                    $ref: '#/components/schemas/WebSocketEvent'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  # ============================================================
+  # Dashboard - Users & Auth
+  # ============================================================
+  /api/users:
+    get:
+      tags:
+        - Dashboard - Users & Auth
+      summary: List users
+      description: Retrieves all registered users.
+      responses:
+        '200':
+          description: List of users
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/User'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    post:
+      tags:
+        - Dashboard - Users & Auth
+      summary: Create user
+      description: Creates a new user.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InsertUser'
+      responses:
+        '201':
+          description: User created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '400':
+          description: Invalid request or user already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/users/{id}:
+    get:
+      tags:
+        - Dashboard - Users & Auth
+      summary: Get user by ID
+      description: Retrieves a user by their internal ID.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: User details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '404':
+          description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    patch:
+      tags:
+        - Dashboard - Users & Auth
+      summary: Update user
+      description: Partially updates a user's profile.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                email:
+                  type: string
+                name:
+                  type: string
+                firebaseToken:
+                  type: string
+      responses:
+        '200':
+          description: User updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '404':
+          description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/users/reachu/{reachuUserId}:
+    get:
+      tags:
+        - Dashboard - Users & Auth
+      summary: Get user by Reachu ID
+      description: Retrieves a user by their Reachu user ID.
+      parameters:
+        - name: reachuUserId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: User details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '404':
+          description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/users/ensure:
+    post:
+      tags:
+        - Dashboard - Users & Auth
+      summary: Ensure user exists
+      description: Creates a user if they don't exist, or returns the existing user.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InsertUser'
+      responses:
+        '200':
+          description: Existing or newly created user
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/auth/token:
+    post:
+      tags:
+        - Dashboard - Users & Auth
+      summary: Generate auth token
+      description: Generates a JWT token for user authentication.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - reachuUserId
+              properties:
+                reachuUserId:
+                  type: string
+      responses:
+        '200':
+          description: JWT token generated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token:
+                    type: string
+                  user:
+                    $ref: '#/components/schemas/User'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  # ============================================================
+  # Dashboard - Client Apps
+  # ============================================================
+  /api/client-apps:
+    get:
+      tags:
+        - Dashboard - Client Apps
+      summary: List client apps
+      description: Retrieves all client applications.
+      responses:
+        '200':
+          description: List of client apps
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ClientApp'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/client-apps/with-stats:
+    get:
+      tags:
+        - Dashboard - Client Apps
+      summary: List client apps with stats
+      description: Retrieves all client applications with campaign and channel counts.
+      responses:
+        '200':
+          description: List of client apps with statistics
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  allOf:
+                    - $ref: '#/components/schemas/ClientApp'
+                    - type: object
+                      properties:
+                        campaignCount:
+                          type: integer
+                        channelCount:
+                          type: integer
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/client-apps/{id}:
+    get:
+      tags:
+        - Dashboard - Client Apps
+      summary: Get client app
+      description: Retrieves a client application by ID.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Client app details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClientApp'
+        '404':
+          description: Client app not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    post:
+      tags:
+        - Dashboard - Client Apps
+      summary: Create client app
+      description: Creates a new client application with auto-generated API key.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: User ID (owner)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InsertClientApp'
+      responses:
+        '201':
+          description: Client app created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClientApp'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    patch:
+      tags:
+        - Dashboard - Client Apps
+      summary: Update client app
+      description: Partially updates a client application.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                description:
+                  type: string
+                status:
+                  type: string
+                iconUrl:
+                  type: string
+                bannerUrl:
+                  type: string
+      responses:
+        '200':
+          description: Client app updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClientApp'
+        '404':
+          description: Client app not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    delete:
+      tags:
+        - Dashboard - Client Apps
+      summary: Delete client app
+      description: Deletes a client application and all associated data.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Client app deleted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+        '404':
+          description: Client app not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/client-apps/{id}/regenerate-key:
+    post:
+      tags:
+        - Dashboard - Client Apps
+      summary: Regenerate API key
+      description: Regenerates the API key for a client application.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: New API key generated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  apiKey:
+                    type: string
+        '404':
+          description: Client app not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/client-apps/{id}/channels:
+    get:
+      tags:
+        - Dashboard - Client Apps
+      summary: Get app channels
+      description: Retrieves all channels for a client application.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: List of channels
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Channel'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/client-apps/{id}/components:
+    get:
+      tags:
+        - Dashboard - Client Apps
+      summary: Get app components
+      description: Retrieves all components linked to a client application.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: List of app components
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Component'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    post:
+      tags:
+        - Dashboard - Client Apps
+      summary: Link component to app
+      description: Links an existing component to a client application.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - componentId
+              properties:
+                componentId:
+                  type: string
+                customConfig:
+                  type: object
+      responses:
+        '201':
+          description: Component linked
+          content:
+            application/json:
+              schema:
+                type: object
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/client-apps/{id}/components/{componentId}:
+    delete:
+      tags:
+        - Dashboard - Client Apps
+      summary: Unlink component from app
+      description: Removes a component link from a client application.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: componentId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Component unlinked
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+        '404':
+          description: Link not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/client-apps/{id}/campaigns:
+    get:
+      tags:
+        - Dashboard - Client Apps
+      summary: Get app campaigns
+      description: Retrieves all campaigns associated with a client application.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: List of campaigns
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Campaign'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  # ============================================================
+  # Dashboard - Sponsors
+  # ============================================================
+  /api/sponsors:
+    get:
+      tags:
+        - Dashboard - Sponsors
+      summary: List sponsors
+      description: Retrieves all sponsors.
+      responses:
+        '200':
+          description: List of sponsors
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Sponsor'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    post:
+      tags:
+        - Dashboard - Sponsors
+      summary: Create sponsor
+      description: Creates a new sponsor.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InsertSponsor'
+      responses:
+        '201':
+          description: Sponsor created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Sponsor'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/sponsors/{id}:
+    get:
+      tags:
+        - Dashboard - Sponsors
+      summary: Get sponsor
+      description: Retrieves a sponsor by ID.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Sponsor details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Sponsor'
+        '404':
+          description: Sponsor not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    patch:
+      tags:
+        - Dashboard - Sponsors
+      summary: Update sponsor
+      description: Partially updates a sponsor.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InsertSponsor'
+      responses:
+        '200':
+          description: Sponsor updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Sponsor'
+        '404':
+          description: Sponsor not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    delete:
+      tags:
+        - Dashboard - Sponsors
+      summary: Delete sponsor
+      description: Deletes a sponsor.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Sponsor deleted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+        '404':
+          description: Sponsor not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  # ============================================================
+  # Dashboard - Campaigns
+  # ============================================================
+  /api/campaigns:
+    get:
+      tags:
+        - Dashboard - Campaigns
+      summary: List campaigns
+      description: Retrieves all campaigns.
+      responses:
+        '200':
+          description: List of campaigns
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Campaign'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    post:
+      tags:
+        - Dashboard - Campaigns
+      summary: Create campaign
+      description: Creates a new campaign.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InsertCampaign'
+      responses:
+        '201':
+          description: Campaign created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Campaign'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/campaigns/{id}:
+    get:
+      tags:
+        - Dashboard - Campaigns
+      summary: Get campaign
+      description: Retrieves a campaign by ID with related data (sponsor, client app).
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Campaign details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Campaign'
+        '404':
+          description: Campaign not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    put:
+      tags:
+        - Dashboard - Campaigns
+      summary: Update campaign
+      description: Updates a campaign's details.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateCampaign'
+      responses:
+        '200':
+          description: Campaign updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Campaign'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Campaign not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    delete:
+      tags:
+        - Dashboard - Campaigns
+      summary: Delete campaign
+      description: Deletes a campaign and all associated data.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Campaign deleted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+        '404':
+          description: Campaign not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/campaigns/{id}/stats:
+    get:
+      tags:
+        - Dashboard - Campaigns
+      summary: Get campaign stats
+      description: Retrieves campaign statistics including event counts.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Campaign statistics
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  eventCount:
+                    type: integer
+                  broadcastCount:
+                    type: integer
+                  componentCount:
+                    type: integer
+        '404':
+          description: Campaign not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/campaigns/{id}/broadcasts:
+    get:
+      tags:
+        - Dashboard - Campaigns
+      summary: Get campaign broadcasts
+      description: Retrieves all broadcasts for a campaign.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: List of broadcasts
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Broadcast'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/campaigns/{id}/toggle-pause:
+    patch:
+      tags:
+        - Dashboard - Campaigns
+      summary: Toggle campaign pause
+      description: Toggles the isPaused state of a campaign.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Campaign pause state toggled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Campaign'
+        '404':
+          description: Campaign not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/campaigns/{id}/engagement-config:
+    get:
+      tags:
+        - Dashboard - Campaigns
+      summary: Get engagement config
+      description: Retrieves the engagement configuration for a campaign.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Engagement configuration
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CampaignEngagementConfig'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    put:
+      tags:
+        - Dashboard - Campaigns
+      summary: Update engagement config
+      description: Updates the engagement configuration for a campaign.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CampaignEngagementConfig'
+      responses:
+        '200':
+          description: Engagement config updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CampaignEngagementConfig'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/campaigns/{id}/ui-config:
+    get:
+      tags:
+        - Dashboard - Campaigns
+      summary: Get UI config
+      description: Retrieves the UI theme configuration for a campaign.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: UI configuration
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CampaignUiConfig'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    put:
+      tags:
+        - Dashboard - Campaigns
+      summary: Update UI config
+      description: Updates the UI theme configuration for a campaign.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CampaignUiConfig'
+      responses:
+        '200':
+          description: UI config updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CampaignUiConfig'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/campaigns/{id}/feature-flags:
+    get:
+      tags:
+        - Dashboard - Campaigns
+      summary: Get feature flags
+      description: Retrieves the feature flags for a campaign.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Feature flags
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CampaignFeatureFlags'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    put:
+      tags:
+        - Dashboard - Campaigns
+      summary: Update feature flags
+      description: Updates the feature flags for a campaign.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CampaignFeatureFlags'
+      responses:
+        '200':
+          description: Feature flags updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CampaignFeatureFlags'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/campaigns/{id}/events:
+    get:
+      tags:
+        - Dashboard - Campaigns
+      summary: Get campaign events
+      description: Retrieves events for a specific campaign.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: List of events
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/WebSocketEvent'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/campaigns/{id}/scheduled-components:
+    get:
+      tags:
+        - Dashboard - Campaigns
+      summary: Get scheduled components
+      description: Retrieves all scheduled components for a campaign.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: List of scheduled components
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ScheduledComponent'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    post:
+      tags:
+        - Dashboard - Campaigns
+      summary: Create scheduled component
+      description: Creates a new scheduled component for a campaign.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - type
+                - scheduledTime
+                - data
+              properties:
+                type:
+                  type: string
+                scheduledTime:
+                  type: string
+                  format: date-time
+                endTime:
+                  type: string
+                  format: date-time
+                data:
+                  type: object
+      responses:
+        '201':
+          description: Scheduled component created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScheduledComponent'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/scheduled-components/{id}:
+    patch:
+      tags:
+        - Dashboard - Campaigns
+      summary: Update scheduled component
+      description: Updates a scheduled component.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                scheduledTime:
+                  type: string
+                  format: date-time
+                endTime:
+                  type: string
+                  format: date-time
+                data:
+                  type: object
+                status:
+                  type: string
+      responses:
+        '200':
+          description: Scheduled component updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScheduledComponent'
+        '404':
+          description: Scheduled component not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    delete:
+      tags:
+        - Dashboard - Campaigns
+      summary: Delete scheduled component
+      description: Deletes a scheduled component.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Scheduled component deleted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/form-state:
+    post:
+      tags:
+        - Dashboard - Campaigns
+      summary: Save form state
+      description: Saves or updates form state for a campaign.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - campaignId
+                - formType
+                - formData
+              properties:
+                campaignId:
+                  type: integer
+                formType:
+                  type: string
+                formData:
+                  type: object
+      responses:
+        '200':
+          description: Form state saved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FormState'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/form-state/{campaignId}/{formType}:
+    get:
+      tags:
+        - Dashboard - Campaigns
+      summary: Get form state by type
+      description: Retrieves the saved form state for a campaign and form type.
+      parameters:
+        - name: campaignId
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: formType
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Form state
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FormState'
+        '404':
+          description: Form state not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/form-state/{campaignId}:
+    get:
+      tags:
+        - Dashboard - Campaigns
+      summary: Get all form states for campaign
+      description: Retrieves all saved form states for a campaign.
+      parameters:
+        - name: campaignId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: List of form states
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/FormState'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/channels:
+    get:
+      tags:
+        - Dashboard - Campaigns
+      summary: List channels
+      description: Retrieves all channels.
+      responses:
+        '200':
+          description: List of channels
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Channel'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  # ============================================================
+  # Dashboard - Components
+  # ============================================================
+  /api/components:
+    get:
+      tags:
+        - Dashboard - Components
+      summary: List components
+      description: Retrieves all components from the component library.
+      responses:
+        '200':
+          description: List of components
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Component'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    post:
+      tags:
+        - Dashboard - Components
+      summary: Create component
+      description: Creates a new component in the component library.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InsertComponent'
+      responses:
+        '201':
+          description: Component created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Component'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/components/usage:
+    get:
+      tags:
+        - Dashboard - Components
+      summary: Get component usage
+      description: Retrieves usage statistics for all components across campaigns.
+      responses:
+        '200':
+          description: Component usage data
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    componentId:
+                      type: string
+                    name:
+                      type: string
+                    type:
+                      type: string
+                    campaignCount:
+                      type: integer
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/components/{id}:
+    get:
+      tags:
+        - Dashboard - Components
+      summary: Get component
+      description: Retrieves a component by ID.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Component details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Component'
+        '404':
+          description: Component not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    patch:
+      tags:
+        - Dashboard - Components
+      summary: Update component
+      description: Partially updates a component.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                config:
+                  type: object
+                isTemplate:
+                  type: string
+      responses:
+        '200':
+          description: Component updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Component'
+        '404':
+          description: Component not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    delete:
+      tags:
+        - Dashboard - Components
+      summary: Delete component
+      description: Deletes a component from the library.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Component deleted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+        '404':
+          description: Component not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/components/{id}/availability:
+    get:
+      tags:
+        - Dashboard - Components
+      summary: Get component availability
+      description: Checks which campaigns a component is available in.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Component availability
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  campaigns:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        campaignId:
+                          type: integer
+                        campaignName:
+                          type: string
+                        status:
+                          type: string
+        '404':
+          description: Component not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/campaigns/{id}/components:
+    get:
+      tags:
+        - Dashboard - Components
+      summary: Get campaign components
+      description: Retrieves all components linked to a campaign.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: List of campaign components
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/CampaignComponent'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    post:
+      tags:
+        - Dashboard - Components
+      summary: Add component to campaign
+      description: Links a component to a campaign with optional custom config and scheduling.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - componentId
+              properties:
+                componentId:
+                  type: string
+                instanceName:
+                  type: string
+                customConfig:
+                  type: object
+                scheduledTime:
+                  type: string
+                  format: date-time
+                endTime:
+                  type: string
+                  format: date-time
+                matchId:
+                  type: string
+      responses:
+        '201':
+          description: Component added to campaign
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CampaignComponent'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/campaigns/{id}/active-components:
+    get:
+      tags:
+        - Dashboard - Components
+      summary: Get active campaign components
+      description: Retrieves only active components for a campaign.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: List of active campaign components
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/CampaignComponent'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/campaigns/{id}/components/{componentId}:
+    patch:
+      tags:
+        - Dashboard - Components
+      summary: Update campaign component
+      description: Updates a campaign component's status or configuration.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: componentId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status:
+                  type: string
+                  enum: [active, inactive]
+                instanceName:
+                  type: string
+                scheduledTime:
+                  type: string
+                  format: date-time
+                endTime:
+                  type: string
+                  format: date-time
+      responses:
+        '200':
+          description: Campaign component updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CampaignComponent'
+        '404':
+          description: Campaign component not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    delete:
+      tags:
+        - Dashboard - Components
+      summary: Remove component from campaign
+      description: Removes a component from a campaign.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: componentId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Component removed from campaign
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/campaigns/{id}/components/{componentId}/config:
+    patch:
+      tags:
+        - Dashboard - Components
+      summary: Update component custom config
+      description: Updates the custom configuration override for a campaign component.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: componentId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                customConfig:
+                  type: object
+      responses:
+        '200':
+          description: Custom config updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CampaignComponent'
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  # ============================================================
+  # Dashboard - Broadcasts
+  # ============================================================
+  /api/broadcasts:
+    get:
+      tags:
+        - Dashboard - Broadcasts
+      summary: List broadcasts
+      description: Retrieves all broadcasts (dashboard endpoint).
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+        - name: campaignId
+          in: query
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: List of broadcasts
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Broadcast'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    post:
+      tags:
+        - Dashboard - Broadcasts
+      summary: Create broadcast
+      description: Creates a new broadcast (dashboard endpoint).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InsertBroadcast'
+      responses:
+        '201':
+          description: Broadcast created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Broadcast'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/broadcasts/{broadcastId}:
+    get:
+      tags:
+        - Dashboard - Broadcasts
+      summary: Get broadcast
+      description: Retrieves a broadcast by ID (dashboard endpoint).
+      parameters:
+        - name: broadcastId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Broadcast details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Broadcast'
+        '404':
+          description: Broadcast not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    put:
+      tags:
+        - Dashboard - Broadcasts
+      summary: Update broadcast
+      description: Updates a broadcast (dashboard endpoint).
+      parameters:
+        - name: broadcastId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InsertBroadcast'
+      responses:
+        '200':
+          description: Broadcast updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Broadcast'
+        '404':
+          description: Broadcast not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    delete:
+      tags:
+        - Dashboard - Broadcasts
+      summary: Delete broadcast
+      description: Deletes a broadcast (dashboard endpoint).
+      parameters:
+        - name: broadcastId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Broadcast deleted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+        '404':
+          description: Broadcast not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/broadcasts/{broadcastId}/polls:
+    get:
+      tags:
+        - Dashboard - Broadcasts
+      summary: List broadcast polls
+      description: Retrieves all polls for a broadcast (dashboard endpoint).
+      parameters:
+        - name: broadcastId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: List of polls
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Poll'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    post:
+      tags:
+        - Dashboard - Broadcasts
+      summary: Create poll
+      description: Creates a poll for a broadcast (dashboard endpoint).
+      parameters:
+        - name: broadcastId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreatePollInput'
+      responses:
+        '201':
+          description: Poll created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Poll'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/polls/{pollId}:
+    put:
+      tags:
+        - Dashboard - Broadcasts
+      summary: Update poll
+      description: Updates a poll (dashboard endpoint).
+      parameters:
+        - name: pollId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                question:
+                  type: string
+                isActive:
+                  type: boolean
+                options:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                      text:
+                        type: string
+      responses:
+        '200':
+          description: Poll updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Poll'
+        '404':
+          description: Poll not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    delete:
+      tags:
+        - Dashboard - Broadcasts
+      summary: Delete poll
+      description: Deletes a poll (dashboard endpoint).
+      parameters:
+        - name: pollId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Poll deleted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+        '404':
+          description: Poll not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/polls/{pollId}/results:
+    get:
+      tags:
+        - Dashboard - Broadcasts
+      summary: Get poll results
+      description: Retrieves poll results with percentages (dashboard endpoint).
+      parameters:
+        - name: pollId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Poll results
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PollResults'
+        '404':
+          description: Poll not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/broadcasts/{broadcastId}/contests:
+    get:
+      tags:
+        - Dashboard - Broadcasts
+      summary: List broadcast contests
+      description: Retrieves all contests for a broadcast (dashboard endpoint).
+      parameters:
+        - name: broadcastId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: List of contests
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Contest'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    post:
+      tags:
+        - Dashboard - Broadcasts
+      summary: Create contest
+      description: Creates a contest for a broadcast (dashboard endpoint).
+      parameters:
+        - name: broadcastId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateContestInput'
+      responses:
+        '201':
+          description: Contest created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Contest'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/contests/{contestId}:
+    put:
+      tags:
+        - Dashboard - Broadcasts
+      summary: Update contest
+      description: Updates a contest (dashboard endpoint).
+      parameters:
+        - name: contestId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                title:
+                  type: string
+                description:
+                  type: string
+                prize:
+                  type: string
+                isActive:
+                  type: boolean
+      responses:
+        '200':
+          description: Contest updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Contest'
+        '404':
+          description: Contest not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    delete:
+      tags:
+        - Dashboard - Broadcasts
+      summary: Delete contest
+      description: Deletes a contest (dashboard endpoint).
+      parameters:
+        - name: contestId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Contest deleted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+        '404':
+          description: Contest not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  # ============================================================
+  # Dashboard - Objects
+  # ============================================================
+  /api/objects/upload:
+    post:
+      tags:
+        - Dashboard - Objects
+      summary: Upload object
+      description: Uploads a file to object storage and returns the URL.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - file
+              properties:
+                file:
+                  type: string
+                  format: binary
+                prefix:
+                  type: string
+                  description: Optional path prefix for the uploaded file
+      responses:
+        '200':
+          description: File uploaded
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  url:
+                    type: string
+                  key:
+                    type: string
+        '400':
+          description: No file provided
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                message: "No file uploaded"
+        '500':
+          description: Upload failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/campaign-logo:
+    put:
+      tags:
+        - Dashboard - Objects
+      summary: Update campaign logo
+      description: Uploads and sets a campaign logo image.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - file
+                - campaignId
+              properties:
+                file:
+                  type: string
+                  format: binary
+                campaignId:
+                  type: integer
+      responses:
+        '200':
+          description: Logo updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  url:
+                    type: string
+                  campaign:
+                    $ref: '#/components/schemas/Campaign'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Upload failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  # ============================================================
+  # Analytics (planned)
+  # ============================================================
+  /api/analytics/overview:
+    get:
+      tags:
+        - Analytics
+      summary: Global KPIs overview
+      description: >-
+        Returns global platform KPIs including total apps, campaigns, broadcasts,
+        polls, contests, votes, and participations. (Planned endpoint)
+      responses:
+        '200':
+          description: Global analytics overview
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnalyticsOverview'
+              example:
+                totalApps: 12
+                totalCampaigns: 45
+                totalBroadcasts: 120
+                totalPolls: 300
+                totalContests: 80
+                totalVotes: 15000
+                totalParticipations: 3200
+                activeCampaigns: 8
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/analytics/engagement:
+    get:
+      tags:
+        - Analytics
+      summary: Engagement statistics
+      description: >-
+        Returns engagement statistics including vote and participation totals,
+        averages, and top performing campaigns. (Planned endpoint)
+      responses:
+        '200':
+          description: Engagement statistics
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnalyticsEngagement'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/analytics/apps/{id}:
+    get:
+      tags:
+        - Analytics
+      summary: Per-app analytics
+      description: Returns analytics data for a specific client application. (Planned endpoint)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: App analytics
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  app:
+                    $ref: '#/components/schemas/ClientApp'
+                  campaignCount:
+                    type: integer
+                  broadcastCount:
+                    type: integer
+                  totalVotes:
+                    type: integer
+                  totalParticipations:
+                    type: integer
+        '404':
+          description: App not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/analytics/campaigns/{id}:
+    get:
+      tags:
+        - Analytics
+      summary: Per-campaign analytics
+      description: >-
+        Returns detailed analytics for a campaign including poll and contest
+        performance, engagement rates, and timeline data. (Planned endpoint)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Campaign analytics
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  campaign:
+                    $ref: '#/components/schemas/Campaign'
+                  broadcastCount:
+                    type: integer
+                  pollPerformance:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        pollId:
+                          type: integer
+                        question:
+                          type: string
+                        totalVotes:
+                          type: integer
+                  contestPerformance:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        contestId:
+                          type: integer
+                        title:
+                          type: string
+                        totalParticipations:
+                          type: integer
+        '404':
+          description: Campaign not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/analytics/broadcasts/{id}:
+    get:
+      tags:
+        - Analytics
+      summary: Per-broadcast analytics
+      description: Returns analytics for a specific broadcast including engagement metrics. (Planned endpoint)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Broadcast analytics
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  broadcast:
+                    $ref: '#/components/schemas/Broadcast'
+                  pollCount:
+                    type: integer
+                  contestCount:
+                    type: integer
+                  totalVotes:
+                    type: integer
+                  totalParticipations:
+                    type: integer
+        '404':
+          description: Broadcast not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/analytics/geographic:
+    get:
+      tags:
+        - Analytics
+      summary: Geographic distribution
+      description: Returns geographic distribution of engagement across countries. (Planned endpoint)
+      responses:
+        '200':
+          description: Geographic analytics
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  countries:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        country:
+                          type: string
+                        votes:
+                          type: integer
+                        participations:
+                          type: integer
+                        percentage:
+                          type: number
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/analytics/sponsors:
+    get:
+      tags:
+        - Analytics
+      summary: Sponsor performance
+      description: Returns performance metrics for all sponsors. (Planned endpoint)
+      responses:
+        '200':
+          description: Sponsor performance data
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    sponsor:
+                      $ref: '#/components/schemas/Sponsor'
+                    campaignCount:
+                      type: integer
+                    totalVotes:
+                      type: integer
+                    totalParticipations:
+                      type: integer
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/analytics/compare:
+    get:
+      tags:
+        - Analytics
+      summary: Compare campaigns or broadcasts
+      description: >-
+        Compares performance metrics across multiple campaigns or broadcasts.
+        (Planned endpoint)
+      parameters:
+        - name: type
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [campaigns, broadcasts]
+          description: Type of entities to compare
+        - name: ids
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Comma-separated list of IDs to compare (e.g., 1,2,3)
+      responses:
+        '200':
+          description: Comparison data
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  type:
+                    type: string
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                        name:
+                          type: string
+                        totalVotes:
+                          type: integer
+                        totalParticipations:
+                          type: integer
+                        broadcastCount:
+                          type: integer
+        '400':
+          description: Missing or invalid parameters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                message: "type and ids query parameters are required"
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'

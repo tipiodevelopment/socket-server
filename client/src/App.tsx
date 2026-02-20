@@ -23,6 +23,7 @@ import CampaignsPage from "@/pages/campaigns";
 import BroadcastsPage from "@/pages/broadcasts";
 import NewCampaignPage from "@/pages/new-campaign";
 import SponsorsPage from "@/pages/sponsors";
+import AnalyticsPage from "@/pages/analytics";
 import NotFound from "@/pages/not-found";
 
 function Router() {
@@ -66,6 +67,9 @@ function Router() {
       </Route>
       <Route path="/components/:id">
         <RequireAuth><ComponentDetailPage /></RequireAuth>
+      </Route>
+      <Route path="/analytics">
+        <RequireAuth><AnalyticsPage /></RequireAuth>
       </Route>
       <Route path="/docs" component={DocsPage} />
 

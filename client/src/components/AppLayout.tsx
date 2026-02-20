@@ -19,6 +19,7 @@ import {
   Radio,
   ShoppingBag,
   FileText,
+  BarChart3,
   LogOut,
   Bell,
   Search,
@@ -53,6 +54,7 @@ const NAV_ITEMS = [
   { href: '/sponsors', label: 'Sponsors', icon: Award },
   { href: '/broadcasts', label: 'Broadcasts', icon: Radio },
   { href: '/components', label: 'Components', icon: ShoppingBag },
+  { href: '/analytics', label: 'Analytics', icon: BarChart3 },
   { href: '/docs', label: 'Docs', icon: FileText },
 ];
 

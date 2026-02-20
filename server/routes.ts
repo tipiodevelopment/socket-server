@@ -137,6 +137,10 @@ export let broadcastToCampaign: (campaignId: number, message: string) => void = 
 
 export async function registerRoutes(app: Express): Promise<Server> {
   const httpServer = createServer(app);
+
+  // Register analytics routes
+  const { registerAnalyticsRoutes } = await import("./analytics");
+  registerAnalyticsRoutes(app);
   
   // Create WebSocket server with noServer mode for custom path handling
   const wss = new WebSocketServer({ noServer: true });
