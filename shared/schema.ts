@@ -207,6 +207,8 @@ export const broadcasts = pgTable("broadcasts", {
   startTime: timestamp("start_time"),
   endTime: timestamp("end_time"),
   status: varchar("status", { length: 20 }).notNull().default('upcoming'),
+  viewerCount: integer("viewer_count").default(0),
+  peakViewers: integer("peak_viewers").default(0),
   metadata: json("metadata"),
   createdBy: integer("created_by").references(() => users.id, { onDelete: 'set null' }),
   createdAt: timestamp("created_at").defaultNow().notNull(),
@@ -297,6 +299,52 @@ export const contestParticipations = pgTable("contest_participations", {
   uniqueIndex("unique_user_contest").on(table.contestId, table.userId),
   index("idx_contest_participations_contest_id").on(table.contestId),
   index("idx_contest_participations_broadcast_id").on(table.broadcastId),
+]);
+
+// Broadcast Ads — scheduled/active ads linked to a broadcast
+export const broadcastAds = pgTable("broadcast_ads", {
+  id: serial("id").primaryKey(),
+  broadcastId: varchar("broadcast_id", { length: 255 }).notNull().references(() => broadcasts.broadcastId, { onDelete: 'cascade' }),
+  name: varchar("name", { length: 255 }).notNull(),
+  description: text("description"),
+  imageUrl: text("image_url"),
+  ctaUrl: text("cta_url"),
+  startTime: varchar("start_time", { length: 20 }),
+  duration: varchar("duration", { length: 20 }),
+  adType: varchar("ad_type", { length: 50 }).notNull().default('banner'),
+  isActive: boolean("is_active").notNull().default(true),
+  displayOrder: integer("display_order").notNull().default(0),
+  createdAt: timestamp("created_at").defaultNow().notNull()
+}, (table) => [
+  index("idx_broadcast_ads_broadcast_id").on(table.broadcastId),
+]);
+
+// Broadcast Products — shoppable products linked to a broadcast
+export const broadcastProducts = pgTable("broadcast_products", {
+  id: serial("id").primaryKey(),
+  broadcastId: varchar("broadcast_id", { length: 255 }).notNull().references(() => broadcasts.broadcastId, { onDelete: 'cascade' }),
+  name: varchar("name", { length: 255 }).notNull(),
+  subtitle: text("subtitle"),
+  price: varchar("price", { length: 20 }).notNull().default('0'),
+  originalPrice: varchar("original_price", { length: 20 }),
+  imageUrl: text("image_url"),
+  buyUrl: text("buy_url"),
+  status: varchar("status", { length: 20 }).notNull().default('available'),
+  displayOrder: integer("display_order").notNull().default(0),
+  createdAt: timestamp("created_at").defaultNow().notNull()
+}, (table) => [
+  index("idx_broadcast_products_broadcast_id").on(table.broadcastId),
+]);
+
+// Chat Messages — live chat messages per broadcast
+export const chatMessages = pgTable("chat_messages", {
+  id: serial("id").primaryKey(),
+  broadcastId: varchar("broadcast_id", { length: 255 }).notNull().references(() => broadcasts.broadcastId, { onDelete: 'cascade' }),
+  username: varchar("username", { length: 100 }).notNull(),
+  message: text("message").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull()
+}, (table) => [
+  index("idx_chat_messages_broadcast_id").on(table.broadcastId),
 ]);
 
 // Relations
@@ -457,7 +505,31 @@ export const broadcastsRelations = relations(broadcasts, ({ one, many }) => ({
     references: [users.id]
   }),
   polls: many(polls),
-  contests: many(contests)
+  contests: many(contests),
+  ads: many(broadcastAds),
+  products: many(broadcastProducts),
+  chatMessages: many(chatMessages)
+}));
+
+export const broadcastAdsRelations = relations(broadcastAds, ({ one }) => ({
+  broadcast: one(broadcasts, {
+    fields: [broadcastAds.broadcastId],
+    references: [broadcasts.broadcastId]
+  })
+}));
+
+export const broadcastProductsRelations = relations(broadcastProducts, ({ one }) => ({
+  broadcast: one(broadcasts, {
+    fields: [broadcastProducts.broadcastId],
+    references: [broadcasts.broadcastId]
+  })
+}));
+
+export const chatMessagesRelations = relations(chatMessages, ({ one }) => ({
+  broadcast: one(broadcasts, {
+    fields: [chatMessages.broadcastId],
+    references: [broadcasts.broadcastId]
+  })
 }));
 
 export const pollsRelations = relations(polls, ({ one, many }) => ({
@@ -595,6 +667,21 @@ export const insertBroadcastSchema = createInsertSchema(broadcasts).omit({
   updatedAt: true
 });
 
+export const insertBroadcastAdSchema = createInsertSchema(broadcastAds).omit({
+  id: true,
+  createdAt: true
+});
+
+export const insertBroadcastProductSchema = createInsertSchema(broadcastProducts).omit({
+  id: true,
+  createdAt: true
+});
+
+export const insertChatMessageSchema = createInsertSchema(chatMessages).omit({
+  id: true,
+  createdAt: true
+});
+
 export const updateBroadcastSchema = insertBroadcastSchema.partial().extend({
   startTime: z.string().datetime().nullable().optional(),
   endTime: z.string().datetime().nullable().optional()
@@ -713,6 +800,12 @@ export type Contest = typeof contests.$inferSelect;
 export type InsertContest = z.infer<typeof insertContestSchema>;
 export type ContestParticipation = typeof contestParticipations.$inferSelect;
 export type InsertContestParticipation = z.infer<typeof insertContestParticipationSchema>;
+export type BroadcastAd = typeof broadcastAds.$inferSelect;
+export type InsertBroadcastAd = z.infer<typeof insertBroadcastAdSchema>;
+export type BroadcastProduct = typeof broadcastProducts.$inferSelect;
+export type InsertBroadcastProduct = z.infer<typeof insertBroadcastProductSchema>;
+export type ChatMessage = typeof chatMessages.$inferSelect;
+export type InsertChatMessage = z.infer<typeof insertChatMessageSchema>;
 
 // Event schemas
 export const productEventSchema = z.object({

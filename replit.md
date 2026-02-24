@@ -39,11 +39,21 @@ The platform is built with a full-stack TypeScript environment.
 
 ### Feature Specifications
 
-- **Broadcast Detail Page:** Comprehensive view for managing broadcasts, featuring a custom header with stats, an event timeline with visual markers, active engagement components (polls, contests), scheduled ads, shoppable products, and a right sidebar for live chat and analytics.
+- **Broadcast Detail Page:** All data is real (no hardcoded mocks). Queries `/api/broadcasts/:id/ads`, `/api/broadcasts/:id/products`, `/api/broadcasts/:id/chat`, `/api/broadcasts/:id/analytics`. Live chat sidebar with functional send button. Analytics tab shows real poll/contest/viewer data. "Load Demo" button seeds real data via `/api/seed-demo`. Event timeline built from real polls and contests.
 - **Component Library:** A grid-based library for reusable UI components, allowing filtering and providing integration code snippets (e.g., iOS Swift). Components can be instanced multiple times per campaign with unique configurations.
-- **Campaign Dashboard:** A tabbed interface for campaign management, including overview, events, scheduled components, integrations, and settings. Supports scheduling components for timed activation/deactivation.
+- **Campaign Dashboard:** A tabbed interface for campaign management, including overview, events, scheduled components, integrations, and settings. Analytics tab now shows real broadcast performance data (total broadcasts, live count, total/peak viewers, per-broadcast table).
 - **Sponsor Management:** CRUD operations for sponsors, including logo/avatar uploads and color configuration, linked to campaign branding.
 - **Geographic Targeting & User Segmentation:** Server-side features for segmenting users based on location and other criteria, using deterministic hashing for consistent assignment.
+- **Admin Panel:** Forms for polls/products/contests now start empty (no Apple/PSG demo data). Data loads from DB via form state API.
+- **App Detail:** Stats cards no longer show hardcoded trend percentages (↑12%, ↑8%, etc.).
+
+### Database Tables
+
+New tables added in this session:
+- `broadcast_ads` — ads linked to broadcasts (name, description, imageUrl, ctaUrl, adType, duration, isActive, displayOrder)
+- `broadcast_products` — shoppable products per broadcast (name, subtitle, price/originalPrice as varchar, buyUrl, status, displayOrder)
+- `chat_messages` — live chat messages per broadcast (username, message, createdAt)
+- Broadcasts table extended with `viewerCount` and `peakViewers` integer columns
 
 ### API Architecture
 

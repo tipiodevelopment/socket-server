@@ -13,8 +13,6 @@ import { Label } from '@/components/ui/label';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import type { WebSocketEvent, Campaign } from '@shared/schema';
 import { ObjectUploader } from '@/components/ObjectUploader';
-import barcelonaLogo from '@assets/barcelona_1760348072481.png';
-import psgLogo from '@assets/download_1760348072483.png';
 import { ArrowLeft, ShoppingBag } from 'lucide-react';
 
 interface ProductForm {
@@ -98,93 +96,19 @@ export default function AdminPage() {
     }
   });
 
-  // Product forms state (array) - 3 examples ready to send
+  // Product forms state (array)
   const [productForms, setProductForms] = useState<ProductForm[]>([
-    {
-      id: Date.now(),
-      productId: '101',
-      name: 'iPhone 15 Pro Max',
-      description: 'Latest model with titanium and 48MP camera. Available in natural titanium, blue, white and black.',
-      price: '$1,199',
-      imageUrl: 'https://images.unsplash.com/photo-1592286927505-b7e00a46f74f?w=800&q=80'
-    },
-    {
-      id: Date.now() + 1,
-      productId: '102',
-      name: 'MacBook Air M3',
-      description: 'Apple\'s thinnest laptop with M3 chip, up to 18 hours battery life and 13" Liquid Retina display',
-      price: '$1,099',
-      imageUrl: 'https://images.unsplash.com/photo-1517336714731-489689fd1ca8?w=800&q=80'
-    },
-    {
-      id: Date.now() + 2,
-      productId: '103',
-      name: 'AirPods Pro (2. gen)',
-      description: 'Active noise cancellation, personalized spatial audio and up to 6 hours of playback',
-      price: '$249',
-      imageUrl: 'https://images.unsplash.com/photo-1606841837239-c5a1a4a07af7?w=800&q=80'
-    }
+    { id: Date.now(), productId: '', name: '', description: '', price: '', imageUrl: '' }
   ]);
 
-  // Poll forms state (array) - 3 examples ready to send
+  // Poll forms state (array)
   const [pollForms, setPollForms] = useState<PollForm[]>([
-    {
-      id: Date.now() + 3,
-      question: 'Who will win this match?',
-      options: [
-        { text: 'Barcelona', imageUrl: barcelonaLogo },
-        { text: 'PSG', imageUrl: psgLogo }
-      ],
-      duration: '60',
-      imageUrl: barcelonaLogo
-    },
-    {
-      id: Date.now() + 4,
-      question: 'Who will score in the second half?',
-      options: [
-        { text: 'Lamine Yamal', imageUrl: barcelonaLogo },
-        { text: 'Raphina', imageUrl: barcelonaLogo },
-        { text: 'Dembélé', imageUrl: psgLogo },
-        { text: 'Vitinha', imageUrl: psgLogo }
-      ],
-      duration: '90',
-      imageUrl: barcelonaLogo
-    },
-    {
-      id: Date.now() + 5,
-      question: 'Will PSG score in the final minutes?',
-      options: [
-        { text: 'Yes' },
-        { text: 'No' }
-      ],
-      duration: '120',
-      imageUrl: psgLogo
-    }
+    { id: Date.now() + 3, question: '', options: [{ text: '' }, { text: '' }], duration: '60' }
   ]);
 
-  // Contest forms state (array) - 3 examples ready to send
+  // Contest forms state (array)
   const [contestForms, setContestForms] = useState<ContestForm[]>([
-    {
-      id: Date.now() + 6,
-      name: 'Big Tech Contest 2024',
-      prize: 'Win MacBook Pro M3, AirPods Pro, Apple Watch Ultra and annual Apple One subscription',
-      deadline: '2024-12-31',
-      maxParticipants: '1000'
-    },
-    {
-      id: Date.now() + 7,
-      name: 'Ultimate Gaming Contest',
-      prize: 'PlayStation 5 Pro, 3 AAA games, 1 year PS Plus subscription and Sony Pulse 3D headphones',
-      deadline: '2024-11-30',
-      maxParticipants: '500'
-    },
-    {
-      id: Date.now() + 8,
-      name: 'Tech Conference Trip Raffle',
-      prize: 'Flight + hotel to attend Apple WWDC 2025 in California (all inclusive)',
-      deadline: '2025-03-15',
-      maxParticipants: '250'
-    }
+    { id: Date.now() + 6, name: '', prize: '', deadline: '', maxParticipants: '' }
   ]);
 
   // Track if forms have been loaded from database

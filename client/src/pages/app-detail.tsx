@@ -305,10 +305,6 @@ export default function AppDetailPage() {
               <div className="w-12 h-12 bg-[#3d8b7a]/10 dark:bg-white/10 rounded-lg flex items-center justify-center">
                 <Megaphone className="w-5 h-5 text-[#3d8b7a] dark:text-gray-300" />
               </div>
-              <span className="text-xs text-green-400 flex items-center gap-1">
-                <span>↑</span>
-                <span>12%</span>
-              </span>
             </div>
             <div className="text-2xl font-bold text-gray-900 dark:text-white mb-1">{activeCampaignsCount}</div>
             <div className="text-sm text-gray-500 dark:text-gray-400">Active Campaigns</div>
@@ -319,10 +315,6 @@ export default function AppDetailPage() {
               <div className="w-12 h-12 bg-[#3d8b7a]/10 dark:bg-white/10 rounded-lg flex items-center justify-center">
                 <Radio className="w-5 h-5 text-[#3d8b7a] dark:text-gray-300" />
               </div>
-              <span className="text-xs text-green-400 flex items-center gap-1">
-                <span>↑</span>
-                <span>8%</span>
-              </span>
             </div>
             <div className="text-2xl font-bold text-gray-900 dark:text-white mb-1">{liveBroadcastsCount}</div>
             <div className="text-sm text-gray-500 dark:text-gray-400">Live Broadcasts</div>
@@ -333,10 +325,6 @@ export default function AppDetailPage() {
               <div className="w-12 h-12 bg-green-500/10 rounded-lg flex items-center justify-center">
                 <Users className="w-5 h-5 text-green-400" />
               </div>
-              <span className="text-xs text-green-400 flex items-center gap-1">
-                <span>↑</span>
-                <span>24%</span>
-              </span>
             </div>
             <div className="text-2xl font-bold text-gray-900 dark:text-white mb-1">{formatViewers(totalViewers)}</div>
             <div className="text-sm text-gray-500 dark:text-gray-400">Total Viewers</div>
@@ -347,10 +335,6 @@ export default function AppDetailPage() {
               <div className="w-12 h-12 bg-pink-500/10 rounded-lg flex items-center justify-center">
                 <BarChart3 className="w-5 h-5 text-pink-400" />
               </div>
-              <span className="text-xs text-green-400 flex items-center gap-1">
-                <span>↑</span>
-                <span>18%</span>
-              </span>
             </div>
             <div className="text-2xl font-bold text-gray-900 dark:text-white mb-1">{engagementRate}%</div>
             <div className="text-sm text-gray-500 dark:text-gray-400">Engagement Rate</div>

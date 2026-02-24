@@ -1,6 +1,6 @@
-import { WebSocketEvent, Campaign, InsertCampaign, Event, InsertEvent, CampaignFormState, InsertFormState, ScheduledComponent, InsertScheduledComponent, Component, InsertComponent, CampaignComponent, InsertCampaignComponent, AppComponent, InsertAppComponent, User, InsertUser, ClientApp, InsertClientApp, Channel, InsertChannel, CampaignTranslation, InsertCampaignTranslation, CampaignEngagementConfig, InsertCampaignEngagementConfig, CampaignUiConfig, InsertCampaignUiConfig, CampaignFeatureFlags, InsertCampaignFeatureFlags, SdkTranslation, InsertSdkTranslation, Broadcast, InsertBroadcast, Poll, InsertPoll, PollOptionRecord, InsertPollOption, PollVote, InsertPollVote, Contest, InsertContest, ContestParticipation, InsertContestParticipation, Sponsor, InsertSponsor } from "@shared/schema";
+import { WebSocketEvent, Campaign, InsertCampaign, Event, InsertEvent, CampaignFormState, InsertFormState, ScheduledComponent, InsertScheduledComponent, Component, InsertComponent, CampaignComponent, InsertCampaignComponent, AppComponent, InsertAppComponent, User, InsertUser, ClientApp, InsertClientApp, Channel, InsertChannel, CampaignTranslation, InsertCampaignTranslation, CampaignEngagementConfig, InsertCampaignEngagementConfig, CampaignUiConfig, InsertCampaignUiConfig, CampaignFeatureFlags, InsertCampaignFeatureFlags, SdkTranslation, InsertSdkTranslation, Broadcast, InsertBroadcast, Poll, InsertPoll, PollOptionRecord, InsertPollOption, PollVote, InsertPollVote, Contest, InsertContest, ContestParticipation, InsertContestParticipation, Sponsor, InsertSponsor, BroadcastAd, InsertBroadcastAd, BroadcastProduct, InsertBroadcastProduct, ChatMessage, InsertChatMessage } from "@shared/schema";
 import { db } from "./db";
-import { campaigns, events, campaignFormState, scheduledComponents, components, campaignComponents, appComponents, users, clientApps, channels, campaignTranslations, campaignEngagementConfig, campaignUiConfig, campaignFeatureFlags, sdkTranslations, broadcasts, polls, pollOptions, pollVotes, contests, contestParticipations, sponsors } from "@shared/schema";
+import { campaigns, events, campaignFormState, scheduledComponents, components, campaignComponents, appComponents, users, clientApps, channels, campaignTranslations, campaignEngagementConfig, campaignUiConfig, campaignFeatureFlags, sdkTranslations, broadcasts, polls, pollOptions, pollVotes, contests, contestParticipations, sponsors, broadcastAds, broadcastProducts, chatMessages } from "@shared/schema";
 import { eq, desc, and, gte, ne, isNull, sql, lte, inArray } from "drizzle-orm";
 
 export interface IStorage {
@@ -165,6 +165,22 @@ export interface IStorage {
 
   // Enrichment: poll/contest counts for multiple broadcasts
   getBroadcastEngagementCounts(broadcastIds: string[]): Promise<Map<string, { pollCount: number; activePollCount: number; contestCount: number }>>;
+
+  // Broadcast Ads methods
+  getBroadcastAds(broadcastId: string): Promise<BroadcastAd[]>;
+  createBroadcastAd(ad: InsertBroadcastAd): Promise<BroadcastAd>;
+  updateBroadcastAd(id: number, data: Partial<InsertBroadcastAd>): Promise<BroadcastAd | undefined>;
+  deleteBroadcastAd(id: number): Promise<void>;
+
+  // Broadcast Products methods
+  getBroadcastProducts(broadcastId: string): Promise<BroadcastProduct[]>;
+  createBroadcastProduct(product: InsertBroadcastProduct): Promise<BroadcastProduct>;
+  updateBroadcastProduct(id: number, data: Partial<InsertBroadcastProduct>): Promise<BroadcastProduct | undefined>;
+  deleteBroadcastProduct(id: number): Promise<void>;
+
+  // Chat Messages methods
+  getChatMessages(broadcastId: string, limit?: number): Promise<ChatMessage[]>;
+  createChatMessage(message: InsertChatMessage): Promise<ChatMessage>;
 }
 
 export class MemStorage implements IStorage {
@@ -1188,6 +1204,62 @@ export class MemStorage implements IStorage {
     }
 
     return result;
+  }
+
+  // Broadcast Ads
+  async getBroadcastAds(broadcastId: string): Promise<BroadcastAd[]> {
+    return db.select().from(broadcastAds)
+      .where(eq(broadcastAds.broadcastId, broadcastId))
+      .orderBy(broadcastAds.displayOrder, broadcastAds.createdAt);
+  }
+
+  async createBroadcastAd(ad: InsertBroadcastAd): Promise<BroadcastAd> {
+    const [created] = await db.insert(broadcastAds).values(ad).returning();
+    return created;
+  }
+
+  async updateBroadcastAd(id: number, data: Partial<InsertBroadcastAd>): Promise<BroadcastAd | undefined> {
+    const [updated] = await db.update(broadcastAds).set(data).where(eq(broadcastAds.id, id)).returning();
+    return updated;
+  }
+
+  async deleteBroadcastAd(id: number): Promise<void> {
+    await db.delete(broadcastAds).where(eq(broadcastAds.id, id));
+  }
+
+  // Broadcast Products
+  async getBroadcastProducts(broadcastId: string): Promise<BroadcastProduct[]> {
+    return db.select().from(broadcastProducts)
+      .where(eq(broadcastProducts.broadcastId, broadcastId))
+      .orderBy(broadcastProducts.displayOrder, broadcastProducts.createdAt);
+  }
+
+  async createBroadcastProduct(product: InsertBroadcastProduct): Promise<BroadcastProduct> {
+    const [created] = await db.insert(broadcastProducts).values(product).returning();
+    return created;
+  }
+
+  async updateBroadcastProduct(id: number, data: Partial<InsertBroadcastProduct>): Promise<BroadcastProduct | undefined> {
+    const [updated] = await db.update(broadcastProducts).set(data).where(eq(broadcastProducts.id, id)).returning();
+    return updated;
+  }
+
+  async deleteBroadcastProduct(id: number): Promise<void> {
+    await db.delete(broadcastProducts).where(eq(broadcastProducts.id, id));
+  }
+
+  // Chat Messages
+  async getChatMessages(broadcastId: string, limit = 50): Promise<ChatMessage[]> {
+    const messages = await db.select().from(chatMessages)
+      .where(eq(chatMessages.broadcastId, broadcastId))
+      .orderBy(desc(chatMessages.createdAt))
+      .limit(limit);
+    return messages.reverse();
+  }
+
+  async createChatMessage(message: InsertChatMessage): Promise<ChatMessage> {
+    const [created] = await db.insert(chatMessages).values(message).returning();
+    return created;
   }
 }
 

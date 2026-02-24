@@ -1,9 +1,9 @@
 import { useParams, Link, useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, Pause, Play, MoreVertical, BarChart3, Radio, Puzzle, Settings, Activity } from "lucide-react";
-import { Campaign, Sponsor } from "@shared/schema";
+import { Campaign, Sponsor, Broadcast } from "@shared/schema";
 import { OverviewTab } from "@/components/dashboard/OverviewTab";
 import { EventsTab } from "@/components/dashboard/EventsTab";
 import { ScheduledTab } from "@/components/dashboard/ScheduledTab";
@@ -52,6 +52,16 @@ export default function CampaignDashboard() {
   const { data: campaign, isLoading } = useQuery<Campaign & { clientAppName?: string | null; channelName?: string | null }>({
     queryKey: ['/api/campaigns', campaignId],
     enabled: !!campaignId
+  });
+
+  const { data: campaignBroadcasts = [] } = useQuery<Broadcast[]>({
+    queryKey: ['/api/broadcasts', { campaignId }],
+    queryFn: async () => {
+      const res = await fetch(`/api/broadcasts?campaignId=${campaignId}`);
+      if (!res.ok) throw new Error('Failed');
+      return res.json();
+    },
+    enabled: !!campaignId && activeTab === 'analytics',
   });
 
   const { data: sponsors = [] } = useQuery<Sponsor[]>({
@@ -237,10 +247,71 @@ export default function CampaignDashboard() {
           </div>
         )}
         {activeTab === 'analytics' && (
-          <div className="flex flex-col items-center justify-center py-16">
-            <Activity className="w-12 h-12 text-gray-300 dark:text-white/20 mb-4" />
-            <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-1">Analytics Coming Soon</h3>
-            <p className="text-sm text-gray-500 dark:text-white/40">Campaign analytics and reporting will be available here.</p>
+          <div className="space-y-6">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div className="bg-white dark:bg-black border border-gray-200 dark:border-white/10 rounded-xl p-5">
+                <div className="text-xs text-gray-400 dark:text-gray-500 mb-2">Total Broadcasts</div>
+                <div className="text-2xl font-bold text-gray-900 dark:text-white">{campaignBroadcasts.length}</div>
+              </div>
+              <div className="bg-white dark:bg-black border border-gray-200 dark:border-white/10 rounded-xl p-5">
+                <div className="text-xs text-gray-400 dark:text-gray-500 mb-2">Live Now</div>
+                <div className="text-2xl font-bold text-gray-900 dark:text-white">
+                  {campaignBroadcasts.filter(b => b.status === 'live').length}
+                </div>
+              </div>
+              <div className="bg-white dark:bg-black border border-gray-200 dark:border-white/10 rounded-xl p-5">
+                <div className="text-xs text-gray-400 dark:text-gray-500 mb-2">Total Viewers</div>
+                <div className="text-2xl font-bold text-gray-900 dark:text-white">
+                  {campaignBroadcasts.reduce((sum, b) => sum + (b.viewerCount ?? 0), 0).toLocaleString()}
+                </div>
+              </div>
+              <div className="bg-white dark:bg-black border border-gray-200 dark:border-white/10 rounded-xl p-5">
+                <div className="text-xs text-gray-400 dark:text-gray-500 mb-2">Peak Viewers</div>
+                <div className="text-2xl font-bold text-gray-900 dark:text-white">
+                  {Math.max(0, ...campaignBroadcasts.map(b => b.peakViewers ?? 0)).toLocaleString()}
+                </div>
+              </div>
+            </div>
+
+            {campaignBroadcasts.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-16 bg-white dark:bg-black border border-gray-200 dark:border-white/10 rounded-xl">
+                <Activity className="w-12 h-12 text-gray-300 dark:text-white/20 mb-4" />
+                <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-1">No broadcasts yet</h3>
+                <p className="text-sm text-gray-500 dark:text-white/40">Analytics data will appear when you create broadcasts for this campaign.</p>
+              </div>
+            ) : (
+              <div className="bg-white dark:bg-black border border-gray-200 dark:border-white/10 rounded-xl overflow-hidden">
+                <div className="px-6 py-4 border-b border-gray-200 dark:border-white/10">
+                  <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Broadcast Performance</h3>
+                </div>
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-gray-200 dark:border-white/10">
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 dark:text-gray-500 uppercase">Broadcast</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 dark:text-gray-500 uppercase">Status</th>
+                      <th className="px-6 py-3 text-right text-xs font-medium text-gray-400 dark:text-gray-500 uppercase">Viewers</th>
+                      <th className="px-6 py-3 text-right text-xs font-medium text-gray-400 dark:text-gray-500 uppercase">Peak</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-200 dark:divide-white/10">
+                    {campaignBroadcasts.map(b => (
+                      <tr key={b.broadcastId} className="hover:bg-gray-50 dark:hover:bg-white/5 transition">
+                        <td className="px-6 py-3 text-gray-900 dark:text-white font-medium">{b.broadcastName}</td>
+                        <td className="px-6 py-3">
+                          <span className={`px-2 py-0.5 text-[10px] font-bold uppercase rounded-full ${
+                            b.status === 'live' ? 'bg-green-500/20 text-green-400' :
+                            b.status === 'upcoming' ? 'bg-yellow-500/20 text-yellow-400' :
+                            'bg-gray-500/20 text-gray-400'
+                          }`}>{b.status}</span>
+                        </td>
+                        <td className="px-6 py-3 text-right text-gray-600 dark:text-gray-300">{(b.viewerCount ?? 0).toLocaleString()}</td>
+                        <td className="px-6 py-3 text-right text-gray-600 dark:text-gray-300">{(b.peakViewers ?? 0).toLocaleString()}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -272,7 +343,6 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import type { Broadcast } from '@shared/schema';
 import { Plus, Trash2, Clock, Filter, Calendar } from 'lucide-react';
 
 function getStatusBadge(status: string) {

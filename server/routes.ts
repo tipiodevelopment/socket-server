@@ -3372,6 +3372,202 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ========================================
+  // Broadcast Ads Endpoints
+  // ========================================
+  app.get('/api/broadcasts/:broadcastId/ads', async (req, res) => {
+    try {
+      const ads = await storage.getBroadcastAds(req.params.broadcastId);
+      res.json(ads);
+    } catch (error) {
+      res.status(500).json({ message: 'Error getting ads' });
+    }
+  });
+
+  app.post('/api/broadcasts/:broadcastId/ads', async (req, res) => {
+    try {
+      const { broadcastId } = req.params;
+      const broadcast = await storage.getBroadcast(broadcastId);
+      if (!broadcast) return res.status(404).json({ message: 'Broadcast not found' });
+      const ad = await storage.createBroadcastAd({ ...req.body, broadcastId });
+      res.status(201).json(ad);
+    } catch (error) {
+      res.status(500).json({ message: 'Error creating ad' });
+    }
+  });
+
+  app.put('/api/broadcasts/ads/:id', async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const updated = await storage.updateBroadcastAd(id, req.body);
+      if (!updated) return res.status(404).json({ message: 'Ad not found' });
+      res.json(updated);
+    } catch (error) {
+      res.status(500).json({ message: 'Error updating ad' });
+    }
+  });
+
+  app.delete('/api/broadcasts/ads/:id', async (req, res) => {
+    try {
+      await storage.deleteBroadcastAd(parseInt(req.params.id));
+      res.status(204).send();
+    } catch (error) {
+      res.status(500).json({ message: 'Error deleting ad' });
+    }
+  });
+
+  // ========================================
+  // Broadcast Products Endpoints
+  // ========================================
+  app.get('/api/broadcasts/:broadcastId/products', async (req, res) => {
+    try {
+      const products = await storage.getBroadcastProducts(req.params.broadcastId);
+      res.json(products);
+    } catch (error) {
+      res.status(500).json({ message: 'Error getting products' });
+    }
+  });
+
+  app.post('/api/broadcasts/:broadcastId/products', async (req, res) => {
+    try {
+      const { broadcastId } = req.params;
+      const broadcast = await storage.getBroadcast(broadcastId);
+      if (!broadcast) return res.status(404).json({ message: 'Broadcast not found' });
+      const product = await storage.createBroadcastProduct({ ...req.body, broadcastId });
+      res.status(201).json(product);
+    } catch (error) {
+      res.status(500).json({ message: 'Error creating product' });
+    }
+  });
+
+  app.put('/api/broadcasts/products/:id', async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const updated = await storage.updateBroadcastProduct(id, req.body);
+      if (!updated) return res.status(404).json({ message: 'Product not found' });
+      res.json(updated);
+    } catch (error) {
+      res.status(500).json({ message: 'Error updating product' });
+    }
+  });
+
+  app.delete('/api/broadcasts/products/:id', async (req, res) => {
+    try {
+      await storage.deleteBroadcastProduct(parseInt(req.params.id));
+      res.status(204).send();
+    } catch (error) {
+      res.status(500).json({ message: 'Error deleting product' });
+    }
+  });
+
+  // ========================================
+  // Chat Messages Endpoints
+  // ========================================
+  app.get('/api/broadcasts/:broadcastId/chat', async (req, res) => {
+    try {
+      const limit = req.query.limit ? parseInt(req.query.limit as string) : 50;
+      const messages = await storage.getChatMessages(req.params.broadcastId, limit);
+      res.json(messages);
+    } catch (error) {
+      res.status(500).json({ message: 'Error getting chat messages' });
+    }
+  });
+
+  app.post('/api/broadcasts/:broadcastId/chat', async (req, res) => {
+    try {
+      const { broadcastId } = req.params;
+      const { username, message } = req.body;
+      if (!username || !message) return res.status(400).json({ message: 'username and message are required' });
+      const chatMsg = await storage.createChatMessage({ broadcastId, username, message });
+      res.status(201).json(chatMsg);
+    } catch (error) {
+      res.status(500).json({ message: 'Error creating chat message' });
+    }
+  });
+
+  // ========================================
+  // Broadcast Analytics Endpoint
+  // ========================================
+  app.get('/api/broadcasts/:broadcastId/analytics', async (req, res) => {
+    try {
+      const { broadcastId } = req.params;
+      const broadcast = await storage.getBroadcast(broadcastId);
+      if (!broadcast) return res.status(404).json({ message: 'Broadcast not found' });
+
+      const polls = await storage.getBroadcastPolls(broadcastId);
+      const contests = await storage.getBroadcastContests(broadcastId);
+
+      const totalVotes = polls.reduce((sum, p) => sum + (p.totalVotes ?? 0), 0);
+      const activePolls = polls.filter(p => p.isActive).length;
+      const activeContests = contests.filter(c => c.isActive).length;
+
+      res.json({
+        broadcastId,
+        pollCount: polls.length,
+        activePolls,
+        contestCount: contests.length,
+        activeContests,
+        totalVotes,
+        viewerCount: broadcast.viewerCount ?? 0,
+        peakViewers: broadcast.peakViewers ?? 0,
+        status: broadcast.status,
+      });
+    } catch (error) {
+      res.status(500).json({ message: 'Error getting analytics' });
+    }
+  });
+
+  // ========================================
+  // Seed Demo Data Endpoint
+  // ========================================
+  app.post('/api/seed-demo', async (req, res) => {
+    try {
+      const { broadcastId } = req.body;
+      if (!broadcastId) return res.status(400).json({ message: 'broadcastId is required' });
+
+      const broadcast = await storage.getBroadcast(broadcastId);
+      if (!broadcast) return res.status(404).json({ message: 'Broadcast not found' });
+
+      const existingAds = await storage.getBroadcastAds(broadcastId);
+      const existingProducts = await storage.getBroadcastProducts(broadcastId);
+      const existingChat = await storage.getChatMessages(broadcastId, 1);
+
+      if (existingAds.length === 0) {
+        await storage.createBroadcastAd({ broadcastId, name: 'Nike Air Max Campaign', description: 'Exclusive limited edition drop for event attendees', imageUrl: 'https://images.unsplash.com/photo-1542291026-7eec264c27ff?w=400', ctaUrl: 'https://nike.com', adType: 'banner', duration: '30', isActive: true, displayOrder: 1 });
+        await storage.createBroadcastAd({ broadcastId, name: 'Spotify Premium', description: '3 months free with your first purchase', imageUrl: 'https://images.unsplash.com/photo-1611532736597-de2d4265fba3?w=400', ctaUrl: 'https://spotify.com', adType: 'interstitial', duration: '15', isActive: true, displayOrder: 2 });
+        await storage.createBroadcastAd({ broadcastId, name: 'Red Bull Energy', description: 'Fuel your passion. Available at the venue.', imageUrl: 'https://images.unsplash.com/photo-1568702846914-96b305d2aaeb?w=400', ctaUrl: 'https://redbull.com', adType: 'overlay', duration: '20', isActive: false, displayOrder: 3 });
+      }
+
+      if (existingProducts.length === 0) {
+        await storage.createBroadcastProduct({ broadcastId, name: 'Official Team Jersey', subtitle: 'Limited Edition 2024 Season', price: '89.99', originalPrice: '129.99', imageUrl: 'https://images.unsplash.com/photo-1556821840-3a63f15732ce?w=400', buyUrl: 'https://shop.example.com/jersey', status: 'available', displayOrder: 1 });
+        await storage.createBroadcastProduct({ broadcastId, name: 'Match Day Scarf', subtitle: 'Premium wool blend', price: '24.99', imageUrl: 'https://images.unsplash.com/photo-1609428613813-ef4e36b24059?w=400', buyUrl: 'https://shop.example.com/scarf', status: 'available', displayOrder: 2 });
+        await storage.createBroadcastProduct({ broadcastId, name: 'Collector Cap', subtitle: 'Embroidered logo, adjustable fit', price: '34.99', originalPrice: '44.99', imageUrl: 'https://images.unsplash.com/photo-1588850561407-ed78c282e89b?w=400', buyUrl: 'https://shop.example.com/cap', status: 'limited', displayOrder: 3 });
+        await storage.createBroadcastProduct({ broadcastId, name: 'Fan Pack Bundle', subtitle: 'Jersey + Scarf + Cap', price: '129.99', originalPrice: '199.99', imageUrl: 'https://images.unsplash.com/photo-1606813907291-d86efa9b94db?w=400', buyUrl: 'https://shop.example.com/bundle', status: 'available', displayOrder: 4 });
+      }
+
+      if (existingChat.length === 0) {
+        const chatData = [
+          { username: 'carlos_fan', message: '¡Qué partido más increíble! 🔥' },
+          { username: 'maria_sports', message: 'Best broadcast I\'ve seen this season!' },
+          { username: 'javi_2024', message: 'The poll results are insane, did not see that coming' },
+          { username: 'ana_vio', message: 'Love the shoppable products feature 🛍️' },
+          { username: 'pedro_lv', message: 'Can\'t believe how smooth the stream is' },
+          { username: 'lucia_mx', message: 'voted in the poll! Hope my team wins 🏆' },
+          { username: 'rafael_it', message: 'Amazing production quality' },
+          { username: 'sofia_br', message: 'Just bought the jersey!! So excited 😍' },
+        ];
+        for (const msg of chatData) {
+          await storage.createChatMessage({ broadcastId, ...msg });
+        }
+      }
+
+      res.json({ message: 'Demo data seeded successfully', broadcastId });
+    } catch (error) {
+      console.error('Error seeding demo data:', error);
+      res.status(500).json({ message: 'Error seeding demo data' });
+    }
+  });
+
   app.get('/api/polls/:pollId/results', async (req, res) => {
     try {
       const pollId = parseInt(req.params.pollId);

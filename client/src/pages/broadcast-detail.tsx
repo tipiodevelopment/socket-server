@@ -10,16 +10,27 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { useToast } from '@/hooks/use-toast';
 import { queryClient, apiRequest } from '@/lib/queryClient';
 import { AppLayout } from '@/components/AppLayout';
-import type { BreadcrumbItem } from '@/components/AppLayout';
-import type { Broadcast, Poll, PollOptionRecord, Contest, Campaign } from '@shared/schema';
-import { ArrowLeft, Plus, Trash2, Clock, BarChart3, Trophy, X, MoreVertical, CheckCircle, Play, SkipBack, SkipForward, Maximize2, Send, ShoppingBag, Megaphone } from 'lucide-react';
-import { useState } from 'react';
+import type { Broadcast, Poll, PollOptionRecord, Contest, Campaign, BroadcastAd, BroadcastProduct, ChatMessage } from '@shared/schema';
+import { ArrowLeft, Plus, Trash2, BarChart3, Trophy, X, MoreVertical, CheckCircle, Play, SkipBack, SkipForward, Maximize2, Send, Megaphone, ShoppingBag, ExternalLink } from 'lucide-react';
+import { useState, useRef, useEffect } from 'react';
 import { useUser } from '@/contexts/UserContext';
 
 type BroadcastWithRelations = Broadcast & {
   polls?: (Poll & { options?: PollOptionRecord[] })[];
   contests?: Contest[];
   campaign?: Campaign | null;
+};
+
+type BroadcastAnalytics = {
+  broadcastId: string;
+  pollCount: number;
+  activePolls: number;
+  contestCount: number;
+  activeContests: number;
+  totalVotes: number;
+  viewerCount: number;
+  peakViewers: number;
+  status: string;
 };
 
 const CONTEST_TYPES = [
@@ -29,95 +40,12 @@ const CONTEST_TYPES = [
   { value: 'prediction', label: 'Prediction' },
 ];
 
-const HARDCODED_ADS = [
-  {
-    id: 1,
-    name: 'Nike Jersey Flash Sale',
-    description: '50% off official team jerseys - Limited time',
-    image: 'https://storage.googleapis.com/uxpilot-auth.appspot.com/67260ce1bc-6fd10625fa126365dc69.png',
-    startTime: '32:00',
-    duration: '30s',
-    adType: 'Clickable Banner',
-  },
-  {
-    id: 2,
-    name: 'Gatorade Halftime Special',
-    description: 'Refresh like the pros - Special offer inside',
-    image: 'https://storage.googleapis.com/uxpilot-auth.appspot.com/906bb61311-d5ac1f9b4086d5c739dd.png',
-    startTime: '45:00',
-    duration: '45s',
-    adType: 'Video Ad',
-  },
-  {
-    id: 3,
-    name: 'EA Sports FC 24',
-    description: 'Pre-order now and get exclusive content',
-    image: 'https://storage.googleapis.com/uxpilot-auth.appspot.com/5c880ebcfa-f0b7f68a577bb1335e4b.png',
-    startTime: '79:30',
-    duration: '30s',
-    adType: 'Interactive',
-  },
-];
-
-const HARDCODED_PRODUCTS = [
-  {
-    id: 1,
-    name: 'Real Madrid Home Jersey',
-    subtitle: 'Official 2025/26 Season',
-    price: 89.99,
-    originalPrice: 119.99,
-    image: 'https://storage.googleapis.com/uxpilot-auth.appspot.com/67260ce1bc-6fd10625fa126365dc69.png',
-    status: 'active',
-  },
-  {
-    id: 2,
-    name: 'Gatorade Pack (12x)',
-    subtitle: 'Mixed Flavors Bundle',
-    price: 24.99,
-    originalPrice: null,
-    image: 'https://storage.googleapis.com/uxpilot-auth.appspot.com/906bb61311-d5ac1f9b4086d5c739dd.png',
-    status: 'active',
-  },
-  {
-    id: 3,
-    name: 'EA Sports FC 24',
-    subtitle: 'Ultimate Edition',
-    price: 69.99,
-    originalPrice: null,
-    image: 'https://storage.googleapis.com/uxpilot-auth.appspot.com/5c880ebcfa-f0b7f68a577bb1335e4b.png',
-    status: 'scheduled',
-  },
-  {
-    id: 4,
-    name: 'Nike Match Ball',
-    subtitle: 'Official LaLiga Ball',
-    price: 149.99,
-    originalPrice: null,
-    image: 'https://storage.googleapis.com/uxpilot-auth.appspot.com/67260ce1bc-6fd10625fa126365dc69.png',
-    status: 'active',
-  },
-];
-
-const TIMELINE_EVENTS = [
-  { id: 1, type: 'poll', label: 'Poll: Who will score first?', time: '10:45', status: 'Active', position: 12 },
-  { id: 2, type: 'contest', label: 'Contest: Predict Score', time: '25:30', status: 'Scheduled', position: 28 },
-  { id: 3, type: 'ad', label: 'Ad: Nike Jersey Sale', time: '32:00', status: 'Scheduled', position: 35 },
-  { id: 4, type: 'poll', label: 'Poll: Best Player', time: '52:15', status: 'Scheduled', position: 58 },
-  { id: 5, type: 'contest', label: 'Contest: Final Score Trivia', time: '65:00', status: 'Scheduled', position: 72 },
-  { id: 6, type: 'ad', label: 'Ad: Post-Match Offer', time: '79:30', status: 'Scheduled', position: 88 },
-  { id: 7, type: 'poll', label: 'Poll: Match Rating', time: '85:00', status: 'Scheduled', position: 94 },
-];
-
-const CHAT_MESSAGES = [
-  { id: 1, user: 'Carlos_RM', time: '2m ago', message: 'This match is incredible! 🔥' },
-  { id: 2, user: 'MariaFCB', time: '3m ago', message: 'Benzema is on fire today!' },
-  { id: 3, user: 'JuanLaLiga', time: '4m ago', message: 'I voted for Lewandowski in the poll' },
-  { id: 4, user: 'Sofia_Madrid', time: '5m ago', message: "Who's ready for the contest? 🏆" },
-  { id: 5, user: 'PedroBarça', time: '6m ago', message: 'Great save by Courtois!' },
-  { id: 6, user: 'Miguel_ES', time: '7m ago', message: 'This is why we love El Clásico ⚽' },
-  { id: 7, user: 'LauraFan', time: '8m ago', message: "Can't believe the pace of this game!" },
-  { id: 8, user: 'DiegoMadrid', time: '9m ago', message: 'Vinicius Jr is unstoppable! 🚀' },
-];
+function formatViewers(num: number): string {
+  if (!num) return '0';
+  if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M';
+  if (num >= 1000) return (num / 1000).toFixed(1) + 'K';
+  return num.toString();
+}
 
 function StatusBadge({ status }: { status: string }) {
   if (status === 'live') {
@@ -142,30 +70,29 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
-function EventTimeline() {
-  const currentPosition = 50.4;
+function EventTimeline({ polls, contests }: { polls: (Poll & { options?: PollOptionRecord[] })[]; contests: Contest[] }) {
+  const allEvents = [
+    ...polls.map((p, i) => ({ id: `poll-${p.id}`, type: 'poll' as const, label: p.question, isActive: p.isActive, position: Math.min(10 + i * 15, 90) })),
+    ...contests.map((c, i) => ({ id: `contest-${c.id}`, type: 'contest' as const, label: c.title, isActive: c.isActive, position: Math.min(25 + i * 20, 90) })),
+  ].sort((a, b) => a.position - b.position);
+
+  const colorMap: Record<string, string> = { poll: 'bg-blue-500', contest: 'bg-purple-500' };
+  const topValues = [16, 48, 32, 16, 24, 40, 8, 56];
 
   return (
     <div className="mb-6" data-testid="section-timeline">
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-sm font-semibold text-gray-900 dark:text-white">Event Timeline</h2>
-        <div className="flex items-center space-x-2">
-          <button className="px-3 py-1.5 bg-[#3d8b7a] text-white dark:bg-white dark:text-black rounded text-xs font-medium hover:bg-[#2f7365] dark:hover:bg-gray-200 transition" data-testid="button-add-event">
-            <Plus className="w-3 h-3 inline mr-1.5" />
-            Add Event
-          </button>
-          <button className="w-8 h-8 flex items-center justify-center rounded border border-gray-200 dark:border-white/20 hover:border-gray-300 dark:hover:border-white/40 text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition" data-testid="button-expand-timeline">
-            <Maximize2 className="w-3.5 h-3.5" />
-          </button>
-        </div>
+        <button className="w-8 h-8 flex items-center justify-center rounded border border-gray-200 dark:border-white/20 hover:border-gray-300 dark:hover:border-white/40 text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition" data-testid="button-expand-timeline">
+          <Maximize2 className="w-3.5 h-3.5" />
+        </button>
       </div>
 
       <div className="bg-transparent border border-gray-200 dark:border-white/10 rounded-lg p-6">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center space-x-4">
-            <div className="text-xs text-gray-400 dark:text-gray-500">Current Time</div>
-            <div className="text-2xl font-bold text-gray-900 dark:text-white">45:23</div>
-            <div className="px-2 py-1 bg-gray-100 dark:bg-white/10 rounded text-xs text-gray-600 dark:text-gray-300">1st Half</div>
+            <div className="text-xs text-gray-400 dark:text-gray-500">Scheduled Events</div>
+            <div className="text-2xl font-bold text-gray-900 dark:text-white">{allEvents.length}</div>
           </div>
           <div className="flex items-center space-x-2">
             <button className="w-8 h-8 flex items-center justify-center rounded border border-gray-200 dark:border-white/20 hover:border-gray-300 dark:hover:border-white/40 text-gray-900 dark:text-white transition" data-testid="button-backward">
@@ -180,75 +107,54 @@ function EventTimeline() {
           </div>
         </div>
 
-        <div className="relative">
-          <div className="h-2 bg-gray-100 dark:bg-white/5 rounded-full overflow-hidden mb-8">
-            <div className="h-full bg-[#3d8b7a] dark:bg-white rounded-full" style={{ width: `${currentPosition}%` }}></div>
+        {allEvents.length === 0 ? (
+          <div className="py-8 text-center text-xs text-gray-400 dark:text-gray-500">
+            No events yet. Create polls or contests to see them on the timeline.
           </div>
+        ) : (
+          <div className="relative">
+            <div className="h-2 bg-gray-100 dark:bg-white/5 rounded-full overflow-hidden mb-8">
+              <div className="h-full bg-[#3d8b7a] dark:bg-white rounded-full" style={{ width: '50%' }}></div>
+            </div>
 
-          <div className="relative h-32">
-            <div className="absolute left-0 top-0 bottom-0 w-px bg-gray-200 dark:bg-white/20"></div>
-            <div className="absolute left-1/4 top-0 bottom-0 w-px bg-gray-100 dark:bg-white/10"></div>
-            <div className="absolute left-1/2 top-0 bottom-0 w-px bg-gray-200 dark:bg-white/20"></div>
-            <div className="absolute left-3/4 top-0 bottom-0 w-px bg-gray-100 dark:bg-white/10"></div>
-            <div className="absolute right-0 top-0 bottom-0 w-px bg-gray-200 dark:bg-white/20"></div>
+            <div className="relative h-32">
+              <div className="absolute left-0 top-0 bottom-0 w-px bg-gray-200 dark:bg-white/20"></div>
+              <div className="absolute left-1/4 top-0 bottom-0 w-px bg-gray-100 dark:bg-white/10"></div>
+              <div className="absolute left-1/2 top-0 bottom-0 w-px bg-gray-200 dark:bg-white/20"></div>
+              <div className="absolute left-3/4 top-0 bottom-0 w-px bg-gray-100 dark:bg-white/10"></div>
+              <div className="absolute right-0 top-0 bottom-0 w-px bg-gray-200 dark:bg-white/20"></div>
 
-            <div className="absolute left-0 -top-5 text-xs text-gray-400 dark:text-gray-500">00:00</div>
-            <div className="absolute left-1/4 -top-5 text-xs text-gray-400 dark:text-gray-500">22:30</div>
-            <div className="absolute left-1/2 -top-5 text-xs text-gray-400 dark:text-gray-500">45:00</div>
-            <div className="absolute left-3/4 -top-5 text-xs text-gray-400 dark:text-gray-500">67:30</div>
-            <div className="absolute right-0 -top-5 text-xs text-gray-400 dark:text-gray-500">90:00</div>
-
-            {TIMELINE_EVENTS.map((event, i) => {
-              const topValues = [16, 48, 32, 16, 24, 40, 8];
-              const colorMap: Record<string, string> = { poll: 'bg-blue-500', contest: 'bg-purple-500', ad: 'bg-green-500' };
-              const isPast = event.position <= currentPosition;
-              return (
+              {allEvents.map((event, i) => (
                 <div
                   key={event.id}
                   className="absolute group cursor-pointer"
-                  style={{ left: `${event.position}%`, top: `${topValues[i]}px` }}
+                  style={{ left: `${event.position}%`, top: `${topValues[i % topValues.length]}px` }}
                   data-testid={`timeline-event-${event.id}`}
                 >
-                  <div className={`w-3 h-3 ${colorMap[event.type]} rounded-full border-2 border-white dark:border-black ${!isPast ? 'opacity-50' : ''}`}></div>
+                  <div className={`w-3 h-3 ${colorMap[event.type]} rounded-full border-2 border-white dark:border-black ${!event.isActive ? 'opacity-50' : ''}`}></div>
                   <div className="absolute left-1/2 -translate-x-1/2 top-6 opacity-0 group-hover:opacity-100 transition bg-white dark:bg-black border border-gray-200 dark:border-white/20 rounded p-2 text-xs whitespace-nowrap z-10">
-                    <div className="font-semibold text-gray-900 dark:text-white mb-1">{event.label}</div>
-                    <div className="text-gray-500 dark:text-gray-400">{event.time} - {event.status}</div>
+                    <div className="font-semibold text-gray-900 dark:text-white mb-1 capitalize">{event.type}: {event.label}</div>
+                    <div className="text-gray-500 dark:text-gray-400">{event.isActive ? 'Active' : 'Scheduled'}</div>
                   </div>
                 </div>
-              );
-            })}
+              ))}
+            </div>
 
-            <div
-              className="absolute group cursor-pointer"
-              style={{ left: `${currentPosition}%`, top: '16px' }}
-              data-testid="timeline-current-position"
-            >
-              <div className="w-4 h-4 bg-[#3d8b7a] dark:bg-white rounded-full border-2 border-white dark:border-black animate-pulse"></div>
-              <div className="absolute left-1/2 -translate-x-1/2 top-6 opacity-0 group-hover:opacity-100 transition bg-white dark:bg-black border border-gray-200 dark:border-white/20 rounded p-2 text-xs whitespace-nowrap z-10">
-                <div className="font-semibold text-gray-900 dark:text-white mb-1">Current Position</div>
-                <div className="text-gray-500 dark:text-gray-400">45:23 - Live</div>
+            <div className="flex items-center justify-between mt-6 pt-4 border-t border-gray-200 dark:border-white/10">
+              <div className="flex items-center space-x-4">
+                <div className="flex items-center space-x-2">
+                  <div className="w-3 h-3 bg-blue-500 rounded-full"></div>
+                  <span className="text-xs text-gray-500 dark:text-gray-400">Polls</span>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <div className="w-3 h-3 bg-purple-500 rounded-full"></div>
+                  <span className="text-xs text-gray-500 dark:text-gray-400">Contests</span>
+                </div>
               </div>
+              <div className="text-xs text-gray-400 dark:text-gray-500">{allEvents.length} scheduled events</div>
             </div>
           </div>
-
-          <div className="flex items-center justify-between mt-6 pt-4 border-t border-gray-200 dark:border-white/10">
-            <div className="flex items-center space-x-4">
-              <div className="flex items-center space-x-2">
-                <div className="w-3 h-3 bg-blue-500 rounded-full"></div>
-                <span className="text-xs text-gray-500 dark:text-gray-400">Polls</span>
-              </div>
-              <div className="flex items-center space-x-2">
-                <div className="w-3 h-3 bg-purple-500 rounded-full"></div>
-                <span className="text-xs text-gray-500 dark:text-gray-400">Contests</span>
-              </div>
-              <div className="flex items-center space-x-2">
-                <div className="w-3 h-3 bg-green-500 rounded-full"></div>
-                <span className="text-xs text-gray-500 dark:text-gray-400">Ads</span>
-              </div>
-            </div>
-            <div className="text-xs text-gray-400 dark:text-gray-500">{TIMELINE_EVENTS.length} scheduled events</div>
-          </div>
-        </div>
+        )}
       </div>
     </div>
   );
@@ -408,122 +314,228 @@ function ContestCard({ contest, onToggle, onDelete }: {
   );
 }
 
-function ScheduledAdsSection() {
+function ScheduledAdsSection({ broadcastId }: { broadcastId: string }) {
+  const { toast } = useToast();
+  const { data: ads = [], isLoading } = useQuery<BroadcastAd[]>({
+    queryKey: ['/api/broadcasts', broadcastId, 'ads'],
+  });
+
+  const deleteAdMutation = useMutation({
+    mutationFn: (id: number) => apiRequest('DELETE', `/api/broadcasts/ads/${id}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/broadcasts', broadcastId, 'ads'] });
+      toast({ title: 'Ad removed' });
+    },
+  });
+
   return (
     <div className="mb-6" data-testid="section-ads">
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-sm font-semibold text-gray-900 dark:text-white">Scheduled Ads</h2>
-        <button className="px-3 py-1.5 bg-transparent border border-gray-200 dark:border-white/20 hover:border-gray-300 dark:hover:border-white/40 text-gray-900 dark:text-white rounded text-xs font-medium transition" data-testid="button-add-ad">
-          <Plus className="w-3 h-3 inline mr-1.5" />
-          Add Ad
-        </button>
       </div>
 
-      <div className="space-y-3">
-        {HARDCODED_ADS.map((ad) => (
-          <div key={ad.id} className="bg-transparent border border-gray-200 dark:border-white/10 rounded-lg p-4 flex items-center justify-between" data-testid={`card-ad-${ad.id}`}>
-            <div className="flex items-center space-x-4">
-              <div className="w-16 h-16 bg-gray-50 dark:bg-white/5 rounded overflow-hidden flex-shrink-0">
-                <img className="w-full h-full object-cover" src={ad.image} alt={ad.name} />
-              </div>
-              <div>
-                <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-1">{ad.name}</h3>
-                <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">{ad.description}</p>
-                <div className="flex items-center space-x-3 text-xs text-gray-400 dark:text-gray-500">
-                  <span>Starts at {ad.startTime}</span>
-                  <span className="text-gray-300 dark:text-gray-700">•</span>
-                  <span>Duration: {ad.duration}</span>
-                  <span className="text-gray-300 dark:text-gray-700">•</span>
-                  <span className="text-green-400">{ad.adType}</span>
+      {isLoading ? (
+        <div className="bg-transparent border border-gray-200 dark:border-white/10 rounded-lg p-6 text-center text-xs text-gray-400 dark:text-gray-500">Loading ads...</div>
+      ) : ads.length === 0 ? (
+        <div className="bg-transparent border border-gray-200 dark:border-white/10 rounded-lg p-8 text-center">
+          <Megaphone className="w-10 h-10 text-gray-400 dark:text-gray-500 mx-auto mb-3" />
+          <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-1">No ads scheduled</h3>
+          <p className="text-xs text-gray-500 dark:text-gray-400">Ads will appear here once added to this broadcast</p>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {ads.map((ad) => (
+            <div key={ad.id} className="bg-transparent border border-gray-200 dark:border-white/10 rounded-lg p-4 flex items-center justify-between" data-testid={`card-ad-${ad.id}`}>
+              <div className="flex items-center space-x-4">
+                {ad.imageUrl ? (
+                  <div className="w-16 h-16 bg-gray-50 dark:bg-white/5 rounded overflow-hidden flex-shrink-0">
+                    <img className="w-full h-full object-cover" src={ad.imageUrl} alt={ad.name} />
+                  </div>
+                ) : (
+                  <div className="w-16 h-16 bg-gray-50 dark:bg-white/5 rounded flex items-center justify-center flex-shrink-0">
+                    <Megaphone className="w-6 h-6 text-gray-400 dark:text-gray-500" />
+                  </div>
+                )}
+                <div>
+                  <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-1">{ad.name}</h3>
+                  {ad.description && <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">{ad.description}</p>}
+                  <div className="flex items-center space-x-3 text-xs text-gray-400 dark:text-gray-500">
+                    {ad.duration && <span>Duration: {ad.duration}s</span>}
+                    {ad.adType && <><span className="text-gray-300 dark:text-gray-700">•</span><span className="capitalize">{ad.adType}</span></>}
+                    <span className={ad.isActive ? 'text-green-400' : 'text-gray-400 dark:text-gray-500'}>{ad.isActive ? 'Active' : 'Inactive'}</span>
+                  </div>
                 </div>
               </div>
+              <div className="flex items-center space-x-2">
+                {ad.ctaUrl && (
+                  <a href={ad.ctaUrl} target="_blank" rel="noopener noreferrer" className="p-1.5 text-gray-400 dark:text-gray-500 hover:text-gray-900 dark:hover:text-white transition" data-testid={`button-link-ad-${ad.id}`}>
+                    <ExternalLink className="w-3.5 h-3.5" />
+                  </a>
+                )}
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <button className="p-1.5 text-gray-400 dark:text-gray-500 hover:text-red-500 transition" data-testid={`button-delete-ad-${ad.id}`}>
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>Remove Ad?</AlertDialogTitle>
+                      <AlertDialogDescription>This will permanently remove this ad from the broadcast.</AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>Cancel</AlertDialogCancel>
+                      <AlertDialogAction onClick={() => deleteAdMutation.mutate(ad.id)} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">Remove</AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
+              </div>
             </div>
-            <button className="px-3 py-1.5 bg-transparent border border-gray-200 dark:border-white/20 hover:border-gray-300 dark:hover:border-white/40 text-gray-900 dark:text-white rounded text-xs font-medium transition" data-testid={`button-edit-ad-${ad.id}`}>
-              Edit
-            </button>
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
 
-function ShoppableProductsSection() {
-  const activeCount = HARDCODED_PRODUCTS.filter(p => p.status === 'active').length;
+function ShoppableProductsSection({ broadcastId }: { broadcastId: string }) {
+  const { toast } = useToast();
+  const { data: products = [], isLoading } = useQuery<BroadcastProduct[]>({
+    queryKey: ['/api/broadcasts', broadcastId, 'products'],
+  });
+
+  const deleteProductMutation = useMutation({
+    mutationFn: (id: number) => apiRequest('DELETE', `/api/broadcasts/products/${id}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/broadcasts', broadcastId, 'products'] });
+      toast({ title: 'Product removed' });
+    },
+  });
+
+  const activeCount = products.filter(p => p.status === 'available').length;
 
   return (
     <div className="mb-6" data-testid="section-products">
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-sm font-semibold text-gray-900 dark:text-white">Shoppable Products</h2>
-        <button className="px-3 py-1.5 bg-transparent border border-gray-200 dark:border-white/20 hover:border-gray-300 dark:hover:border-white/40 text-gray-900 dark:text-white rounded text-xs font-medium transition" data-testid="button-add-product">
-          <Plus className="w-3 h-3 inline mr-1.5" />
-          Add Product
-        </button>
       </div>
 
-      <div className="grid grid-cols-4 gap-4">
-        {HARDCODED_PRODUCTS.map((product) => (
-          <div key={product.id} className="bg-transparent border border-gray-200 dark:border-white/10 rounded-lg overflow-hidden hover:border-gray-300 dark:hover:border-white/30 transition cursor-pointer" data-testid={`card-product-${product.id}`}>
-            <div className="h-40 bg-gray-50 dark:bg-white/5 overflow-hidden flex items-center justify-center p-4">
-              <img className="w-full h-full object-contain" src={product.image} alt={product.name} />
-            </div>
-            <div className="p-3">
-              <h3 className="text-xs font-semibold text-gray-900 dark:text-white mb-1">{product.name}</h3>
-              <p className="text-[10px] text-gray-500 dark:text-gray-400 mb-2">{product.subtitle}</p>
-              <div className="flex items-center justify-between">
-                <div>
-                  <span className="text-sm font-bold text-gray-900 dark:text-white">${product.price}</span>
-                  {product.originalPrice && (
-                    <span className="text-[10px] text-gray-400 dark:text-gray-500 line-through ml-1">${product.originalPrice}</span>
+      {isLoading ? (
+        <div className="bg-transparent border border-gray-200 dark:border-white/10 rounded-lg p-6 text-center text-xs text-gray-400 dark:text-gray-500">Loading products...</div>
+      ) : products.length === 0 ? (
+        <div className="bg-transparent border border-gray-200 dark:border-white/10 rounded-lg p-8 text-center">
+          <ShoppingBag className="w-10 h-10 text-gray-400 dark:text-gray-500 mx-auto mb-3" />
+          <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-1">No products yet</h3>
+          <p className="text-xs text-gray-500 dark:text-gray-400">Add shoppable products to monetize this broadcast</p>
+        </div>
+      ) : (
+        <>
+          <div className="grid grid-cols-4 gap-4">
+            {products.map((product) => (
+              <div key={product.id} className="bg-transparent border border-gray-200 dark:border-white/10 rounded-lg overflow-hidden hover:border-gray-300 dark:hover:border-white/30 transition group" data-testid={`card-product-${product.id}`}>
+                <div className="h-40 bg-gray-50 dark:bg-white/5 overflow-hidden flex items-center justify-center p-4 relative">
+                  {product.imageUrl ? (
+                    <img className="w-full h-full object-contain" src={product.imageUrl} alt={product.name} />
+                  ) : (
+                    <ShoppingBag className="w-12 h-12 text-gray-300 dark:text-gray-600" />
+                  )}
+                  <button
+                    onClick={() => deleteProductMutation.mutate(product.id)}
+                    className="absolute top-2 right-2 w-6 h-6 flex items-center justify-center rounded bg-red-500/80 text-white opacity-0 group-hover:opacity-100 transition"
+                    data-testid={`button-delete-product-${product.id}`}
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </div>
+                <div className="p-3">
+                  <h3 className="text-xs font-semibold text-gray-900 dark:text-white mb-1">{product.name}</h3>
+                  {product.subtitle && <p className="text-[10px] text-gray-500 dark:text-gray-400 mb-2">{product.subtitle}</p>}
+                  <div className="flex items-center justify-between">
+                    <div>
+                      {product.price && <span className="text-sm font-bold text-gray-900 dark:text-white">${product.price}</span>}
+                      {product.originalPrice && (
+                        <span className="text-[10px] text-gray-400 dark:text-gray-500 line-through ml-1">${product.originalPrice}</span>
+                      )}
+                    </div>
+                    <span className={`px-2 py-0.5 text-[10px] font-semibold rounded ${
+                      product.status === 'available'
+                        ? 'bg-green-500/20 text-green-400'
+                        : product.status === 'limited'
+                        ? 'bg-yellow-500/20 text-yellow-400'
+                        : 'bg-gray-500/20 text-gray-400'
+                    }`}>
+                      {product.status === 'available' ? 'Available' : product.status === 'limited' ? 'Limited' : 'Sold Out'}
+                    </span>
+                  </div>
+                  {product.buyUrl && (
+                    <a href={product.buyUrl} target="_blank" rel="noopener noreferrer" className="mt-2 flex items-center justify-center gap-1 w-full py-1 bg-gray-100 dark:bg-white/10 hover:bg-gray-200 dark:hover:bg-white/20 rounded text-[10px] font-medium text-gray-700 dark:text-gray-300 transition" data-testid={`button-buy-product-${product.id}`}>
+                      <ExternalLink className="w-2.5 h-2.5" />
+                      Buy Now
+                    </a>
                   )}
                 </div>
-                <span className={`px-2 py-0.5 text-[10px] font-semibold rounded ${
-                  product.status === 'active'
-                    ? 'bg-green-500/20 text-green-400'
-                    : 'bg-gray-500/20 text-gray-400'
-                }`}>
-                  {product.status === 'active' ? 'Active' : 'Scheduled'}
-                </span>
+              </div>
+            ))}
+          </div>
+
+          <div className="mt-4 p-4 bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-lg">
+            <div className="flex items-center space-x-6">
+              <div>
+                <div className="text-xs text-gray-400 dark:text-gray-500 mb-1">Products Active</div>
+                <div className="text-lg font-bold text-gray-900 dark:text-white">{activeCount}</div>
+              </div>
+              <div className="w-px h-10 bg-gray-200 dark:bg-white/10"></div>
+              <div>
+                <div className="text-xs text-gray-400 dark:text-gray-500 mb-1">Total Listed</div>
+                <div className="text-lg font-bold text-gray-900 dark:text-white">{products.length}</div>
               </div>
             </div>
           </div>
-        ))}
-      </div>
-
-      <div className="mt-4 p-4 bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-lg">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-6">
-            <div>
-              <div className="text-xs text-gray-400 dark:text-gray-500 mb-1">Products Active</div>
-              <div className="text-lg font-bold text-gray-900 dark:text-white">{activeCount}</div>
-            </div>
-            <div className="w-px h-10 bg-gray-200 dark:bg-white/10"></div>
-            <div>
-              <div className="text-xs text-gray-400 dark:text-gray-500 mb-1">Total Views</div>
-              <div className="text-lg font-bold text-gray-900 dark:text-white">142K</div>
-            </div>
-            <div className="w-px h-10 bg-gray-200 dark:bg-white/10"></div>
-            <div>
-              <div className="text-xs text-gray-400 dark:text-gray-500 mb-1">Click-through Rate</div>
-              <div className="text-lg font-bold text-gray-900 dark:text-white">12.4%</div>
-            </div>
-            <div className="w-px h-10 bg-gray-200 dark:bg-white/10"></div>
-            <div>
-              <div className="text-xs text-gray-400 dark:text-gray-500 mb-1">Revenue</div>
-              <div className="text-lg font-bold text-green-400">$18,450</div>
-            </div>
-          </div>
-          <button className="px-3 py-1.5 bg-transparent border border-gray-200 dark:border-white/20 hover:border-gray-300 dark:hover:border-white/40 text-gray-900 dark:text-white rounded text-xs font-medium transition" data-testid="button-view-analytics">
-            View Analytics
-          </button>
-        </div>
-      </div>
+        </>
+      )}
     </div>
   );
 }
 
-function LiveChatSidebar() {
+function LiveChatSidebar({ broadcastId, analytics }: { broadcastId: string; analytics?: BroadcastAnalytics }) {
   const [activeTab, setActiveTab] = useState<'chat' | 'analytics'>('chat');
+  const [chatInput, setChatInput] = useState('');
+  const chatBottomRef = useRef<HTMLDivElement>(null);
+
+  const { data: messages = [], isLoading: chatLoading } = useQuery<ChatMessage[]>({
+    queryKey: ['/api/broadcasts', broadcastId, 'chat'],
+    refetchInterval: 10000,
+  });
+
+  const sendMessageMutation = useMutation({
+    mutationFn: (message: string) =>
+      apiRequest('POST', `/api/broadcasts/${broadcastId}/chat`, { username: 'Admin', message }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/broadcasts', broadcastId, 'chat'] });
+      setChatInput('');
+    },
+  });
+
+  useEffect(() => {
+    chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
+
+  const handleSend = () => {
+    const msg = chatInput.trim();
+    if (!msg) return;
+    sendMessageMutation.mutate(msg);
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') handleSend();
+  };
+
+  function timeAgo(dateStr: string | Date) {
+    const diff = Math.floor((Date.now() - new Date(dateStr).getTime()) / 1000);
+    if (diff < 60) return `${diff}s ago`;
+    if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+    return `${Math.floor(diff / 3600)}h ago`;
+  }
 
   return (
     <aside className="w-80 bg-white dark:bg-black border-l border-gray-200 dark:border-white/10 flex flex-col overflow-hidden flex-shrink-0" data-testid="sidebar-live-chat">
@@ -533,7 +545,7 @@ function LiveChatSidebar() {
           onClick={() => setActiveTab('chat')}
           data-testid="tab-live-chat"
         >
-          Live Chat
+          Live Chat {messages.length > 0 && <span className="ml-1 text-gray-400 dark:text-gray-500">({messages.length})</span>}
         </button>
         <button
           className={`flex-1 px-4 py-3 text-xs font-semibold transition ${activeTab === 'analytics' ? 'text-gray-900 dark:text-white bg-gray-50 dark:bg-white/5 border-b-2 border-[#3d8b7a] dark:border-white' : 'text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'}`}
@@ -546,37 +558,54 @@ function LiveChatSidebar() {
 
       <div className="flex-1 overflow-y-auto p-4 space-y-3">
         {activeTab === 'chat' ? (
-          CHAT_MESSAGES.map((msg) => (
-            <div key={msg.id} className="flex items-start space-x-2" data-testid={`chat-message-${msg.id}`}>
-              <div className="w-6 h-6 rounded bg-[#3d8b7a]/10 dark:bg-white/10 flex items-center justify-center flex-shrink-0">
-                <span className="text-[9px] text-gray-500 dark:text-gray-400 font-semibold">{msg.user.charAt(0)}</span>
-              </div>
-              <div className="flex-1">
-                <div className="flex items-center space-x-2 mb-1">
-                  <span className="text-xs font-semibold text-gray-900 dark:text-white">{msg.user}</span>
-                  <span className="text-[10px] text-gray-400 dark:text-gray-500">{msg.time}</span>
+          chatLoading ? (
+            <div className="text-center text-xs text-gray-400 dark:text-gray-500 py-4">Loading...</div>
+          ) : messages.length === 0 ? (
+            <div className="text-center text-xs text-gray-400 dark:text-gray-500 py-8">No messages yet. Be the first to chat!</div>
+          ) : (
+            <>
+              {messages.map((msg) => (
+                <div key={msg.id} className="flex items-start space-x-2" data-testid={`chat-message-${msg.id}`}>
+                  <div className="w-6 h-6 rounded bg-[#3d8b7a]/10 dark:bg-white/10 flex items-center justify-center flex-shrink-0">
+                    <span className="text-[9px] text-gray-500 dark:text-gray-400 font-semibold">{msg.username.charAt(0).toUpperCase()}</span>
+                  </div>
+                  <div className="flex-1">
+                    <div className="flex items-center space-x-2 mb-1">
+                      <span className="text-xs font-semibold text-gray-900 dark:text-white">{msg.username}</span>
+                      <span className="text-[10px] text-gray-400 dark:text-gray-500">{timeAgo(msg.createdAt)}</span>
+                    </div>
+                    <p className="text-xs text-gray-600 dark:text-gray-300">{msg.message}</p>
+                  </div>
                 </div>
-                <p className="text-xs text-gray-600 dark:text-gray-300">{msg.message}</p>
-              </div>
-            </div>
-          ))
+              ))}
+              <div ref={chatBottomRef} />
+            </>
+          )
         ) : (
-          <div className="space-y-4 pt-2">
+          <div className="space-y-3 pt-2">
+            <div className="p-3 bg-gray-50 dark:bg-white/5 rounded-lg border border-gray-200 dark:border-white/10">
+              <div className="text-xs text-gray-400 dark:text-gray-500 mb-1">Live Viewers</div>
+              <div className="text-lg font-bold text-gray-900 dark:text-white">{formatViewers(analytics?.viewerCount ?? 0)}</div>
+            </div>
             <div className="p-3 bg-gray-50 dark:bg-white/5 rounded-lg border border-gray-200 dark:border-white/10">
               <div className="text-xs text-gray-400 dark:text-gray-500 mb-1">Peak Viewers</div>
-              <div className="text-lg font-bold text-gray-900 dark:text-white">847K</div>
+              <div className="text-lg font-bold text-gray-900 dark:text-white">{formatViewers(analytics?.peakViewers ?? 0)}</div>
             </div>
             <div className="p-3 bg-gray-50 dark:bg-white/5 rounded-lg border border-gray-200 dark:border-white/10">
-              <div className="text-xs text-gray-400 dark:text-gray-500 mb-1">Avg. Watch Time</div>
-              <div className="text-lg font-bold text-gray-900 dark:text-white">38:12</div>
+              <div className="text-xs text-gray-400 dark:text-gray-500 mb-1">Total Poll Votes</div>
+              <div className="text-lg font-bold text-gray-900 dark:text-white">{(analytics?.totalVotes ?? 0).toLocaleString()}</div>
             </div>
             <div className="p-3 bg-gray-50 dark:bg-white/5 rounded-lg border border-gray-200 dark:border-white/10">
-              <div className="text-xs text-gray-400 dark:text-gray-500 mb-1">Messages/min</div>
-              <div className="text-lg font-bold text-gray-900 dark:text-white">1,240</div>
+              <div className="text-xs text-gray-400 dark:text-gray-500 mb-1">Active Polls</div>
+              <div className="text-lg font-bold text-gray-900 dark:text-white">{analytics?.activePolls ?? 0}</div>
             </div>
             <div className="p-3 bg-gray-50 dark:bg-white/5 rounded-lg border border-gray-200 dark:border-white/10">
-              <div className="text-xs text-gray-400 dark:text-gray-500 mb-1">Poll Participation</div>
-              <div className="text-lg font-bold text-gray-900 dark:text-white">68.4%</div>
+              <div className="text-xs text-gray-400 dark:text-gray-500 mb-1">Active Contests</div>
+              <div className="text-lg font-bold text-gray-900 dark:text-white">{analytics?.activeContests ?? 0}</div>
+            </div>
+            <div className="p-3 bg-gray-50 dark:bg-white/5 rounded-lg border border-gray-200 dark:border-white/10">
+              <div className="text-xs text-gray-400 dark:text-gray-500 mb-1">Chat Messages</div>
+              <div className="text-lg font-bold text-gray-900 dark:text-white">{messages.length}</div>
             </div>
           </div>
         )}
@@ -586,11 +615,19 @@ function LiveChatSidebar() {
         <div className="flex items-center space-x-2">
           <input
             type="text"
+            value={chatInput}
+            onChange={(e) => setChatInput(e.target.value)}
+            onKeyDown={handleKeyDown}
             placeholder="Type a message..."
             className="flex-1 px-3 py-2 bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded text-xs text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:border-gray-300 dark:focus:border-white/30"
             data-testid="input-chat-message"
           />
-          <button className="w-9 h-9 flex items-center justify-center rounded bg-[#3d8b7a] text-white dark:bg-white dark:text-black hover:bg-[#2f7365] dark:hover:bg-gray-200 transition" data-testid="button-send-message">
+          <button
+            onClick={handleSend}
+            disabled={sendMessageMutation.isPending || !chatInput.trim()}
+            className="w-9 h-9 flex items-center justify-center rounded bg-[#3d8b7a] text-white dark:bg-white dark:text-black hover:bg-[#2f7365] dark:hover:bg-gray-200 transition disabled:opacity-50"
+            data-testid="button-send-message"
+          >
             <Send className="w-3.5 h-3.5" />
           </button>
         </div>
@@ -619,6 +656,22 @@ export default function BroadcastDetailPage() {
   const { data: campaignData } = useQuery<Campaign>({
     queryKey: ['/api/campaigns', broadcast?.campaignId],
     enabled: !!broadcast?.campaignId,
+  });
+
+  const { data: analytics } = useQuery<BroadcastAnalytics>({
+    queryKey: ['/api/broadcasts', broadcastId, 'analytics'],
+    enabled: !!broadcastId,
+    refetchInterval: 30000,
+  });
+
+  const seedDemoMutation = useMutation({
+    mutationFn: () => apiRequest('POST', '/api/seed-demo', { broadcastId }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/broadcasts', broadcastId, 'ads'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/broadcasts', broadcastId, 'products'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/broadcasts', broadcastId, 'chat'] });
+      toast({ title: 'Demo data loaded', description: 'Ads, products and chat messages have been seeded.' });
+    },
   });
 
   const createPollMutation = useMutation({
@@ -795,26 +848,41 @@ export default function BroadcastDetailPage() {
               <div className="flex items-center space-x-4 px-4 py-2 bg-gray-50 dark:bg-white/5 rounded border border-gray-200 dark:border-white/10">
                 <div className="text-center">
                   <div className="text-xs text-gray-400 dark:text-gray-500">Viewers</div>
-                  <div className="text-sm font-semibold text-gray-900 dark:text-white" data-testid="stat-header-viewers">847K</div>
+                  <div className="text-sm font-semibold text-gray-900 dark:text-white" data-testid="stat-header-viewers">
+                    {formatViewers(analytics?.viewerCount ?? broadcast.viewerCount ?? 0)}
+                  </div>
                 </div>
                 <div className="w-px h-8 bg-gray-200 dark:bg-white/10"></div>
                 <div className="text-center">
-                  <div className="text-xs text-gray-400 dark:text-gray-500">Engagement</div>
-                  <div className="text-sm font-semibold text-gray-900 dark:text-white" data-testid="stat-header-engagement">68.4%</div>
+                  <div className="text-xs text-gray-400 dark:text-gray-500">Total Votes</div>
+                  <div className="text-sm font-semibold text-gray-900 dark:text-white" data-testid="stat-header-engagement">
+                    {(analytics?.totalVotes ?? 0).toLocaleString()}
+                  </div>
                 </div>
                 <div className="w-px h-8 bg-gray-200 dark:bg-white/10"></div>
                 <div className="text-center">
-                  <div className="text-xs text-gray-400 dark:text-gray-500">Duration</div>
-                  <div className="text-sm font-semibold text-gray-900 dark:text-white" data-testid="stat-header-duration">45:23</div>
+                  <div className="text-xs text-gray-400 dark:text-gray-500">Status</div>
+                  <div className="text-sm font-semibold capitalize text-gray-900 dark:text-white" data-testid="stat-header-status">
+                    {broadcast.status}
+                  </div>
                 </div>
               </div>
+              <button
+                onClick={() => seedDemoMutation.mutate()}
+                disabled={seedDemoMutation.isPending}
+                className="px-3 py-2 bg-transparent border border-gray-200 dark:border-white/20 hover:border-gray-300 dark:hover:border-white/40 text-gray-900 dark:text-white rounded text-xs font-medium transition disabled:opacity-50"
+                data-testid="button-seed-demo"
+                title="Load demo data"
+              >
+                {seedDemoMutation.isPending ? 'Loading...' : 'Load Demo'}
+              </button>
               <button className="w-10 h-10 flex items-center justify-center rounded border border-gray-200 dark:border-white/20 hover:border-gray-300 dark:hover:border-white/40 text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition" data-testid="button-more-options">
                 <MoreVertical className="w-4 h-4" />
               </button>
             </div>
           </div>
 
-          <EventTimeline />
+          <EventTimeline polls={polls} contests={contests} />
 
           <div className="mb-6" data-testid="section-engagement">
             <div className="flex items-center justify-between mb-4">
@@ -1000,11 +1068,11 @@ export default function BroadcastDetailPage() {
             )}
           </div>
 
-          <ScheduledAdsSection />
-          <ShoppableProductsSection />
+          <ScheduledAdsSection broadcastId={broadcastId!} />
+          <ShoppableProductsSection broadcastId={broadcastId!} />
         </main>
 
-        <LiveChatSidebar />
+        <LiveChatSidebar broadcastId={broadcastId!} analytics={analytics} />
       </div>
     </AppLayout>
   );
