@@ -135,7 +135,7 @@ export function AppLayout({ children, breadcrumbs = [], title, subtitle, actions
 
       <div className="flex-1 md:ml-16 flex flex-col min-h-screen">
         <header className="sticky top-0 z-40 bg-white/80 dark:bg-[#141824]/80 backdrop-blur-xl border-b border-gray-200 dark:border-[#2a3142]">
-          <div className="flex items-center justify-between h-14 px-4 sm:px-6 max-w-[1440px] mx-auto w-full">
+          <div className="flex items-center justify-between h-14 px-4 sm:px-6 w-full">
             <div className="flex items-center gap-3">
               <Button
                 variant="ghost"

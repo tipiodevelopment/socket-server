@@ -21,7 +21,6 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from '@/components/ui/dialog';
 import {
   DropdownMenu,
@@ -83,14 +82,6 @@ const APP_GRADIENTS = [
 ];
 
 
-const PROGRESS_COLORS = [
-  'from-green-400 to-emerald-500',
-  'from-gray-300 to-gray-400',
-  'from-amber-400 to-orange-500',
-  'from-emerald-400 to-green-600',
-  'from-orange-400 to-red-500',
-  'from-gray-300 to-gray-500',
-];
 
 export default function AppsPage() {
   const { toast } = useToast();
@@ -168,77 +159,83 @@ export default function AppsPage() {
     <AppLayout
       title="Client Apps"
       subtitle="Manage your client applications and their campaigns"
-      actions={
-        <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
-          <DialogTrigger asChild>
-            <Button data-testid="button-create-app" className="gap-2 bg-[#3d8b7a] hover:bg-[#2f7365] dark:bg-white dark:hover:bg-gray-200 text-white dark:text-[#0a0e1a]">
-              <Plus className="w-4 h-4" />
-              New App
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="max-h-[85vh] overflow-y-auto">
-            <DialogHeader>
-              <DialogTitle>Create New App</DialogTitle>
-              <DialogDescription>
-                Add a new mobile or web application to manage campaigns.
-              </DialogDescription>
-            </DialogHeader>
-            <Form {...form}>
-              <form onSubmit={form.handleSubmit(onSubmitCreateApp)} className="space-y-4 py-4">
-                <FormField
-                  control={form.control}
-                  name="name"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>App Name</FormLabel>
-                      <FormControl>
-                        <Input placeholder="e.g. LaLiga Fan App" data-testid="input-app-name" {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={form.control}
-                  name="bundleId"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Bundle ID</FormLabel>
-                      <FormControl>
-                        <Input placeholder="e.g. com.laliga.fanapp" data-testid="input-bundle-id" {...field} />
-                      </FormControl>
-                      <FormDescription>
-                        The unique identifier for your app (iOS Bundle ID or Android Package Name)
-                      </FormDescription>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <ImageUploadWithPreview
-                  label="Logo"
-                  value={logoUrl}
-                  onChange={setLogoUrl}
-                  placeholder="Upload or paste logo URL"
-                  testId="input-app-logo"
-                />
-                <ImageUploadWithPreview
-                  label="Banner"
-                  value={bannerUrl}
-                  onChange={setBannerUrl}
-                  placeholder="Upload or paste banner URL"
-                  testId="input-app-banner"
-                />
-                <DialogFooter>
-                  <Button type="submit" disabled={createMutation.isPending} data-testid="button-submit-app" className="bg-[#3d8b7a] hover:bg-[#2f7365] dark:bg-white dark:hover:bg-gray-200 text-white dark:text-[#0a0e1a]">
-                    {createMutation.isPending ? 'Creating...' : 'Create App'}
-                  </Button>
-                </DialogFooter>
-              </form>
-            </Form>
-          </DialogContent>
-        </Dialog>
-      }
     >
+      <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
+        <DialogContent className="max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Create New App</DialogTitle>
+            <DialogDescription>
+              Add a new mobile or web application to manage campaigns.
+            </DialogDescription>
+          </DialogHeader>
+          <Form {...form}>
+            <form onSubmit={form.handleSubmit(onSubmitCreateApp)} className="space-y-4 py-4">
+              <FormField
+                control={form.control}
+                name="name"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>App Name</FormLabel>
+                    <FormControl>
+                      <Input placeholder="e.g. LaLiga Fan App" data-testid="input-app-name" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="bundleId"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Bundle ID</FormLabel>
+                    <FormControl>
+                      <Input placeholder="e.g. com.laliga.fanapp" data-testid="input-bundle-id" {...field} />
+                    </FormControl>
+                    <FormDescription>
+                      The unique identifier for your app (iOS Bundle ID or Android Package Name)
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <ImageUploadWithPreview
+                label="Logo"
+                value={logoUrl}
+                onChange={setLogoUrl}
+                placeholder="Upload or paste logo URL"
+                testId="input-app-logo"
+              />
+              <ImageUploadWithPreview
+                label="Banner"
+                value={bannerUrl}
+                onChange={setBannerUrl}
+                placeholder="Upload or paste banner URL"
+                testId="input-app-banner"
+              />
+              <DialogFooter>
+                <Button type="submit" disabled={createMutation.isPending} data-testid="button-submit-app" className="bg-[#3d8b7a] hover:bg-[#2f7365] dark:bg-white dark:hover:bg-gray-200 text-white dark:text-[#0a0e1a]">
+                  {createMutation.isPending ? 'Creating...' : 'Create App'}
+                </Button>
+              </DialogFooter>
+            </form>
+          </Form>
+        </DialogContent>
+      </Dialog>
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-white">All Client Apps</h2>
+          <p className="text-sm text-gray-500 dark:text-white/40">{clientApps.length} app{clientApps.length !== 1 ? 's' : ''} registered</p>
+        </div>
+        <Button
+          data-testid="button-create-app"
+          onClick={() => setCreateDialogOpen(true)}
+          className="gap-2 bg-[#3d8b7a] hover:bg-[#2f7365] dark:bg-white dark:hover:bg-gray-200 text-white dark:text-[#0a0e1a]"
+        >
+          <Plus className="w-4 h-4" />
+          New App
+        </Button>
+      </div>
       {isLoading ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {[1, 2, 3].map(i => (
@@ -268,7 +265,6 @@ export default function AppsPage() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {clientApps.map((app, index) => {
             const gradient = APP_GRADIENTS[index % APP_GRADIENTS.length];
-            const progressColor = PROGRESS_COLORS[index % PROGRESS_COLORS.length];
 
             return (
               <div
@@ -286,15 +282,15 @@ export default function AppsPage() {
                     />
                   )}
                   <div className="absolute top-3 right-3 z-10">
-                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-500/90 text-white" data-testid={`badge-campaigns-${app.id}`}>
+                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-black/60 text-white backdrop-blur-sm" data-testid={`badge-campaigns-${app.id}`}>
                       {app.stats.campaignCount} Campaign{app.stats.campaignCount !== 1 ? 's' : ''}
                     </span>
                   </div>
                 </div>
 
                 <div className="p-4">
-                  <div className="flex items-center gap-3 mb-4 -mt-8">
-                    <div className="w-11 h-11 bg-gray-800 dark:bg-[#1e2433] border-2 border-white dark:border-[#141824] rounded-xl flex items-center justify-center text-lg shadow-lg overflow-hidden">
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="w-11 h-11 -mt-7 bg-gray-100 dark:bg-[#1e2433] border-2 border-white dark:border-[#141824] rounded-xl flex items-center justify-center text-lg shadow-lg overflow-hidden flex-shrink-0">
                       {app.iconUrl ? (
                         <img
                           src={app.iconUrl}
@@ -303,16 +299,16 @@ export default function AppsPage() {
                           data-testid={`img-logo-${app.id}`}
                         />
                       ) : (
-                        <Smartphone className="w-5 h-5 text-white" />
+                        <Smartphone className="w-5 h-5 text-gray-500 dark:text-white/60" />
                       )}
                     </div>
-                    <div className="pt-5">
+                    <div className="min-w-0">
                       <Link href={`/apps/${app.id}`}>
-                        <h3 className="text-sm font-semibold text-gray-900 dark:text-white hover:text-gray-600 dark:hover:text-gray-300 transition-colors cursor-pointer" data-testid={`text-app-name-${app.id}`}>
+                        <h3 className="text-sm font-semibold text-gray-900 dark:text-white hover:text-gray-600 dark:hover:text-gray-300 transition-colors cursor-pointer truncate" data-testid={`text-app-name-${app.id}`}>
                           {app.name}
                         </h3>
                       </Link>
-                      <p className="text-xs text-gray-400 dark:text-white/30 font-mono" data-testid={`text-bundle-id-${app.id}`}>{app.bundleId}</p>
+                      <p className="text-xs text-gray-400 dark:text-white/30 font-mono truncate" data-testid={`text-bundle-id-${app.id}`}>{app.bundleId}</p>
                     </div>
                   </div>
 
@@ -330,7 +326,7 @@ export default function AppsPage() {
                   <div className="mb-4">
                     <div className="w-full bg-gray-200 dark:bg-white/10 rounded-full h-1.5">
                       <div
-                        className={`bg-gradient-to-r ${progressColor} h-1.5 rounded-full transition-all`}
+                        className="bg-gray-800 dark:bg-white h-1.5 rounded-full transition-all"
                         style={{ width: `${app.stats.engagementPercent}%` }}
                       />
                     </div>
