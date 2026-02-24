@@ -81,6 +81,46 @@ const APP_GRADIENTS = [
   'from-gray-600 to-gray-800',
 ];
 
+function AppBanner({ bannerUrl, gradient, appId, appName }: { bannerUrl: string | null | undefined; gradient: string; appId: number; appName: string }) {
+  const [bannerError, setBannerError] = useState(false);
+  const showImage = bannerUrl && !bannerError;
+  return (
+    <div className={`h-24 w-full overflow-hidden ${!showImage ? `bg-gradient-to-br ${gradient}` : ''}`}>
+      {showImage && (
+        <img
+          src={bannerUrl}
+          alt={`${appName} banner`}
+          className="w-full h-full object-cover"
+          data-testid={`img-banner-${appId}`}
+          onError={() => setBannerError(true)}
+        />
+      )}
+    </div>
+  );
+}
+
+function AppAvatar({ iconUrl, appId, appName }: { iconUrl: string | null | undefined; appId: number; appName: string }) {
+  const [iconError, setIconError] = useState(false);
+  const showIcon = iconUrl && !iconError;
+  return (
+    <div
+      className="w-11 h-11 bg-gray-100 dark:bg-[#1e2433] border-2 border-white dark:border-[#141824] rounded-xl flex items-center justify-center shadow-lg overflow-hidden"
+      data-testid={`img-logo-${appId}`}
+    >
+      {showIcon ? (
+        <img
+          src={iconUrl}
+          alt={`${appName} logo`}
+          className="w-full h-full object-cover"
+          onError={() => setIconError(true)}
+        />
+      ) : (
+        <Smartphone className="w-5 h-5 text-gray-500 dark:text-white/60" />
+      )}
+    </div>
+  );
+}
+
 
 
 export default function AppsPage() {
@@ -274,30 +314,20 @@ export default function AppsPage() {
               >
                 {/* Banner */}
                 <div className="relative">
-                  <div className={`h-24 w-full ${app.bannerUrl ? '' : `bg-gradient-to-br ${gradient}`} overflow-hidden`}>
-                    {app.bannerUrl && (
-                      <img
-                        src={app.bannerUrl}
-                        alt={`${app.name} banner`}
-                        className="w-full h-full object-cover"
-                        data-testid={`img-banner-${app.id}`}
-                      />
-                    )}
-                  </div>
+                  <AppBanner
+                    bannerUrl={app.bannerUrl}
+                    gradient={gradient}
+                    appId={app.id}
+                    appName={app.name}
+                  />
 
                   {/* Avatar overlapping bottom of banner */}
                   <div className="absolute left-4 -bottom-5 z-10">
-                    <div className="w-11 h-11 bg-gray-100 dark:bg-[#1e2433] border-2 border-white dark:border-[#141824] rounded-xl flex items-center justify-center shadow-lg overflow-hidden" data-testid={`img-logo-${app.id}`}>
-                      {app.iconUrl ? (
-                        <img
-                          src={app.iconUrl}
-                          alt={`${app.name} logo`}
-                          className="w-full h-full object-cover"
-                        />
-                      ) : (
-                        <Smartphone className="w-5 h-5 text-gray-500 dark:text-white/60" />
-                      )}
-                    </div>
+                    <AppAvatar
+                      iconUrl={app.iconUrl}
+                      appId={app.id}
+                      appName={app.name}
+                    />
                   </div>
 
                   {/* Campaign badge */}
