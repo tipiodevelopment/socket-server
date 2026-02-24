@@ -2,7 +2,7 @@ import { useParams, Link, useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useState, useMemo } from "react";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Pause, Play, MoreVertical, BarChart3, Radio, Puzzle, Settings, Activity } from "lucide-react";
+import { ArrowLeft, Pause, Play, MoreVertical, BarChart3, Radio, Puzzle, Settings, Activity, Eye, TrendingUp, ExternalLink } from "lucide-react";
 import { Campaign, Sponsor, Broadcast } from "@shared/schema";
 import { OverviewTab } from "@/components/dashboard/OverviewTab";
 import { EventsTab } from "@/components/dashboard/EventsTab";
@@ -249,28 +249,20 @@ export default function CampaignDashboard() {
         {activeTab === 'analytics' && (
           <div className="space-y-6">
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <div className="bg-white dark:bg-black border border-gray-200 dark:border-white/10 rounded-xl p-5">
-                <div className="text-xs text-gray-400 dark:text-gray-500 mb-2">Total Broadcasts</div>
-                <div className="text-2xl font-bold text-gray-900 dark:text-white">{campaignBroadcasts.length}</div>
-              </div>
-              <div className="bg-white dark:bg-black border border-gray-200 dark:border-white/10 rounded-xl p-5">
-                <div className="text-xs text-gray-400 dark:text-gray-500 mb-2">Live Now</div>
-                <div className="text-2xl font-bold text-gray-900 dark:text-white">
-                  {campaignBroadcasts.filter(b => b.status === 'live').length}
+              {[
+                { icon: Radio, label: 'Total Broadcasts', value: campaignBroadcasts.length.toLocaleString() },
+                { icon: Activity, label: 'Live Now', value: campaignBroadcasts.filter(b => b.status === 'live').length.toLocaleString() },
+                { icon: Eye, label: 'Total Viewers', value: campaignBroadcasts.reduce((sum, b) => sum + (b.viewerCount ?? 0), 0).toLocaleString() },
+                { icon: TrendingUp, label: 'Peak Viewers', value: Math.max(0, ...campaignBroadcasts.map(b => b.peakViewers ?? 0)).toLocaleString() },
+              ].map(({ icon: Icon, label, value }) => (
+                <div key={label} className="bg-white dark:bg-black border border-gray-200 dark:border-white/10 rounded-xl p-5">
+                  <div className="flex items-center gap-2 mb-3">
+                    <Icon className="w-4 h-4 text-gray-400 dark:text-gray-500" />
+                    <div className="text-xs text-gray-400 dark:text-gray-500">{label}</div>
+                  </div>
+                  <div className="text-2xl font-bold text-gray-900 dark:text-white">{value}</div>
                 </div>
-              </div>
-              <div className="bg-white dark:bg-black border border-gray-200 dark:border-white/10 rounded-xl p-5">
-                <div className="text-xs text-gray-400 dark:text-gray-500 mb-2">Total Viewers</div>
-                <div className="text-2xl font-bold text-gray-900 dark:text-white">
-                  {campaignBroadcasts.reduce((sum, b) => sum + (b.viewerCount ?? 0), 0).toLocaleString()}
-                </div>
-              </div>
-              <div className="bg-white dark:bg-black border border-gray-200 dark:border-white/10 rounded-xl p-5">
-                <div className="text-xs text-gray-400 dark:text-gray-500 mb-2">Peak Viewers</div>
-                <div className="text-2xl font-bold text-gray-900 dark:text-white">
-                  {Math.max(0, ...campaignBroadcasts.map(b => b.peakViewers ?? 0)).toLocaleString()}
-                </div>
-              </div>
+              ))}
             </div>
 
             {campaignBroadcasts.length === 0 ? (
@@ -291,11 +283,12 @@ export default function CampaignDashboard() {
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 dark:text-gray-500 uppercase">Status</th>
                       <th className="px-6 py-3 text-right text-xs font-medium text-gray-400 dark:text-gray-500 uppercase">Viewers</th>
                       <th className="px-6 py-3 text-right text-xs font-medium text-gray-400 dark:text-gray-500 uppercase">Peak</th>
+                      <th className="px-6 py-3 text-right text-xs font-medium text-gray-400 dark:text-gray-500 uppercase"></th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-200 dark:divide-white/10">
                     {campaignBroadcasts.map(b => (
-                      <tr key={b.broadcastId} className="hover:bg-gray-50 dark:hover:bg-white/5 transition">
+                      <tr key={b.broadcastId} className="hover:bg-gray-50 dark:hover:bg-white/5 transition group" data-testid={`row-broadcast-${b.broadcastId}`}>
                         <td className="px-6 py-3 text-gray-900 dark:text-white font-medium">{b.broadcastName}</td>
                         <td className="px-6 py-3">
                           <span className={`px-2 py-0.5 text-[10px] font-bold uppercase rounded-full ${
@@ -306,6 +299,14 @@ export default function CampaignDashboard() {
                         </td>
                         <td className="px-6 py-3 text-right text-gray-600 dark:text-gray-300">{(b.viewerCount ?? 0).toLocaleString()}</td>
                         <td className="px-6 py-3 text-right text-gray-600 dark:text-gray-300">{(b.peakViewers ?? 0).toLocaleString()}</td>
+                        <td className="px-6 py-3 text-right">
+                          <Link href={`/broadcasts/${b.broadcastId}`}>
+                            <span className="inline-flex items-center gap-1 text-xs text-gray-400 dark:text-gray-500 hover:text-gray-900 dark:hover:text-white opacity-0 group-hover:opacity-100 transition cursor-pointer" data-testid={`link-broadcast-detail-${b.broadcastId}`}>
+                              <ExternalLink className="w-3 h-3" />
+                              View
+                            </span>
+                          </Link>
+                        </td>
                       </tr>
                     ))}
                   </tbody>

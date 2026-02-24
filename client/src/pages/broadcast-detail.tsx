@@ -11,7 +11,7 @@ import { useToast } from '@/hooks/use-toast';
 import { queryClient, apiRequest } from '@/lib/queryClient';
 import { AppLayout } from '@/components/AppLayout';
 import type { Broadcast, Poll, PollOptionRecord, Contest, Campaign, BroadcastAd, BroadcastProduct, ChatMessage } from '@shared/schema';
-import { ArrowLeft, Plus, Trash2, BarChart3, Trophy, X, MoreVertical, CheckCircle, Play, SkipBack, SkipForward, Maximize2, Send, Megaphone, ShoppingBag, ExternalLink } from 'lucide-react';
+import { ArrowLeft, Plus, Trash2, BarChart3, Trophy, X, MoreVertical, CheckCircle, Play, SkipBack, SkipForward, Maximize2, Send, Megaphone, ShoppingBag, ExternalLink, Eye, TrendingUp, Vote, MessageSquare, RefreshCw, Users } from 'lucide-react';
 import { useState, useRef, useEffect } from 'react';
 import { useUser } from '@/contexts/UserContext';
 
@@ -497,19 +497,24 @@ function ShoppableProductsSection({ broadcastId }: { broadcastId: string }) {
   );
 }
 
-function LiveChatSidebar({ broadcastId, analytics }: { broadcastId: string; analytics?: BroadcastAnalytics }) {
+function LiveChatSidebar({ broadcastId, analytics, reachuUserId }: { broadcastId: string; analytics?: BroadcastAnalytics; reachuUserId: string | null }) {
   const [activeTab, setActiveTab] = useState<'chat' | 'analytics'>('chat');
   const [chatInput, setChatInput] = useState('');
   const chatBottomRef = useRef<HTMLDivElement>(null);
+  const [lastRefreshed, setLastRefreshed] = useState<Date>(new Date());
 
-  const { data: messages = [], isLoading: chatLoading } = useQuery<ChatMessage[]>({
+  const { data: messages = [], isLoading: chatLoading, dataUpdatedAt } = useQuery<ChatMessage[]>({
     queryKey: ['/api/broadcasts', broadcastId, 'chat'],
     refetchInterval: 10000,
   });
 
+  useEffect(() => {
+    if (dataUpdatedAt) setLastRefreshed(new Date(dataUpdatedAt));
+  }, [dataUpdatedAt]);
+
   const sendMessageMutation = useMutation({
     mutationFn: (message: string) =>
-      apiRequest('POST', `/api/broadcasts/${broadcastId}/chat`, { username: 'Admin', message }),
+      apiRequest('POST', `/api/broadcasts/${broadcastId}/chat`, { username: reachuUserId ?? 'Guest', message }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/broadcasts', broadcastId, 'chat'] });
       setChatInput('');
@@ -582,36 +587,38 @@ function LiveChatSidebar({ broadcastId, analytics }: { broadcastId: string; anal
             </>
           )
         ) : (
-          <div className="space-y-3 pt-2">
-            <div className="p-3 bg-gray-50 dark:bg-white/5 rounded-lg border border-gray-200 dark:border-white/10">
-              <div className="text-xs text-gray-400 dark:text-gray-500 mb-1">Live Viewers</div>
-              <div className="text-lg font-bold text-gray-900 dark:text-white">{formatViewers(analytics?.viewerCount ?? 0)}</div>
-            </div>
-            <div className="p-3 bg-gray-50 dark:bg-white/5 rounded-lg border border-gray-200 dark:border-white/10">
-              <div className="text-xs text-gray-400 dark:text-gray-500 mb-1">Peak Viewers</div>
-              <div className="text-lg font-bold text-gray-900 dark:text-white">{formatViewers(analytics?.peakViewers ?? 0)}</div>
-            </div>
-            <div className="p-3 bg-gray-50 dark:bg-white/5 rounded-lg border border-gray-200 dark:border-white/10">
-              <div className="text-xs text-gray-400 dark:text-gray-500 mb-1">Total Poll Votes</div>
-              <div className="text-lg font-bold text-gray-900 dark:text-white">{(analytics?.totalVotes ?? 0).toLocaleString()}</div>
-            </div>
-            <div className="p-3 bg-gray-50 dark:bg-white/5 rounded-lg border border-gray-200 dark:border-white/10">
-              <div className="text-xs text-gray-400 dark:text-gray-500 mb-1">Active Polls</div>
-              <div className="text-lg font-bold text-gray-900 dark:text-white">{analytics?.activePolls ?? 0}</div>
-            </div>
-            <div className="p-3 bg-gray-50 dark:bg-white/5 rounded-lg border border-gray-200 dark:border-white/10">
-              <div className="text-xs text-gray-400 dark:text-gray-500 mb-1">Active Contests</div>
-              <div className="text-lg font-bold text-gray-900 dark:text-white">{analytics?.activeContests ?? 0}</div>
-            </div>
-            <div className="p-3 bg-gray-50 dark:bg-white/5 rounded-lg border border-gray-200 dark:border-white/10">
-              <div className="text-xs text-gray-400 dark:text-gray-500 mb-1">Chat Messages</div>
-              <div className="text-lg font-bold text-gray-900 dark:text-white">{messages.length}</div>
+          <div className="space-y-2 pt-2">
+            {[
+              { icon: Eye, label: 'Live Viewers', value: formatViewers(analytics?.viewerCount ?? 0) },
+              { icon: TrendingUp, label: 'Peak Viewers', value: formatViewers(analytics?.peakViewers ?? 0) },
+              { icon: Vote, label: 'Total Votes', value: (analytics?.totalVotes ?? 0).toLocaleString() },
+              { icon: BarChart3, label: 'Active Polls', value: String(analytics?.activePolls ?? 0) },
+              { icon: Trophy, label: 'Active Contests', value: String(analytics?.activeContests ?? 0) },
+              { icon: MessageSquare, label: 'Chat Messages', value: String(messages.length) },
+            ].map(({ icon: Icon, label, value }) => (
+              <div key={label} className="flex items-center justify-between p-3 bg-gray-50 dark:bg-white/5 rounded-lg border border-gray-200 dark:border-white/10">
+                <div className="flex items-center gap-2">
+                  <Icon className="w-3.5 h-3.5 text-gray-400 dark:text-gray-500 flex-shrink-0" />
+                  <span className="text-xs text-gray-400 dark:text-gray-500">{label}</span>
+                </div>
+                <span className="text-sm font-bold text-gray-900 dark:text-white">{value}</span>
+              </div>
+            ))}
+            <div className="flex items-center gap-1.5 pt-1 justify-end">
+              <RefreshCw className="w-2.5 h-2.5 text-gray-300 dark:text-gray-600" />
+              <span className="text-[10px] text-gray-300 dark:text-gray-600">Updated {lastRefreshed.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
             </div>
           </div>
         )}
       </div>
 
       <div className="p-4 border-t border-gray-200 dark:border-white/10">
+        {reachuUserId && (
+          <div className="flex items-center gap-1.5 mb-2">
+            <Users className="w-2.5 h-2.5 text-gray-400 dark:text-gray-500" />
+            <span className="text-[10px] text-gray-400 dark:text-gray-500">Sending as <span className="font-semibold text-gray-600 dark:text-gray-300">{reachuUserId}</span></span>
+          </div>
+        )}
         <div className="flex items-center space-x-2">
           <input
             type="text"
@@ -639,7 +646,7 @@ function LiveChatSidebar({ broadcastId, analytics }: { broadcastId: string; anal
 export default function BroadcastDetailPage() {
   const params = useParams();
   const [, setLocation] = useLocation();
-  const { userId } = useUser();
+  const { userId, reachuUserId } = useUser();
   const broadcastId = params.broadcastId;
   const { toast } = useToast();
 
@@ -1072,7 +1079,7 @@ export default function BroadcastDetailPage() {
           <ShoppableProductsSection broadcastId={broadcastId!} />
         </main>
 
-        <LiveChatSidebar broadcastId={broadcastId!} analytics={analytics} />
+        <LiveChatSidebar broadcastId={broadcastId!} analytics={analytics} reachuUserId={reachuUserId} />
       </div>
     </AppLayout>
   );
