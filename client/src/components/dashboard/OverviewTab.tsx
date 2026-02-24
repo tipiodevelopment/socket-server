@@ -350,15 +350,15 @@ export function OverviewTab({ campaignId, campaign, onNavigateTab }: OverviewTab
                     <div className="flex justify-between items-start">
                       <div className="flex-1">
                         <div className="flex items-center space-x-3 mb-2">
-                          <h3 className="text-base font-semibold text-white">{broadcast.broadcastName}</h3>
+                          <h3 className="text-base font-semibold text-gray-900 dark:text-white">{broadcast.broadcastName}</h3>
                           {broadcast.status === 'live' && (
-                            <span className="px-2 py-0.5 bg-white text-black text-[10px] uppercase font-bold rounded-full">Live</span>
+                            <span className="px-2 py-0.5 bg-[#3d8b7a] text-white dark:bg-white dark:text-black text-[10px] uppercase font-bold rounded-full">Live</span>
                           )}
                           {broadcast.status === 'upcoming' && (
-                            <span className="px-2 py-0.5 bg-white/10 text-gray-300 text-[10px] uppercase font-bold rounded-full border border-white/20">Upcoming</span>
+                            <span className="px-2 py-0.5 bg-gray-100 text-gray-600 dark:bg-white/10 dark:text-gray-300 text-[10px] uppercase font-bold rounded-full border border-gray-200 dark:border-white/20">Upcoming</span>
                           )}
                           {broadcast.status === 'ended' && (
-                            <span className="px-2 py-0.5 bg-white/10 text-gray-400 text-[10px] uppercase font-bold rounded-full border border-white/10">Ended</span>
+                            <span className="px-2 py-0.5 bg-gray-100 text-gray-400 dark:bg-white/10 dark:text-gray-400 text-[10px] uppercase font-bold rounded-full border border-gray-200 dark:border-white/10">Ended</span>
                           )}
                         </div>
                         {broadcast.description && (

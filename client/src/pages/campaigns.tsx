@@ -25,19 +25,19 @@ function getCampaignStatus(campaign: Campaign): CampaignStatus {
 const STATUS_CONFIG: Record<CampaignStatus, { label: string; className: string }> = {
   active: {
     label: 'ACTIVE',
-    className: 'bg-green-500/20 text-green-400 border-green-500/30',
+    className: 'bg-[#3d8b7a]/15 text-[#3d8b7a] border-[#3d8b7a]/30 dark:bg-[#3d8b7a]/20 dark:text-[#5eff9e] dark:border-[#3d8b7a]/40',
   },
   upcoming: {
     label: 'UPCOMING',
-    className: 'bg-white/10 text-gray-300 border-white/20',
+    className: 'bg-gray-100 text-gray-500 border-gray-200 dark:bg-white/10 dark:text-gray-300 dark:border-white/20',
   },
   ended: {
     label: 'ENDED',
-    className: 'bg-gray-500/20 text-gray-400 border-gray-500/30',
+    className: 'bg-gray-100 text-gray-400 border-gray-200 dark:bg-gray-500/20 dark:text-gray-400 dark:border-gray-500/30',
   },
   paused: {
     label: 'PAUSED',
-    className: 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30',
+    className: 'bg-amber-50 text-amber-600 border-amber-200 dark:bg-yellow-500/20 dark:text-yellow-400 dark:border-yellow-500/30',
   },
 };
 
@@ -173,7 +173,7 @@ export default function CampaignsPage() {
               data-testid={`filter-${tab.value}`}
               className={`px-3.5 py-1.5 text-sm rounded-md transition-all ${
                 statusFilter === tab.value
-                  ? 'bg-white dark:bg-white/10 text-gray-900 dark:text-white font-medium shadow-sm'
+                  ? 'bg-[#3d8b7a] text-white dark:bg-white/10 dark:text-white font-medium shadow-sm'
                   : 'text-gray-500 dark:text-white/40 hover:text-gray-700 dark:hover:text-white/60 hover:bg-gray-100 dark:hover:bg-white/5'
               }`}
             >

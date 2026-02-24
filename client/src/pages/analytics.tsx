@@ -26,13 +26,13 @@ function formatNum(n: number): string {
 
 function StatCard({ label, value, icon: Icon, sub, testId }: { label: string; value: string | number; icon: any; sub?: string; testId: string }) {
   return (
-    <div className="bg-[#141824] border border-white/10 rounded-lg p-5" data-testid={testId}>
+    <div className="bg-white dark:bg-[#141824] border border-gray-200 dark:border-white/10 rounded-lg p-5" data-testid={testId}>
       <div className="flex items-center justify-between mb-3">
-        <span className="text-xs text-gray-400 uppercase tracking-wide font-medium">{label}</span>
-        <Icon className="w-4 h-4 text-gray-500" />
+        <span className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wide font-medium">{label}</span>
+        <Icon className="w-4 h-4 text-[#3d8b7a] dark:text-gray-500" />
       </div>
-      <div className="text-2xl font-bold text-white">{typeof value === 'number' ? formatNum(value) : value}</div>
-      {sub && <div className="text-xs text-gray-500 mt-1">{sub}</div>}
+      <div className="text-2xl font-bold text-gray-900 dark:text-white">{typeof value === 'number' ? formatNum(value) : value}</div>
+      {sub && <div className="text-xs text-gray-400 dark:text-gray-500 mt-1">{sub}</div>}
     </div>
   );
 }
@@ -40,10 +40,28 @@ function StatCard({ label, value, icon: Icon, sub, testId }: { label: string; va
 function SectionHeader({ title, action }: { title: string; action?: React.ReactNode }) {
   return (
     <div className="flex items-center justify-between mb-4">
-      <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wide">{title}</h2>
+      <h2 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">{title}</h2>
       {action}
     </div>
   );
+}
+
+function useChartTheme() {
+  const isDark = document.documentElement.classList.contains('dark');
+  return {
+    grid: isDark ? '#2a3142' : '#e5e7eb',
+    tick: isDark ? '#6b7280' : '#9ca3af',
+    tooltipBg: isDark ? '#141824' : '#ffffff',
+    tooltipBorder: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)',
+    tooltipColor: isDark ? '#fff' : '#1f2937',
+    barFill: isDark ? '#ffffff' : '#3d8b7a',
+    linePrimary: isDark ? '#ffffff' : '#3d8b7a',
+    lineSecondary: isDark ? '#6b7280' : '#8fd8d0',
+    progressBg: isDark ? 'bg-white/5' : 'bg-gray-100',
+    progressFill: isDark ? 'bg-white/60' : 'bg-[#3d8b7a]/60',
+    voteBg: isDark ? 'bg-white/5' : 'bg-gray-100',
+    voteFill: isDark ? 'bg-white/50' : 'bg-[#3d8b7a]/50',
+  };
 }
 
 function GlobalDashboard({ onDrill }: { onDrill: (view: DrillView) => void }) {
@@ -51,12 +69,13 @@ function GlobalDashboard({ onDrill }: { onDrill: (view: DrillView) => void }) {
   const { data: engagement, isLoading: loadingEngagement } = useQuery<any>({ queryKey: ['/api/analytics/engagement'] });
   const { data: geo, isLoading: loadingGeo } = useQuery<any>({ queryKey: ['/api/analytics/geographic'] });
   const { data: sponsorData, isLoading: loadingSponsors } = useQuery<any>({ queryKey: ['/api/analytics/sponsors'] });
+  const chart = useChartTheme();
 
   if (errorOverview) {
     return (
-      <div className="flex items-center justify-center py-20 text-gray-500" data-testid="error-analytics">
+      <div className="flex items-center justify-center py-20 text-gray-400 dark:text-gray-500" data-testid="error-analytics">
         <div className="text-center">
-          <BarChart3 className="w-10 h-10 mx-auto mb-3 text-gray-600" />
+          <BarChart3 className="w-10 h-10 mx-auto mb-3 text-gray-300 dark:text-gray-600" />
           <p className="text-sm">Failed to load analytics data. Please try again.</p>
         </div>
       </div>
@@ -67,7 +86,7 @@ function GlobalDashboard({ onDrill }: { onDrill: (view: DrillView) => void }) {
     return (
       <div className="space-y-6">
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          {[...Array(8)].map((_, i) => <Skeleton key={i} className="h-28 bg-[#141824]" />)}
+          {[...Array(8)].map((_, i) => <Skeleton key={i} className="h-28 bg-gray-100 dark:bg-[#141824]" />)}
         </div>
       </div>
     );
@@ -90,36 +109,36 @@ function GlobalDashboard({ onDrill }: { onDrill: (view: DrillView) => void }) {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="bg-[#141824] border border-white/10 rounded-lg p-5" data-testid="section-broadcast-activity">
+        <div className="bg-white dark:bg-[#141824] border border-gray-200 dark:border-white/10 rounded-lg p-5" data-testid="section-broadcast-activity">
           <SectionHeader title="Broadcast Activity (30 days)" />
           {loadingEngagement ? (
-            <Skeleton className="h-48 bg-[#1c2030]" />
+            <Skeleton className="h-48 bg-gray-100 dark:bg-[#1c2030]" />
           ) : (
             <ResponsiveContainer width="100%" height={200}>
               <BarChart data={engagement?.broadcastActivity || []}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#2a3142" />
-                <XAxis dataKey="date" tick={{ fill: '#6b7280', fontSize: 10 }} tickFormatter={(v) => new Date(v).toLocaleDateString('en', { month: 'short', day: 'numeric' })} />
-                <YAxis tick={{ fill: '#6b7280', fontSize: 10 }} />
-                <Tooltip contentStyle={{ backgroundColor: '#141824', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, color: '#fff' }} />
-                <Bar dataKey="count" fill="#ffffff" radius={[2, 2, 0, 0]} />
+                <CartesianGrid strokeDasharray="3 3" stroke={chart.grid} />
+                <XAxis dataKey="date" tick={{ fill: chart.tick, fontSize: 10 }} tickFormatter={(v) => new Date(v).toLocaleDateString('en', { month: 'short', day: 'numeric' })} />
+                <YAxis tick={{ fill: chart.tick, fontSize: 10 }} />
+                <Tooltip contentStyle={{ backgroundColor: chart.tooltipBg, border: `1px solid ${chart.tooltipBorder}`, borderRadius: 8, color: chart.tooltipColor }} />
+                <Bar dataKey="count" fill={chart.barFill} radius={[2, 2, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           )}
         </div>
 
-        <div className="bg-[#141824] border border-white/10 rounded-lg p-5" data-testid="section-geographic">
+        <div className="bg-white dark:bg-[#141824] border border-gray-200 dark:border-white/10 rounded-lg p-5" data-testid="section-geographic">
           <SectionHeader title="Geographic Distribution" />
           {loadingGeo ? (
-            <Skeleton className="h-48 bg-[#1c2030]" />
+            <Skeleton className="h-48 bg-gray-100 dark:bg-[#1c2030]" />
           ) : (geo?.countries?.length ?? 0) === 0 ? (
-            <div className="h-48 flex items-center justify-center text-gray-500 text-sm">No geographic data available</div>
+            <div className="h-48 flex items-center justify-center text-gray-400 dark:text-gray-500 text-sm">No geographic data available</div>
           ) : (
             <div className="space-y-2 max-h-48 overflow-y-auto">
               {geo?.countries?.map((c: any, i: number) => (
-                <div key={i} className="flex items-center justify-between py-1.5 px-2 rounded hover:bg-white/5">
+                <div key={i} className="flex items-center justify-between py-1.5 px-2 rounded hover:bg-gray-50 dark:hover:bg-white/5">
                   <div className="flex items-center gap-2">
-                    <Globe className="w-3.5 h-3.5 text-gray-500" />
-                    <span className="text-sm text-white">{c.country}</span>
+                    <Globe className="w-3.5 h-3.5 text-[#3d8b7a] dark:text-gray-500" />
+                    <span className="text-sm text-gray-900 dark:text-white">{c.country}</span>
                   </div>
                   <span className="text-xs text-gray-400">{c.campaignCount} campaigns</span>
                 </div>
@@ -129,15 +148,15 @@ function GlobalDashboard({ onDrill }: { onDrill: (view: DrillView) => void }) {
         </div>
       </div>
 
-      <div className="bg-[#141824] border border-white/10 rounded-lg p-5" data-testid="section-top-campaigns">
+      <div className="bg-white dark:bg-[#141824] border border-gray-200 dark:border-white/10 rounded-lg p-5" data-testid="section-top-campaigns">
         <SectionHeader title="Top Campaigns by Engagement" />
         {loadingEngagement ? (
-          <Skeleton className="h-40 bg-[#1c2030]" />
+          <Skeleton className="h-40 bg-gray-100 dark:bg-[#1c2030]" />
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="text-left text-gray-500 text-xs uppercase border-b border-white/10">
+                <tr className="text-left text-gray-400 dark:text-gray-500 text-xs uppercase border-b border-gray-200 dark:border-white/10">
                   <th className="pb-3 pr-4">Campaign</th>
                   <th className="pb-3 pr-4">App</th>
                   <th className="pb-3 pr-4 text-right">Polls</th>
@@ -151,21 +170,21 @@ function GlobalDashboard({ onDrill }: { onDrill: (view: DrillView) => void }) {
                 {(engagement?.topCampaigns || []).map((c: any) => (
                   <tr
                     key={c.id}
-                    className="border-b border-white/5 hover:bg-white/5 cursor-pointer transition"
+                    className="border-b border-gray-100 dark:border-white/5 hover:bg-gray-50 dark:hover:bg-white/5 cursor-pointer transition"
                     onClick={() => onDrill({ type: 'campaign', id: c.id })}
                     data-testid={`row-campaign-${c.id}`}
                   >
-                    <td className="py-3 pr-4 text-white font-medium">{c.name}</td>
-                    <td className="py-3 pr-4 text-gray-400">{c.clientAppName || '—'}</td>
-                    <td className="py-3 pr-4 text-right text-gray-300">{c.totalPolls}</td>
-                    <td className="py-3 pr-4 text-right text-gray-300">{c.totalContests}</td>
-                    <td className="py-3 pr-4 text-right text-gray-300">{formatNum(c.totalVotes)}</td>
-                    <td className="py-3 pr-4 text-right text-gray-300">{formatNum(c.totalParticipations)}</td>
-                    <td className="py-3 text-right text-white font-medium">{formatNum(c.totalEngagement)}</td>
+                    <td className="py-3 pr-4 text-gray-900 dark:text-white font-medium">{c.name}</td>
+                    <td className="py-3 pr-4 text-gray-500 dark:text-gray-400">{c.clientAppName || '—'}</td>
+                    <td className="py-3 pr-4 text-right text-gray-600 dark:text-gray-300">{c.totalPolls}</td>
+                    <td className="py-3 pr-4 text-right text-gray-600 dark:text-gray-300">{c.totalContests}</td>
+                    <td className="py-3 pr-4 text-right text-gray-600 dark:text-gray-300">{formatNum(c.totalVotes)}</td>
+                    <td className="py-3 pr-4 text-right text-gray-600 dark:text-gray-300">{formatNum(c.totalParticipations)}</td>
+                    <td className="py-3 text-right text-gray-900 dark:text-white font-medium">{formatNum(c.totalEngagement)}</td>
                   </tr>
                 ))}
                 {(engagement?.topCampaigns?.length ?? 0) === 0 && (
-                  <tr><td colSpan={7} className="py-8 text-center text-gray-500">No campaign data yet</td></tr>
+                  <tr><td colSpan={7} className="py-8 text-center text-gray-400 dark:text-gray-500">No campaign data yet</td></tr>
                 )}
               </tbody>
             </table>
@@ -174,10 +193,10 @@ function GlobalDashboard({ onDrill }: { onDrill: (view: DrillView) => void }) {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="bg-[#141824] border border-white/10 rounded-lg p-5" data-testid="section-top-components">
+        <div className="bg-white dark:bg-[#141824] border border-gray-200 dark:border-white/10 rounded-lg p-5" data-testid="section-top-components">
           <SectionHeader title="Most Used Components" />
           {loadingEngagement ? (
-            <Skeleton className="h-40 bg-[#1c2030]" />
+            <Skeleton className="h-40 bg-gray-100 dark:bg-[#1c2030]" />
           ) : (
             <div className="space-y-3">
               {(engagement?.topComponents || []).map((c: any, i: number) => {
@@ -185,49 +204,49 @@ function GlobalDashboard({ onDrill }: { onDrill: (view: DrillView) => void }) {
                 return (
                   <div key={i} className="space-y-1">
                     <div className="flex items-center justify-between">
-                      <span className="text-sm text-white">{c.name}</span>
+                      <span className="text-sm text-gray-900 dark:text-white">{c.name}</span>
                       <span className="text-xs text-gray-400">{c.type} · {c.campaignCount} campaigns</span>
                     </div>
-                    <div className="w-full bg-white/5 rounded-full h-1.5">
-                      <div className="bg-white/60 h-1.5 rounded-full" style={{ width: `${(c.campaignCount / maxCount) * 100}%` }} />
+                    <div className="w-full bg-gray-100 dark:bg-white/5 rounded-full h-1.5">
+                      <div className="bg-[#3d8b7a] dark:bg-white/60 h-1.5 rounded-full" style={{ width: `${(c.campaignCount / maxCount) * 100}%` }} />
                     </div>
                   </div>
                 );
               })}
               {(engagement?.topComponents?.length ?? 0) === 0 && (
-                <div className="py-8 text-center text-gray-500 text-sm">No component data yet</div>
+                <div className="py-8 text-center text-gray-400 dark:text-gray-500 text-sm">No component data yet</div>
               )}
             </div>
           )}
         </div>
 
-        <div className="bg-[#141824] border border-white/10 rounded-lg p-5" data-testid="section-sponsors">
+        <div className="bg-white dark:bg-[#141824] border border-gray-200 dark:border-white/10 rounded-lg p-5" data-testid="section-sponsors">
           <SectionHeader title="Sponsor Performance" />
           {loadingSponsors ? (
-            <Skeleton className="h-40 bg-[#1c2030]" />
+            <Skeleton className="h-40 bg-gray-100 dark:bg-[#1c2030]" />
           ) : (
             <div className="space-y-3">
               {(sponsorData?.sponsors || []).slice(0, 5).map((s: any) => (
-                <div key={s.id} className="flex items-center justify-between py-2 border-b border-white/5 last:border-0">
+                <div key={s.id} className="flex items-center justify-between py-2 border-b border-gray-100 dark:border-white/5 last:border-0">
                   <div className="flex items-center gap-3">
                     {s.logoUrl ? (
                       <img src={s.logoUrl} alt={s.name} className="w-8 h-8 rounded-full object-cover" />
                     ) : (
-                      <div className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center"><Award className="w-4 h-4 text-gray-400" /></div>
+                      <div className="w-8 h-8 rounded-full bg-gray-100 dark:bg-white/10 flex items-center justify-center"><Award className="w-4 h-4 text-[#3d8b7a] dark:text-gray-400" /></div>
                     )}
                     <div>
-                      <div className="text-sm text-white font-medium">{s.name}</div>
-                      <div className="text-xs text-gray-500">{s.campaignCount} campaigns · {s.broadcastCount} broadcasts</div>
+                      <div className="text-sm text-gray-900 dark:text-white font-medium">{s.name}</div>
+                      <div className="text-xs text-gray-400 dark:text-gray-500">{s.campaignCount} campaigns · {s.broadcastCount} broadcasts</div>
                     </div>
                   </div>
                   <div className="text-right">
-                    <div className="text-sm text-white font-medium">{formatNum(s.totalEngagement)}</div>
-                    <div className="text-xs text-gray-500">engagement</div>
+                    <div className="text-sm text-gray-900 dark:text-white font-medium">{formatNum(s.totalEngagement)}</div>
+                    <div className="text-xs text-gray-400 dark:text-gray-500">engagement</div>
                   </div>
                 </div>
               ))}
               {(sponsorData?.sponsors?.length ?? 0) === 0 && (
-                <div className="py-8 text-center text-gray-500 text-sm">No sponsor data yet</div>
+                <div className="py-8 text-center text-gray-400 dark:text-gray-500 text-sm">No sponsor data yet</div>
               )}
             </div>
           )}
@@ -240,19 +259,19 @@ function GlobalDashboard({ onDrill }: { onDrill: (view: DrillView) => void }) {
 function AppAnalytics({ appId, onDrill, onBack }: { appId: number; onDrill: (view: DrillView) => void; onBack: () => void }) {
   const { data, isLoading, isError } = useQuery<any>({ queryKey: ['/api/analytics/apps', appId] });
 
-  if (isLoading) return <div className="space-y-4">{[...Array(4)].map((_, i) => <Skeleton key={i} className="h-28 bg-[#141824]" />)}</div>;
-  if (isError || !data) return <div className="text-center text-gray-500 py-12" data-testid="error-app-analytics">Failed to load app analytics</div>;
+  if (isLoading) return <div className="space-y-4">{[...Array(4)].map((_, i) => <Skeleton key={i} className="h-28 bg-gray-100 dark:bg-[#141824]" />)}</div>;
+  if (isError || !data) return <div className="text-center text-gray-400 dark:text-gray-500 py-12" data-testid="error-app-analytics">Failed to load app analytics</div>;
 
   return (
     <div className="space-y-6">
-      <button onClick={onBack} className="flex items-center gap-2 text-gray-400 hover:text-white text-sm transition" data-testid="button-back-app">
+      <button onClick={onBack} className="flex items-center gap-2 text-gray-400 hover:text-gray-900 dark:hover:text-white text-sm transition" data-testid="button-back-app">
         <ArrowLeft className="w-4 h-4" /> Back to Overview
       </button>
       <div className="flex items-center gap-3 mb-2">
-        <Smartphone className="w-5 h-5 text-white" />
+        <Smartphone className="w-5 h-5 text-[#3d8b7a] dark:text-white" />
         <div>
-          <h2 className="text-lg font-bold text-white" data-testid="text-app-name">{data.app.name}</h2>
-          <span className="text-xs text-gray-500">{data.app.bundleId} · {data.app.status}</span>
+          <h2 className="text-lg font-bold text-gray-900 dark:text-white" data-testid="text-app-name">{data.app.name}</h2>
+          <span className="text-xs text-gray-400 dark:text-gray-500">{data.app.bundleId} · {data.app.status}</span>
         </div>
       </div>
 
@@ -263,32 +282,32 @@ function AppAnalytics({ appId, onDrill, onBack }: { appId: number; onDrill: (vie
         <StatCard label="Total Engagement" value={data.kpis.totalVotes + data.kpis.totalParticipations} icon={Activity} sub={`${formatNum(data.kpis.totalVotes)} votes · ${formatNum(data.kpis.totalParticipations)} participations`} testId="stat-app-engagement" />
       </div>
 
-      <div className="bg-[#141824] border border-white/10 rounded-lg p-5">
+      <div className="bg-white dark:bg-[#141824] border border-gray-200 dark:border-white/10 rounded-lg p-5">
         <SectionHeader title="Campaigns" />
         <div className="space-y-2">
           {data.campaigns.map((c: any) => (
             <div
               key={c.id}
-              className="flex items-center justify-between py-3 px-3 rounded-lg hover:bg-white/5 cursor-pointer transition"
+              className="flex items-center justify-between py-3 px-3 rounded-lg hover:bg-gray-50 dark:hover:bg-white/5 cursor-pointer transition"
               onClick={() => onDrill({ type: 'campaign', id: c.id })}
               data-testid={`app-campaign-${c.id}`}
             >
               <div>
-                <div className="text-sm text-white font-medium">{c.name}</div>
-                <div className="text-xs text-gray-500">
+                <div className="text-sm text-gray-900 dark:text-white font-medium">{c.name}</div>
+                <div className="text-xs text-gray-400 dark:text-gray-500">
                   {c.isPaused === 'true' ? 'Paused' : c.endDate && new Date(c.endDate) < new Date() ? 'Ended' : 'Active'}
                 </div>
               </div>
               <div className="flex items-center gap-4">
                 <div className="text-right">
-                  <div className="text-sm text-white">{formatNum(c.totalEngagement)}</div>
-                  <div className="text-xs text-gray-500">engagement</div>
+                  <div className="text-sm text-gray-900 dark:text-white">{formatNum(c.totalEngagement)}</div>
+                  <div className="text-xs text-gray-400 dark:text-gray-500">engagement</div>
                 </div>
-                <ChevronRight className="w-4 h-4 text-gray-500" />
+                <ChevronRight className="w-4 h-4 text-gray-400 dark:text-gray-500" />
               </div>
             </div>
           ))}
-          {data.campaigns.length === 0 && <div className="py-6 text-center text-gray-500 text-sm">No campaigns yet</div>}
+          {data.campaigns.length === 0 && <div className="py-6 text-center text-gray-400 dark:text-gray-500 text-sm">No campaigns yet</div>}
         </div>
       </div>
     </div>
@@ -297,18 +316,18 @@ function AppAnalytics({ appId, onDrill, onBack }: { appId: number; onDrill: (vie
 
 function VoteBar({ options }: { options: any[] }) {
   const total = options.reduce((s: number, o: any) => s + (o.voteCount || 0), 0);
-  if (total === 0) return <span className="text-xs text-gray-500">No votes</span>;
+  if (total === 0) return <span className="text-xs text-gray-400 dark:text-gray-500">No votes</span>;
   return (
     <div className="space-y-1.5 w-full">
       {options.sort((a: any, b: any) => a.displayOrder - b.displayOrder).map((opt: any) => {
         const pct = total > 0 ? Math.round((opt.voteCount / total) * 100) : 0;
         return (
           <div key={opt.id} className="flex items-center gap-2">
-            <span className="text-xs text-gray-400 w-24 truncate">{opt.text}</span>
-            <div className="flex-1 bg-white/5 rounded-full h-2">
-              <div className="bg-white/50 h-2 rounded-full transition-all" style={{ width: `${pct}%` }} />
+            <span className="text-xs text-gray-500 dark:text-gray-400 w-24 truncate">{opt.text}</span>
+            <div className="flex-1 bg-gray-100 dark:bg-white/5 rounded-full h-2">
+              <div className="bg-[#3d8b7a] dark:bg-white/50 h-2 rounded-full transition-all" style={{ width: `${pct}%` }} />
             </div>
-            <span className="text-xs text-gray-400 w-12 text-right">{pct}%</span>
+            <span className="text-xs text-gray-500 dark:text-gray-400 w-12 text-right">{pct}%</span>
           </div>
         );
       })}
@@ -318,9 +337,10 @@ function VoteBar({ options }: { options: any[] }) {
 
 function CampaignAnalytics({ campaignId, onDrill, onBack }: { campaignId: number; onDrill: (view: DrillView) => void; onBack: () => void }) {
   const { data, isLoading, isError } = useQuery<any>({ queryKey: ['/api/analytics/campaigns', campaignId] });
+  const chart = useChartTheme();
 
-  if (isLoading) return <div className="space-y-4">{[...Array(4)].map((_, i) => <Skeleton key={i} className="h-28 bg-[#141824]" />)}</div>;
-  if (isError || !data) return <div className="text-center text-gray-500 py-12" data-testid="error-campaign-analytics">Failed to load campaign analytics</div>;
+  if (isLoading) return <div className="space-y-4">{[...Array(4)].map((_, i) => <Skeleton key={i} className="h-28 bg-gray-100 dark:bg-[#141824]" />)}</div>;
+  if (isError || !data) return <div className="text-center text-gray-400 dark:text-gray-500 py-12" data-testid="error-campaign-analytics">Failed to load campaign analytics</div>;
 
   const c = data.campaign;
   const isPaused = c.isPaused === 'true';
@@ -338,17 +358,17 @@ function CampaignAnalytics({ campaignId, onDrill, onBack }: { campaignId: number
 
   return (
     <div className="space-y-6">
-      <button onClick={onBack} className="flex items-center gap-2 text-gray-400 hover:text-white text-sm transition" data-testid="button-back-campaign">
+      <button onClick={onBack} className="flex items-center gap-2 text-gray-400 hover:text-gray-900 dark:hover:text-white text-sm transition" data-testid="button-back-campaign">
         <ArrowLeft className="w-4 h-4" /> Back
       </button>
 
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-lg font-bold text-white" data-testid="text-campaign-name">{c.name}</h2>
+          <h2 className="text-lg font-bold text-gray-900 dark:text-white" data-testid="text-campaign-name">{c.name}</h2>
           <div className="flex items-center gap-2 mt-1">
-            <span className={`text-xs px-2 py-0.5 rounded ${statusLabel === 'Active' ? 'bg-white text-black' : statusLabel === 'Paused' ? 'bg-yellow-500/20 text-yellow-400' : 'bg-white/10 text-gray-400'}`}>{statusLabel}</span>
-            {c.clientAppName && <span className="text-xs text-gray-500">{c.clientAppName}</span>}
-            {c.sponsorName && <span className="text-xs text-gray-500">· Sponsor: {c.sponsorName}</span>}
+            <span className={`text-xs px-2 py-0.5 rounded ${statusLabel === 'Active' ? 'bg-[#3d8b7a] text-white dark:bg-white dark:text-black' : statusLabel === 'Paused' ? 'bg-amber-100 text-amber-700 dark:bg-yellow-500/20 dark:text-yellow-400' : 'bg-gray-100 text-gray-500 dark:bg-white/10 dark:text-gray-400'}`}>{statusLabel}</span>
+            {c.clientAppName && <span className="text-xs text-gray-400 dark:text-gray-500">{c.clientAppName}</span>}
+            {c.sponsorName && <span className="text-xs text-gray-400 dark:text-gray-500">· Sponsor: {c.sponsorName}</span>}
           </div>
         </div>
       </div>
@@ -363,36 +383,36 @@ function CampaignAnalytics({ campaignId, onDrill, onBack }: { campaignId: number
       </div>
 
       {timelineData.length > 0 && (
-        <div className="bg-[#141824] border border-white/10 rounded-lg p-5" data-testid="section-engagement-timeline">
+        <div className="bg-white dark:bg-[#141824] border border-gray-200 dark:border-white/10 rounded-lg p-5" data-testid="section-engagement-timeline">
           <SectionHeader title="Engagement Timeline" />
           <ResponsiveContainer width="100%" height={200}>
             <LineChart data={timelineData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#2a3142" />
-              <XAxis dataKey="date" tick={{ fill: '#6b7280', fontSize: 10 }} tickFormatter={(v) => new Date(v).toLocaleDateString('en', { month: 'short', day: 'numeric' })} />
-              <YAxis tick={{ fill: '#6b7280', fontSize: 10 }} />
-              <Tooltip contentStyle={{ backgroundColor: '#141824', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, color: '#fff' }} />
-              <Legend wrapperStyle={{ fontSize: 12, color: '#9ca3af' }} />
-              <Line type="monotone" dataKey="votes" stroke="#ffffff" strokeWidth={2} dot={false} />
-              <Line type="monotone" dataKey="participations" stroke="#6b7280" strokeWidth={2} dot={false} />
+              <CartesianGrid strokeDasharray="3 3" stroke={chart.grid} />
+              <XAxis dataKey="date" tick={{ fill: chart.tick, fontSize: 10 }} tickFormatter={(v) => new Date(v).toLocaleDateString('en', { month: 'short', day: 'numeric' })} />
+              <YAxis tick={{ fill: chart.tick, fontSize: 10 }} />
+              <Tooltip contentStyle={{ backgroundColor: chart.tooltipBg, border: `1px solid ${chart.tooltipBorder}`, borderRadius: 8, color: chart.tooltipColor }} />
+              <Legend wrapperStyle={{ fontSize: 12, color: chart.tick }} />
+              <Line type="monotone" dataKey="votes" stroke={chart.linePrimary} strokeWidth={2} dot={false} />
+              <Line type="monotone" dataKey="participations" stroke={chart.lineSecondary} strokeWidth={2} dot={false} />
             </LineChart>
           </ResponsiveContainer>
         </div>
       )}
 
-      <div className="bg-[#141824] border border-white/10 rounded-lg p-5" data-testid="section-polls-performance">
+      <div className="bg-white dark:bg-[#141824] border border-gray-200 dark:border-white/10 rounded-lg p-5" data-testid="section-polls-performance">
         <SectionHeader title="Polls Performance" />
         <div className="space-y-4">
-          {data.polls.length === 0 && <div className="py-6 text-center text-gray-500 text-sm">No polls in this campaign</div>}
+          {data.polls.length === 0 && <div className="py-6 text-center text-gray-400 dark:text-gray-500 text-sm">No polls in this campaign</div>}
           {data.polls.map((p: any) => (
-            <div key={p.id} className="border border-white/5 rounded-lg p-4 hover:bg-white/[0.02] transition">
+            <div key={p.id} className="border border-gray-200 dark:border-white/5 rounded-lg p-4 hover:bg-gray-50 dark:hover:bg-white/[0.02] transition">
               <div className="flex items-start justify-between mb-3">
                 <div>
-                  <div className="text-sm text-white font-medium">{p.question}</div>
-                  <div className="text-xs text-gray-500 mt-1">
+                  <div className="text-sm text-gray-900 dark:text-white font-medium">{p.question}</div>
+                  <div className="text-xs text-gray-400 dark:text-gray-500 mt-1">
                     Broadcast: {p.broadcastName} · {p.totalVotes} votes · {p.isActive ? 'Active' : 'Closed'}
                   </div>
                 </div>
-                <span className={`text-xs px-2 py-0.5 rounded ${p.isActive ? 'bg-white text-black' : 'bg-white/10 text-gray-400'}`}>
+                <span className={`text-xs px-2 py-0.5 rounded ${p.isActive ? 'bg-[#3d8b7a] text-white dark:bg-white dark:text-black' : 'bg-gray-100 text-gray-500 dark:bg-white/10 dark:text-gray-400'}`}>
                   {p.isActive ? 'Active' : 'Closed'}
                 </span>
               </div>
@@ -402,24 +422,24 @@ function CampaignAnalytics({ campaignId, onDrill, onBack }: { campaignId: number
         </div>
       </div>
 
-      <div className="bg-[#141824] border border-white/10 rounded-lg p-5" data-testid="section-contests-performance">
+      <div className="bg-white dark:bg-[#141824] border border-gray-200 dark:border-white/10 rounded-lg p-5" data-testid="section-contests-performance">
         <SectionHeader title="Contests Performance" />
         <div className="space-y-3">
-          {data.contests.length === 0 && <div className="py-6 text-center text-gray-500 text-sm">No contests in this campaign</div>}
+          {data.contests.length === 0 && <div className="py-6 text-center text-gray-400 dark:text-gray-500 text-sm">No contests in this campaign</div>}
           {data.contests.map((ct: any) => (
-            <div key={ct.id} className="flex items-center justify-between py-3 px-3 border border-white/5 rounded-lg hover:bg-white/[0.02] transition">
+            <div key={ct.id} className="flex items-center justify-between py-3 px-3 border border-gray-200 dark:border-white/5 rounded-lg hover:bg-gray-50 dark:hover:bg-white/[0.02] transition">
               <div>
-                <div className="text-sm text-white font-medium">{ct.title}</div>
-                <div className="text-xs text-gray-500">
+                <div className="text-sm text-gray-900 dark:text-white font-medium">{ct.title}</div>
+                <div className="text-xs text-gray-400 dark:text-gray-500">
                   {ct.contestType} · {ct.broadcastName} {ct.prize && `· Prize: ${ct.prize}`}
                 </div>
               </div>
               <div className="flex items-center gap-4">
                 <div className="text-right">
-                  <div className="text-sm text-white">{ct.participationCount}</div>
-                  <div className="text-xs text-gray-500">participants</div>
+                  <div className="text-sm text-gray-900 dark:text-white">{ct.participationCount}</div>
+                  <div className="text-xs text-gray-400 dark:text-gray-500">participants</div>
                 </div>
-                <span className={`text-xs px-2 py-0.5 rounded ${ct.isActive ? 'bg-white text-black' : 'bg-white/10 text-gray-400'}`}>
+                <span className={`text-xs px-2 py-0.5 rounded ${ct.isActive ? 'bg-[#3d8b7a] text-white dark:bg-white dark:text-black' : 'bg-gray-100 text-gray-500 dark:bg-white/10 dark:text-gray-400'}`}>
                   {ct.isActive ? 'Active' : 'Closed'}
                 </span>
               </div>
@@ -429,17 +449,17 @@ function CampaignAnalytics({ campaignId, onDrill, onBack }: { campaignId: number
       </div>
 
       {data.components.length > 0 && (
-        <div className="bg-[#141824] border border-white/10 rounded-lg p-5" data-testid="section-campaign-components">
+        <div className="bg-white dark:bg-[#141824] border border-gray-200 dark:border-white/10 rounded-lg p-5" data-testid="section-campaign-components">
           <SectionHeader title="Components" />
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
             {data.components.map((comp: any) => (
-              <div key={comp.id} className="border border-white/5 rounded-lg p-3">
+              <div key={comp.id} className="border border-gray-200 dark:border-white/5 rounded-lg p-3">
                 <div className="flex items-center justify-between mb-2">
-                  <span className="text-sm text-white font-medium">{comp.instanceName || comp.componentName}</span>
-                  <span className={`text-xs px-1.5 py-0.5 rounded ${comp.status === 'active' ? 'bg-white text-black' : 'bg-white/10 text-gray-400'}`}>{comp.status}</span>
+                  <span className="text-sm text-gray-900 dark:text-white font-medium">{comp.instanceName || comp.componentName}</span>
+                  <span className={`text-xs px-1.5 py-0.5 rounded ${comp.status === 'active' ? 'bg-[#3d8b7a] text-white dark:bg-white dark:text-black' : 'bg-gray-100 text-gray-500 dark:bg-white/10 dark:text-gray-400'}`}>{comp.status}</span>
                 </div>
-                <div className="text-xs text-gray-500">{comp.type}</div>
-                {comp.activatedAt && <div className="text-xs text-gray-500 mt-1">Activated: {new Date(comp.activatedAt).toLocaleDateString()}</div>}
+                <div className="text-xs text-gray-400 dark:text-gray-500">{comp.type}</div>
+                {comp.activatedAt && <div className="text-xs text-gray-400 dark:text-gray-500 mt-1">Activated: {new Date(comp.activatedAt).toLocaleDateString()}</div>}
               </div>
             ))}
           </div>
@@ -447,20 +467,20 @@ function CampaignAnalytics({ campaignId, onDrill, onBack }: { campaignId: number
       )}
 
       {c.isSegmented === 'true' && (
-        <div className="bg-[#141824] border border-white/10 rounded-lg p-5" data-testid="section-segmentation">
+        <div className="bg-white dark:bg-[#141824] border border-gray-200 dark:border-white/10 rounded-lg p-5" data-testid="section-segmentation">
           <SectionHeader title="Segmentation" />
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <div className="text-xs text-gray-500 mb-1">Target Countries</div>
+              <div className="text-xs text-gray-400 dark:text-gray-500 mb-1">Target Countries</div>
               <div className="flex flex-wrap gap-1">
                 {(c.targetCountries || []).map((country: string) => (
-                  <span key={country} className="text-xs bg-white/10 text-white px-2 py-0.5 rounded">{country}</span>
+                  <span key={country} className="text-xs bg-[#3d8b7a]/10 text-[#3d8b7a] dark:bg-white/10 dark:text-white px-2 py-0.5 rounded">{country}</span>
                 ))}
               </div>
             </div>
             <div>
-              <div className="text-xs text-gray-500 mb-1">Target Percentage</div>
-              <div className="text-sm text-white">{c.targetPercentage || 100}%</div>
+              <div className="text-xs text-gray-400 dark:text-gray-500 mb-1">Target Percentage</div>
+              <div className="text-sm text-gray-900 dark:text-white">{c.targetPercentage || 100}%</div>
             </div>
           </div>
         </div>
@@ -471,25 +491,30 @@ function CampaignAnalytics({ campaignId, onDrill, onBack }: { campaignId: number
 
 function BroadcastAnalytics({ broadcastId, onBack }: { broadcastId: string; onBack: () => void }) {
   const { data, isLoading, isError } = useQuery<any>({ queryKey: ['/api/analytics/broadcasts', broadcastId] });
+  const chart = useChartTheme();
 
-  if (isLoading) return <div className="space-y-4">{[...Array(4)].map((_, i) => <Skeleton key={i} className="h-28 bg-[#141824]" />)}</div>;
-  if (isError || !data) return <div className="text-center text-gray-500 py-12" data-testid="error-broadcast-analytics">Failed to load broadcast analytics</div>;
+  if (isLoading) return <div className="space-y-4">{[...Array(4)].map((_, i) => <Skeleton key={i} className="h-28 bg-gray-100 dark:bg-[#141824]" />)}</div>;
+  if (isError || !data) return <div className="text-center text-gray-400 dark:text-gray-500 py-12" data-testid="error-broadcast-analytics">Failed to load broadcast analytics</div>;
 
   const b = data.broadcast;
-  const statusColors: Record<string, string> = { live: 'bg-white text-black', upcoming: 'border border-white/20 text-white', ended: 'bg-white/10 text-gray-400' };
+  const statusColors: Record<string, string> = {
+    live: 'bg-[#3d8b7a] text-white dark:bg-white dark:text-black',
+    upcoming: 'border border-[#3d8b7a] text-[#3d8b7a] dark:border-white/20 dark:text-white',
+    ended: 'bg-gray-100 text-gray-500 dark:bg-white/10 dark:text-gray-400'
+  };
 
   return (
     <div className="space-y-6">
-      <button onClick={onBack} className="flex items-center gap-2 text-gray-400 hover:text-white text-sm transition" data-testid="button-back-broadcast">
+      <button onClick={onBack} className="flex items-center gap-2 text-gray-400 hover:text-gray-900 dark:hover:text-white text-sm transition" data-testid="button-back-broadcast">
         <ArrowLeft className="w-4 h-4" /> Back
       </button>
 
       <div>
-        <h2 className="text-lg font-bold text-white" data-testid="text-broadcast-name">{b.broadcastName}</h2>
+        <h2 className="text-lg font-bold text-gray-900 dark:text-white" data-testid="text-broadcast-name">{b.broadcastName}</h2>
         <div className="flex items-center gap-2 mt-1">
-          <span className={`text-xs px-2 py-0.5 rounded ${statusColors[b.status] || 'bg-white/10 text-gray-400'}`}>{b.status}</span>
-          {b.campaignName && <span className="text-xs text-gray-500">{b.campaignName}</span>}
-          {b.channelName && <span className="text-xs text-gray-500">· {b.channelName}</span>}
+          <span className={`text-xs px-2 py-0.5 rounded ${statusColors[b.status] || 'bg-gray-100 text-gray-500 dark:bg-white/10 dark:text-gray-400'}`}>{b.status}</span>
+          {b.campaignName && <span className="text-xs text-gray-400 dark:text-gray-500">{b.campaignName}</span>}
+          {b.channelName && <span className="text-xs text-gray-400 dark:text-gray-500">· {b.channelName}</span>}
         </div>
       </div>
 
@@ -502,32 +527,32 @@ function BroadcastAnalytics({ broadcastId, onBack }: { broadcastId: string; onBa
       </div>
 
       {data.engagementTimeline.length > 0 && (
-        <div className="bg-[#141824] border border-white/10 rounded-lg p-5" data-testid="section-bc-timeline">
+        <div className="bg-white dark:bg-[#141824] border border-gray-200 dark:border-white/10 rounded-lg p-5" data-testid="section-bc-timeline">
           <SectionHeader title="Vote Timeline" />
           <ResponsiveContainer width="100%" height={180}>
             <BarChart data={data.engagementTimeline}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#2a3142" />
-              <XAxis dataKey="time" tick={{ fill: '#6b7280', fontSize: 10 }} tickFormatter={(v) => new Date(v).toLocaleTimeString('en', { hour: '2-digit', minute: '2-digit' })} />
-              <YAxis tick={{ fill: '#6b7280', fontSize: 10 }} />
-              <Tooltip contentStyle={{ backgroundColor: '#141824', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, color: '#fff' }} />
-              <Bar dataKey="votes" fill="#ffffff" radius={[2, 2, 0, 0]} />
+              <CartesianGrid strokeDasharray="3 3" stroke={chart.grid} />
+              <XAxis dataKey="time" tick={{ fill: chart.tick, fontSize: 10 }} tickFormatter={(v) => new Date(v).toLocaleTimeString('en', { hour: '2-digit', minute: '2-digit' })} />
+              <YAxis tick={{ fill: chart.tick, fontSize: 10 }} />
+              <Tooltip contentStyle={{ backgroundColor: chart.tooltipBg, border: `1px solid ${chart.tooltipBorder}`, borderRadius: 8, color: chart.tooltipColor }} />
+              <Bar dataKey="votes" fill={chart.barFill} radius={[2, 2, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
         </div>
       )}
 
-      <div className="bg-[#141824] border border-white/10 rounded-lg p-5" data-testid="section-bc-polls">
+      <div className="bg-white dark:bg-[#141824] border border-gray-200 dark:border-white/10 rounded-lg p-5" data-testid="section-bc-polls">
         <SectionHeader title="Poll Results" />
         <div className="space-y-4">
-          {data.polls.length === 0 && <div className="py-6 text-center text-gray-500 text-sm">No polls</div>}
+          {data.polls.length === 0 && <div className="py-6 text-center text-gray-400 dark:text-gray-500 text-sm">No polls</div>}
           {data.polls.map((p: any) => (
-            <div key={p.id} className="border border-white/5 rounded-lg p-4">
+            <div key={p.id} className="border border-gray-200 dark:border-white/5 rounded-lg p-4">
               <div className="flex items-start justify-between mb-3">
                 <div>
-                  <div className="text-sm text-white font-medium">{p.question}</div>
-                  <div className="text-xs text-gray-500 mt-1">{p.totalVotes} votes · {p.uniqueVoters} unique voters</div>
+                  <div className="text-sm text-gray-900 dark:text-white font-medium">{p.question}</div>
+                  <div className="text-xs text-gray-400 dark:text-gray-500 mt-1">{p.totalVotes} votes · {p.uniqueVoters} unique voters</div>
                 </div>
-                <span className={`text-xs px-2 py-0.5 rounded ${p.isActive ? 'bg-white text-black' : 'bg-white/10 text-gray-400'}`}>{p.isActive ? 'Active' : 'Closed'}</span>
+                <span className={`text-xs px-2 py-0.5 rounded ${p.isActive ? 'bg-[#3d8b7a] text-white dark:bg-white dark:text-black' : 'bg-gray-100 text-gray-500 dark:bg-white/10 dark:text-gray-400'}`}>{p.isActive ? 'Active' : 'Closed'}</span>
               </div>
               <VoteBar options={p.options || []} />
             </div>
@@ -535,20 +560,20 @@ function BroadcastAnalytics({ broadcastId, onBack }: { broadcastId: string; onBa
         </div>
       </div>
 
-      <div className="bg-[#141824] border border-white/10 rounded-lg p-5" data-testid="section-bc-contests">
+      <div className="bg-white dark:bg-[#141824] border border-gray-200 dark:border-white/10 rounded-lg p-5" data-testid="section-bc-contests">
         <SectionHeader title="Contest Results" />
         <div className="space-y-3">
-          {data.contests.length === 0 && <div className="py-6 text-center text-gray-500 text-sm">No contests</div>}
+          {data.contests.length === 0 && <div className="py-6 text-center text-gray-400 dark:text-gray-500 text-sm">No contests</div>}
           {data.contests.map((ct: any) => (
-            <div key={ct.id} className="border border-white/5 rounded-lg p-4">
+            <div key={ct.id} className="border border-gray-200 dark:border-white/5 rounded-lg p-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <div className="text-sm text-white font-medium">{ct.title}</div>
-                  <div className="text-xs text-gray-500 mt-1">{ct.contestType} {ct.prize && `· Prize: ${ct.prize}`}</div>
+                  <div className="text-sm text-gray-900 dark:text-white font-medium">{ct.title}</div>
+                  <div className="text-xs text-gray-400 dark:text-gray-500 mt-1">{ct.contestType} {ct.prize && `· Prize: ${ct.prize}`}</div>
                 </div>
                 <div className="text-right">
-                  <div className="text-sm text-white">{ct.participationCount}</div>
-                  <div className="text-xs text-gray-500">{ct.uniqueParticipants} unique</div>
+                  <div className="text-sm text-gray-900 dark:text-white">{ct.participationCount}</div>
+                  <div className="text-xs text-gray-400 dark:text-gray-500">{ct.uniqueParticipants} unique</div>
                 </div>
               </div>
             </div>

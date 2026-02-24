@@ -302,8 +302,8 @@ export default function AppDetailPage() {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <div data-testid="stat-campaigns" className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-6">
             <div className="flex items-center justify-between mb-4">
-              <div className="w-12 h-12 bg-white/10 rounded-lg flex items-center justify-center">
-                <Megaphone className="w-5 h-5 text-gray-300 dark:text-gray-300" />
+              <div className="w-12 h-12 bg-[#3d8b7a]/10 dark:bg-white/10 rounded-lg flex items-center justify-center">
+                <Megaphone className="w-5 h-5 text-[#3d8b7a] dark:text-gray-300" />
               </div>
               <span className="text-xs text-green-400 flex items-center gap-1">
                 <span>↑</span>
@@ -316,8 +316,8 @@ export default function AppDetailPage() {
 
           <div data-testid="stat-broadcasts" className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-6">
             <div className="flex items-center justify-between mb-4">
-              <div className="w-12 h-12 bg-white/10 rounded-lg flex items-center justify-center">
-                <Radio className="w-5 h-5 text-gray-300 dark:text-gray-300" />
+              <div className="w-12 h-12 bg-[#3d8b7a]/10 dark:bg-white/10 rounded-lg flex items-center justify-center">
+                <Radio className="w-5 h-5 text-[#3d8b7a] dark:text-gray-300" />
               </div>
               <span className="text-xs text-green-400 flex items-center gap-1">
                 <span>↑</span>
@@ -366,7 +366,7 @@ export default function AppDetailPage() {
                   data-testid="button-edit-details"
                   size="sm"
                   onClick={openEditModal}
-                  className="bg-white hover:bg-gray-200 text-[#0a0e1a]"
+                  className="bg-[#3d8b7a] hover:bg-[#2f7365] text-white dark:bg-white dark:hover:bg-gray-200 dark:text-[#0a0e1a]"
                 >
                   Edit Details
                 </Button>
@@ -432,7 +432,7 @@ export default function AppDetailPage() {
                   data-testid="button-add-component"
                   size="sm"
                   onClick={() => setAddComponentOpen(true)}
-                  className="bg-white hover:bg-gray-200 text-[#0a0e1a] gap-2"
+                  className="bg-[#3d8b7a] hover:bg-[#2f7365] text-white dark:bg-white dark:hover:bg-gray-200 dark:text-[#0a0e1a] gap-2"
                 >
                   <Plus className="w-4 h-4" />
                   Add Component
@@ -452,8 +452,8 @@ export default function AppDetailPage() {
                       className="bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg p-4 flex items-center justify-between"
                     >
                       <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 bg-white/10 rounded-lg flex items-center justify-center">
-                          <Puzzle className="w-4 h-4 text-gray-300 dark:text-gray-300" />
+                        <div className="w-10 h-10 bg-[#3d8b7a]/10 dark:bg-white/10 rounded-lg flex items-center justify-center">
+                          <Puzzle className="w-4 h-4 text-[#3d8b7a] dark:text-gray-300" />
                         </div>
                         <div>
                           <h3 className="font-semibold text-sm text-gray-900 dark:text-white">{ac.component?.name || ac.componentId}</h3>
@@ -483,7 +483,7 @@ export default function AppDetailPage() {
                   data-testid="button-new-campaign"
                   size="sm"
                   onClick={() => setLocation(`/campaigns/new?appId=${appIdNum}`)}
-                  className="bg-white hover:bg-gray-200 text-[#0a0e1a] gap-2"
+                  className="bg-[#3d8b7a] hover:bg-[#2f7365] text-white dark:bg-white dark:hover:bg-gray-200 dark:text-[#0a0e1a] gap-2"
                 >
                   <Plus className="w-4 h-4" />
                   New Campaign
@@ -508,7 +508,7 @@ export default function AppDetailPage() {
                       <div
                         key={campaign.id}
                         data-testid={`card-campaign-${campaign.id}`}
-                        className="bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg p-4 hover:border-white dark:hover:border-white transition cursor-pointer"
+                        className="bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg p-4 hover:border-[#3d8b7a] dark:hover:border-white/30 transition cursor-pointer"
                       >
                         <div className="flex items-center justify-between mb-3">
                           <div className="flex items-center gap-3">
@@ -542,7 +542,7 @@ export default function AppDetailPage() {
                           <Link href={`/campaigns/${campaign.id}`}>
                             <button
                               data-testid={`button-view-campaign-${campaign.id}`}
-                              className="text-gray-300 dark:text-gray-300 hover:text-gray-200 transition"
+                              className="text-[#3d8b7a] dark:text-gray-300 hover:text-[#2f7365] dark:hover:text-gray-200 transition"
                             >
                               View Details →
                             </button>
@@ -566,8 +566,8 @@ export default function AppDetailPage() {
                   onClick={() => openSettingsModal('general')}
                   className="w-full flex items-center gap-3 px-4 py-3 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition text-left"
                 >
-                  <div className="w-10 h-10 bg-white/10 rounded-lg flex items-center justify-center">
-                    <Settings className="w-4 h-4 text-gray-300 dark:text-gray-300" />
+                  <div className="w-10 h-10 bg-[#3d8b7a]/10 dark:bg-white/10 rounded-lg flex items-center justify-center">
+                    <Settings className="w-4 h-4 text-[#3d8b7a] dark:text-gray-300" />
                   </div>
                   <div className="flex-1">
                     <div className="text-sm font-medium text-gray-900 dark:text-white">App Settings</div>
@@ -581,8 +581,8 @@ export default function AppDetailPage() {
                   onClick={() => openSettingsModal('api-keys')}
                   className="w-full flex items-center gap-3 px-4 py-3 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition text-left"
                 >
-                  <div className="w-10 h-10 bg-white/10 rounded-lg flex items-center justify-center">
-                    <Key className="w-4 h-4 text-gray-300 dark:text-gray-300" />
+                  <div className="w-10 h-10 bg-[#3d8b7a]/10 dark:bg-white/10 rounded-lg flex items-center justify-center">
+                    <Key className="w-4 h-4 text-[#3d8b7a] dark:text-gray-300" />
                   </div>
                   <div className="flex-1">
                     <div className="text-sm font-medium text-gray-900 dark:text-white">API Keys</div>
@@ -735,7 +735,7 @@ export default function AppDetailPage() {
             <Button
               onClick={() => updateAppMutation.mutate({ name: editName, description: editDescription, status: editStatus, iconUrl: editIconUrl || null, bannerUrl: editBannerUrl || null })}
               disabled={updateAppMutation.isPending || !editName.trim()}
-              className="bg-white hover:bg-gray-200 text-[#0a0e1a]"
+              className="bg-[#3d8b7a] hover:bg-[#2f7365] text-white dark:bg-white dark:hover:bg-gray-200 dark:text-[#0a0e1a]"
               data-testid="button-save-edit"
             >
               {updateAppMutation.isPending ? 'Saving...' : 'Save Changes'}
@@ -761,7 +761,7 @@ export default function AppDetailPage() {
                     onClick={() => setSettingsTab(tab.id)}
                     className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition text-left ${
                       settingsTab === tab.id
-                        ? 'bg-white text-[#0a0e1a]'
+                        ? 'bg-[#3d8b7a] text-white dark:bg-white dark:text-[#0a0e1a]'
                         : 'text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'
                     }`}
                   >
@@ -919,8 +919,8 @@ ReachuSDK.configure(
                   className="w-full flex items-center gap-3 p-3 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition text-left border border-gray-200 dark:border-gray-600"
                   data-testid={`button-select-component-${comp.id}`}
                 >
-                  <div className="w-10 h-10 bg-white/10 rounded-lg flex items-center justify-center">
-                    <Puzzle className="w-4 h-4 text-gray-300 dark:text-gray-300" />
+                  <div className="w-10 h-10 bg-[#3d8b7a]/10 dark:bg-white/10 rounded-lg flex items-center justify-center">
+                    <Puzzle className="w-4 h-4 text-[#3d8b7a] dark:text-gray-300" />
                   </div>
                   <div className="flex-1">
                     <div className="text-sm font-medium text-gray-900 dark:text-white">{comp.name}</div>

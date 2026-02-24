@@ -122,21 +122,21 @@ const CHAT_MESSAGES = [
 function StatusBadge({ status }: { status: string }) {
   if (status === 'live') {
     return (
-      <span className="px-2 py-0.5 bg-white text-black text-[10px] uppercase font-bold rounded-full flex items-center space-x-1" data-testid="badge-status-live">
-        <div className="w-1.5 h-1.5 bg-black rounded-full animate-pulse"></div>
+      <span className="px-2 py-0.5 bg-[#3d8b7a] text-white dark:bg-white dark:text-black text-[10px] uppercase font-bold rounded-full flex items-center space-x-1" data-testid="badge-status-live">
+        <div className="w-1.5 h-1.5 bg-white dark:bg-black rounded-full animate-pulse"></div>
         <span>Live</span>
       </span>
     );
   }
   if (status === 'upcoming') {
     return (
-      <span className="px-2 py-0.5 bg-white/10 text-gray-400 text-[10px] uppercase font-bold rounded-full border border-white/20" data-testid="badge-status-upcoming">
+      <span className="px-2 py-0.5 bg-gray-100 text-gray-600 dark:bg-white/10 dark:text-gray-300 text-[10px] uppercase font-bold rounded-full border border-gray-200 dark:border-white/20" data-testid="badge-status-upcoming">
         Upcoming
       </span>
     );
   }
   return (
-    <span className="px-2 py-0.5 bg-white/10 text-gray-400 text-[10px] uppercase font-bold rounded-full border border-white/10" data-testid="badge-status-ended">
+    <span className="px-2 py-0.5 bg-gray-100 text-gray-400 dark:bg-white/10 dark:text-gray-400 text-[10px] uppercase font-bold rounded-full border border-gray-200 dark:border-white/10" data-testid="badge-status-ended">
       Ended
     </span>
   );
@@ -148,55 +148,55 @@ function EventTimeline() {
   return (
     <div className="mb-6" data-testid="section-timeline">
       <div className="flex items-center justify-between mb-4">
-        <h2 className="text-sm font-semibold text-white">Event Timeline</h2>
+        <h2 className="text-sm font-semibold text-gray-900 dark:text-white">Event Timeline</h2>
         <div className="flex items-center space-x-2">
-          <button className="px-3 py-1.5 bg-white text-black rounded text-xs font-medium hover:bg-gray-200 transition" data-testid="button-add-event">
+          <button className="px-3 py-1.5 bg-[#3d8b7a] text-white dark:bg-white dark:text-black rounded text-xs font-medium hover:bg-[#2f7365] dark:hover:bg-gray-200 transition" data-testid="button-add-event">
             <Plus className="w-3 h-3 inline mr-1.5" />
             Add Event
           </button>
-          <button className="w-8 h-8 flex items-center justify-center rounded border border-white/20 hover:border-white/40 text-gray-400 hover:text-white transition" data-testid="button-expand-timeline">
+          <button className="w-8 h-8 flex items-center justify-center rounded border border-gray-200 dark:border-white/20 hover:border-gray-300 dark:hover:border-white/40 text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition" data-testid="button-expand-timeline">
             <Maximize2 className="w-3.5 h-3.5" />
           </button>
         </div>
       </div>
 
-      <div className="bg-transparent border border-white/10 rounded-lg p-6">
+      <div className="bg-transparent border border-gray-200 dark:border-white/10 rounded-lg p-6">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center space-x-4">
-            <div className="text-xs text-gray-500">Current Time</div>
-            <div className="text-2xl font-bold text-white">45:23</div>
-            <div className="px-2 py-1 bg-white/10 rounded text-xs text-gray-300">1st Half</div>
+            <div className="text-xs text-gray-400 dark:text-gray-500">Current Time</div>
+            <div className="text-2xl font-bold text-gray-900 dark:text-white">45:23</div>
+            <div className="px-2 py-1 bg-gray-100 dark:bg-white/10 rounded text-xs text-gray-600 dark:text-gray-300">1st Half</div>
           </div>
           <div className="flex items-center space-x-2">
-            <button className="w-8 h-8 flex items-center justify-center rounded border border-white/20 hover:border-white/40 text-white transition" data-testid="button-backward">
+            <button className="w-8 h-8 flex items-center justify-center rounded border border-gray-200 dark:border-white/20 hover:border-gray-300 dark:hover:border-white/40 text-gray-900 dark:text-white transition" data-testid="button-backward">
               <SkipBack className="w-3.5 h-3.5" />
             </button>
-            <button className="w-8 h-8 flex items-center justify-center rounded border border-white/20 hover:border-white/40 text-white transition" data-testid="button-play">
+            <button className="w-8 h-8 flex items-center justify-center rounded border border-gray-200 dark:border-white/20 hover:border-gray-300 dark:hover:border-white/40 text-gray-900 dark:text-white transition" data-testid="button-play">
               <Play className="w-3.5 h-3.5" />
             </button>
-            <button className="w-8 h-8 flex items-center justify-center rounded border border-white/20 hover:border-white/40 text-white transition" data-testid="button-forward">
+            <button className="w-8 h-8 flex items-center justify-center rounded border border-gray-200 dark:border-white/20 hover:border-gray-300 dark:hover:border-white/40 text-gray-900 dark:text-white transition" data-testid="button-forward">
               <SkipForward className="w-3.5 h-3.5" />
             </button>
           </div>
         </div>
 
         <div className="relative">
-          <div className="h-2 bg-white/5 rounded-full overflow-hidden mb-8">
-            <div className="h-full bg-white rounded-full" style={{ width: `${currentPosition}%` }}></div>
+          <div className="h-2 bg-gray-100 dark:bg-white/5 rounded-full overflow-hidden mb-8">
+            <div className="h-full bg-[#3d8b7a] dark:bg-white rounded-full" style={{ width: `${currentPosition}%` }}></div>
           </div>
 
           <div className="relative h-32">
-            <div className="absolute left-0 top-0 bottom-0 w-px bg-white/20"></div>
-            <div className="absolute left-1/4 top-0 bottom-0 w-px bg-white/10"></div>
-            <div className="absolute left-1/2 top-0 bottom-0 w-px bg-white/20"></div>
-            <div className="absolute left-3/4 top-0 bottom-0 w-px bg-white/10"></div>
-            <div className="absolute right-0 top-0 bottom-0 w-px bg-white/20"></div>
+            <div className="absolute left-0 top-0 bottom-0 w-px bg-gray-200 dark:bg-white/20"></div>
+            <div className="absolute left-1/4 top-0 bottom-0 w-px bg-gray-100 dark:bg-white/10"></div>
+            <div className="absolute left-1/2 top-0 bottom-0 w-px bg-gray-200 dark:bg-white/20"></div>
+            <div className="absolute left-3/4 top-0 bottom-0 w-px bg-gray-100 dark:bg-white/10"></div>
+            <div className="absolute right-0 top-0 bottom-0 w-px bg-gray-200 dark:bg-white/20"></div>
 
-            <div className="absolute left-0 -top-5 text-xs text-gray-500">00:00</div>
-            <div className="absolute left-1/4 -top-5 text-xs text-gray-500">22:30</div>
-            <div className="absolute left-1/2 -top-5 text-xs text-gray-500">45:00</div>
-            <div className="absolute left-3/4 -top-5 text-xs text-gray-500">67:30</div>
-            <div className="absolute right-0 -top-5 text-xs text-gray-500">90:00</div>
+            <div className="absolute left-0 -top-5 text-xs text-gray-400 dark:text-gray-500">00:00</div>
+            <div className="absolute left-1/4 -top-5 text-xs text-gray-400 dark:text-gray-500">22:30</div>
+            <div className="absolute left-1/2 -top-5 text-xs text-gray-400 dark:text-gray-500">45:00</div>
+            <div className="absolute left-3/4 -top-5 text-xs text-gray-400 dark:text-gray-500">67:30</div>
+            <div className="absolute right-0 -top-5 text-xs text-gray-400 dark:text-gray-500">90:00</div>
 
             {TIMELINE_EVENTS.map((event, i) => {
               const topValues = [16, 48, 32, 16, 24, 40, 8];
@@ -209,10 +209,10 @@ function EventTimeline() {
                   style={{ left: `${event.position}%`, top: `${topValues[i]}px` }}
                   data-testid={`timeline-event-${event.id}`}
                 >
-                  <div className={`w-3 h-3 ${colorMap[event.type]} rounded-full border-2 border-black ${!isPast ? 'opacity-50' : ''}`}></div>
-                  <div className="absolute left-1/2 -translate-x-1/2 top-6 opacity-0 group-hover:opacity-100 transition bg-black border border-white/20 rounded p-2 text-xs whitespace-nowrap z-10">
-                    <div className="font-semibold text-white mb-1">{event.label}</div>
-                    <div className="text-gray-400">{event.time} - {event.status}</div>
+                  <div className={`w-3 h-3 ${colorMap[event.type]} rounded-full border-2 border-white dark:border-black ${!isPast ? 'opacity-50' : ''}`}></div>
+                  <div className="absolute left-1/2 -translate-x-1/2 top-6 opacity-0 group-hover:opacity-100 transition bg-white dark:bg-black border border-gray-200 dark:border-white/20 rounded p-2 text-xs whitespace-nowrap z-10">
+                    <div className="font-semibold text-gray-900 dark:text-white mb-1">{event.label}</div>
+                    <div className="text-gray-500 dark:text-gray-400">{event.time} - {event.status}</div>
                   </div>
                 </div>
               );
@@ -223,30 +223,30 @@ function EventTimeline() {
               style={{ left: `${currentPosition}%`, top: '16px' }}
               data-testid="timeline-current-position"
             >
-              <div className="w-4 h-4 bg-white rounded-full border-2 border-black animate-pulse"></div>
-              <div className="absolute left-1/2 -translate-x-1/2 top-6 opacity-0 group-hover:opacity-100 transition bg-black border border-white/20 rounded p-2 text-xs whitespace-nowrap z-10">
-                <div className="font-semibold text-white mb-1">Current Position</div>
-                <div className="text-gray-400">45:23 - Live</div>
+              <div className="w-4 h-4 bg-[#3d8b7a] dark:bg-white rounded-full border-2 border-white dark:border-black animate-pulse"></div>
+              <div className="absolute left-1/2 -translate-x-1/2 top-6 opacity-0 group-hover:opacity-100 transition bg-white dark:bg-black border border-gray-200 dark:border-white/20 rounded p-2 text-xs whitespace-nowrap z-10">
+                <div className="font-semibold text-gray-900 dark:text-white mb-1">Current Position</div>
+                <div className="text-gray-500 dark:text-gray-400">45:23 - Live</div>
               </div>
             </div>
           </div>
 
-          <div className="flex items-center justify-between mt-6 pt-4 border-t border-white/10">
+          <div className="flex items-center justify-between mt-6 pt-4 border-t border-gray-200 dark:border-white/10">
             <div className="flex items-center space-x-4">
               <div className="flex items-center space-x-2">
                 <div className="w-3 h-3 bg-blue-500 rounded-full"></div>
-                <span className="text-xs text-gray-400">Polls</span>
+                <span className="text-xs text-gray-500 dark:text-gray-400">Polls</span>
               </div>
               <div className="flex items-center space-x-2">
                 <div className="w-3 h-3 bg-purple-500 rounded-full"></div>
-                <span className="text-xs text-gray-400">Contests</span>
+                <span className="text-xs text-gray-500 dark:text-gray-400">Contests</span>
               </div>
               <div className="flex items-center space-x-2">
                 <div className="w-3 h-3 bg-green-500 rounded-full"></div>
-                <span className="text-xs text-gray-400">Ads</span>
+                <span className="text-xs text-gray-500 dark:text-gray-400">Ads</span>
               </div>
             </div>
-            <div className="text-xs text-gray-500">{TIMELINE_EVENTS.length} scheduled events</div>
+            <div className="text-xs text-gray-400 dark:text-gray-500">{TIMELINE_EVENTS.length} scheduled events</div>
           </div>
         </div>
       </div>
@@ -264,13 +264,13 @@ function ActivePollCard({ poll, onToggle, onDelete }: {
 
   return (
     <div
-      className={`bg-transparent border rounded-lg p-4 ${isActive ? 'border-blue-500/30' : 'border-white/10'}`}
+      className={`bg-transparent border rounded-lg p-4 ${isActive ? 'border-blue-500/30' : 'border-gray-200 dark:border-white/10'}`}
       data-testid={`card-poll-${poll.id}`}
     >
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center space-x-2">
           {isActive && <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>}
-          <span className={`text-xs font-semibold uppercase ${isActive ? 'text-blue-400' : 'text-gray-400'}`} data-testid={`badge-poll-active-${poll.id}`}>
+          <span className={`text-xs font-semibold uppercase ${isActive ? 'text-blue-400' : 'text-gray-500 dark:text-gray-400'}`} data-testid={`badge-poll-active-${poll.id}`}>
             {isActive ? 'Poll Active' : 'Poll Scheduled'}
           </span>
         </div>
@@ -283,7 +283,7 @@ function ActivePollCard({ poll, onToggle, onDelete }: {
           />
           <AlertDialog>
             <AlertDialogTrigger asChild>
-              <button className="text-xs text-gray-400 hover:text-white" data-testid={`button-delete-poll-${poll.id}`}>
+              <button className="text-xs text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white" data-testid={`button-delete-poll-${poll.id}`}>
                 <Trash2 className="w-3.5 h-3.5" />
               </button>
             </AlertDialogTrigger>
@@ -303,7 +303,7 @@ function ActivePollCard({ poll, onToggle, onDelete }: {
         </div>
       </div>
 
-      <h3 className="text-sm font-semibold text-white mb-2" data-testid={`text-poll-question-${poll.id}`}>{poll.question}</h3>
+      <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-2" data-testid={`text-poll-question-${poll.id}`}>{poll.question}</h3>
 
       {isActive && poll.options && poll.options.length > 0 ? (
         <>
@@ -313,23 +313,23 @@ function ActivePollCard({ poll, onToggle, onDelete }: {
               return (
                 <div key={option.id} data-testid={`poll-option-${option.id}`}>
                   <div className="flex justify-between text-xs mb-1">
-                    <span className="text-gray-300">{option.text}</span>
-                    <span className="text-white font-semibold">{percentage}%</span>
+                    <span className="text-gray-600 dark:text-gray-300">{option.text}</span>
+                    <span className="text-gray-900 dark:text-white font-semibold">{percentage}%</span>
                   </div>
-                  <div className="h-1.5 bg-white/10 rounded-full overflow-hidden">
+                  <div className="h-1.5 bg-gray-100 dark:bg-white/10 rounded-full overflow-hidden">
                     <div className="h-full bg-blue-500 rounded-full transition-all" style={{ width: `${percentage}%` }} data-testid={`poll-option-bar-${option.id}`}></div>
                   </div>
                 </div>
               );
             })}
           </div>
-          <div className="flex items-center justify-between text-xs text-gray-500">
+          <div className="flex items-center justify-between text-xs text-gray-400 dark:text-gray-500">
             <span>{totalVotes.toLocaleString()} votes</span>
           </div>
         </>
       ) : (
         poll.options && poll.options.length > 0 && (
-          <div className="space-y-1.5 mb-3 text-xs text-gray-400">
+          <div className="space-y-1.5 mb-3 text-xs text-gray-500 dark:text-gray-400">
             {poll.options.map((option) => (
               <div key={option.id} className="flex items-center space-x-2">
                 <CheckCircle className="w-3 h-3" />
@@ -350,13 +350,13 @@ function ContestCard({ contest, onToggle, onDelete }: {
 }) {
   return (
     <div
-      className={`bg-transparent border rounded-lg p-4 ${contest.isActive ? 'border-purple-500/30' : 'border-white/10'}`}
+      className={`bg-transparent border rounded-lg p-4 ${contest.isActive ? 'border-purple-500/30' : 'border-gray-200 dark:border-white/10'}`}
       data-testid={`card-contest-${contest.id}`}
     >
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center space-x-2">
           {contest.isActive && <div className="w-2 h-2 bg-purple-500 rounded-full"></div>}
-          <span className={`text-xs font-semibold uppercase ${contest.isActive ? 'text-purple-400' : 'text-gray-400'}`}>
+          <span className={`text-xs font-semibold uppercase ${contest.isActive ? 'text-purple-400' : 'text-gray-500 dark:text-gray-400'}`}>
             {contest.isActive ? 'Active' : 'Scheduled'}
           </span>
         </div>
@@ -369,7 +369,7 @@ function ContestCard({ contest, onToggle, onDelete }: {
           />
           <AlertDialog>
             <AlertDialogTrigger asChild>
-              <button className="text-xs text-gray-400 hover:text-white" data-testid={`button-delete-contest-${contest.id}`}>
+              <button className="text-xs text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white" data-testid={`button-delete-contest-${contest.id}`}>
                 <Trash2 className="w-3.5 h-3.5" />
               </button>
             </AlertDialogTrigger>
@@ -390,17 +390,17 @@ function ContestCard({ contest, onToggle, onDelete }: {
       </div>
 
       <div className="flex items-start space-x-3">
-        <div className={`w-12 h-12 rounded flex items-center justify-center flex-shrink-0 ${contest.isActive ? 'bg-purple-500/20' : 'bg-white/5'}`}>
-          <Trophy className={`w-5 h-5 ${contest.isActive ? 'text-purple-400' : 'text-gray-400'}`} />
+        <div className={`w-12 h-12 rounded flex items-center justify-center flex-shrink-0 ${contest.isActive ? 'bg-purple-500/20' : 'bg-gray-50 dark:bg-white/5'}`}>
+          <Trophy className={`w-5 h-5 ${contest.isActive ? 'text-purple-400' : 'text-gray-500 dark:text-gray-400'}`} />
         </div>
         <div className="flex-1 min-w-0">
-          <h3 className="text-sm font-semibold text-white mb-1" data-testid={`text-contest-title-${contest.id}`}>{contest.title}</h3>
+          <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-1" data-testid={`text-contest-title-${contest.id}`}>{contest.title}</h3>
           {contest.description && (
-            <p className="text-xs text-gray-400 mb-2 truncate">{contest.description}</p>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mb-2 truncate">{contest.description}</p>
           )}
           <div className="flex items-center justify-between text-xs">
-            {contest.contestType && <span className="text-gray-500 capitalize">{contest.contestType}</span>}
-            {contest.prize && <span className="text-gray-300 font-medium">Prize: {contest.prize}</span>}
+            {contest.contestType && <span className="text-gray-400 dark:text-gray-500 capitalize">{contest.contestType}</span>}
+            {contest.prize && <span className="text-gray-600 dark:text-gray-300 font-medium">Prize: {contest.prize}</span>}
           </div>
         </div>
       </div>
@@ -412,8 +412,8 @@ function ScheduledAdsSection() {
   return (
     <div className="mb-6" data-testid="section-ads">
       <div className="flex items-center justify-between mb-4">
-        <h2 className="text-sm font-semibold text-white">Scheduled Ads</h2>
-        <button className="px-3 py-1.5 bg-transparent border border-white/20 hover:border-white/40 text-white rounded text-xs font-medium transition" data-testid="button-add-ad">
+        <h2 className="text-sm font-semibold text-gray-900 dark:text-white">Scheduled Ads</h2>
+        <button className="px-3 py-1.5 bg-transparent border border-gray-200 dark:border-white/20 hover:border-gray-300 dark:hover:border-white/40 text-gray-900 dark:text-white rounded text-xs font-medium transition" data-testid="button-add-ad">
           <Plus className="w-3 h-3 inline mr-1.5" />
           Add Ad
         </button>
@@ -421,24 +421,24 @@ function ScheduledAdsSection() {
 
       <div className="space-y-3">
         {HARDCODED_ADS.map((ad) => (
-          <div key={ad.id} className="bg-transparent border border-white/10 rounded-lg p-4 flex items-center justify-between" data-testid={`card-ad-${ad.id}`}>
+          <div key={ad.id} className="bg-transparent border border-gray-200 dark:border-white/10 rounded-lg p-4 flex items-center justify-between" data-testid={`card-ad-${ad.id}`}>
             <div className="flex items-center space-x-4">
-              <div className="w-16 h-16 bg-white/5 rounded overflow-hidden flex-shrink-0">
+              <div className="w-16 h-16 bg-gray-50 dark:bg-white/5 rounded overflow-hidden flex-shrink-0">
                 <img className="w-full h-full object-cover" src={ad.image} alt={ad.name} />
               </div>
               <div>
-                <h3 className="text-sm font-semibold text-white mb-1">{ad.name}</h3>
-                <p className="text-xs text-gray-400 mb-2">{ad.description}</p>
-                <div className="flex items-center space-x-3 text-xs text-gray-500">
+                <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-1">{ad.name}</h3>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">{ad.description}</p>
+                <div className="flex items-center space-x-3 text-xs text-gray-400 dark:text-gray-500">
                   <span>Starts at {ad.startTime}</span>
-                  <span className="text-gray-700">•</span>
+                  <span className="text-gray-300 dark:text-gray-700">•</span>
                   <span>Duration: {ad.duration}</span>
-                  <span className="text-gray-700">•</span>
+                  <span className="text-gray-300 dark:text-gray-700">•</span>
                   <span className="text-green-400">{ad.adType}</span>
                 </div>
               </div>
             </div>
-            <button className="px-3 py-1.5 bg-transparent border border-white/20 hover:border-white/40 text-white rounded text-xs font-medium transition" data-testid={`button-edit-ad-${ad.id}`}>
+            <button className="px-3 py-1.5 bg-transparent border border-gray-200 dark:border-white/20 hover:border-gray-300 dark:hover:border-white/40 text-gray-900 dark:text-white rounded text-xs font-medium transition" data-testid={`button-edit-ad-${ad.id}`}>
               Edit
             </button>
           </div>
@@ -454,8 +454,8 @@ function ShoppableProductsSection() {
   return (
     <div className="mb-6" data-testid="section-products">
       <div className="flex items-center justify-between mb-4">
-        <h2 className="text-sm font-semibold text-white">Shoppable Products</h2>
-        <button className="px-3 py-1.5 bg-transparent border border-white/20 hover:border-white/40 text-white rounded text-xs font-medium transition" data-testid="button-add-product">
+        <h2 className="text-sm font-semibold text-gray-900 dark:text-white">Shoppable Products</h2>
+        <button className="px-3 py-1.5 bg-transparent border border-gray-200 dark:border-white/20 hover:border-gray-300 dark:hover:border-white/40 text-gray-900 dark:text-white rounded text-xs font-medium transition" data-testid="button-add-product">
           <Plus className="w-3 h-3 inline mr-1.5" />
           Add Product
         </button>
@@ -463,18 +463,18 @@ function ShoppableProductsSection() {
 
       <div className="grid grid-cols-4 gap-4">
         {HARDCODED_PRODUCTS.map((product) => (
-          <div key={product.id} className="bg-transparent border border-white/10 rounded-lg overflow-hidden hover:border-white/30 transition cursor-pointer" data-testid={`card-product-${product.id}`}>
-            <div className="h-40 bg-white/5 overflow-hidden flex items-center justify-center p-4">
+          <div key={product.id} className="bg-transparent border border-gray-200 dark:border-white/10 rounded-lg overflow-hidden hover:border-gray-300 dark:hover:border-white/30 transition cursor-pointer" data-testid={`card-product-${product.id}`}>
+            <div className="h-40 bg-gray-50 dark:bg-white/5 overflow-hidden flex items-center justify-center p-4">
               <img className="w-full h-full object-contain" src={product.image} alt={product.name} />
             </div>
             <div className="p-3">
-              <h3 className="text-xs font-semibold text-white mb-1">{product.name}</h3>
-              <p className="text-[10px] text-gray-400 mb-2">{product.subtitle}</p>
+              <h3 className="text-xs font-semibold text-gray-900 dark:text-white mb-1">{product.name}</h3>
+              <p className="text-[10px] text-gray-500 dark:text-gray-400 mb-2">{product.subtitle}</p>
               <div className="flex items-center justify-between">
                 <div>
-                  <span className="text-sm font-bold text-white">${product.price}</span>
+                  <span className="text-sm font-bold text-gray-900 dark:text-white">${product.price}</span>
                   {product.originalPrice && (
-                    <span className="text-[10px] text-gray-500 line-through ml-1">${product.originalPrice}</span>
+                    <span className="text-[10px] text-gray-400 dark:text-gray-500 line-through ml-1">${product.originalPrice}</span>
                   )}
                 </div>
                 <span className={`px-2 py-0.5 text-[10px] font-semibold rounded ${
@@ -490,30 +490,30 @@ function ShoppableProductsSection() {
         ))}
       </div>
 
-      <div className="mt-4 p-4 bg-white/5 border border-white/10 rounded-lg">
+      <div className="mt-4 p-4 bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-lg">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-6">
             <div>
-              <div className="text-xs text-gray-500 mb-1">Products Active</div>
-              <div className="text-lg font-bold text-white">{activeCount}</div>
+              <div className="text-xs text-gray-400 dark:text-gray-500 mb-1">Products Active</div>
+              <div className="text-lg font-bold text-gray-900 dark:text-white">{activeCount}</div>
             </div>
-            <div className="w-px h-10 bg-white/10"></div>
+            <div className="w-px h-10 bg-gray-200 dark:bg-white/10"></div>
             <div>
-              <div className="text-xs text-gray-500 mb-1">Total Views</div>
-              <div className="text-lg font-bold text-white">142K</div>
+              <div className="text-xs text-gray-400 dark:text-gray-500 mb-1">Total Views</div>
+              <div className="text-lg font-bold text-gray-900 dark:text-white">142K</div>
             </div>
-            <div className="w-px h-10 bg-white/10"></div>
+            <div className="w-px h-10 bg-gray-200 dark:bg-white/10"></div>
             <div>
-              <div className="text-xs text-gray-500 mb-1">Click-through Rate</div>
-              <div className="text-lg font-bold text-white">12.4%</div>
+              <div className="text-xs text-gray-400 dark:text-gray-500 mb-1">Click-through Rate</div>
+              <div className="text-lg font-bold text-gray-900 dark:text-white">12.4%</div>
             </div>
-            <div className="w-px h-10 bg-white/10"></div>
+            <div className="w-px h-10 bg-gray-200 dark:bg-white/10"></div>
             <div>
-              <div className="text-xs text-gray-500 mb-1">Revenue</div>
+              <div className="text-xs text-gray-400 dark:text-gray-500 mb-1">Revenue</div>
               <div className="text-lg font-bold text-green-400">$18,450</div>
             </div>
           </div>
-          <button className="px-3 py-1.5 bg-transparent border border-white/20 hover:border-white/40 text-white rounded text-xs font-medium transition" data-testid="button-view-analytics">
+          <button className="px-3 py-1.5 bg-transparent border border-gray-200 dark:border-white/20 hover:border-gray-300 dark:hover:border-white/40 text-gray-900 dark:text-white rounded text-xs font-medium transition" data-testid="button-view-analytics">
             View Analytics
           </button>
         </div>
@@ -526,17 +526,17 @@ function LiveChatSidebar() {
   const [activeTab, setActiveTab] = useState<'chat' | 'analytics'>('chat');
 
   return (
-    <aside className="w-80 bg-black border-l border-white/10 flex flex-col overflow-hidden flex-shrink-0" data-testid="sidebar-live-chat">
-      <div className="flex border-b border-white/10">
+    <aside className="w-80 bg-white dark:bg-black border-l border-gray-200 dark:border-white/10 flex flex-col overflow-hidden flex-shrink-0" data-testid="sidebar-live-chat">
+      <div className="flex border-b border-gray-200 dark:border-white/10">
         <button
-          className={`flex-1 px-4 py-3 text-xs font-semibold transition ${activeTab === 'chat' ? 'text-white bg-white/5 border-b-2 border-white' : 'text-gray-400 hover:text-white'}`}
+          className={`flex-1 px-4 py-3 text-xs font-semibold transition ${activeTab === 'chat' ? 'text-gray-900 dark:text-white bg-gray-50 dark:bg-white/5 border-b-2 border-[#3d8b7a] dark:border-white' : 'text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'}`}
           onClick={() => setActiveTab('chat')}
           data-testid="tab-live-chat"
         >
           Live Chat
         </button>
         <button
-          className={`flex-1 px-4 py-3 text-xs font-semibold transition ${activeTab === 'analytics' ? 'text-white bg-white/5 border-b-2 border-white' : 'text-gray-400 hover:text-white'}`}
+          className={`flex-1 px-4 py-3 text-xs font-semibold transition ${activeTab === 'analytics' ? 'text-gray-900 dark:text-white bg-gray-50 dark:bg-white/5 border-b-2 border-[#3d8b7a] dark:border-white' : 'text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'}`}
           onClick={() => setActiveTab('analytics')}
           data-testid="tab-analytics"
         >
@@ -548,49 +548,49 @@ function LiveChatSidebar() {
         {activeTab === 'chat' ? (
           CHAT_MESSAGES.map((msg) => (
             <div key={msg.id} className="flex items-start space-x-2" data-testid={`chat-message-${msg.id}`}>
-              <div className="w-6 h-6 rounded bg-white/10 flex items-center justify-center flex-shrink-0">
-                <span className="text-[9px] text-gray-400 font-semibold">{msg.user.charAt(0)}</span>
+              <div className="w-6 h-6 rounded bg-[#3d8b7a]/10 dark:bg-white/10 flex items-center justify-center flex-shrink-0">
+                <span className="text-[9px] text-gray-500 dark:text-gray-400 font-semibold">{msg.user.charAt(0)}</span>
               </div>
               <div className="flex-1">
                 <div className="flex items-center space-x-2 mb-1">
-                  <span className="text-xs font-semibold text-white">{msg.user}</span>
-                  <span className="text-[10px] text-gray-500">{msg.time}</span>
+                  <span className="text-xs font-semibold text-gray-900 dark:text-white">{msg.user}</span>
+                  <span className="text-[10px] text-gray-400 dark:text-gray-500">{msg.time}</span>
                 </div>
-                <p className="text-xs text-gray-300">{msg.message}</p>
+                <p className="text-xs text-gray-600 dark:text-gray-300">{msg.message}</p>
               </div>
             </div>
           ))
         ) : (
           <div className="space-y-4 pt-2">
-            <div className="p-3 bg-white/5 rounded-lg border border-white/10">
-              <div className="text-xs text-gray-500 mb-1">Peak Viewers</div>
-              <div className="text-lg font-bold text-white">847K</div>
+            <div className="p-3 bg-gray-50 dark:bg-white/5 rounded-lg border border-gray-200 dark:border-white/10">
+              <div className="text-xs text-gray-400 dark:text-gray-500 mb-1">Peak Viewers</div>
+              <div className="text-lg font-bold text-gray-900 dark:text-white">847K</div>
             </div>
-            <div className="p-3 bg-white/5 rounded-lg border border-white/10">
-              <div className="text-xs text-gray-500 mb-1">Avg. Watch Time</div>
-              <div className="text-lg font-bold text-white">38:12</div>
+            <div className="p-3 bg-gray-50 dark:bg-white/5 rounded-lg border border-gray-200 dark:border-white/10">
+              <div className="text-xs text-gray-400 dark:text-gray-500 mb-1">Avg. Watch Time</div>
+              <div className="text-lg font-bold text-gray-900 dark:text-white">38:12</div>
             </div>
-            <div className="p-3 bg-white/5 rounded-lg border border-white/10">
-              <div className="text-xs text-gray-500 mb-1">Messages/min</div>
-              <div className="text-lg font-bold text-white">1,240</div>
+            <div className="p-3 bg-gray-50 dark:bg-white/5 rounded-lg border border-gray-200 dark:border-white/10">
+              <div className="text-xs text-gray-400 dark:text-gray-500 mb-1">Messages/min</div>
+              <div className="text-lg font-bold text-gray-900 dark:text-white">1,240</div>
             </div>
-            <div className="p-3 bg-white/5 rounded-lg border border-white/10">
-              <div className="text-xs text-gray-500 mb-1">Poll Participation</div>
-              <div className="text-lg font-bold text-white">68.4%</div>
+            <div className="p-3 bg-gray-50 dark:bg-white/5 rounded-lg border border-gray-200 dark:border-white/10">
+              <div className="text-xs text-gray-400 dark:text-gray-500 mb-1">Poll Participation</div>
+              <div className="text-lg font-bold text-gray-900 dark:text-white">68.4%</div>
             </div>
           </div>
         )}
       </div>
 
-      <div className="p-4 border-t border-white/10">
+      <div className="p-4 border-t border-gray-200 dark:border-white/10">
         <div className="flex items-center space-x-2">
           <input
             type="text"
             placeholder="Type a message..."
-            className="flex-1 px-3 py-2 bg-white/5 border border-white/10 rounded text-xs text-white placeholder-gray-500 focus:outline-none focus:border-white/30"
+            className="flex-1 px-3 py-2 bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded text-xs text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:border-gray-300 dark:focus:border-white/30"
             data-testid="input-chat-message"
           />
-          <button className="w-9 h-9 flex items-center justify-center rounded bg-white text-black hover:bg-gray-200 transition" data-testid="button-send-message">
+          <button className="w-9 h-9 flex items-center justify-center rounded bg-[#3d8b7a] text-white dark:bg-white dark:text-black hover:bg-[#2f7365] dark:hover:bg-gray-200 transition" data-testid="button-send-message">
             <Send className="w-3.5 h-3.5" />
           </button>
         </div>
@@ -738,7 +738,7 @@ export default function BroadcastDetailPage() {
     return (
       <AppLayout>
         <div className="text-center py-12">
-          <p className="text-gray-400">Loading broadcast...</p>
+          <p className="text-gray-500 dark:text-gray-400">Loading broadcast...</p>
         </div>
       </AppLayout>
     );
@@ -748,7 +748,7 @@ export default function BroadcastDetailPage() {
     return (
       <AppLayout>
         <div className="text-center py-12">
-          <p className="text-white">Broadcast not found</p>
+          <p className="text-gray-900 dark:text-white">Broadcast not found</p>
         </div>
       </AppLayout>
     );
@@ -767,48 +767,48 @@ export default function BroadcastDetailPage() {
             <div className="flex items-center space-x-4">
               <button
                 onClick={() => setLocation('/broadcasts')}
-                className="w-8 h-8 flex items-center justify-center rounded hover:bg-white/10 text-gray-400 hover:text-white transition"
+                className="w-8 h-8 flex items-center justify-center rounded hover:bg-gray-100 dark:hover:bg-white/10 text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition"
                 data-testid="button-back"
               >
                 <ArrowLeft className="w-4 h-4" />
               </button>
               <div>
                 <div className="flex items-center space-x-3 mb-1">
-                  <h1 className="text-xl font-bold text-white" data-testid="text-broadcast-name">{broadcast.broadcastName}</h1>
+                  <h1 className="text-xl font-bold text-gray-900 dark:text-white" data-testid="text-broadcast-name">{broadcast.broadcastName}</h1>
                   <StatusBadge status={broadcast.status} />
                 </div>
-                <div className="flex items-center text-xs text-gray-500 space-x-2">
+                <div className="flex items-center text-xs text-gray-400 dark:text-gray-500 space-x-2">
                   {campaignData && (
                     <>
                       <Link href={`/campaigns/${campaignData.id}`}>
-                        <span className="text-gray-300 hover:text-white cursor-pointer" data-testid="link-campaign">{campaignData.name}</span>
+                        <span className="text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white cursor-pointer" data-testid="link-campaign">{campaignData.name}</span>
                       </Link>
-                      <span className="text-gray-700">/</span>
+                      <span className="text-gray-300 dark:text-gray-700">/</span>
                     </>
                   )}
-                  <span className="text-gray-300" data-testid="text-broadcast-id">{broadcast.broadcastId}</span>
+                  <span className="text-gray-600 dark:text-gray-300" data-testid="text-broadcast-id">{broadcast.broadcastId}</span>
                 </div>
               </div>
             </div>
 
             <div className="flex items-center space-x-3">
-              <div className="flex items-center space-x-4 px-4 py-2 bg-white/5 rounded border border-white/10">
+              <div className="flex items-center space-x-4 px-4 py-2 bg-gray-50 dark:bg-white/5 rounded border border-gray-200 dark:border-white/10">
                 <div className="text-center">
-                  <div className="text-xs text-gray-500">Viewers</div>
-                  <div className="text-sm font-semibold text-white" data-testid="stat-header-viewers">847K</div>
+                  <div className="text-xs text-gray-400 dark:text-gray-500">Viewers</div>
+                  <div className="text-sm font-semibold text-gray-900 dark:text-white" data-testid="stat-header-viewers">847K</div>
                 </div>
-                <div className="w-px h-8 bg-white/10"></div>
+                <div className="w-px h-8 bg-gray-200 dark:bg-white/10"></div>
                 <div className="text-center">
-                  <div className="text-xs text-gray-500">Engagement</div>
-                  <div className="text-sm font-semibold text-white" data-testid="stat-header-engagement">68.4%</div>
+                  <div className="text-xs text-gray-400 dark:text-gray-500">Engagement</div>
+                  <div className="text-sm font-semibold text-gray-900 dark:text-white" data-testid="stat-header-engagement">68.4%</div>
                 </div>
-                <div className="w-px h-8 bg-white/10"></div>
+                <div className="w-px h-8 bg-gray-200 dark:bg-white/10"></div>
                 <div className="text-center">
-                  <div className="text-xs text-gray-500">Duration</div>
-                  <div className="text-sm font-semibold text-white" data-testid="stat-header-duration">45:23</div>
+                  <div className="text-xs text-gray-400 dark:text-gray-500">Duration</div>
+                  <div className="text-sm font-semibold text-gray-900 dark:text-white" data-testid="stat-header-duration">45:23</div>
                 </div>
               </div>
-              <button className="w-10 h-10 flex items-center justify-center rounded border border-white/20 hover:border-white/40 text-gray-400 hover:text-white transition" data-testid="button-more-options">
+              <button className="w-10 h-10 flex items-center justify-center rounded border border-gray-200 dark:border-white/20 hover:border-gray-300 dark:hover:border-white/40 text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition" data-testid="button-more-options">
                 <MoreVertical className="w-4 h-4" />
               </button>
             </div>
@@ -818,12 +818,12 @@ export default function BroadcastDetailPage() {
 
           <div className="mb-6" data-testid="section-engagement">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-sm font-semibold text-white">Active Engagement</h2>
+              <h2 className="text-sm font-semibold text-gray-900 dark:text-white">Active Engagement</h2>
               <div className="flex items-center space-x-2">
-                <span className="text-xs text-gray-500">{activePolls.length} active</span>
+                <span className="text-xs text-gray-400 dark:text-gray-500">{activePolls.length} active</span>
                 <Dialog open={pollDialogOpen} onOpenChange={setPollDialogOpen}>
                   <DialogTrigger asChild>
-                    <button className="px-3 py-1.5 bg-white text-black rounded text-xs font-medium hover:bg-gray-200 transition" data-testid="button-create-poll">
+                    <button className="px-3 py-1.5 bg-[#3d8b7a] text-white dark:bg-white dark:text-black rounded text-xs font-medium hover:bg-[#2f7365] dark:hover:bg-gray-200 transition" data-testid="button-create-poll">
                       <Plus className="w-3 h-3 inline mr-1.5" />
                       Add Poll
                     </button>
@@ -884,10 +884,10 @@ export default function BroadcastDetailPage() {
             </div>
 
             {polls.length === 0 ? (
-              <div className="bg-transparent border border-white/10 rounded-lg p-8 text-center">
-                <BarChart3 className="w-10 h-10 text-gray-500 mx-auto mb-3" />
-                <h3 className="text-sm font-semibold text-white mb-1">No polls yet</h3>
-                <p className="text-xs text-gray-400">Create a poll to engage your audience</p>
+              <div className="bg-transparent border border-gray-200 dark:border-white/10 rounded-lg p-8 text-center">
+                <BarChart3 className="w-10 h-10 text-gray-400 dark:text-gray-500 mx-auto mb-3" />
+                <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-1">No polls yet</h3>
+                <p className="text-xs text-gray-500 dark:text-gray-400">Create a poll to engage your audience</p>
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -913,10 +913,10 @@ export default function BroadcastDetailPage() {
 
           <div className="mb-6" data-testid="section-contests">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-sm font-semibold text-white">Contests & Trivia</h2>
+              <h2 className="text-sm font-semibold text-gray-900 dark:text-white">Contests & Trivia</h2>
               <Dialog open={contestDialogOpen} onOpenChange={setContestDialogOpen}>
                 <DialogTrigger asChild>
-                  <button className="px-3 py-1.5 bg-transparent border border-white/20 hover:border-white/40 text-white rounded text-xs font-medium transition" data-testid="button-create-contest">
+                  <button className="px-3 py-1.5 bg-transparent border border-gray-200 dark:border-white/20 hover:border-gray-300 dark:hover:border-white/40 text-gray-900 dark:text-white rounded text-xs font-medium transition" data-testid="button-create-contest">
                     <Plus className="w-3 h-3 inline mr-1.5" />
                     Add Contest
                   </button>
@@ -981,10 +981,10 @@ export default function BroadcastDetailPage() {
             </div>
 
             {contests.length === 0 ? (
-              <div className="bg-transparent border border-white/10 rounded-lg p-8 text-center">
-                <Trophy className="w-10 h-10 text-gray-500 mx-auto mb-3" />
-                <h3 className="text-sm font-semibold text-white mb-1">No contests yet</h3>
-                <p className="text-xs text-gray-400">Create a contest to reward your audience</p>
+              <div className="bg-transparent border border-gray-200 dark:border-white/10 rounded-lg p-8 text-center">
+                <Trophy className="w-10 h-10 text-gray-400 dark:text-gray-500 mx-auto mb-3" />
+                <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-1">No contests yet</h3>
+                <p className="text-xs text-gray-500 dark:text-gray-400">Create a contest to reward your audience</p>
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

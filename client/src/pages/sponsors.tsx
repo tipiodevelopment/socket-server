@@ -216,7 +216,7 @@ export default function SponsorsPage() {
           disabled={isEdit ? updateMutation.isPending : createMutation.isPending}
           onClick={isEdit ? handleEdit : handleCreate}
           data-testid="button-submit-sponsor"
-          className="bg-white hover:bg-gray-200 text-[#0a0e1a]"
+          className="bg-[#3d8b7a] hover:bg-[#2f7365] text-white dark:bg-white dark:hover:bg-gray-200 dark:text-[#0a0e1a]"
         >
           {isEdit
             ? updateMutation.isPending
@@ -243,7 +243,7 @@ export default function SponsorsPage() {
           }}
         >
           <DialogTrigger asChild>
-            <Button data-testid="button-create-sponsor" className="gap-2 bg-white hover:bg-gray-200 text-[#0a0e1a]">
+            <Button data-testid="button-create-sponsor" className="gap-2 bg-[#3d8b7a] hover:bg-[#2f7365] text-white dark:bg-white dark:hover:bg-gray-200 dark:text-[#0a0e1a]">
               <Plus className="w-4 h-4" />
               New Sponsor
             </Button>
@@ -293,7 +293,7 @@ export default function SponsorsPage() {
           </p>
           <Button
             onClick={() => setCreateDialogOpen(true)}
-            className="bg-white hover:bg-gray-200 text-[#0a0e1a]"
+            className="bg-[#3d8b7a] hover:bg-[#2f7365] text-white dark:bg-white dark:hover:bg-gray-200 dark:text-[#0a0e1a]"
             data-testid="button-create-first-sponsor"
           >
             <Plus className="w-4 h-4 mr-2" />

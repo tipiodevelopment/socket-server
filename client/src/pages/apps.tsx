@@ -171,7 +171,7 @@ export default function AppsPage() {
       actions={
         <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
           <DialogTrigger asChild>
-            <Button data-testid="button-create-app" className="gap-2 bg-white hover:bg-gray-200 text-[#0a0e1a]">
+            <Button data-testid="button-create-app" className="gap-2 bg-[#3d8b7a] hover:bg-[#2f7365] dark:bg-white dark:hover:bg-gray-200 text-white dark:text-[#0a0e1a]">
               <Plus className="w-4 h-4" />
               New App
             </Button>
@@ -229,7 +229,7 @@ export default function AppsPage() {
                   testId="input-app-banner"
                 />
                 <DialogFooter>
-                  <Button type="submit" disabled={createMutation.isPending} data-testid="button-submit-app" className="bg-white hover:bg-gray-200 text-[#0a0e1a]">
+                  <Button type="submit" disabled={createMutation.isPending} data-testid="button-submit-app" className="bg-[#3d8b7a] hover:bg-[#2f7365] dark:bg-white dark:hover:bg-gray-200 text-white dark:text-[#0a0e1a]">
                     {createMutation.isPending ? 'Creating...' : 'Create App'}
                   </Button>
                 </DialogFooter>
@@ -259,7 +259,7 @@ export default function AppsPage() {
           <p className="text-gray-500 dark:text-white/40 mb-4 max-w-md mx-auto">
             Create your first app to start managing campaigns and broadcasts
           </p>
-          <Button onClick={() => setCreateDialogOpen(true)} className="bg-white hover:bg-gray-200 text-[#0a0e1a]" data-testid="button-create-first-app">
+          <Button onClick={() => setCreateDialogOpen(true)} className="bg-[#3d8b7a] hover:bg-[#2f7365] dark:bg-white dark:hover:bg-gray-200 text-white dark:text-[#0a0e1a]" data-testid="button-create-first-app">
             <Plus className="w-4 h-4 mr-2" />
             Create App
           </Button>

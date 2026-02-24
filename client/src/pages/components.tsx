@@ -119,7 +119,7 @@ export default function ComponentsPage() {
           <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
             <DialogTrigger asChild>
               <button
-                className="flex items-center space-x-2 px-4 py-2 bg-white dark:bg-white text-black dark:text-black rounded hover:bg-gray-200 dark:hover:bg-gray-200 transition text-sm font-medium"
+                className="flex items-center space-x-2 px-4 py-2 bg-[#3d8b7a] text-white dark:bg-white dark:text-black rounded hover:bg-[#2f7365] dark:hover:bg-gray-200 transition text-sm font-medium"
                 data-testid="button-create-component"
               >
                 <Plus className="w-3.5 h-3.5" />
@@ -145,14 +145,14 @@ export default function ComponentsPage() {
 
         <div className="flex items-center justify-between mb-8 mt-6">
           <div className="flex items-center space-x-2">
-            <div className="bg-white/5 dark:bg-white/5 border border-white/10 dark:border-white/10 p-1 rounded-lg flex items-center">
+            <div className="bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/10 p-1 rounded-lg flex items-center">
               {filterOptions.map(filter => (
                 <button
                   key={filter}
                   onClick={() => setActiveFilter(filter)}
                   className={`px-3 py-1.5 rounded text-xs font-medium transition ${
                     activeFilter === filter
-                      ? 'bg-white dark:bg-white text-black dark:text-black shadow-sm'
+                      ? 'bg-[#3d8b7a] text-white dark:bg-white dark:text-black shadow-sm'
                       : 'text-muted-foreground hover:text-foreground'
                   }`}
                   data-testid={`filter-${filter.toLowerCase()}`}
@@ -166,12 +166,12 @@ export default function ComponentsPage() {
               onClick={() => setTemplatesOnly(!templatesOnly)}
               className={`flex items-center space-x-2 px-3 py-2 bg-transparent border rounded-lg text-xs transition ml-2 ${
                 templatesOnly
-                  ? 'border-white/40 dark:border-white/40 text-foreground'
-                  : 'border-white/10 dark:border-white/10 hover:border-white/30 dark:hover:border-white/30 text-muted-foreground hover:text-foreground'
+                  ? 'border-[#3d8b7a] dark:border-white/40 text-foreground'
+                  : 'border-gray-200 dark:border-white/10 hover:border-gray-300 dark:hover:border-white/30 text-muted-foreground hover:text-foreground'
               }`}
               data-testid="filter-templates-only"
             >
-              <div className={`w-3 h-3 rounded-sm border ${templatesOnly ? 'bg-white dark:bg-white border-white dark:border-white' : 'border-muted-foreground'}`}></div>
+              <div className={`w-3 h-3 rounded-sm border ${templatesOnly ? 'bg-[#3d8b7a] dark:bg-white border-[#3d8b7a] dark:border-white' : 'border-muted-foreground'}`}></div>
               <span>Templates only</span>
             </button>
           </div>
@@ -183,7 +183,7 @@ export default function ComponentsPage() {
               placeholder="Search components..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-9 pr-4 py-2 bg-white/5 dark:bg-white/5 border border-white/10 dark:border-white/10 rounded-lg text-xs text-foreground placeholder-muted-foreground focus:outline-none focus:border-white/30 dark:focus:border-white/30 transition"
+              className="w-full pl-9 pr-4 py-2 bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-lg text-xs text-foreground placeholder-muted-foreground focus:outline-none focus:border-gray-400 dark:focus:border-white/30 transition"
               data-testid="input-search"
             />
           </div>
@@ -205,7 +205,7 @@ export default function ComponentsPage() {
             {components.length === 0 && (
               <button
                 onClick={() => setIsCreateOpen(true)}
-                className="px-4 py-2 bg-white dark:bg-white text-black dark:text-black rounded text-sm font-medium hover:bg-gray-200 dark:hover:bg-gray-200 transition"
+                className="px-4 py-2 bg-[#3d8b7a] text-white dark:bg-white dark:text-black rounded text-sm font-medium hover:bg-[#2f7365] dark:hover:bg-gray-200 transition"
                 data-testid="button-create-first-component"
               >
                 <Plus className="w-3.5 h-3.5 inline mr-1.5" />
@@ -222,11 +222,11 @@ export default function ComponentsPage() {
                 <div
                   key={component.id}
                   onClick={() => setLocation(`/components/${component.id}`)}
-                  className="group bg-transparent border border-white/10 dark:border-white/10 rounded-xl p-5 hover:border-white/30 dark:hover:border-white/30 hover:bg-white/[0.02] dark:hover:bg-white/[0.02] transition cursor-pointer flex flex-col h-48"
+                  className="group bg-white dark:bg-transparent border border-gray-200 dark:border-white/10 rounded-xl p-5 hover:border-gray-300 dark:hover:border-white/30 hover:bg-gray-50 dark:hover:bg-white/[0.02] transition cursor-pointer flex flex-col h-48"
                   data-testid={`card-component-${component.id}`}
                 >
                   <div className="flex items-start justify-between mb-4">
-                    <div className="w-10 h-10 bg-white/5 dark:bg-white/5 rounded-lg flex items-center justify-center text-muted-foreground group-hover:text-foreground transition">
+                    <div className="w-10 h-10 bg-gray-100 dark:bg-white/5 rounded-lg flex items-center justify-center text-muted-foreground group-hover:text-foreground transition">
                       {getComponentIcon(component.type)}
                     </div>
                   </div>
@@ -239,7 +239,7 @@ export default function ComponentsPage() {
                         <span>Used in {usage.length} campaign{usage.length !== 1 ? 's' : ''}</span>
                       </div>
                       {isTemplate && (
-                        <span className="px-2 py-0.5 bg-white/10 dark:bg-white/10 text-foreground/70 text-[10px] font-medium rounded">Template</span>
+                        <span className="px-2 py-0.5 bg-gray-100 dark:bg-white/10 text-foreground/70 text-[10px] font-medium rounded">Template</span>
                       )}
                     </div>
                   </div>

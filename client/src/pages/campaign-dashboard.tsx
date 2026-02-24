@@ -27,7 +27,7 @@ function getCampaignStatus(campaign: Campaign): CampaignStatus {
 }
 
 const STATUS_STYLES: Record<CampaignStatus, string> = {
-  active: 'bg-white text-black border-white',
+  active: 'bg-[#3d8b7a] text-white dark:bg-white dark:text-black border-[#3d8b7a] dark:border-white',
   upcoming: 'bg-white/10 text-gray-300 border-white/20',
   ended: 'bg-gray-500/20 text-gray-400 border-gray-500/30',
   paused: 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30',
