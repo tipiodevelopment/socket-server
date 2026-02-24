@@ -68,8 +68,8 @@ export default function UserSessionPage() {
       <div className="flex-1 flex items-center justify-center p-6">
         <div className="w-full max-w-md">
           <div className="text-center mb-8">
-            <div className="w-16 h-16 bg-white rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg">
-              <VioLogo className="w-10 h-10" color="white" />
+            <div className="w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4">
+              <VioLogo className="h-10" />
             </div>
             <h1 className="text-2xl font-bold text-gray-900 dark:text-white" data-testid="text-login-title">
               Vio

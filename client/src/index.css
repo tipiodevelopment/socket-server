@@ -4,66 +4,65 @@
 @tailwind utilities;
 
 :root {
-  /* Light mode */
-  --background: hsl(220, 20%, 97%);
-  --foreground: hsl(222, 47%, 11%);
+  /* Light mode — Teal/Mint palette */
+  --background: hsl(160, 10%, 96%);
+  --foreground: hsl(180, 20%, 10%);
 
   --card: hsl(0, 0%, 100%);
-  --card-foreground: hsl(222, 47%, 11%);
+  --card-foreground: hsl(180, 20%, 10%);
   --popover: hsl(0, 0%, 100%);
-  --popover-foreground: hsl(222, 47%, 11%);
+  --popover-foreground: hsl(180, 20%, 10%);
 
-  --primary: #0066FF;
+  --primary: #3d8b7a;
   --primary-foreground: hsl(0, 0%, 100%);
-  --primary-hover: #0052CC;
+  --primary-hover: #2f7365;
 
-  --secondary: hsl(240, 5%, 96%);
-  --secondary-foreground: hsl(222, 47%, 11%);
+  --secondary: hsl(160, 10%, 94%);
+  --secondary-foreground: hsl(180, 20%, 10%);
 
-  --muted: hsl(220, 14%, 96%);
-  --muted-foreground: hsl(220, 9%, 46%);
+  --muted: hsl(160, 8%, 94%);
+  --muted-foreground: hsl(170, 8%, 42%);
 
-  --accent: hsl(220, 14%, 96%);
-  --accent-foreground: hsl(222, 47%, 11%);
+  --accent: hsl(160, 12%, 93%);
+  --accent-foreground: hsl(180, 20%, 10%);
 
   --destructive: #EF4444;
   --destructive-foreground: hsl(0, 0%, 100%);
   --success: #10B981;
   --warning: #F59E0B;
 
-  --border: hsl(220, 13%, 91%);
-  --input: hsl(220, 13%, 91%);
-  --ring: #0066FF;
+  --border: hsl(160, 10%, 88%);
+  --input: hsl(160, 10%, 88%);
+  --ring: #3d8b7a;
 
-  --chart-1: #0066FF;
-  --chart-2: #A855F7;
-  --chart-3: #10B981;
-  --chart-4: #F59E0B;
+  --chart-1: #3d8b7a;
+  --chart-2: #5eff9e;
+  --chart-3: #8fd8d0;
+  --chart-4: #2a3f3f;
   --chart-5: #EF4444;
 
   --sidebar-background: hsl(0, 0%, 100%);
-  --sidebar-foreground: hsl(222, 47%, 11%);
-  --sidebar-primary: #0066FF;
+  --sidebar-foreground: hsl(180, 20%, 10%);
+  --sidebar-primary: #3d8b7a;
   --sidebar-primary-foreground: hsl(0, 0%, 100%);
-  --sidebar-accent: hsl(220, 14%, 96%);
-  --sidebar-accent-foreground: hsl(222, 47%, 11%);
-  --sidebar-border: hsl(220, 13%, 91%);
-  --sidebar-ring: #0066FF;
+  --sidebar-accent: hsl(160, 12%, 93%);
+  --sidebar-accent-foreground: hsl(180, 20%, 10%);
+  --sidebar-border: hsl(160, 10%, 88%);
+  --sidebar-ring: #3d8b7a;
 
   --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   --font-mono: 'JetBrains Mono', 'Fira Code', Monaco, monospace;
 
   --radius: 0.75rem;
 
-  /* Theme-specific surface colors */
   --surface-primary: hsl(0, 0%, 100%);
-  --surface-secondary: hsl(220, 20%, 97%);
+  --surface-secondary: hsl(160, 10%, 96%);
   --surface-elevated: hsl(0, 0%, 100%);
-  --text-primary: hsl(222, 47%, 11%);
-  --text-secondary: hsl(220, 9%, 46%);
-  --text-tertiary: hsl(220, 9%, 64%);
-  --border-subtle: hsl(220, 13%, 91%);
-  --border-strong: hsl(220, 13%, 82%);
+  --text-primary: hsl(180, 20%, 10%);
+  --text-secondary: hsl(170, 8%, 42%);
+  --text-tertiary: hsl(170, 6%, 58%);
+  --border-subtle: hsl(160, 10%, 88%);
+  --border-strong: hsl(160, 10%, 78%);
 }
 
 .dark {
@@ -99,7 +98,7 @@
 
   --chart-1: hsl(220, 10%, 70%);
   --chart-2: hsl(220, 10%, 55%);
-  --chart-3: #10B981;
+  --chart-3: #3d8b7a;
   --chart-4: #F59E0B;
   --chart-5: #EF4444;
 
@@ -112,7 +111,6 @@
   --sidebar-border: #2a3142;
   --sidebar-ring: hsl(220, 10%, 50%);
 
-  /* Theme-specific surface colors */
   --surface-primary: #141824;
   --surface-secondary: #0a0e1a;
   --surface-elevated: #141824;

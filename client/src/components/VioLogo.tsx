@@ -1,19 +1,20 @@
-export function VioLogo({ className = "w-6 h-6", color = "white" }: { className?: string; color?: string }) {
+import { useTheme } from '@/contexts/ThemeContext';
+import logoWhite from '@assets/vio-logo-white_1771918397529.png';
+import logoBlack from '@assets/vio-logo-black_1771918397531.png';
+
+export function VioLogo({ className = "h-6", size }: { className?: string; size?: 'sm' | 'md' | 'lg'; color?: string }) {
+  const { theme } = useTheme();
+  const src = theme === 'dark' ? logoWhite : logoBlack;
+  const alt = 'Vio';
+
+  const sizeClass = size === 'lg' ? 'h-8' : size === 'sm' ? 'h-4' : '';
+
   return (
-    <svg viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg" className={className}>
-      <path
-        d="M20 30 L50 90 L55 80 L30 30 Z"
-        fill={color}
-        opacity="0.9"
-      />
-      <path
-        d="M50 90 L100 20 L85 20 L50 72 Z"
-        fill={color}
-      />
-      <path
-        d="M45 55 L70 55 L58 30 Z"
-        fill={color}
-      />
-    </svg>
+    <img
+      src={src}
+      alt={alt}
+      className={`${sizeClass || className} w-auto object-contain`}
+      data-testid="img-vio-logo"
+    />
   );
 }

@@ -77,8 +77,8 @@ export function AppLayout({ children, breadcrumbs = [], title, subtitle, actions
       <aside className="hidden md:flex flex-col w-16 bg-white dark:bg-[#141824] border-r border-gray-200 dark:border-[#2a3142] fixed top-0 left-0 h-full z-50 shadow-sm dark:shadow-none">
         <div className="flex items-center justify-center h-16">
           <Link href="/">
-            <div className="w-10 h-10 bg-white dark:bg-white rounded-xl flex items-center justify-center cursor-pointer" data-testid="link-home">
-              <VioLogo className="w-6 h-6" color="#0a0e1a" />
+            <div className="w-10 h-10 rounded-xl flex items-center justify-center cursor-pointer" data-testid="link-home">
+              <VioLogo className="h-5" />
             </div>
           </Link>
         </div>
@@ -91,8 +91,8 @@ export function AppLayout({ children, breadcrumbs = [], title, subtitle, actions
                 <div
                   className={`w-10 h-10 rounded-xl flex items-center justify-center cursor-pointer transition-all group relative ${
                     active
-                      ? 'bg-gray-900 dark:bg-white text-white dark:text-[#0a0e1a]'
-                      : 'text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-[#1e2433]'
+                      ? 'bg-[#3d8b7a] dark:bg-white text-white dark:text-[#0a0e1a]'
+                      : 'text-gray-400 dark:text-gray-500 hover:text-[#3d8b7a] dark:hover:text-gray-300 hover:bg-[#3d8b7a]/10 dark:hover:bg-[#1e2433]'
                   }`}
                   data-testid={`nav-${item.label.toLowerCase()}`}
                 >
@@ -109,7 +109,7 @@ export function AppLayout({ children, breadcrumbs = [], title, subtitle, actions
         <div className="flex flex-col items-center gap-2 py-4 border-t border-gray-200 dark:border-[#2a3142]">
           <button
             onClick={toggleTheme}
-            className="w-10 h-10 rounded-xl flex items-center justify-center text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-[#1e2433] transition-all group relative"
+            className="w-10 h-10 rounded-xl flex items-center justify-center text-gray-400 dark:text-gray-500 hover:text-[#3d8b7a] dark:hover:text-gray-300 hover:bg-[#3d8b7a]/10 dark:hover:bg-[#1e2433] transition-all group relative"
             data-testid="button-theme-toggle"
           >
             {theme === 'dark' ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
@@ -119,7 +119,7 @@ export function AppLayout({ children, breadcrumbs = [], title, subtitle, actions
           </button>
           <button
             onClick={logout}
-            className="w-10 h-10 rounded-xl flex items-center justify-center text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-[#1e2433] transition-all group relative"
+            className="w-10 h-10 rounded-xl flex items-center justify-center text-gray-400 dark:text-gray-500 hover:text-[#3d8b7a] dark:hover:text-gray-300 hover:bg-[#3d8b7a]/10 dark:hover:bg-[#1e2433] transition-all group relative"
             data-testid="button-logout"
           >
             <LogOut className="w-5 h-5" />
@@ -127,7 +127,7 @@ export function AppLayout({ children, breadcrumbs = [], title, subtitle, actions
               Logout
             </div>
           </button>
-          <div className="w-8 h-8 rounded-full bg-white dark:bg-white flex items-center justify-center text-gray-900 dark:text-[#0a0e1a] text-xs font-bold border-2 border-white">
+          <div className="w-8 h-8 rounded-full bg-[#3d8b7a] dark:bg-white flex items-center justify-center text-white dark:text-[#0a0e1a] text-xs font-bold">
             {(reachuUserId || 'U').charAt(0).toUpperCase()}
           </div>
         </div>
@@ -135,7 +135,7 @@ export function AppLayout({ children, breadcrumbs = [], title, subtitle, actions
 
       <div className="flex-1 md:ml-16 flex flex-col min-h-screen">
         <header className="sticky top-0 z-40 bg-white/80 dark:bg-[#141824]/80 backdrop-blur-xl border-b border-gray-200 dark:border-[#2a3142]">
-          <div className="flex items-center justify-between h-14 px-4 sm:px-6">
+          <div className="flex items-center justify-between h-14 px-4 sm:px-6 max-w-[1440px] mx-auto w-full">
             <div className="flex items-center gap-3">
               <Button
                 variant="ghost"
@@ -206,7 +206,7 @@ export function AppLayout({ children, breadcrumbs = [], title, subtitle, actions
           )}
         </header>
 
-        <main className="flex-1 px-4 sm:px-6 py-6 overflow-auto">
+        <main className="flex-1 px-4 sm:px-6 py-6 overflow-auto max-w-[1440px] mx-auto w-full">
           {breadcrumbs.length > 0 && (
             <Breadcrumb className="mb-4">
               <BreadcrumbList>
