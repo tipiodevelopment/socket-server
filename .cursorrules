@@ -38,9 +38,16 @@ openapi.yaml                — OpenAPI 3.0 specification (80 endpoints, 17 tag 
 
 Users → Client Apps → Channels → Campaigns → Broadcasts → Polls/Contests
 
-Key tables: `users`, `sponsors`, `client_apps`, `channels`, `campaigns`, `components`, `campaign_components`, `broadcasts`, `polls`, `poll_options`, `poll_votes`, `contests`, `contest_participations`, `events`, `scheduled_components`
+Key tables: `users`, `sponsors`, `client_apps`, `channels`, `campaigns`, `components`, `campaign_components`, `broadcasts`, `polls`, `poll_options`, `poll_votes`, `contests`, `contest_participations`, `broadcast_ads`, `broadcast_products`, `chat_messages`, `events`, `scheduled_components`
 
 Configuration tables: `campaign_translations`, `campaign_engagement_config`, `campaign_ui_config`, `campaign_feature_flags`, `sdk_translations`
+
+Recent schema additions (Feb 2026):
+- `broadcasts.viewerCount` (integer, default 0) — current viewer count
+- `broadcasts.peakViewers` (integer, default 0) — peak concurrent viewers
+- `broadcast_ads` — ads linked to a broadcast (name, description, imageUrl, ctaUrl, adType, duration as varchar, isActive, displayOrder)
+- `broadcast_products` — shoppable products (name, subtitle, price/originalPrice as varchar NOT integer, buyUrl, status, displayOrder)
+- `chat_messages` — live chat per broadcast (username, message, createdAt)
 
 All schemas, insert schemas, and types are exported from `shared/schema.ts`.
 
@@ -53,7 +60,16 @@ All schemas, insert schemas, and types are exported from `shared/schema.ts`.
 ### Dashboard APIs (`/api/*`) — Session-based
 Internal CRUD for all entities. Used by the React frontend.
 - `/api/campaigns`, `/api/broadcasts`, `/api/components`, `/api/sponsors`, `/api/client-apps`, etc.
-- Broadcast sub-resources: `/api/broadcasts/:broadcastId/polls`, `/api/broadcasts/:broadcastId/contests`
+- Broadcast sub-resources:
+  - `/api/broadcasts/:broadcastId/polls` — CRUD polls
+  - `/api/broadcasts/:broadcastId/contests` — CRUD contests
+  - `/api/broadcasts/:broadcastId/ads` — GET / POST broadcast ads
+  - `/api/broadcasts/ads/:id` — PUT / DELETE individual ad
+  - `/api/broadcasts/:broadcastId/products` — GET / POST shoppable products
+  - `/api/broadcasts/products/:id` — PUT / DELETE individual product
+  - `/api/broadcasts/:broadcastId/chat` — GET / POST live chat messages
+  - `/api/broadcasts/:broadcastId/analytics` — GET real analytics (polls, contests, viewers, votes)
+  - `/api/seed-demo` (POST) — Seeds ads, products, and chat messages into a broadcast for demo purposes
 
 ### Admin APIs (`/v1/*`) — JWT Bearer Auth (`requireBearerAuth`)
 External admin access for broadcasts, polls, contests.
@@ -111,20 +127,23 @@ Full analytics dashboard with drill-down navigation (no page reload, state-based
 - Error and loading states for all data fetching. Route protected by RequireAuth.
 
 ### Broadcast Detail (`/broadcasts/:broadcastId`)
-Full broadcast management view with split layout:
-- **Header:** Broadcast name + Live/Upcoming/Ended badge + stats (Viewers, Engagement, Duration)
-- **Event Timeline:** Visual progress bar + colored dot markers (blue=polls, purple=contests, green=ads) + hover tooltips + playback controls + legend
+Full broadcast management view with split layout. **All data is real — zero hardcoded mocks.**
+- **Header:** Broadcast name + Live/Upcoming/Ended badge + real stats (Viewers from `viewerCount`, Total Votes from analytics, Status). "Load Demo" button calls `POST /api/seed-demo` to seed ads/products/chat.
+- **Event Timeline:** Built from real polls + contests. No hardcoded TIMELINE_EVENTS. Empty state if no polls/contests exist.
 - **Active Engagement:** Poll cards with blue color-coding, vote progress bars, create/toggle/delete
 - **Contests & Trivia:** Contest cards with purple color-coding, create/toggle/delete
-- **Scheduled Ads:** Hardcoded ad cards with images, timing, duration, ad type
-- **Shoppable Products:** 4-column product grid + analytics summary bar (products active, views, CTR, revenue)
-- **Right Sidebar:** Live Chat tab (message feed) + Analytics tab
+- **Scheduled Ads:** Loads from `GET /api/broadcasts/:id/ads`. Empty state if none. Delete with confirmation dialog.
+- **Shoppable Products:** 4-column grid, loads from `GET /api/broadcasts/:id/products`. Shows price/originalPrice (varchar), status badge, buy URL. Summary bar shows active count and total.
+- **Right Sidebar:**
+  - **Live Chat tab:** Real messages from `GET /api/broadcasts/:id/chat`, auto-refresh every 10s. Send button posts to `POST /api/broadcasts/:id/chat`. Message input supports Enter key.
+  - **Analytics tab:** Real data from `GET /api/broadcasts/:id/analytics` — viewerCount, peakViewers, totalVotes, activePolls, activeContests, chat message count.
 
 ### Component Library (`/components`)
 4-column grid, type icons, filter pills, Templates-only toggle. Detail page at `/components/:id` with iOS Swift integration code and campaign usage.
 
 ### Campaign Dashboard (`/campaigns/:campaignId`)
-Tabbed: Overview, Events, Scheduled, Components, Integrations, Settings. Components tab filters to templates only. Tab navigation via callback-based `onNavigateTab` prop (not DOM manipulation).
+Tabbed: Overview, Broadcasts, Components, Config, Analytics. Tab navigation via callback-based `onNavigateTab` prop (not DOM manipulation).
+- **Analytics tab:** Real broadcast performance data. Queries `GET /api/broadcasts?campaignId=X` on tab activation. Shows KPI cards (total broadcasts, live count, total viewers, peak viewers) + per-broadcast table with status badges. Empty state if no broadcasts exist.
 
 ### Sponsor Management (`/sponsors`)
 CRUD with logo/avatar uploads + primary/secondary color config.
@@ -192,6 +211,13 @@ Dashboard → Apps → Campaigns → Sponsors → Broadcasts → Components → 
 - Object storage: Replit built-in, env vars `PUBLIC_OBJECT_SEARCH_PATHS`, `PRIVATE_OBJECT_DIR`
 - Session: `SESSION_SECRET` env var
 - Auth: JWT tokens use `SESSION_SECRET` for signing
+
+## Fixes Applied (Feb 2026)
+
+- **admin.tsx:** `productForms`, `pollForms`, `contestForms` now initialize empty (single blank entry). No Apple/PSG hardcoded demo data. Forms still persist to DB via `/api/form-state`.
+- **app-detail.tsx:** Stats cards (Active Campaigns, Live Broadcasts, Total Viewers, Engagement Rate) no longer show fake trend badges (↑12%, ↑8%, ↑24%, ↑18%). Values are computed from real DB data.
+- **broadcast-detail.tsx:** Zero hardcoded data. All sections use real API queries. "Load Demo" button available on any broadcast to seed demo data.
+- **campaign-dashboard.tsx Analytics tab:** Was "Coming Soon". Now shows real broadcast performance from DB.
 
 ## Architect Review Notes (Feb 2026)
 
