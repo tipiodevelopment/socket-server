@@ -2,7 +2,7 @@ import { useParams, Link, useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useState, useMemo } from "react";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Pause, Play, MoreVertical, BarChart3, Radio, Puzzle, Settings, Activity, Eye, TrendingUp, ExternalLink } from "lucide-react";
+import { ArrowLeft, Pause, Play, MoreVertical, BarChart3, Radio, Puzzle, Settings, Activity, Eye, TrendingUp, ExternalLink, Zap } from "lucide-react";
 import { Campaign, Sponsor, Broadcast } from "@shared/schema";
 import { OverviewTab } from "@/components/dashboard/OverviewTab";
 import { EventsTab } from "@/components/dashboard/EventsTab";
@@ -37,8 +37,9 @@ const TABS = [
   { value: 'overview', label: 'Overview', icon: BarChart3 },
   { value: 'broadcasts', label: 'Broadcasts', icon: Radio },
   { value: 'components', label: 'Components', icon: Puzzle },
-  { value: 'config', label: 'Config', icon: Settings },
+  { value: 'live', label: 'Live', icon: Zap },
   { value: 'analytics', label: 'Analytics', icon: Activity },
+  { value: 'settings', label: 'Settings', icon: Settings },
 ] as const;
 
 export default function CampaignDashboard() {
@@ -238,12 +239,16 @@ export default function CampaignDashboard() {
         {activeTab === 'components' && (
           <ComponentsTab campaignId={campaignId!} />
         )}
-        {activeTab === 'config' && (
+        {activeTab === 'live' && (
           <div className="space-y-8">
             <EventsTab campaignId={campaignId!} campaign={campaign} />
             <ScheduledTab campaignId={campaignId!} />
-            <IntegrationsTab campaignId={campaignId!} campaign={campaign} />
+          </div>
+        )}
+        {activeTab === 'settings' && (
+          <div className="space-y-8">
             <SettingsTab campaignId={campaignId!} campaign={campaign} />
+            <IntegrationsTab campaignId={campaignId!} campaign={campaign} />
           </div>
         )}
         {activeTab === 'analytics' && (

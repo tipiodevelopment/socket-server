@@ -11,7 +11,7 @@ import { useToast } from '@/hooks/use-toast';
 import { queryClient, apiRequest } from '@/lib/queryClient';
 import { AppLayout } from '@/components/AppLayout';
 import type { Broadcast, Poll, PollOptionRecord, Contest, Campaign, BroadcastAd, BroadcastProduct, ChatMessage } from '@shared/schema';
-import { ArrowLeft, Plus, Trash2, BarChart3, Trophy, X, MoreVertical, CheckCircle, Play, SkipBack, SkipForward, Maximize2, Send, Megaphone, ShoppingBag, ExternalLink, Eye, TrendingUp, Vote, MessageSquare, RefreshCw, Users } from 'lucide-react';
+import { ArrowLeft, Plus, Trash2, BarChart3, Trophy, X, MoreVertical, CheckCircle, Play, SkipBack, SkipForward, Maximize2, Send, Megaphone, ShoppingBag, ExternalLink, Eye, TrendingUp, Vote, MessageSquare, RefreshCw, Users, Radio } from 'lucide-react';
 import { useState, useRef, useEffect } from 'react';
 import { useUser } from '@/contexts/UserContext';
 
@@ -160,13 +160,26 @@ function EventTimeline({ polls, contests }: { polls: (Poll & { options?: PollOpt
   );
 }
 
-function ActivePollCard({ poll, onToggle, onDelete }: {
+function ActivePollCard({ poll, onToggle, onDelete, campaignId }: {
   poll: Poll & { options?: PollOptionRecord[] };
   onToggle: (pollId: number, isActive: boolean) => void;
   onDelete: (pollId: number) => void;
+  campaignId?: number | null;
 }) {
+  const { toast } = useToast();
   const totalVotes = poll.totalVotes || 0;
   const isActive = poll.isActive;
+
+  const sendLiveMutation = useMutation({
+    mutationFn: () => apiRequest('POST', '/api/events/poll', {
+      question: poll.question,
+      options: (poll.options || []).map(o => ({ text: o.text })),
+      duration: 60,
+      campaignId,
+    }),
+    onSuccess: () => toast({ title: 'Poll sent live', description: 'Broadcasted to all connected clients' }),
+    onError: () => toast({ title: 'Error', description: 'Failed to send poll live', variant: 'destructive' }),
+  });
 
   return (
     <div
@@ -245,15 +258,41 @@ function ActivePollCard({ poll, onToggle, onDelete }: {
           </div>
         )
       )}
+      {campaignId && (
+        <button
+          onClick={() => sendLiveMutation.mutate()}
+          disabled={sendLiveMutation.isPending}
+          className="mt-2 w-full flex items-center justify-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium border border-blue-500/30 text-blue-400 hover:bg-blue-500/10 transition disabled:opacity-50"
+          data-testid={`button-send-live-poll-${poll.id}`}
+        >
+          <Radio className="w-3 h-3" />
+          {sendLiveMutation.isPending ? 'Sending...' : 'Send Live'}
+        </button>
+      )}
     </div>
   );
 }
 
-function ContestCard({ contest, onToggle, onDelete }: {
+function ContestCard({ contest, onToggle, onDelete, campaignId }: {
   contest: Contest;
   onToggle: (contestId: number, isActive: boolean) => void;
   onDelete: (contestId: number) => void;
+  campaignId?: number | null;
 }) {
+  const { toast } = useToast();
+
+  const sendLiveMutation = useMutation({
+    mutationFn: () => apiRequest('POST', '/api/events/contest', {
+      name: contest.title,
+      prize: contest.prize || '',
+      deadline: contest.endTime ? new Date(contest.endTime).toISOString().split('T')[0] : '',
+      maxParticipants: 100,
+      campaignId,
+    }),
+    onSuccess: () => toast({ title: 'Contest sent live', description: 'Broadcasted to all connected clients' }),
+    onError: () => toast({ title: 'Error', description: 'Failed to send contest live', variant: 'destructive' }),
+  });
+
   return (
     <div
       className={`bg-transparent border rounded-lg p-4 ${contest.isActive ? 'border-purple-500/30' : 'border-gray-200 dark:border-white/10'}`}
@@ -310,6 +349,17 @@ function ContestCard({ contest, onToggle, onDelete }: {
           </div>
         </div>
       </div>
+      {campaignId && (
+        <button
+          onClick={() => sendLiveMutation.mutate()}
+          disabled={sendLiveMutation.isPending}
+          className="mt-3 w-full flex items-center justify-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium border border-purple-500/30 text-purple-400 hover:bg-purple-500/10 transition disabled:opacity-50"
+          data-testid={`button-send-live-contest-${contest.id}`}
+        >
+          <Radio className="w-3 h-3" />
+          {sendLiveMutation.isPending ? 'Sending...' : 'Send Live'}
+        </button>
+      )}
     </div>
   );
 }
@@ -972,6 +1022,7 @@ export default function BroadcastDetailPage() {
                     poll={poll}
                     onToggle={(id, active) => togglePollMutation.mutate({ pollId: id, isActive: active })}
                     onDelete={(id) => deletePollMutation.mutate(id)}
+                    campaignId={broadcast.campaignId}
                   />
                 ))}
                 {inactivePolls.map(poll => (
@@ -980,6 +1031,7 @@ export default function BroadcastDetailPage() {
                     poll={poll}
                     onToggle={(id, active) => togglePollMutation.mutate({ pollId: id, isActive: active })}
                     onDelete={(id) => deletePollMutation.mutate(id)}
+                    campaignId={broadcast.campaignId}
                   />
                 ))}
               </div>
@@ -1069,6 +1121,7 @@ export default function BroadcastDetailPage() {
                     contest={contest}
                     onToggle={(id, active) => toggleContestMutation.mutate({ contestId: id, isActive: active })}
                     onDelete={(id) => deleteContestMutation.mutate(id)}
+                    campaignId={broadcast.campaignId}
                   />
                 ))}
               </div>

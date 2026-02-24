@@ -41,11 +41,14 @@ The platform is built with a full-stack TypeScript environment.
 
 - **Broadcast Detail Page:** All data is real (no hardcoded mocks). Queries `/api/broadcasts/:id/ads`, `/api/broadcasts/:id/products`, `/api/broadcasts/:id/chat`, `/api/broadcasts/:id/analytics`. Live chat sidebar with functional send button. Analytics tab shows real poll/contest/viewer data. "Load Demo" button seeds real data via `/api/seed-demo`. Event timeline built from real polls and contests.
 - **Component Library:** A grid-based library for reusable UI components, allowing filtering and providing integration code snippets (e.g., iOS Swift). Components can be instanced multiple times per campaign with unique configurations.
-- **Campaign Dashboard:** A tabbed interface for campaign management, including overview, events, scheduled components, integrations, and settings. Analytics tab now shows real broadcast performance data (total broadcasts, live count, total/peak viewers, per-broadcast table).
+- **Campaign Dashboard:** Tabs reorganizados: Overview | Broadcasts | Components | Live | Analytics | Settings. El tab "Live" contiene los disparos de eventos en tiempo real (EventsTab + ScheduledTab). El tab "Settings" tiene la configuración del campaign (logo, integraciones). Los formularios del tab Live ahora empiezan vacíos (sin datos demo hardcodeados de iPhone/PSG/Barcelona) y se auto-guardan en DB por campaign. Analytics tab muestra datos reales (total broadcasts, live count, total/peak viewers, tabla por broadcast).
 - **Sponsor Management:** CRUD operations for sponsors, including logo/avatar uploads and color configuration, linked to campaign branding.
 - **Geographic Targeting & User Segmentation:** Server-side features for segmenting users based on location and other criteria, using deterministic hashing for consistent assignment.
 - **Admin Panel:** Forms for polls/products/contests now start empty (no Apple/PSG demo data). Data loads from DB via form state API.
 - **App Detail:** Stats cards no longer show hardcoded trend percentages (↑12%, ↑8%, etc.).
+- **Broadcast Detail — Send Live:** Polls and contests now have a "Send Live" button that fires a real-time WebSocket event to all connected SDKs via `/api/events/poll` and `/api/events/contest`, using the broadcast's campaignId.
+- **EventsTab restructure:** Removed Event Log panel, Campaign Logo section (now only in Settings), and all hardcoded demo data (iPhone, PSG, Barcelona). Forms start empty and auto-save per campaign via DB.
+- **EventLog component:** Intentionally unused/removed from EventsTab. The component file still exists but is not rendered anywhere.
 
 ### Database Tables
 
