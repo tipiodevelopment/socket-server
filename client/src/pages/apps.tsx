@@ -272,15 +272,35 @@ export default function AppsPage() {
                 className="bg-white dark:bg-[#141824] border border-gray-200 dark:border-white/10 rounded-2xl overflow-hidden hover:border-gray-300 dark:hover:border-white/20 transition-all group"
                 data-testid={`card-app-${app.id}`}
               >
-                <div className={`relative h-24 ${app.bannerUrl ? '' : `bg-gradient-to-r ${gradient}`} p-4 overflow-hidden`}>
-                  {app.bannerUrl && (
-                    <img
-                      src={app.bannerUrl}
-                      alt={`${app.name} banner`}
-                      className="absolute inset-0 w-full h-full object-cover"
-                      data-testid={`img-banner-${app.id}`}
-                    />
-                  )}
+                {/* Banner */}
+                <div className="relative">
+                  <div className={`h-24 w-full ${app.bannerUrl ? '' : `bg-gradient-to-br ${gradient}`} overflow-hidden`}>
+                    {app.bannerUrl && (
+                      <img
+                        src={app.bannerUrl}
+                        alt={`${app.name} banner`}
+                        className="w-full h-full object-cover"
+                        data-testid={`img-banner-${app.id}`}
+                      />
+                    )}
+                  </div>
+
+                  {/* Avatar overlapping bottom of banner */}
+                  <div className="absolute left-4 -bottom-5 z-10">
+                    <div className="w-11 h-11 bg-gray-100 dark:bg-[#1e2433] border-2 border-white dark:border-[#141824] rounded-xl flex items-center justify-center shadow-lg overflow-hidden" data-testid={`img-logo-${app.id}`}>
+                      {app.iconUrl ? (
+                        <img
+                          src={app.iconUrl}
+                          alt={`${app.name} logo`}
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        <Smartphone className="w-5 h-5 text-gray-500 dark:text-white/60" />
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Campaign badge */}
                   <div className="absolute top-3 right-3 z-10">
                     <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-black/60 text-white backdrop-blur-sm" data-testid={`badge-campaigns-${app.id}`}>
                       {app.stats.campaignCount} Campaign{app.stats.campaignCount !== 1 ? 's' : ''}
@@ -288,28 +308,14 @@ export default function AppsPage() {
                   </div>
                 </div>
 
-                <div className="p-4">
-                  <div className="flex items-center gap-3 mb-4">
-                    <div className="w-11 h-11 -mt-7 bg-gray-100 dark:bg-[#1e2433] border-2 border-white dark:border-[#141824] rounded-xl flex items-center justify-center text-lg shadow-lg overflow-hidden flex-shrink-0">
-                      {app.iconUrl ? (
-                        <img
-                          src={app.iconUrl}
-                          alt={`${app.name} logo`}
-                          className="w-full h-full object-cover"
-                          data-testid={`img-logo-${app.id}`}
-                        />
-                      ) : (
-                        <Smartphone className="w-5 h-5 text-gray-500 dark:text-white/60" />
-                      )}
-                    </div>
-                    <div className="min-w-0">
-                      <Link href={`/apps/${app.id}`}>
-                        <h3 className="text-sm font-semibold text-gray-900 dark:text-white hover:text-gray-600 dark:hover:text-gray-300 transition-colors cursor-pointer truncate" data-testid={`text-app-name-${app.id}`}>
-                          {app.name}
-                        </h3>
-                      </Link>
-                      <p className="text-xs text-gray-400 dark:text-white/30 font-mono truncate" data-testid={`text-bundle-id-${app.id}`}>{app.bundleId}</p>
-                    </div>
+                <div className="p-4 pt-8">
+                  <div className="mb-4">
+                    <Link href={`/apps/${app.id}`}>
+                      <h3 className="text-sm font-semibold text-gray-900 dark:text-white hover:text-gray-600 dark:hover:text-gray-300 transition-colors cursor-pointer truncate" data-testid={`text-app-name-${app.id}`}>
+                        {app.name}
+                      </h3>
+                    </Link>
+                    <p className="text-xs text-gray-400 dark:text-white/30 font-mono truncate" data-testid={`text-bundle-id-${app.id}`}>{app.bundleId}</p>
                   </div>
 
                   <div className="grid grid-cols-2 gap-4 mb-4">
