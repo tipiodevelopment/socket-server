@@ -9,10 +9,34 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Checkbox } from '@/components/ui/checkbox';
 import { AppLayout } from '@/components/AppLayout';
 import { ImageUploadWithPreview } from '@/components/ImageUploadWithPreview';
 import type { Campaign, ClientApp, Sponsor } from '@shared/schema';
-import { Megaphone, Calendar } from 'lucide-react';
+import { Megaphone, Calendar, Globe } from 'lucide-react';
+
+const COUNTRY_OPTIONS = [
+  { code: 'NO', name: 'Norway' },
+  { code: 'SE', name: 'Sweden' },
+  { code: 'DK', name: 'Denmark' },
+  { code: 'FI', name: 'Finland' },
+  { code: 'IS', name: 'Iceland' },
+  { code: 'US', name: 'United States' },
+  { code: 'CA', name: 'Canada' },
+  { code: 'GB', name: 'United Kingdom' },
+  { code: 'DE', name: 'Germany' },
+  { code: 'FR', name: 'France' },
+  { code: 'ES', name: 'Spain' },
+  { code: 'IT', name: 'Italy' },
+  { code: 'NL', name: 'Netherlands' },
+  { code: 'PT', name: 'Portugal' },
+  { code: 'MX', name: 'Mexico' },
+  { code: 'AR', name: 'Argentina' },
+  { code: 'BR', name: 'Brazil' },
+  { code: 'AU', name: 'Australia' },
+  { code: 'JP', name: 'Japan' },
+  { code: 'SG', name: 'Singapore' },
+];
 
 export default function NewCampaignPage() {
   const { toast } = useToast();
@@ -29,6 +53,13 @@ export default function NewCampaignPage() {
   const [selectedSponsorId, setSelectedSponsorId] = useState<string>('');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
+  const [targetCountries, setTargetCountries] = useState<string[]>([]);
+
+  const toggleCountry = (code: string) => {
+    setTargetCountries(prev =>
+      prev.includes(code) ? prev.filter(c => c !== code) : [...prev, code]
+    );
+  };
 
   const { data: clientApps = [] } = useQuery<ClientApp[]>({
     queryKey: ['/api/client-apps', userId],
@@ -92,6 +123,11 @@ export default function NewCampaignPage() {
 
     if (selectedSponsorId && selectedSponsorId !== 'none') {
       data.sponsorId = parseInt(selectedSponsorId);
+    }
+
+    if (targetCountries.length > 0) {
+      data.targetCountries = targetCountries;
+      data.isSegmented = 'true';
     }
 
     createMutation.mutate(data);
@@ -279,6 +315,53 @@ export default function NewCampaignPage() {
                   className="bg-gray-50 dark:bg-gray-700 border-gray-200 dark:border-gray-600 text-gray-900 dark:text-white"
                 />
               </div>
+            </div>
+          </div>
+
+          <div className="bg-white dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-xl p-6 space-y-5">
+            <h2 className="text-sm font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider flex items-center gap-2">
+              <Globe className="w-4 h-4" /> Geographic Targeting
+            </h2>
+            <p className="text-xs text-gray-400 dark:text-gray-500">
+              Select the countries where this campaign will be active. Leave empty to target all countries.
+            </p>
+
+            {targetCountries.length > 0 && (
+              <div className="flex flex-wrap gap-2">
+                {targetCountries.map(code => {
+                  const c = COUNTRY_OPTIONS.find(o => o.code === code);
+                  return (
+                    <span
+                      key={code}
+                      className="inline-flex items-center gap-1 px-2 py-1 bg-gray-100 dark:bg-white/10 border border-gray-200 dark:border-white/20 rounded text-xs text-gray-700 dark:text-gray-300 cursor-pointer hover:bg-red-50 dark:hover:bg-red-500/10 hover:text-red-600 dark:hover:text-red-400 transition"
+                      onClick={() => toggleCountry(code)}
+                      data-testid={`badge-selected-country-${code}`}
+                    >
+                      {c?.name || code} ✕
+                    </span>
+                  );
+                })}
+              </div>
+            )}
+
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
+              {COUNTRY_OPTIONS.map(country => (
+                <label
+                  key={country.code}
+                  className="flex items-center gap-2 cursor-pointer p-2 rounded hover:bg-gray-50 dark:hover:bg-white/5 transition"
+                  data-testid={`label-country-${country.code}`}
+                >
+                  <Checkbox
+                    checked={targetCountries.includes(country.code)}
+                    onCheckedChange={() => toggleCountry(country.code)}
+                    data-testid={`checkbox-country-${country.code}`}
+                  />
+                  <span className="text-sm text-gray-700 dark:text-gray-300">
+                    <span className="font-mono text-xs text-gray-400 dark:text-gray-500 mr-1">{country.code}</span>
+                    {country.name}
+                  </span>
+                </label>
+              ))}
             </div>
           </div>
 
