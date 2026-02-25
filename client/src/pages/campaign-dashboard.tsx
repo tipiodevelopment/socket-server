@@ -579,6 +579,11 @@ function BroadcastsTab({ campaignId }: { campaignId: number }) {
                   </div>
                   <div className="flex items-center gap-4 text-xs text-gray-500 dark:text-gray-500">
                     <span className="font-mono">ID: {broadcast.broadcastId}</span>
+                    {broadcast.externalId && (
+                      <span className="font-mono text-gray-400 dark:text-gray-500" data-testid={`text-external-id-${broadcast.broadcastId}`}>
+                        ext: <span className="text-gray-600 dark:text-gray-400">{broadcast.externalId}</span>
+                      </span>
+                    )}
                     {broadcast.startTime && (
                       <span className="flex items-center gap-1">
                         <Clock className="w-3.5 h-3.5" />

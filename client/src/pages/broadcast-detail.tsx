@@ -11,7 +11,7 @@ import { useToast } from '@/hooks/use-toast';
 import { queryClient, apiRequest } from '@/lib/queryClient';
 import { AppLayout } from '@/components/AppLayout';
 import type { Broadcast, Poll, PollOptionRecord, Contest, Campaign, BroadcastAd, BroadcastProduct, ChatMessage } from '@shared/schema';
-import { ArrowLeft, Plus, Trash2, BarChart3, Trophy, X, MoreVertical, CheckCircle, Play, SkipBack, SkipForward, Maximize2, Send, Megaphone, ShoppingBag, ExternalLink, Eye, TrendingUp, Vote, MessageSquare, RefreshCw, Users, Radio } from 'lucide-react';
+import { ArrowLeft, Plus, Trash2, BarChart3, Trophy, X, MoreVertical, CheckCircle, Play, SkipBack, SkipForward, Maximize2, Send, Megaphone, ShoppingBag, ExternalLink, Eye, TrendingUp, Vote, MessageSquare, RefreshCw, Users, Radio, Pencil, Check } from 'lucide-react';
 import { useState, useRef, useEffect } from 'react';
 import { useUser } from '@/contexts/UserContext';
 
@@ -704,6 +704,8 @@ export default function BroadcastDetailPage() {
   const [contestDialogOpen, setContestDialogOpen] = useState(false);
   const [pollForm, setPollForm] = useState({ question: '', options: ['', ''] });
   const [contestForm, setContestForm] = useState({ title: '', description: '', prize: '', contestType: 'quiz' });
+  const [editingExternalId, setEditingExternalId] = useState(false);
+  const [externalIdValue, setExternalIdValue] = useState('');
 
   const { data: broadcast, isLoading } = useQuery<BroadcastWithRelations>({
     queryKey: ['/api/broadcasts', broadcastId],
@@ -728,6 +730,19 @@ export default function BroadcastDetailPage() {
       queryClient.invalidateQueries({ queryKey: ['/api/broadcasts', broadcastId, 'products'] });
       queryClient.invalidateQueries({ queryKey: ['/api/broadcasts', broadcastId, 'chat'] });
       toast({ title: 'Demo data loaded', description: 'Ads, products and chat messages have been seeded.' });
+    },
+  });
+
+  const updateExternalIdMutation = useMutation({
+    mutationFn: (newExternalId: string) =>
+      apiRequest('PUT', `/api/broadcasts/${broadcastId}`, { externalId: newExternalId || null }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/broadcasts', broadcastId] });
+      setEditingExternalId(false);
+      toast({ title: 'External ID updated' });
+    },
+    onError: () => {
+      toast({ title: 'Error', description: 'Failed to update External ID.', variant: 'destructive' });
     },
   });
 
@@ -897,6 +912,56 @@ export default function BroadcastDetailPage() {
                     </>
                   )}
                   <span className="text-gray-600 dark:text-gray-300" data-testid="text-broadcast-id">{broadcast.broadcastId}</span>
+                </div>
+                <div className="flex items-center gap-2 mt-1">
+                  {editingExternalId ? (
+                    <div className="flex items-center gap-1.5">
+                      <Input
+                        value={externalIdValue}
+                        onChange={(e) => setExternalIdValue(e.target.value)}
+                        placeholder="e.g. match-12345"
+                        className="h-6 text-xs px-2 py-0 w-44 bg-white dark:bg-white/5"
+                        data-testid="input-external-id-inline"
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') updateExternalIdMutation.mutate(externalIdValue);
+                          if (e.key === 'Escape') setEditingExternalId(false);
+                        }}
+                        autoFocus
+                      />
+                      <button
+                        onClick={() => updateExternalIdMutation.mutate(externalIdValue)}
+                        disabled={updateExternalIdMutation.isPending}
+                        className="text-green-600 dark:text-green-400 hover:text-green-700 dark:hover:text-green-300"
+                        data-testid="button-save-external-id"
+                      >
+                        <Check className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        onClick={() => setEditingExternalId(false)}
+                        className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+                        data-testid="button-cancel-external-id"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => {
+                        setExternalIdValue(broadcast.externalId || '');
+                        setEditingExternalId(true);
+                      }}
+                      className="flex items-center gap-1 text-xs text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 transition group"
+                      data-testid="button-edit-external-id"
+                    >
+                      <span className="font-mono">
+                        {broadcast.externalId
+                          ? <span className="text-gray-500 dark:text-gray-400">ext: <span className="text-gray-700 dark:text-gray-300">{broadcast.externalId}</span></span>
+                          : <span className="text-gray-300 dark:text-gray-600 italic">+ add external ID</span>
+                        }
+                      </span>
+                      <Pencil className="w-3 h-3 opacity-0 group-hover:opacity-100 transition" />
+                    </button>
+                  )}
                 </div>
               </div>
             </div>
