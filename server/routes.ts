@@ -4050,16 +4050,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       // Merge with defaults
       const finalSponsorBadgeText = { ...defaultSponsorBadgeText, ...sponsorBadgeText };
-      
+
+      // Resolve sponsor for brand data (sponsor takes priority over campaign brand fields)
+      const sponsor = campaign.sponsorId ? await storage.getSponsor(campaign.sponsorId) : null;
+
       // Build response with defaults for missing configs
       const config = {
         campaignId: campaign.id,
         version: '1.0.0',
         brand: {
-          name: campaign.brandName || campaign.name || 'Vio',
+          name: sponsor?.name || campaign.brandName || campaign.name || 'Vio',
           iconAsset: campaign.brandIconAsset || 'avatar_default',
-          iconUrl: campaign.brandIconUrl ? toAbsoluteUrl(campaign.brandIconUrl, req) : null,
-          logoUrl: campaign.brandLogoUrl ? toAbsoluteUrl(campaign.brandLogoUrl, req) : null,
+          iconUrl: (sponsor?.avatarUrl ? toAbsoluteUrl(sponsor.avatarUrl, req) : null) || (campaign.brandIconUrl ? toAbsoluteUrl(campaign.brandIconUrl, req) : null),
+          logoUrl: (sponsor?.logoUrl ? toAbsoluteUrl(sponsor.logoUrl, req) : null) || (campaign.brandLogoUrl ? toAbsoluteUrl(campaign.brandLogoUrl, req) : null),
           sponsorBadgeText: finalSponsorBadgeText
         },
         engagement: {
@@ -4091,19 +4094,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       } as any;
 
-      // Include sponsor branding if campaign has a sponsor
-      if (campaign.sponsorId) {
-        const sponsor = await storage.getSponsor(campaign.sponsorId);
-        if (sponsor) {
-          config.sponsor = {
-            id: sponsor.id,
-            name: sponsor.name,
-            logoUrl: sponsor.logoUrl ? toAbsoluteUrl(sponsor.logoUrl, req) : null,
-            avatarUrl: sponsor.avatarUrl ? toAbsoluteUrl(sponsor.avatarUrl, req) : null,
-            primaryColor: sponsor.primaryColor || null,
-            secondaryColor: sponsor.secondaryColor || null,
-          };
-        }
+      // Include sponsor branding if campaign has a sponsor (already fetched above)
+      if (sponsor) {
+        config.sponsor = {
+          id: sponsor.id,
+          name: sponsor.name,
+          logoUrl: sponsor.logoUrl ? toAbsoluteUrl(sponsor.logoUrl, req) : null,
+          avatarUrl: sponsor.avatarUrl ? toAbsoluteUrl(sponsor.avatarUrl, req) : null,
+          primaryColor: sponsor.primaryColor || null,
+          secondaryColor: sponsor.secondaryColor || null,
+        };
       }
       
       res.set('Cache-Control', 'public, max-age=300');

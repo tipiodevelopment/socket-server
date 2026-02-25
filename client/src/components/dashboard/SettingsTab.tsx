@@ -18,7 +18,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { Settings, Trash2, Upload, X, Link, Calendar, Palette, Zap, ToggleRight, Globe } from "lucide-react";
+import { Settings, Trash2, Upload, X, Link, Calendar, Palette, Zap, ToggleRight } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Campaign, UpdateCampaign, Channel, CampaignEngagementConfig, CampaignUiConfig, CampaignFeatureFlags } from "@shared/schema";
@@ -85,11 +85,6 @@ export function SettingsTab({ campaignId, campaign }: SettingsTabProps) {
     campaign.matchStartTime ? new Date(campaign.matchStartTime).toISOString().slice(0, 16) : ''
   );
 
-  // Brand settings
-  const [brandName, setBrandName] = useState(campaign.brandName || '');
-  const [brandIconAsset, setBrandIconAsset] = useState(campaign.brandIconAsset || '');
-  const [brandIconUrl, setBrandIconUrl] = useState(campaign.brandIconUrl || '');
-  const [brandLogoUrl, setBrandLogoUrl] = useState(campaign.brandLogoUrl || '');
 
   // Engagement config
   const [demoMode, setDemoMode] = useState(false);
@@ -249,16 +244,6 @@ export function SettingsTab({ campaignId, campaign }: SettingsTabProps) {
       toast({ title: 'Error', description: 'Failed to save feature flags.', variant: 'destructive' });
     },
   });
-
-  const handleSaveBrand = (e: React.FormEvent) => {
-    e.preventDefault();
-    updateCampaignMutation.mutate({
-      brandName: brandName || null,
-      brandIconAsset: brandIconAsset || null,
-      brandIconUrl: brandIconUrl || null,
-      brandLogoUrl: brandLogoUrl || null,
-    });
-  };
 
   const handleSaveEngagement = (e: React.FormEvent) => {
     e.preventDefault();
@@ -715,74 +700,6 @@ export function SettingsTab({ campaignId, campaign }: SettingsTabProps) {
               data-testid="button-save-segmentation"
             >
               {updateCampaignMutation.isPending ? 'Saving...' : 'Save Targeting Settings'}
-            </Button>
-          </form>
-        </CardContent>
-      </Card>
-
-      {/* Brand Configuration */}
-      <Card className="border-0">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Globe className="w-5 h-5" />
-            Brand Configuration
-          </CardTitle>
-          <CardDescription>
-            Configure brand identity for SDK display
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={handleSaveBrand} className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="brand-name">Brand Name</Label>
-                <Input
-                  id="brand-name"
-                  value={brandName}
-                  onChange={(e) => setBrandName(e.target.value)}
-                  placeholder="e.g., Elkjøp"
-                  data-testid="input-brand-name"
-                />
-                <p className="text-xs text-muted-foreground">Name displayed in engagement components</p>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="brand-icon-asset">Icon Asset Name</Label>
-                <Input
-                  id="brand-icon-asset"
-                  value={brandIconAsset}
-                  onChange={(e) => setBrandIconAsset(e.target.value)}
-                  placeholder="e.g., avatar_el"
-                  data-testid="input-brand-icon-asset"
-                />
-                <p className="text-xs text-muted-foreground">Local asset name in app bundle</p>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="brand-icon-url">Icon URL (CDN)</Label>
-                <Input
-                  id="brand-icon-url"
-                  value={brandIconUrl}
-                  onChange={(e) => setBrandIconUrl(e.target.value)}
-                  placeholder="https://cdn.example.com/avatar.png"
-                  data-testid="input-brand-icon-url"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="brand-logo-url">Logo URL (CDN)</Label>
-                <Input
-                  id="brand-logo-url"
-                  value={brandLogoUrl}
-                  onChange={(e) => setBrandLogoUrl(e.target.value)}
-                  placeholder="https://cdn.example.com/logo.png"
-                  data-testid="input-brand-logo-url"
-                />
-              </div>
-            </div>
-            <Button 
-              type="submit" 
-              disabled={updateCampaignMutation.isPending}
-              data-testid="button-save-brand"
-            >
-              {updateCampaignMutation.isPending ? 'Saving...' : 'Save Brand Settings'}
             </Button>
           </form>
         </CardContent>
