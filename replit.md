@@ -57,12 +57,31 @@ New tables added in this session:
 - `broadcast_products` — shoppable products per broadcast (name, subtitle, price/originalPrice as varchar, buyUrl, status, displayOrder)
 - `chat_messages` — live chat messages per broadcast (username, message, createdAt)
 - Broadcasts table extended with `viewerCount` and `peakViewers` integer columns
+- Broadcasts table extended with `externalId` (varchar 255, nullable) — maps partner content IDs (e.g. Viaplay stream IDs) to broadcasts; indexed on `(externalId, campaignId)` for fast SDK lookups; unique per app (enforced via query through campaign→channel→clientApp chain)
 
 ### API Architecture
 
 - **Dashboard APIs (`/api/*`):** Session-based, for internal dashboard operations, including CRUD for core entities, campaign configuration, broadcast management, and file uploads.
 - **Admin APIs (`/v1/*`):** Secured with JWT Bearer tokens, providing full CRUD for broadcasts, polls, and contests.
 - **SDK APIs (`/v1/sdk/*` and `/v1/engagement/*`):** Authenticated via API keys, enabling campaign auto-discovery, configuration retrieval for SDKs, engagement actions (voting, contest participation), offer retrieval with targeting, and localization strings.
+
+### SDK Engagement Flow (contentId Architecture)
+
+Two-step SDK initialization:
+1. `GET /v1/sdk/campaigns` — on app launch; returns ALL active campaigns + campaign-level components (banners, carousels) for the app. Uses `X-App-Bundle-ID` or `apiKey`.
+2. `GET /v1/sdk/broadcast?contentId=xxx&country=NO` — when user opens a specific stream; resolves `contentId` → `externalId` on `broadcasts` table → returns `hasEngagement: true/false`.
+
+**`hasEngagement: true` response includes:**
+- `broadcastId`, `broadcastName`, `status`, `campaignId`
+- `websocketChannel` (e.g. `/ws/42`) for real-time events
+- `campaignComponents` — active campaign-level components (already loaded in step 1, but also returned here for convenience)
+- `broadcastComponents.polls` — active polls with options
+- `broadcastComponents.contests` — active contests
+- `broadcastComponents.chat.enabled` — always true when engagement exists
+
+**Cache strategy:** `hasEngagement: false` → `Cache-Control: public, max-age=30`; `hasEngagement: true` → `Cache-Control: private, max-age=10` + `ETag`.
+
+**WebSocket events:** `campaign_ended` ✅, `campaign_started` ✅, `campaign_paused` ✅, `campaign_resumed` ✅, `broadcast_started` ✅ (fires when status → 'live'), `broadcast_ended` ✅ (fires when status → 'ended'). `broadcast_ended` hides only broadcast-level components; campaign-level components remain active until `campaign_ended`.
 
 ## External Dependencies
 

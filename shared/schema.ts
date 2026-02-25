@@ -202,6 +202,7 @@ export const broadcasts = pgTable("broadcasts", {
   broadcastId: varchar("broadcast_id", { length: 255 }).primaryKey(),
   broadcastName: varchar("broadcast_name", { length: 255 }).notNull(),
   description: text("description"),
+  externalId: varchar("external_id", { length: 255 }),
   campaignId: integer("campaign_id").references(() => campaigns.id, { onDelete: 'cascade' }),
   channelId: integer("channel_id").references(() => channels.id, { onDelete: 'set null' }),
   startTime: timestamp("start_time"),
@@ -213,7 +214,9 @@ export const broadcasts = pgTable("broadcasts", {
   createdBy: integer("created_by").references(() => users.id, { onDelete: 'set null' }),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull()
-});
+}, (table) => ({
+  externalIdCampaignIdx: index("idx_broadcasts_external_id_campaign").on(table.externalId, table.campaignId),
+}));
 
 // Polls - engagement polls associated with broadcasts
 export const polls = pgTable("polls", {

@@ -121,6 +121,7 @@ export interface IStorage {
   // Broadcast methods
   createBroadcast(broadcast: InsertBroadcast): Promise<Broadcast>;
   getBroadcast(broadcastId: string): Promise<Broadcast | undefined>;
+  getBroadcastByExternalId(externalId: string, clientAppId: number): Promise<Broadcast | undefined>;
   getAllBroadcasts(filters?: { status?: string; campaignId?: number }): Promise<Broadcast[]>;
   getCampaignBroadcasts(campaignId: number): Promise<Broadcast[]>;
   updateBroadcast(broadcastId: string, data: Partial<InsertBroadcast>): Promise<Broadcast | undefined>;
@@ -940,6 +941,20 @@ export class MemStorage implements IStorage {
   async getBroadcast(broadcastId: string): Promise<Broadcast | undefined> {
     const [broadcast] = await db.select().from(broadcasts).where(eq(broadcasts.broadcastId, broadcastId));
     return broadcast || undefined;
+  }
+
+  async getBroadcastByExternalId(externalId: string, clientAppId: number): Promise<Broadcast | undefined> {
+    const result = await db
+      .select({ broadcast: broadcasts })
+      .from(broadcasts)
+      .innerJoin(campaigns, eq(broadcasts.campaignId, campaigns.id))
+      .innerJoin(channels, eq(campaigns.channelId, channels.id))
+      .where(and(
+        eq(broadcasts.externalId, externalId),
+        eq(channels.clientAppId, clientAppId)
+      ))
+      .limit(1);
+    return result[0]?.broadcast || undefined;
   }
 
   async getAllBroadcasts(filters?: { status?: string; campaignId?: number }): Promise<Broadcast[]> {

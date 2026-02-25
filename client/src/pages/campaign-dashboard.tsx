@@ -370,6 +370,7 @@ function BroadcastsTab({ campaignId }: { campaignId: number }) {
   const [createOpen, setCreateOpen] = useState(false);
   const [formData, setFormData] = useState({
     broadcastName: '',
+    externalId: '',
     startTime: '',
     endTime: '',
     metadata: '',
@@ -395,7 +396,7 @@ function BroadcastsTab({ campaignId }: { campaignId: number }) {
       queryClient.invalidateQueries({ queryKey: ['/api/broadcasts', campaignId] });
       toast({ title: 'Broadcast Created', description: 'The broadcast has been created.' });
       setCreateOpen(false);
-      setFormData({ broadcastName: '', startTime: '', endTime: '', metadata: '' });
+      setFormData({ broadcastName: '', externalId: '', startTime: '', endTime: '', metadata: '' });
     },
     onError: () => {
       toast({ title: 'Error', description: 'Failed to create broadcast.', variant: 'destructive' });
@@ -431,6 +432,7 @@ function BroadcastsTab({ campaignId }: { campaignId: number }) {
     }
     createMutation.mutate({
       broadcastName: formData.broadcastName,
+      externalId: formData.externalId.trim() || undefined,
       campaignId,
       startTime: formData.startTime || undefined,
       endTime: formData.endTime || undefined,
@@ -489,6 +491,16 @@ function BroadcastsTab({ campaignId }: { campaignId: number }) {
                   value={formData.broadcastName}
                   onChange={(e) => setFormData(prev => ({ ...prev, broadcastName: e.target.value }))}
                   placeholder="Enter broadcast name"
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="externalId">External Content ID</Label>
+                <Input
+                  id="externalId"
+                  data-testid="input-external-id"
+                  value={formData.externalId}
+                  onChange={(e) => setFormData(prev => ({ ...prev, externalId: e.target.value }))}
+                  placeholder="e.g. match-12345 (used by SDK to identify this broadcast)"
                 />
               </div>
               <div className="grid grid-cols-2 gap-4">

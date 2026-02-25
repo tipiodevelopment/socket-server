@@ -2501,7 +2501,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post('/v1/broadcasts', requireBearerAuth, async (req, res) => {
     try {
       const authUser = (req as any).authUser;
-      const { broadcastName, campaignId, channelId, startTime, endTime, metadata } = req.body;
+      const { broadcastName, externalId, campaignId, channelId, startTime, endTime, metadata } = req.body;
 
       if (!broadcastName) {
         return res.status(400).json({ message: 'broadcastName is required' });
@@ -2525,6 +2525,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const broadcast = await storage.createBroadcast({
         broadcastId,
         broadcastName,
+        externalId: externalId || null,
         campaignId: campaignId || null,
         channelId: channelId || null,
         startTime: startTime ? new Date(startTime) : null,
@@ -2574,10 +2575,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Update broadcast
   app.put('/v1/broadcasts/:broadcastId', requireBearerAuth, async (req, res) => {
     try {
-      const { broadcastName, campaignId, channelId, startTime, endTime, status, metadata } = req.body;
-      const updateData: any = {};
+      const { broadcastName, externalId, campaignId, channelId, startTime, endTime, status, metadata } = req.body;
+      const existing = await storage.getBroadcast(req.params.broadcastId);
+      if (!existing) return res.status(404).json({ message: 'Broadcast not found' });
 
+      const updateData: any = {};
       if (broadcastName !== undefined) updateData.broadcastName = broadcastName;
+      if (externalId !== undefined) updateData.externalId = externalId || null;
       if (campaignId !== undefined) updateData.campaignId = campaignId;
       if (channelId !== undefined) updateData.channelId = channelId;
       if (startTime !== undefined) updateData.startTime = startTime ? new Date(startTime) : null;
@@ -2586,9 +2590,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (metadata !== undefined) updateData.metadata = metadata;
 
       const updated = await storage.updateBroadcast(req.params.broadcastId, updateData);
-      if (!updated) {
-        return res.status(404).json({ message: 'Broadcast not found' });
+      if (!updated) return res.status(404).json({ message: 'Broadcast not found' });
+
+      if (status !== undefined && status !== existing.status && updated.campaignId) {
+        if (status === 'live') {
+          broadcastToCampaign(updated.campaignId, JSON.stringify({
+            type: 'broadcast_started',
+            broadcastId: updated.broadcastId,
+            broadcastName: updated.broadcastName,
+            campaignId: updated.campaignId,
+            timestamp: new Date().toISOString()
+          }));
+        } else if (status === 'ended') {
+          broadcastToCampaign(updated.campaignId, JSON.stringify({
+            type: 'broadcast_ended',
+            broadcastId: updated.broadcastId,
+            broadcastName: updated.broadcastName,
+            campaignId: updated.campaignId,
+            timestamp: new Date().toISOString()
+          }));
+        }
       }
+
       res.json(updated);
     } catch (error) {
       console.error('Error updating broadcast:', error);
@@ -3112,7 +3135,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post('/api/broadcasts', async (req, res) => {
     try {
-      const { broadcastName, description, campaignId, channelId, startTime, endTime, metadata, createdBy } = req.body;
+      const { broadcastName, externalId, description, campaignId, channelId, startTime, endTime, metadata, createdBy } = req.body;
 
       if (!broadcastName) {
         return res.status(400).json({ message: 'broadcastName is required' });
@@ -3129,6 +3152,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const broadcast = await storage.createBroadcast({
         broadcastId,
         broadcastName,
+        externalId: externalId || null,
         description: description || null,
         campaignId: campaignId || null,
         channelId: channelId || null,
@@ -3148,10 +3172,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.put('/api/broadcasts/:broadcastId', async (req, res) => {
     try {
-      const { broadcastName, description, campaignId, channelId, startTime, endTime, status, metadata } = req.body;
-      const updateData: any = {};
+      const { broadcastName, externalId, description, campaignId, channelId, startTime, endTime, status, metadata } = req.body;
+      const existing = await storage.getBroadcast(req.params.broadcastId);
+      if (!existing) return res.status(404).json({ message: 'Broadcast not found' });
 
+      const updateData: any = {};
       if (broadcastName !== undefined) updateData.broadcastName = broadcastName;
+      if (externalId !== undefined) updateData.externalId = externalId || null;
       if (description !== undefined) updateData.description = description;
       if (campaignId !== undefined) updateData.campaignId = campaignId;
       if (channelId !== undefined) updateData.channelId = channelId;
@@ -3161,9 +3188,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (metadata !== undefined) updateData.metadata = metadata;
 
       const updated = await storage.updateBroadcast(req.params.broadcastId, updateData);
-      if (!updated) {
-        return res.status(404).json({ message: 'Broadcast not found' });
+      if (!updated) return res.status(404).json({ message: 'Broadcast not found' });
+
+      if (status !== undefined && status !== existing.status && updated.campaignId) {
+        if (status === 'live') {
+          broadcastToCampaign(updated.campaignId, JSON.stringify({
+            type: 'broadcast_started',
+            broadcastId: updated.broadcastId,
+            broadcastName: updated.broadcastName,
+            campaignId: updated.campaignId,
+            timestamp: new Date().toISOString()
+          }));
+        } else if (status === 'ended') {
+          broadcastToCampaign(updated.campaignId, JSON.stringify({
+            type: 'broadcast_ended',
+            broadcastId: updated.broadcastId,
+            broadcastName: updated.broadcastName,
+            campaignId: updated.campaignId,
+            timestamp: new Date().toISOString()
+          }));
+        }
       }
+
       res.json(updated);
     } catch (error) {
       console.error('Error updating broadcast:', error);
@@ -3730,6 +3776,127 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error('Error fetching SDK campaigns:', error);
       res.status(500).json({ message: 'Error fetching SDK campaigns' });
+    }
+  });
+
+  // GET /v1/sdk/broadcast - Validate contentId and get broadcast engagement data
+  // SDK calls this when a user opens a specific stream/content
+  app.get('/v1/sdk/broadcast', async (req, res) => {
+    try {
+      const bundleId = req.headers['x-app-bundle-id'] as string;
+      const apiKey = req.query.apiKey as string || req.headers['x-api-key'] as string;
+      const contentId = req.query.contentId as string | undefined;
+      const country = req.query.country as string | undefined;
+
+      if (!contentId) {
+        return res.status(400).json({ message: 'contentId query parameter is required' });
+      }
+
+      let clientApp;
+      if (bundleId) {
+        clientApp = await storage.getClientAppByBundleId(bundleId);
+        if (!clientApp) return res.status(401).json({ message: 'Bundle ID not found' });
+      } else if (apiKey) {
+        clientApp = await storage.getClientAppByApiKey(apiKey);
+        if (!clientApp) return res.status(401).json({ message: 'Invalid API key' });
+      } else {
+        return res.status(401).json({ message: 'API key or X-App-Bundle-ID header required' });
+      }
+
+      const broadcast = await storage.getBroadcastByExternalId(contentId, clientApp.id);
+
+      if (!broadcast) {
+        res.set('Cache-Control', 'public, max-age=30');
+        return res.json({ hasEngagement: false });
+      }
+
+      if (!broadcast.campaignId) {
+        res.set('Cache-Control', 'public, max-age=30');
+        return res.json({ hasEngagement: false });
+      }
+
+      const campaign = await storage.getCampaign(broadcast.campaignId);
+      if (!campaign) {
+        res.set('Cache-Control', 'public, max-age=30');
+        return res.json({ hasEngagement: false });
+      }
+
+      // Check if campaign is active
+      const now = new Date();
+      const isPaused = campaign.isPaused === 'true';
+      const startDate = campaign.startDate ? new Date(campaign.startDate) : null;
+      const endDate = campaign.endDate ? new Date(campaign.endDate) : null;
+      const isWithinDates = (!startDate || startDate <= now) && (!endDate || endDate >= now);
+
+      if (isPaused || !isWithinDates) {
+        res.set('Cache-Control', 'public, max-age=30');
+        return res.json({ hasEngagement: false });
+      }
+
+      // Filter by country if provided
+      if (country && campaign.targetCountries && campaign.targetCountries.length > 0) {
+        if (!campaign.targetCountries.includes(country)) {
+          res.set('Cache-Control', 'public, max-age=30');
+          return res.json({ hasEngagement: false });
+        }
+      }
+
+      // Get campaign-level active components
+      const components = await storage.getCampaignComponents(broadcast.campaignId);
+      const campaignComponents = components
+        .filter(c => c.status === 'active')
+        .map(cc => ({
+          id: cc.componentId,
+          type: cc.component.type,
+          name: cc.instanceName || cc.component.name,
+          config: normalizeUrls(cc.customConfig || cc.component.config, req.protocol, req.get('host')),
+          status: cc.status
+        }));
+
+      // Get broadcast-level components (polls, contests)
+      const [pollsList, contestsList] = await Promise.all([
+        storage.getBroadcastPolls(broadcast.broadcastId),
+        storage.getBroadcastContests(broadcast.broadcastId)
+      ]);
+
+      const activePolls = pollsList.filter(p => p.isActive);
+      const activeContests = contestsList.filter(c => c.isActive);
+
+      const responseData: any = {
+        hasEngagement: true,
+        broadcastId: broadcast.broadcastId,
+        broadcastName: broadcast.broadcastName,
+        status: broadcast.status,
+        campaignId: campaign.id,
+        campaignName: campaign.name,
+        campaignLogo: campaign.logo ? toAbsoluteUrl(campaign.logo, req) : null,
+        websocketChannel: `/ws/${campaign.id}`,
+        campaignComponents,
+        broadcastComponents: {
+          chat: { enabled: true },
+          polls: activePolls.map(p => ({
+            id: p.id,
+            question: p.question,
+            isActive: p.isActive,
+            duration: p.duration,
+            options: p.options.map(o => ({ id: o.id, text: o.text }))
+          })),
+          contests: activeContests.map(c => ({
+            id: c.id,
+            title: c.title,
+            prize: c.prize,
+            isActive: c.isActive,
+            endTime: c.endTime
+          }))
+        }
+      };
+
+      res.set('Cache-Control', 'private, max-age=10');
+      res.set('ETag', `"${broadcast.broadcastId}-${broadcast.status}"`);
+      res.json(responseData);
+    } catch (error) {
+      console.error('Error fetching SDK broadcast:', error);
+      res.status(500).json({ message: 'Error fetching SDK broadcast' });
     }
   });
 
