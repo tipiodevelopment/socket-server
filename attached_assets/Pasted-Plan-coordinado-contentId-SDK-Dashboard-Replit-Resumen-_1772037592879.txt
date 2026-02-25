@@ -1,0 +1,468 @@
+Plan coordinado: contentId SDK + Dashboard (Replit)
+
+Resumen de responsabilidades
+
+
+
+
+
+
+
+Parte
+
+
+
+Responsable
+
+
+
+Ubicación
+
+
+
+
+
+Backend / Dashboard
+
+
+
+Tú (Replit)
+
+
+
+socket-server
+
+
+
+
+
+SDK Implementation
+
+
+
+Cursor
+
+
+
+VioSwiftSDK
+
+
+
+
+
+Test conjunto
+
+
+
+Ambos
+
+
+
+App + Dashboard
+
+
+
+Parte A: Dashboard (Replit) - Tú lo creas
+
+A.1 Pre-requisitos
+
+
+
+
+
+Backend oficial: https://api-dev.vio.live (ya configurado en vio-config.json L151-152)
+
+
+
+Dashboard accesible en esa URL
+
+
+
+API Key para SDK/campaigns: La key KCXF10Y-W5T4PCR-GG5119A-Z64SQ9S es para ecommerce. Para GET /v1/sdk/broadcast y campañas, el SDK usa apiKey (L4) o campaignAdminApiKey (L153). Asegurar que una de estas keys esté registrada en el backend para el client app que usa el dashboard
+
+A.2 Crear campaña
+
+
+
+
+
+Ir a Campaigns en el dashboard
+
+
+
+Crear campaña nueva:
+
+
+
+
+
+Nombre: ej. "Viaplay Demo 2025"
+
+
+
+Fechas: startDate y endDate que incluyan hoy
+
+
+
+País objetivo: incluir NO (Noruega)
+
+
+
+Estado: activa (no pausada)
+
+A.3 Crear broadcast en esa campaña
+
+
+
+
+
+En la campaña creada, pestaña Broadcasts
+
+
+
+Clic en New Broadcast
+
+
+
+Rellenar:
+
+
+
+
+
+Broadcast Name: "Real Madrid vs Barcelona"
+
+
+
+External Content ID: real-madrid-barcelona-2025-01-24 (debe coincidir exactamente con el contentId del SDK)
+
+
+
+Start/End time: opcional
+
+
+
+Guardar
+
+A.4 Crear componentes (polls, contests)
+
+
+
+
+
+En Broadcast Detail del broadcast creado, pestaña Polls o Contests
+
+
+
+Crear al menos un poll de prueba (pregunta + opciones)
+
+
+
+Opcional: crear contest
+
+A.5 Configurar vio-config (opcional)
+
+La URL oficial https://api-dev.vio.live ya está en vio-config.json L151-152. No hace falta cambiar nada si usas el backend oficial.
+
+
+
+Parte B: SDK Implementation (Cursor)
+
+B.1 BroadcastValidationService
+
+Crear Sources/VioCore/Services/BroadcastValidationService.swift:
+
+
+
+
+
+Función validate(contentId: String, country: String) async -> BroadcastValidationResult
+
+
+
+Llamada GET /v1/sdk/broadcast?contentId=xxx&country=yyy
+
+
+
+Headers: X-Api-Key o apiKey en query, o X-App-Bundle-ID si se usa
+
+
+
+Modelo BroadcastValidationResult: hasEngagement, broadcastId, broadcastName, campaignId, websocketChannel, campaignComponents, broadcastComponents
+
+B.2 VioSessionContext
+
+Modificar VioSessionContext.swift:
+
+
+
+
+
+Añadir contentId: String? y country: String?
+
+
+
+Inicializador init(contentId: String, country: String, ...) para flujo contentId
+
+
+
+Añadir useBackendEngagement: Bool (se pondrá a true cuando validación devuelva hasEngagement)
+
+B.3 setupBroadcastContext con rama contentId
+
+Modificar RCastingVideoPlayer.swift y RCastingActiveView.swift:
+
+
+
+
+
+Si effectiveSessionContext.contentId != nil: llamar BroadcastValidationService.validate
+
+
+
+Si hasEngagement: false: no llamar discoverCampaigns, no loadEngagement, no mostrar componentes de broadcast
+
+
+
+Si hasEngagement: true: crear BroadcastContext con broadcastId de la respuesta, setBroadcastContext, discoverCampaigns, loadEngagement con useBackend: true
+
+B.4 EngagementManager: soporte useBackend
+
+Modificar EngagementManager.swift:
+
+
+
+
+
+Añadir loadEngagement(for: BroadcastContext, useBackend: Bool? = nil)
+
+
+
+Cuando useBackend == true, usar BackendEngagementRepository para esa llamada (aunque demoMode sea true)
+
+B.5 Demo Viaplay: inyectar sessionContext para Real Madrid - Barcelona
+
+Modificar SportDetailView.swift:
+
+
+
+
+
+Para Real Madrid - Barcelona: crear VioSessionContext(contentId: "real-madrid-barcelona-2025-01-24", country: "NO") y pasarlo a LiveMatchView, VCastingVideoPlayer, VCastingActiveView
+
+
+
+Para Barcelona-PSG: no pasar sessionContext (o pasar nil) para mantener el flujo actual con demo data
+
+B.6 Barcelona-PSG: sin cambios
+
+
+
+
+
+Match.barcelonaPSG y createMatchFromDetail() para Barcelona-PSG se mantienen
+
+
+
+Sin sessionContext con contentId, usa match.toBroadcastContext() y demoMode (TimelineDataGenerator)
+
+
+
+Parte C: Orden de ejecución coordinado
+
+flowchart LR
+    subgraph Replit [Replit / Tú]
+        A1[Crear campaña]
+        A2[Crear broadcast con externalId]
+        A3[Crear polls/contests]
+    end
+    
+    subgraph Cursor [Cursor]
+        B1[BroadcastValidationService]
+        B2[VioSessionContext + setupBroadcastContext]
+        B3[EngagementManager useBackend]
+        B4[SportDetailView sessionContext]
+    end
+    
+    A1 --> A2 --> A3
+    B1 --> B2 --> B3 --> B4
+    A3 -.->|Listo para test| B4
+
+
+
+
+
+Tú (Replit): Crear campaña, broadcast, componentes (A.2–A.4)
+
+
+
+Cursor: Implementar B.1–B.5
+
+
+
+Tú: Configurar vio-config con URL del backend (A.5)
+
+
+
+Test conjunto: Seguir guía de test
+
+
+
+Parte D: Guía de test paso a paso
+
+Paso 1: Sin campaña (estado inicial)
+
+
+
+
+
+No crear nada en el dashboard
+
+
+
+Abrir app, seleccionar Real Madrid - Barcelona
+
+
+
+Esperado: No engagement (polls, chat, contests)
+
+
+
+Logs: hasEngagement: false o llamada a /v1/sdk/broadcast con respuesta hasEngagement: false
+
+Paso 2: Con campaña y broadcast
+
+
+
+
+
+Crear campaña + broadcast con External Content ID = real-madrid-barcelona-2025-01-24
+
+
+
+Abrir app, Real Madrid - Barcelona
+
+
+
+Esperado: Engagement visible (polls, etc. si los creaste)
+
+
+
+Logs: hasEngagement: true, broadcastId recibido
+
+Paso 3: Barcelona-PSG sin cambios
+
+
+
+
+
+Seleccionar Barcelona-PSG
+
+
+
+Esperado: Demo con datos estáticos (TimelineDataGenerator) como antes
+
+
+
+No debe llamarse a /v1/sdk/broadcast para este partido
+
+Paso 4: Real Madrid - Barcelona sin broadcast
+
+
+
+
+
+Borrar o no crear broadcast para ese contentId
+
+
+
+Esperado: No engagement en Real Madrid - Barcelona
+
+
+
+Archivos a crear/modificar
+
+
+
+
+
+
+
+Archivo
+
+
+
+Acción
+
+
+
+
+
+VioCore/Services/BroadcastValidationService.swift
+
+
+
+Crear
+
+
+
+
+
+VioCore/Models/CampaignModels.swift
+
+
+
+Añadir BroadcastValidationResult
+
+
+
+
+
+VioCore/Managers/VioSessionContext.swift
+
+
+
+Añadir contentId, country, useBackendEngagement
+
+
+
+
+
+VioCastingUI/.../RCastingVideoPlayer.swift
+
+
+
+Rama contentId en setupBroadcastContext
+
+
+
+
+
+VioCastingUI/.../RCastingActiveView.swift
+
+
+
+Idem
+
+
+
+
+
+VioEngagementSystem/Managers/EngagementManager.swift
+
+
+
+loadEngagement(useBackend:)
+
+
+
+
+
+Demo/Viaplay/.../SportDetailView.swift
+
+
+
+sessionContext para Real Madrid - Barcelona
+
+
+
