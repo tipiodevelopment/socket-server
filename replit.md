@@ -50,6 +50,8 @@ The platform is built with a full-stack TypeScript environment.
 - **EventsTab restructure:** Removed Event Log panel, Campaign Logo section (now only in Settings), and all hardcoded demo data (iPhone, PSG, Barcelona). Forms start empty and auto-save per campaign via DB.
 - **EventLog component:** Intentionally unused/removed from EventsTab. The component file still exists but is not rendered anywhere.
 - **Broadcast External ID:** Visible and inline-editable in broadcast-detail header (pencil icon). Also displayed in campaign-dashboard broadcast cards when set.
+- **Broadcast Edit Dialog:** Each broadcast card in the Broadcasts tab now has a pencil icon that opens an edit dialog with fields for name, externalId, status, startTime, endTime. Uses `PUT /api/broadcasts/:broadcastId`. Status changes fire WebSocket events (broadcast_started, broadcast_ended).
+- **OverviewTab cache fix:** Creating or deleting broadcasts now invalidates both `/api/broadcasts` and `/api/campaigns/:id/broadcasts` query keys, so the Overview section stays in sync.
 - **Poll duration field:** `duration` (integer, seconds) added to polls table. Exposed in createPoll/updatePoll routes and in the broadcast-detail "Create Poll" dialog. The SDK endpoint returns it so clients know how long to display the poll.
 
 ### Database Tables

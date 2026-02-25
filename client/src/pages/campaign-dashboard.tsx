@@ -349,7 +349,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { Plus, Trash2, Clock, Filter, Calendar } from 'lucide-react';
+import { Plus, Trash2, Clock, Filter, Calendar, Pencil } from 'lucide-react';
 
 function getStatusBadge(status: string) {
   switch (status) {
@@ -368,6 +368,14 @@ function BroadcastsTab({ campaignId }: { campaignId: number }) {
   const { userId } = useUser();
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [createOpen, setCreateOpen] = useState(false);
+  const [editBroadcast, setEditBroadcast] = useState<Broadcast | null>(null);
+  const [editFormData, setEditFormData] = useState({
+    broadcastName: '',
+    externalId: '',
+    startTime: '',
+    endTime: '',
+    status: 'upcoming' as string,
+  });
   const [formData, setFormData] = useState({
     broadcastName: '',
     externalId: '',
@@ -388,12 +396,17 @@ function BroadcastsTab({ campaignId }: { campaignId: number }) {
     },
   });
 
+  const invalidateBroadcasts = () => {
+    queryClient.invalidateQueries({ queryKey: ['/api/broadcasts', campaignId] });
+    queryClient.invalidateQueries({ queryKey: ['/api/campaigns', campaignId, 'broadcasts'] });
+  };
+
   const createMutation = useMutation({
     mutationFn: async (data: Record<string, unknown>) => {
       return await apiRequest('POST', '/api/broadcasts', data);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/broadcasts', campaignId] });
+      invalidateBroadcasts();
       toast({ title: 'Broadcast Created', description: 'The broadcast has been created.' });
       setCreateOpen(false);
       setFormData({ broadcastName: '', externalId: '', startTime: '', endTime: '', metadata: '' });
@@ -403,18 +416,67 @@ function BroadcastsTab({ campaignId }: { campaignId: number }) {
     },
   });
 
+  const updateMutation = useMutation({
+    mutationFn: async ({ broadcastId, data }: { broadcastId: string; data: Record<string, unknown> }) => {
+      return await apiRequest('PUT', `/api/broadcasts/${broadcastId}`, data);
+    },
+    onSuccess: () => {
+      invalidateBroadcasts();
+      toast({ title: 'Broadcast Updated', description: 'Changes have been saved.' });
+      setEditBroadcast(null);
+    },
+    onError: () => {
+      toast({ title: 'Error', description: 'Failed to update broadcast.', variant: 'destructive' });
+    },
+  });
+
   const deleteMutation = useMutation({
     mutationFn: async (broadcastId: string) => {
       return await apiRequest('DELETE', `/api/broadcasts/${broadcastId}`);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/broadcasts', campaignId] });
+      invalidateBroadcasts();
       toast({ title: 'Broadcast Deleted', description: 'The broadcast has been deleted.' });
     },
     onError: () => {
       toast({ title: 'Error', description: 'Failed to delete broadcast.', variant: 'destructive' });
     },
   });
+
+  const openEditDialog = (broadcast: Broadcast) => {
+    setEditBroadcast(broadcast);
+    const toLocalDatetime = (dt: string | Date | null | undefined) => {
+      if (!dt) return '';
+      const d = new Date(dt);
+      const pad = (n: number) => n.toString().padStart(2, '0');
+      return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    };
+    setEditFormData({
+      broadcastName: broadcast.broadcastName,
+      externalId: broadcast.externalId ?? '',
+      startTime: toLocalDatetime(broadcast.startTime),
+      endTime: toLocalDatetime(broadcast.endTime),
+      status: broadcast.status,
+    });
+  };
+
+  const handleUpdate = () => {
+    if (!editBroadcast) return;
+    if (!editFormData.broadcastName.trim()) {
+      toast({ title: 'Validation Error', description: 'Broadcast name is required.', variant: 'destructive' });
+      return;
+    }
+    updateMutation.mutate({
+      broadcastId: editBroadcast.broadcastId,
+      data: {
+        broadcastName: editFormData.broadcastName,
+        externalId: editFormData.externalId.trim() || null,
+        startTime: editFormData.startTime || null,
+        endTime: editFormData.endTime || null,
+        status: editFormData.status,
+      },
+    });
+  };
 
   const handleCreate = () => {
     if (!formData.broadcastName.trim()) {
@@ -593,6 +655,14 @@ function BroadcastsTab({ campaignId }: { campaignId: number }) {
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => openEditDialog(broadcast)}
+                    className="p-1.5 text-gray-400 hover:text-gray-700 dark:hover:text-white rounded hover:bg-gray-100 dark:hover:bg-white/10 transition"
+                    data-testid={`button-edit-broadcast-${broadcast.broadcastId}`}
+                    title="Edit broadcast"
+                  >
+                    <Pencil className="w-4 h-4" />
+                  </button>
                   <Link href={broadcastDetailHref(broadcast.broadcastId)}>
                     <button
                       className="px-3 py-1.5 bg-gray-100 dark:bg-white/10 hover:bg-gray-200 dark:hover:bg-white/20 text-gray-700 dark:text-white rounded text-xs transition"
@@ -634,6 +704,81 @@ function BroadcastsTab({ campaignId }: { campaignId: number }) {
           ))}
         </div>
       )}
+
+      {/* Edit Broadcast Dialog */}
+      <Dialog open={!!editBroadcast} onOpenChange={(open) => !open && setEditBroadcast(null)}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle>Edit Broadcast</DialogTitle>
+            <DialogDescription>Update broadcast details. Status changes trigger real-time WebSocket events.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Broadcast Name *</label>
+              <input
+                className="w-full h-9 px-3 rounded-md border border-input bg-background text-sm"
+                value={editFormData.broadcastName}
+                onChange={(e) => setEditFormData(prev => ({ ...prev, broadcastName: e.target.value }))}
+                data-testid="input-edit-broadcast-name"
+                placeholder="Broadcast name"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">External ID</label>
+              <input
+                className="w-full h-9 px-3 rounded-md border border-input bg-background text-sm font-mono"
+                value={editFormData.externalId}
+                onChange={(e) => setEditFormData(prev => ({ ...prev, externalId: e.target.value }))}
+                data-testid="input-edit-broadcast-external-id"
+                placeholder="partner-content-id (optional)"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Status</label>
+              <select
+                className="w-full h-9 px-3 rounded-md border border-input bg-background text-sm"
+                value={editFormData.status}
+                onChange={(e) => setEditFormData(prev => ({ ...prev, status: e.target.value }))}
+                data-testid="select-edit-broadcast-status"
+              >
+                <option value="upcoming">Upcoming</option>
+                <option value="live">Live</option>
+                <option value="ended">Ended</option>
+              </select>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium flex items-center gap-1"><Calendar className="w-3.5 h-3.5" /> Start Time</label>
+                <input
+                  type="datetime-local"
+                  className="w-full h-9 px-3 rounded-md border border-input bg-background text-sm"
+                  value={editFormData.startTime}
+                  onChange={(e) => setEditFormData(prev => ({ ...prev, startTime: e.target.value }))}
+                  data-testid="input-edit-broadcast-start-time"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium flex items-center gap-1"><Calendar className="w-3.5 h-3.5" /> End Time</label>
+                <input
+                  type="datetime-local"
+                  className="w-full h-9 px-3 rounded-md border border-input bg-background text-sm"
+                  value={editFormData.endTime}
+                  onChange={(e) => setEditFormData(prev => ({ ...prev, endTime: e.target.value }))}
+                  data-testid="input-edit-broadcast-end-time"
+                />
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditBroadcast(null)} data-testid="button-cancel-edit-broadcast">
+              Cancel
+            </Button>
+            <Button onClick={handleUpdate} disabled={updateMutation.isPending} data-testid="button-save-edit-broadcast">
+              {updateMutation.isPending ? 'Saving...' : 'Save Changes'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
