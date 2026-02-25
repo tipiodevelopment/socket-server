@@ -45,6 +45,7 @@ Configuration tables: `campaign_translations`, `campaign_engagement_config`, `ca
 Recent schema additions (Feb 2026):
 - `broadcasts.viewerCount` (integer, default 0) — current viewer count
 - `broadcasts.peakViewers` (integer, default 0) — peak concurrent viewers
+- `broadcasts.externalId` (varchar 255, nullable) — partner content ID (e.g. Viaplay stream ID). Index on `(externalId, campaignId)`. Lookup is scoped to clientApp via campaign→channel→clientApp join.
 - `broadcast_ads` — ads linked to a broadcast (name, description, imageUrl, ctaUrl, adType, duration as varchar, isActive, displayOrder)
 - `broadcast_products` — shoppable products (name, subtitle, price/originalPrice as varchar NOT integer, buyUrl, status, displayOrder)
 - `chat_messages` — live chat per broadcast (username, message, createdAt)
@@ -77,14 +78,25 @@ External admin access for broadcasts, polls, contests.
 - `/v1/broadcasts/:broadcastId/polls` — Poll management
 - `/v1/broadcasts/:broadcastId/contests` — Contest management
 
-### SDK APIs (`/v1/sdk/*`, `/v1/engagement/*`) — API Key Auth (`validateApiKey`)
-Mobile SDK integration endpoints.
-- `/v1/sdk/campaigns` — Campaign auto-discovery by bundleId
-- `/v1/sdk/config` — Campaign config for Swift SDK
+### SDK APIs (`/v1/sdk/*`, `/v1/engagement/*`) — API Key Auth or X-App-Bundle-ID header
+Mobile SDK integration endpoints. Two-step initialization flow:
+
+**Step 1 — on app launch:**
+- `GET /v1/sdk/campaigns` — Returns ALL active campaigns + campaign-level components (banners, carousels) for the app. Auth: `X-App-Bundle-ID` header or `X-Api-Key` / `?apiKey=`.
+
+**Step 2 — on content open:**
+- `GET /v1/sdk/broadcast?contentId=xxx&country=NO` — Resolves `contentId` → `externalId` on `broadcasts` table → returns `{ hasEngagement: true/false }`. If true, includes `broadcastId`, `campaignId`, `websocketChannel`, `campaignComponents`, and `broadcastComponents` (polls, contests, chat).
+  - Cache: `hasEngagement: false` → `Cache-Control: public, max-age=30`. `hasEngagement: true` → `Cache-Control: private, max-age=10` + `ETag`.
+  - Country filter: if `country` param sent, checks `campaign.targetCountries`. Null/empty = all countries.
+
+**Engagement:**
 - `/v1/engagement/polls/:pollId/vote` — Cast votes (rate-limited)
 - `/v1/engagement/contests/:contestId/participate` — Participate (rate-limited)
 - `/v1/offers` — Product offers with geo-targeting
 - `/v1/localization/:language` — i18n strings
+
+**Other SDK:**
+- `/v1/sdk/config` — Campaign config for Swift SDK (legacy)
 
 ### Analytics APIs (`/api/analytics/*`) — Session-based
 SQL-based analytics with drill-down hierarchy: Global → App → Campaign → Broadcast.
@@ -142,8 +154,15 @@ Full broadcast management view with split layout. **All data is real — zero ha
 4-column grid, type icons, filter pills, Templates-only toggle. Detail page at `/components/:id` with iOS Swift integration code and campaign usage.
 
 ### Campaign Dashboard (`/campaigns/:campaignId`)
-Tabbed: Overview, Broadcasts, Components, Config, Analytics. Tab navigation via callback-based `onNavigateTab` prop (not DOM manipulation).
-- **Analytics tab:** Real broadcast performance data. Queries `GET /api/broadcasts?campaignId=X` on tab activation. Shows KPI cards (total broadcasts, live count, total viewers, peak viewers) + per-broadcast table with status badges. Empty state if no broadcasts exist.
+Tabbed: **Overview | Broadcasts | Components | Live | Analytics | Settings**. Tab navigation via callback-based `onNavigateTab` prop (not DOM manipulation).
+- **Live tab:** Contains `<EventsTab>` (real-time event dispatch) + `<ScheduledTab>`. Forms start empty and auto-save per campaign to DB via `campaignFormState` table.
+- **Settings tab:** Contains `<SettingsTab>` (campaign logo, config) + `<IntegrationsTab>`.
+- **Analytics tab:** Real broadcast performance data. Queries `GET /api/broadcasts?campaignId=X` on tab activation. Shows KPI cards (total broadcasts, live count, total viewers, peak viewers) + per-broadcast table with status badges.
+- **Broadcasts tab:** Create/list/delete broadcasts. "New Broadcast" form has an **"External Content ID"** field that maps to `broadcasts.externalId`.
+
+### Broadcast Detail (`/broadcasts/:broadcastId`)
+- **"Send Live" buttons on Polls:** Each active poll card has a "Send Live" button → `POST /api/events/poll` with `{ question, options, duration, campaignId: broadcast.campaignId }` → fires WS event to connected SDK clients.
+- **"Send Live" buttons on Contests:** Each contest card has a "Send Live" button → `POST /api/events/contest` with contest data + `campaignId`.
 
 ### Sponsor Management (`/sponsors`)
 CRUD with logo/avatar uploads + primary/secondary color config.
@@ -198,7 +217,24 @@ Interactive OpenAPI documentation viewer.
 ## WebSocket Architecture
 
 Isolated channels per campaign: `/ws/:campaignId`
-Events broadcast include: component updates, poll results, broadcast status changes, config updates.
+
+**Events emitted by the server to SDK clients:**
+
+| Event | Trigger | SDK Action |
+|-------|---------|------------|
+| `campaign_started` | Campaign start date reached or admin-triggered | Activate campaign-level components |
+| `campaign_ended` | Campaign end date reached or admin-triggered | Hide everything |
+| `campaign_paused` | Admin pauses campaign | Hide everything temporarily |
+| `campaign_resumed` | Admin resumes campaign | Show campaign components again |
+| `broadcast_started` | Broadcast status changes to `'live'` | Activate broadcast-level components (polls, contests, chat) |
+| `broadcast_ended` | Broadcast status changes to `'ended'` | Hide broadcast components only; campaign banners/carousels remain |
+| `poll` | Admin fires via EventsTab or "Send Live" button | Show poll overlay |
+| `contest` | Admin fires via EventsTab or "Send Live" button | Show contest overlay |
+| `product` | Admin fires via EventsTab | Show shoppable card |
+
+All events include `{ type, campaignId, timestamp }`. Broadcast events also include `broadcastId` and `broadcastName`.
+
+**Important:** `broadcast_ended` fires automatically when `PUT /api/broadcasts/:id` or `PUT /v1/broadcasts/:id` changes `status` to `'ended'`. Same for `broadcast_started` on `status → 'live'`. No manual trigger needed.
 
 ## Sidebar Navigation Order
 
@@ -212,12 +248,44 @@ Dashboard → Apps → Campaigns → Sponsors → Broadcasts → Components → 
 - Session: `SESSION_SECRET` env var
 - Auth: JWT tokens use `SESSION_SECRET` for signing
 
-## Fixes Applied (Feb 2026)
+## Fixes & Features (Feb 2026)
 
 - **admin.tsx:** `productForms`, `pollForms`, `contestForms` now initialize empty (single blank entry). No Apple/PSG hardcoded demo data. Forms still persist to DB via `/api/form-state`.
-- **app-detail.tsx:** Stats cards (Active Campaigns, Live Broadcasts, Total Viewers, Engagement Rate) no longer show fake trend badges (↑12%, ↑8%, ↑24%, ↑18%). Values are computed from real DB data.
-- **broadcast-detail.tsx:** Zero hardcoded data. All sections use real API queries. "Load Demo" button available on any broadcast to seed demo data.
-- **campaign-dashboard.tsx Analytics tab:** Was "Coming Soon". Now shows real broadcast performance from DB.
+- **app-detail.tsx:** Stats cards no longer show fake trend badges (↑12%, ↑8%, etc.). Values are computed from real DB data.
+- **broadcast-detail.tsx:** Zero hardcoded data. "Load Demo" button seeds demo data. "Send Live" buttons on polls and contests dispatch real-time WebSocket events to SDK clients.
+- **campaign-dashboard.tsx:** Tabs reorganized to Overview | Broadcasts | Components | Live | Analytics | Settings. "New Broadcast" form includes "External Content ID" field.
+- **EventsTab.tsx:** No demo data. Forms start empty and auto-save per campaign. Event Log panel removed. Campaign Logo section moved exclusively to SettingsTab.
+
+## SDK contentId Architecture (Feb 2026)
+
+Two-step flow for resolving a stream/content to engagement:
+
+1. **App launch:** `GET /v1/sdk/campaigns` → all active campaign-level components for the app
+2. **Stream open:** `GET /v1/sdk/broadcast?contentId={id}&country={CC}` → resolves `externalId` → broadcast → campaign
+
+The `externalId` on a broadcast is set by the admin in the "External Content ID" field when creating/editing a broadcast in the dashboard.
+
+**Response when `hasEngagement: true`:**
+```json
+{
+  "hasEngagement": true,
+  "broadcastId": "...",
+  "broadcastName": "...",
+  "status": "live",
+  "campaignId": 42,
+  "websocketChannel": "/ws/42",
+  "campaignComponents": [...],
+  "broadcastComponents": {
+    "chat": { "enabled": true },
+    "polls": [{ "id": 1, "question": "...", "isActive": true, "options": [...] }],
+    "contests": [{ "id": 2, "title": "...", "isActive": true }]
+  }
+}
+```
+
+**WS events for broadcast lifecycle (new):**
+- `broadcast_started` → fired when `status` changes to `'live'` on any PUT broadcast route
+- `broadcast_ended` → fired when `status` changes to `'ended'` on any PUT broadcast route
 
 ## Architect Review Notes (Feb 2026)
 

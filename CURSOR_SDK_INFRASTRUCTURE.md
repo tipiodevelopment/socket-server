@@ -214,11 +214,14 @@ Users (agencias/marcas)
 |---------|------|-------------|
 | broadcast_id | varchar PK | Slug auto-generado (ej: "barcelona-psg-2025-01-23") |
 | broadcast_name | varchar(255) | Nombre del broadcast |
+| external_id | varchar(255) NULL | **[Feb 2026]** ID externo del partner (ej. Viaplay stream ID). El SDK lo pasa como `contentId`. Indexado en `(external_id, campaign_id)` para lookups rapidos. Unicidad por app se garantiza via join campaign→channel→client_app. |
 | campaign_id | integer FK→campaigns | Campana asociada (opcional) |
 | channel_id | integer FK→channels | Canal asociado (opcional) |
 | start_time | timestamp | Hora de inicio |
 | end_time | timestamp | Hora de fin |
 | status | varchar(50) | 'upcoming', 'live', 'ended' |
+| viewer_count | integer | Espectadores actuales (default 0) |
+| peak_viewers | integer | Pico maximo de espectadores (default 0) |
 | metadata | json | Datos adicionales |
 | created_by | integer FK→users | Usuario creador |
 | created_at | timestamp | Fecha de creacion |
@@ -378,38 +381,91 @@ X-App-Bundle-ID: com.example.app
 
 Estos son los endpoints que consume el SDK de iOS. Cursor necesita conocer cada uno para implementar las llamadas desde Swift.
 
-### 5.1 Auto-Discovery de Campanas
+### Flujo SDK de dos pasos (Feb 2026)
+
+**Paso 1 - Al lanzar la app:** Llamar a `GET /v1/sdk/campaigns` para obtener todas las campanas activas y sus componentes de nivel campaña (banners, carruseles). Estos se muestran siempre, independientemente del contenido que vea el usuario.
+
+**Paso 2 - Al abrir un stream:** Llamar a `GET /v1/sdk/broadcast?contentId=xxx` para resolver si hay engagement para ese contenido especifico. Si `hasEngagement: true`, activar componentes de broadcast (polls, contests, chat) y conectar al WebSocket.
+
+---
+
+### 5.1 Auto-Discovery de Campanas (Paso 1)
 
 ```http
-GET /v1/sdk/campaigns?apiKey=<key>&matchId=<optional>
-Authorization: API Key (query param, header, o Bundle ID)
+GET /v1/sdk/campaigns
+X-App-Bundle-ID: com.viaplay.nordic
+# o via:
+GET /v1/sdk/campaigns?apiKey=<key>
 
 Response 200:
-[
-  {
-    "id": 1,
-    "name": "Champions League Final",
-    "logo": "https://...",
-    "startDate": "2025-01-23T20:00:00Z",
-    "endDate": "2025-01-23T23:00:00Z",
-    "isPaused": "false",
-    "matchContext": {
-      "matchId": "match-123",
-      "matchName": "Barcelona vs PSG",
-      "startTime": "2025-01-23T20:00:00Z"
-    },
-    "components": [
-      {
-        "id": "uuid",
-        "type": "ProductSpotlight",
-        "name": "Sponsor Product",
-        "status": "active",
-        "config": { ... }
-      }
+{
+  "campaigns": [
+    {
+      "campaignId": 1,
+      "campaignName": "Liga 2026",
+      "campaignLogo": "https://...",
+      "isActive": true,
+      "isPaused": false,
+      "components": [
+        {
+          "id": "banner-01",
+          "type": "banner",
+          "name": "Sponsor Banner",
+          "status": "active",
+          "config": { ... }
+        }
+      ]
+    }
+  ]
+}
+```
+
+### 5.1b Validacion de Broadcast por contentId (Paso 2) [NUEVO Feb 2026]
+
+```http
+GET /v1/sdk/broadcast?contentId=match-789&country=NO
+X-App-Bundle-ID: com.viaplay.nordic
+# o via X-Api-Key o ?apiKey=
+
+# Si NO hay engagement (broadcast no existe, campana inactiva, pais filtrado):
+Response 200 + Cache-Control: public, max-age=30
+{ "hasEngagement": false }
+
+# Si HAY engagement:
+Response 200 + Cache-Control: private, max-age=10 + ETag
+{
+  "hasEngagement": true,
+  "broadcastId": "el-clasico-2026-02-25",
+  "broadcastName": "El Clásico",
+  "status": "live",
+  "campaignId": 42,
+  "campaignName": "Liga 2026",
+  "campaignLogo": "https://...",
+  "websocketChannel": "/ws/42",
+  "campaignComponents": [
+    { "id": "banner-01", "type": "banner", "config": {...} }
+  ],
+  "broadcastComponents": {
+    "chat": { "enabled": true },
+    "polls": [
+      { "id": 12, "question": "¿Quién gana?", "isActive": true, "duration": 60,
+        "options": [{ "id": 1, "text": "Real Madrid" }, { "id": 2, "text": "Barcelona" }] }
+    ],
+    "contests": [
+      { "id": 5, "title": "Predicción", "prize": "Camiseta", "isActive": true, "endTime": "2026-02-25T22:00:00Z" }
     ]
   }
-]
+}
 ```
+
+**Logica de filtrado:**
+1. `contentId` → busca `broadcasts.external_id` dentro de las campanas del clientApp
+2. Si no hay broadcast con ese `external_id` → `hasEngagement: false`
+3. Si la campana esta pausada o fuera de fechas → `hasEngagement: false`
+4. Si se envía `country` y la campana tiene `targetCountries` → filtra. Si `targetCountries` es null/empty → todos los paises validos.
+5. Solo polls/contests con `isActive: true` se incluyen en la respuesta.
+
+**Como setear el `externalId`:** En el dashboard → Campaign → Broadcasts → "New Broadcast" → campo "External Content ID". El admin de Viaplay pone ahí el ID interno de Viaplay para ese evento.
 
 ### 5.2 Configuracion SDK
 
@@ -750,19 +806,35 @@ Cada cliente se conecta a un canal especifico de campaign. Los eventos se emiten
 
 ### Tipos de Eventos
 
-| Tipo | Trigger | Payload |
-|------|---------|---------|
-| `component:activated` | Componente activado | `{ type, componentId, config }` |
-| `component:deactivated` | Componente desactivado | `{ type, componentId }` |
-| `event:new` | Nuevo evento creado | `{ type, data: { eventId, eventType, ... } }` |
-| `event:saved` | Evento guardado | `{ type, data: { eventId, ... } }` |
-| `campaign:paused` | Campana pausada | `{ type, campaignId }` |
-| `campaign:resumed` | Campana reanudada | `{ type, campaignId }` |
-| `broadcast:status_changed` | Estado de broadcast cambio | `{ type, broadcastId, status }` |
-| `poll_results_updated` | Votos actualizados | `{ type, pollId, broadcastId, totalVotes, options: [...] }` |
-| `config:updated` | Config dinamica cambio | `{ type, campaignId, section }` |
+| Tipo | Trigger | Accion SDK |
+|------|---------|-----------|
+| `campaign_started` | Fecha de inicio alcanzada o admin-triggered | Activar componentes de campaña |
+| `campaign_ended` | Fecha de fin alcanzada o admin-triggered | Ocultar todo |
+| `campaign_paused` | Admin pausa la campaña | Ocultar todo temporalmente |
+| `campaign_resumed` | Admin reanuda la campaña | Mostrar componentes de campaña |
+| `broadcast_started` | Broadcast cambia status a `'live'` | Activar polls/contests/chat |
+| `broadcast_ended` | Broadcast cambia status a `'ended'` | Ocultar solo broadcast components; banners/carruseles siguen activos |
+| `poll` | Admin dispara desde EventsTab o "Send Live" | Mostrar poll overlay |
+| `contest` | Admin dispara desde EventsTab o "Send Live" | Mostrar contest overlay |
+| `product` | Admin dispara desde EventsTab | Mostrar shoppable card |
+| `poll_results_updated` | Voto recibido | Actualizar barras de votacion |
+| `component:activated` | Componente activado por scheduler | Mostrar componente |
+| `component:deactivated` | Componente desactivado por scheduler | Ocultar componente |
 
-**Nota:** `poll_results_updated` ahora se emite desde `vote-processor.ts` via `setVoteBroadcastFunction`, permitiendo que tanto el procesamiento sincrono como el queue-based emitan WebSocket events.
+**Estructura comun de todos los eventos:**
+```json
+{
+  "type": "broadcast_ended",
+  "broadcastId": "el-clasico-2026-02-25",
+  "broadcastName": "El Clásico",
+  "campaignId": 42,
+  "timestamp": "2026-02-25T22:01:00.000Z"
+}
+```
+
+**IMPORTANTE (Feb 2026):** `broadcast_started` y `broadcast_ended` se disparan automaticamente en los routes `PUT /api/broadcasts/:id` y `PUT /v1/broadcasts/:id` cuando el campo `status` cambia. No requieren un endpoint separado.
+
+**Nota:** `poll_results_updated` se emite desde `vote-processor.ts` via `setVoteBroadcastFunction`, permitiendo que tanto el procesamiento sincrono como el queue-based emitan WebSocket events.
 
 ---
 
