@@ -702,7 +702,7 @@ export default function BroadcastDetailPage() {
 
   const [pollDialogOpen, setPollDialogOpen] = useState(false);
   const [contestDialogOpen, setContestDialogOpen] = useState(false);
-  const [pollForm, setPollForm] = useState({ question: '', options: ['', ''] });
+  const [pollForm, setPollForm] = useState({ question: '', options: ['', ''], duration: '60' });
   const [contestForm, setContestForm] = useState({ title: '', description: '', prize: '', contestType: 'quiz' });
   const [editingExternalId, setEditingExternalId] = useState(false);
   const [externalIdValue, setExternalIdValue] = useState('');
@@ -754,7 +754,7 @@ export default function BroadcastDetailPage() {
       queryClient.invalidateQueries({ queryKey: ['/api/broadcasts', broadcastId] });
       toast({ title: 'Poll Created' });
       setPollDialogOpen(false);
-      setPollForm({ question: '', options: ['', ''] });
+      setPollForm({ question: '', options: ['', ''], duration: '60' });
     },
     onError: () => {
       toast({ title: 'Error', description: 'Failed to create poll.', variant: 'destructive' });
@@ -832,7 +832,11 @@ export default function BroadcastDetailPage() {
       toast({ title: 'Validation Error', description: 'At least 2 options are required.', variant: 'destructive' });
       return;
     }
-    createPollMutation.mutate({ question: pollForm.question, options: validOptions });
+    createPollMutation.mutate({
+      question: pollForm.question,
+      options: validOptions,
+      duration: pollForm.duration ? parseInt(pollForm.duration) : undefined,
+    });
   };
 
   const handleCreateContest = () => {
@@ -1060,6 +1064,18 @@ export default function BroadcastDetailPage() {
                           <Plus className="w-3 h-3" />
                           Add Option
                         </Button>
+                      </div>
+                      <div className="grid gap-2">
+                        <Label htmlFor="pollDuration">Display Duration (seconds)</Label>
+                        <Input
+                          id="pollDuration"
+                          data-testid="input-poll-duration"
+                          type="number"
+                          min="1"
+                          value={pollForm.duration}
+                          onChange={(e) => setPollForm(prev => ({ ...prev, duration: e.target.value }))}
+                          placeholder="60"
+                        />
                       </div>
                     </div>
                     <DialogFooter>

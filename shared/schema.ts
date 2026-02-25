@@ -227,6 +227,7 @@ export const polls = pgTable("polls", {
   endTime: timestamp("end_time"),
   isActive: boolean("is_active").notNull().default(true),
   totalVotes: integer("total_votes").notNull().default(0),
+  duration: integer("duration"),
   videoStartTime: integer("video_start_time"),
   videoEndTime: integer("video_end_time"),
   broadcastStartTime: timestamp("broadcast_start_time"),
@@ -723,6 +724,7 @@ export const insertContestParticipationSchema = createInsertSchema(contestPartic
 export const createPollInputSchema = z.object({
   question: z.string().min(1, "Question is required").max(500),
   options: z.array(z.union([z.string().min(1), z.object({ text: z.string().min(1) })])).min(2, "At least 2 options are required").max(20),
+  duration: z.number().int().min(1).optional(),
   startTime: z.string().datetime().optional(),
   endTime: z.string().datetime().optional(),
   isActive: z.boolean().optional().default(true),

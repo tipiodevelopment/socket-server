@@ -2662,11 +2662,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!parsed.success) {
         return res.status(400).json({ message: parsed.error.errors.map(e => e.message).join(', ') });
       }
-      const { question, options, startTime, endTime, isActive, videoStartTime, videoEndTime, broadcastStartTime } = parsed.data;
+      const { question, options, duration, startTime, endTime, isActive, videoStartTime, videoEndTime, broadcastStartTime } = parsed.data;
 
       const pollData: any = {
         broadcastId,
         question,
+        duration: duration ?? null,
         startTime: startTime ? new Date(startTime) : null,
         endTime: endTime ? new Date(endTime) : null,
         isActive: isActive !== undefined ? isActive : true
@@ -3249,7 +3250,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: 'Broadcast not found' });
       }
 
-      const { question, options, startTime, endTime, isActive, videoStartTime, videoEndTime, broadcastStartTime } = req.body;
+      const { question, options, duration, startTime, endTime, isActive, videoStartTime, videoEndTime, broadcastStartTime } = req.body;
       if (!question || !options || !Array.isArray(options) || options.length < 2) {
         return res.status(400).json({ message: 'question and at least 2 options are required' });
       }
@@ -3257,6 +3258,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const pollData: any = {
         broadcastId,
         question,
+        duration: duration ?? null,
         startTime: startTime ? new Date(startTime) : null,
         endTime: endTime ? new Date(endTime) : null,
         isActive: isActive !== undefined ? isActive : true
@@ -3298,10 +3300,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.put('/api/polls/:pollId', async (req, res) => {
     try {
       const pollId = parseInt(req.params.pollId);
-      const { question, isActive, startTime, endTime } = req.body;
+      const { question, isActive, duration, startTime, endTime } = req.body;
       const updateData: any = {};
       if (question !== undefined) updateData.question = question;
       if (isActive !== undefined) updateData.isActive = isActive;
+      if (duration !== undefined) updateData.duration = duration ?? null;
       if (startTime !== undefined) updateData.startTime = startTime ? new Date(startTime) : null;
       if (endTime !== undefined) updateData.endTime = endTime ? new Date(endTime) : null;
 

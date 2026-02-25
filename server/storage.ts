@@ -1,7 +1,7 @@
 import { WebSocketEvent, Campaign, InsertCampaign, Event, InsertEvent, CampaignFormState, InsertFormState, ScheduledComponent, InsertScheduledComponent, Component, InsertComponent, CampaignComponent, InsertCampaignComponent, AppComponent, InsertAppComponent, User, InsertUser, ClientApp, InsertClientApp, Channel, InsertChannel, CampaignTranslation, InsertCampaignTranslation, CampaignEngagementConfig, InsertCampaignEngagementConfig, CampaignUiConfig, InsertCampaignUiConfig, CampaignFeatureFlags, InsertCampaignFeatureFlags, SdkTranslation, InsertSdkTranslation, Broadcast, InsertBroadcast, Poll, InsertPoll, PollOptionRecord, InsertPollOption, PollVote, InsertPollVote, Contest, InsertContest, ContestParticipation, InsertContestParticipation, Sponsor, InsertSponsor, BroadcastAd, InsertBroadcastAd, BroadcastProduct, InsertBroadcastProduct, ChatMessage, InsertChatMessage } from "@shared/schema";
 import { db } from "./db";
 import { campaigns, events, campaignFormState, scheduledComponents, components, campaignComponents, appComponents, users, clientApps, channels, campaignTranslations, campaignEngagementConfig, campaignUiConfig, campaignFeatureFlags, sdkTranslations, broadcasts, polls, pollOptions, pollVotes, contests, contestParticipations, sponsors, broadcastAds, broadcastProducts, chatMessages } from "@shared/schema";
-import { eq, desc, and, gte, ne, isNull, sql, lte, inArray } from "drizzle-orm";
+import { eq, desc, and, or, gte, ne, isNull, sql, lte, inArray } from "drizzle-orm";
 
 export interface IStorage {
   addEvent(event: WebSocketEvent): Promise<void>;
@@ -948,10 +948,13 @@ export class MemStorage implements IStorage {
       .select({ broadcast: broadcasts })
       .from(broadcasts)
       .innerJoin(campaigns, eq(broadcasts.campaignId, campaigns.id))
-      .innerJoin(channels, eq(campaigns.channelId, channels.id))
+      .leftJoin(channels, eq(campaigns.channelId, channels.id))
       .where(and(
         eq(broadcasts.externalId, externalId),
-        eq(channels.clientAppId, clientAppId)
+        or(
+          eq(channels.clientAppId, clientAppId),
+          eq(campaigns.clientAppId, clientAppId)
+        )
       ))
       .limit(1);
     return result[0]?.broadcast || undefined;

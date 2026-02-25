@@ -49,6 +49,8 @@ The platform is built with a full-stack TypeScript environment.
 - **Broadcast Detail — Send Live:** Polls and contests now have a "Send Live" button that fires a real-time WebSocket event to all connected SDKs via `/api/events/poll` and `/api/events/contest`, using the broadcast's campaignId.
 - **EventsTab restructure:** Removed Event Log panel, Campaign Logo section (now only in Settings), and all hardcoded demo data (iPhone, PSG, Barcelona). Forms start empty and auto-save per campaign via DB.
 - **EventLog component:** Intentionally unused/removed from EventsTab. The component file still exists but is not rendered anywhere.
+- **Broadcast External ID:** Visible and inline-editable in broadcast-detail header (pencil icon). Also displayed in campaign-dashboard broadcast cards when set.
+- **Poll duration field:** `duration` (integer, seconds) added to polls table. Exposed in createPoll/updatePoll routes and in the broadcast-detail "Create Poll" dialog. The SDK endpoint returns it so clients know how long to display the poll.
 
 ### Database Tables
 
