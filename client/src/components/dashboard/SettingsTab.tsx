@@ -84,6 +84,7 @@ export function SettingsTab({ campaignId, campaign }: SettingsTabProps) {
   const [matchStartTime, setMatchStartTime] = useState(
     campaign.matchStartTime ? new Date(campaign.matchStartTime).toISOString().slice(0, 16) : ''
   );
+  const [reachuApiKey, setReachuApiKey] = useState(campaign.reachuApiKey || '');
 
 
   // Engagement config
@@ -306,6 +307,10 @@ export function SettingsTab({ campaignId, campaign }: SettingsTabProps) {
     updateCampaignMutation.mutate({ channelId });
   };
 
+  const handleSaveReachuApiKey = () => {
+    updateCampaignMutation.mutate({ reachuApiKey: reachuApiKey || null });
+  };
+
   const handleSaveMatchContext = (e: React.FormEvent) => {
     e.preventDefault();
     updateCampaignMutation.mutate({
@@ -440,6 +445,39 @@ export function SettingsTab({ campaignId, campaign }: SettingsTabProps) {
             data-testid="button-save-channel"
           >
             {updateCampaignMutation.isPending ? 'Saving...' : 'Save Channel'}
+          </Button>
+        </CardContent>
+      </Card>
+
+      {/* Reachu Integration */}
+      <Card className="border-0">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Zap className="w-5 h-5" />
+            Reachu Integration
+          </CardTitle>
+          <CardDescription>
+            API key for Reachu commerce integration (optional)
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="reachu-api-key">Reachu API Key</Label>
+            <Input
+              id="reachu-api-key"
+              value={reachuApiKey}
+              onChange={(e) => setReachuApiKey(e.target.value)}
+              placeholder="Enter Reachu API key..."
+              className="font-mono text-sm"
+              data-testid="input-campaign-reachu-key"
+            />
+          </div>
+          <Button
+            onClick={handleSaveReachuApiKey}
+            disabled={updateCampaignMutation.isPending}
+            data-testid="button-save-campaign-reachu-key"
+          >
+            {updateCampaignMutation.isPending ? 'Saving...' : 'Save API Key'}
           </Button>
         </CardContent>
       </Card>

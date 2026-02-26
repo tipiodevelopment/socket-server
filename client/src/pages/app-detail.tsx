@@ -54,8 +54,6 @@ export default function AppDetailPage() {
   const [editStatus, setEditStatus] = useState('active');
   const [editIconUrl, setEditIconUrl] = useState('');
   const [editBannerUrl, setEditBannerUrl] = useState('');
-  const [editingReachuKey, setEditingReachuKey] = useState('');
-  const [reachuKeyInitialized, setReachuKeyInitialized] = useState(false);
 
   const { data: app, isLoading: appLoading } = useQuery<ClientApp>({
     queryKey: ['/api/client-apps', appIdNum, userId],
@@ -109,13 +107,6 @@ export default function AppDetailPage() {
     enabled: addComponentOpen
   });
 
-  useEffect(() => {
-    if (app && !reachuKeyInitialized) {
-      setEditingReachuKey(app.reachuApiKey || '');
-      setReachuKeyInitialized(true);
-    }
-  }, [app, reachuKeyInitialized]);
-
   const updateAppMutation = useMutation({
     mutationFn: async (data: any) => {
       const response = await apiRequest('PATCH', `/api/client-apps/${appIdNum}`, { userId, ...data });
@@ -144,20 +135,6 @@ export default function AppDetailPage() {
     },
     onError: () => {
       toast({ title: 'Error', description: 'Failed to regenerate API key', variant: 'destructive' });
-    }
-  });
-
-  const updateReachuKeyMutation = useMutation({
-    mutationFn: async (reachuApiKey: string) => {
-      const response = await apiRequest('PATCH', `/api/client-apps/${appIdNum}`, { userId, reachuApiKey });
-      return response.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/client-apps', appIdNum] });
-      toast({ title: 'Reachu API Key Updated', description: 'The key has been saved.' });
-    },
-    onError: () => {
-      toast({ title: 'Error', description: 'Failed to update key', variant: 'destructive' });
     }
   });
 
@@ -800,30 +777,10 @@ ReachuSDK.configure(
               )}
 
               {settingsTab === 'integrations' && (
-                <div className="space-y-6">
-                  <div>
-                    <Label className="text-gray-400 text-xs uppercase">Reachu API Key</Label>
-                    <p className="text-xs text-gray-500 mb-2">External API key for Reachu integration (optional)</p>
-                    <div className="flex items-center gap-2">
-                      <Input
-                        placeholder="Enter Reachu API key..."
-                        value={editingReachuKey}
-                        onChange={(e) => setEditingReachuKey(e.target.value)}
-                        className="flex-1 font-mono text-sm bg-white/5 border-white/10 text-gray-200"
-                        data-testid="input-reachu-key"
-                      />
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        disabled={updateReachuKeyMutation.isPending}
-                        onClick={() => updateReachuKeyMutation.mutate(editingReachuKey)}
-                        className="border-white/10 bg-transparent hover:bg-white/5 text-gray-300"
-                        data-testid="button-save-reachu-key"
-                      >
-                        {updateReachuKeyMutation.isPending ? 'Saving...' : 'Save'}
-                      </Button>
-                    </div>
-                  </div>
+                <div className="space-y-4">
+                  <p className="text-sm text-gray-400">
+                    Integrations are configured at the campaign level. Open a campaign's Settings tab to configure Reachu and other integrations.
+                  </p>
                 </div>
               )}
             </div>
