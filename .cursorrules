@@ -36,7 +36,10 @@ openapi.yaml                — OpenAPI 3.0 specification (80 endpoints, 17 tag 
 
 ## Data Model Hierarchy
 
-Users → Client Apps → Channels → Campaigns → Broadcasts → Polls/Contests
+Users → Client Apps → Campaigns → Broadcasts → Polls/Contests
+
+Note: Channels are OPTIONAL metadata at campaign level. Campaigns link directly to apps via `campaigns.client_app_id`.
+The SDK discovers campaigns by clientAppId directly — NOT through channels.
 
 Key tables: `users`, `sponsors`, `client_apps`, `channels`, `campaigns`, `components`, `campaign_components`, `broadcasts`, `polls`, `poll_options`, `poll_votes`, `contests`, `contest_participations`, `broadcast_ads`, `broadcast_products`, `chat_messages`, `events`, `scheduled_components`
 
@@ -45,7 +48,8 @@ Configuration tables: `campaign_translations`, `campaign_engagement_config`, `ca
 Recent schema additions (Feb 2026):
 - `broadcasts.viewerCount` (integer, default 0) — current viewer count
 - `broadcasts.peakViewers` (integer, default 0) — peak concurrent viewers
-- `broadcasts.externalId` (varchar 255, nullable) — partner content ID (e.g. Viaplay stream ID). Index on `(externalId, campaignId)`. Lookup is scoped to clientApp via campaign→channel→clientApp join.
+- `broadcasts.externalId` (varchar 255, nullable) — partner content ID (e.g. Viaplay stream ID). Index on `(externalId, campaignId)`. Lookup is scoped to clientApp via campaign.clientAppId.
+- `broadcasts.duration` (integer, seconds) — added to polls table; exposed in createPoll/updatePoll and broadcast detail
 - `broadcast_ads` — ads linked to a broadcast (name, description, imageUrl, ctaUrl, adType, duration as varchar, isActive, displayOrder)
 - `broadcast_products` — shoppable products (name, subtitle, price/originalPrice as varchar NOT integer, buyUrl, status, displayOrder)
 - `chat_messages` — live chat per broadcast (username, message, createdAt)
@@ -156,9 +160,9 @@ Full broadcast management view with split layout. **All data is real — zero ha
 ### Campaign Dashboard (`/campaigns/:campaignId`)
 Tabbed: **Overview | Broadcasts | Components | Live | Analytics | Settings**. Tab navigation via callback-based `onNavigateTab` prop (not DOM manipulation).
 - **Live tab:** Contains `<EventsTab>` (real-time event dispatch) + `<ScheduledTab>`. Forms start empty and auto-save per campaign to DB via `campaignFormState` table.
-- **Settings tab:** Contains `<SettingsTab>` (campaign logo, config) + `<IntegrationsTab>`.
+- **Settings tab:** Contains `<SettingsTab>` + `<IntegrationsTab>`. Sections: Basic Information, Campaign Schedule, Channel Assignment (optional), Reachu Integration, Targeting & Segmentation, Engagement Settings, Feature Flags, Danger Zone. Styled with raw divs + `border-white/10` (NOT shadcn Cards). Campaign Logo, Match Context, and UI Theme sections were removed — branding comes from Sponsor.
 - **Analytics tab:** Real broadcast performance data. Queries `GET /api/broadcasts?campaignId=X` on tab activation. Shows KPI cards (total broadcasts, live count, total viewers, peak viewers) + per-broadcast table with status badges.
-- **Broadcasts tab:** Create/list/delete broadcasts. "New Broadcast" form has an **"External Content ID"** field that maps to `broadcasts.externalId`.
+- **Broadcasts tab:** Create/list/delete broadcasts. "New Broadcast" form has an **"External Content ID"** field that maps to `broadcasts.externalId`. Each card has a pencil icon to edit name/externalId/status/dates via PUT.
 
 ### Broadcast Detail (`/broadcasts/:broadcastId`)
 - **"Send Live" buttons on Polls:** Each active poll card has a "Send Live" button → `POST /api/events/poll` with `{ question, options, duration, campaignId: broadcast.campaignId }` → fires WS event to connected SDK clients.
@@ -253,8 +257,11 @@ Dashboard → Apps → Campaigns → Sponsors → Broadcasts → Components → 
 - **admin.tsx:** `productForms`, `pollForms`, `contestForms` now initialize empty (single blank entry). No Apple/PSG hardcoded demo data. Forms still persist to DB via `/api/form-state`.
 - **app-detail.tsx:** Stats cards no longer show fake trend badges (↑12%, ↑8%, etc.). Values are computed from real DB data.
 - **broadcast-detail.tsx:** Zero hardcoded data. "Load Demo" button seeds demo data. "Send Live" buttons on polls and contests dispatch real-time WebSocket events to SDK clients.
-- **campaign-dashboard.tsx:** Tabs reorganized to Overview | Broadcasts | Components | Live | Analytics | Settings. "New Broadcast" form includes "External Content ID" field.
-- **EventsTab.tsx:** No demo data. Forms start empty and auto-save per campaign. Event Log panel removed. Campaign Logo section moved exclusively to SettingsTab.
+- **campaign-dashboard.tsx:** Tabs reorganized to Overview | Broadcasts | Components | Live | Analytics | Settings. "New Broadcast" form includes "External Content ID" field. Broadcast cards have a pencil icon for inline editing.
+- **EventsTab.tsx:** No demo data. Forms start empty and auto-save per campaign. Event Log panel removed. Campaign Logo section removed entirely.
+- **SettingsTab.tsx (Feb 2026 — latest):** Removed Campaign Logo, Match Context, and UI Theme sections. Remaining 8 sections: Basic Information, Campaign Schedule, Channel Assignment (optional — "No channel" option available), Reachu Integration, Targeting & Segmentation, Engagement Settings, Feature Flags, Danger Zone. Fully restyled with raw divs + `border-white/10` (removed all shadcn Card usage). Style matches OverviewTab.
+- **Config endpoint `/v1/campaigns/:id/config` (Feb 2026):** Authorization now supports direct match (`campaign.clientAppId === clientApp.id`) OR channel legacy fallback. No longer returns 400 when campaign has no channel assigned. Channel references use optional chaining (`channel?.id`, `channel?.name`).
+- **Brand data in SDK config:** `brand.name`, `brand.iconUrl`, `brand.logoUrl` come from the linked Sponsor. Legacy campaign brand fields used only as fallback.
 
 ## SDK contentId Architecture (Feb 2026)
 

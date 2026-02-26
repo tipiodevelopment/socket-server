@@ -121,30 +121,36 @@ client/src/
 ```
 Users (agencias/marcas)
   └── Client Apps (aplicaciones moviles/web)
-       └── Channels (canales de marketing)
-            └── Campaigns (campanas de eventos)
-                 ├── Components (componentes UI)
-                 ├── Events (productos, polls, contests legados)
-                 ├── Broadcasts (transmisiones/partidos)
-                 │    ├── Polls (encuestas) ← con video scheduling activo
-                 │    │    ├── Poll Options (opciones)
-                 │    │    └── Poll Votes (votos) ← rate limited + queue-ready
-                 │    └── Contests (concursos) ← con video scheduling activo
-                 │         └── Contest Participations ← rate limited + queue-ready
-                 ├── Engagement Config
-                 ├── UI Config
-                 ├── Feature Flags
-                 └── Translations
+       └── Campaigns (campanas de eventos)  ← campaigns.client_app_id (FK directo)
+            ├── Channel (opcional — metadata de agrupacion, campaigns.channel_id nullable)
+            ├── Sponsor (branding: logo, avatar, primaryColor, secondaryColor)
+            ├── Components (componentes UI)
+            ├── Events (productos, polls, contests legados)
+            ├── Broadcasts (transmisiones/partidos)
+            │    ├── externalId ← mapea contentId del partner (ej. Viaplay stream ID)
+            │    ├── Polls (encuestas)
+            │    │    ├── Poll Options
+            │    │    └── Poll Votes ← rate limited
+            │    ├── Contests
+            │    │    └── Contest Participations ← rate limited
+            │    ├── Ads (broadcast_ads)
+            │    ├── Products (broadcast_products)
+            │    └── Chat Messages (chat_messages)
+            ├── Engagement Config
+            ├── UI Config
+            ├── Feature Flags
+            └── Translations
 ```
 
-**Relaciones clave:**
+**Relaciones clave [ACTUALIZADO Feb 2026]:**
 - Un User tiene muchas Client Apps
-- Una Client App tiene muchos Channels
-- Un Channel tiene muchas Campaigns
+- Una Client App tiene muchas Campaigns directamente (`campaigns.client_app_id`)
+- Los Channels son **opcionales** — ya NO son el padre de las Campaigns
+- Una Campaign puede tener un Channel asignado (para agrupacion o legado), pero no es requerido
+- El SDK descubre campanas via `clientAppId`, NO via channels
+- El branding de la campana viene EXCLUSIVAMENTE del Sponsor vinculado
 - Una Campaign tiene muchos Broadcasts (opcional)
-- Un Broadcast tiene muchos Polls y Contests
-- Un Poll tiene muchas Options y Votes
-- Un Contest tiene muchas Participations
+- Un Broadcast tiene un `externalId` que mapea el contentId del partner
 
 ---
 
@@ -186,28 +192,24 @@ Users (agencias/marcas)
 |---------|------|-------------|
 | id | serial PK | ID auto-incremental |
 | user_id | integer FK→users | Propietario |
-| channel_id | integer FK→channels | Canal asociado |
+| client_app_id | integer FK→client_apps | **App duena directa** — SDK discovery usa esto |
+| channel_id | integer FK→channels NULL | Canal opcional (agrupacion/legado) |
+| sponsor_id | integer FK→sponsors NULL | Sponsor vinculado (fuente de branding) |
 | name | varchar(255) | Nombre de la campana |
-| logo | text | URL del logo |
 | description | text | Descripcion |
 | start_date | timestamp | Fecha de inicio |
 | end_date | timestamp | Fecha de fin |
-| is_paused | varchar(10) | 'true'/'false' - estado de pausa |
-| reachu_channel_id | varchar(255) | ID canal Reachu |
-| reachu_api_key | text | API Key Reachu |
-| tipio_liveshow_id | varchar(255) | ID de Tipio Liveshow |
-| tipio_livestream_data | json | Datos de livestream |
-| is_segmented | varchar(10) | 'true'/'false' - targeting activo |
+| is_paused | varchar(10) | 'true'/'false' — estado de pausa (varchar, no boolean) |
+| reachu_api_key | text | API Key Reachu (nivel campana) |
+| is_segmented | varchar(10) | 'true'/'false' — targeting activo |
 | target_countries | text[] | Paises objetivo (ISO codes) |
 | target_percentage | integer | Porcentaje de usuarios (1-100) |
-| match_id | varchar(255) | ID del partido/match |
-| match_name | varchar(255) | Nombre del partido |
-| match_start_time | timestamp | Inicio del partido |
-| brand_name | varchar(255) | Nombre de marca |
-| brand_icon_asset | varchar(255) | Asset del icono de marca |
-| brand_icon_url | text | URL del icono de marca |
-| brand_logo_url | text | URL del logo de marca |
+| brand_name | varchar(255) | **LEGACY** — usar sponsor.name |
+| brand_icon_url | text | **LEGACY** — usar sponsor.avatarUrl |
+| brand_logo_url | text | **LEGACY** — usar sponsor.logoUrl |
 | created_at | timestamp | Fecha de creacion |
+
+**IMPORTANTE:** El branding real de la campana viene del Sponsor vinculado (`campaigns.sponsor_id`). Los campos `brand_*` son fallback legacy para compatibilidad con versiones anteriores del SDK.
 
 ### 3.5 `broadcasts`
 | Columna | Tipo | Descripcion |
@@ -489,48 +491,57 @@ Response 200:
 ### 5.3 Configuracion Dinamica Completa
 
 ```http
-GET /v1/campaigns/:campaignId/config?apiKey=<key>&matchId=<optional>
-Authorization: API Key
+GET /v1/campaigns/:campaignId/config?apiKey=<key>
+Authorization: API Key (X-Api-Key header o ?apiKey= param)
+
+LOGICA DE AUTORIZACION [ACTUALIZADO Feb 2026]:
+  1. directMatch = campaign.clientAppId === clientApp.id    ← PRINCIPAL
+  2. Si campaign.channelId existe:
+       channelMatch = channel.clientAppId === clientApp.id  ← LEGACY FALLBACK
+  3. Si !directMatch && !channelMatch → 403 Forbidden
+  (Ya NO devuelve 400 si la campana no tiene channel)
 
 Response 200:
 {
   "campaignId": 1,
   "brand": {
-    "name": "Nike",
-    "iconAsset": "nike_icon",
-    "iconUrl": "https://...",
-    "logoUrl": "https://..."
+    "name": "Elkjøp",          ← sponsor.name (NO campaign.brand_name)
+    "iconUrl": "https://...",   ← sponsor.avatarUrl (NO campaign.brand_icon_url)
+    "logoUrl": "https://..."    ← sponsor.logoUrl (NO campaign.brand_logo_url)
+  },
+  "sponsor": {
+    "id": 3,
+    "name": "Elkjøp",
+    "primaryColor": "#E60000",
+    "secondaryColor": "#FFFFFF",
+    "avatarUrl": "...",
+    "logoUrl": "..."
   },
   "engagement": {
-    "demoMode": false,
-    "defaultPollDuration": 300,
-    "defaultContestDuration": 600,
+    "defaultPollDuration": 30,
+    "defaultContestDuration": 60,
     "maxVotesPerPoll": 1,
     "enableRealTimeUpdates": true,
-    "updateInterval": 1000
-  },
-  "ui": {
-    "primaryColor": "#007AFF",
-    "secondaryColor": "#5856D6",
-    "componentConfigs": { ... }
+    "pollingInterval": 5000
   },
   "features": {
-    "enableLiveStreaming": true,
-    "enableProductCatalog": true,
-    "enableEngagement": true,
     "enablePolls": true,
-    "enableContests": true
+    "enableContests": true,
+    "enableChat": true,
+    "enableProducts": true,
+    "enableAds": true
   },
-  "translations": { ... },
-  "match": {
-    "matchId": "match-123",
-    "matchName": "Barcelona vs PSG",
-    "startTime": "2025-01-23T20:00:00Z"
-  }
+  "channel": {                 ← null si la campana no tiene channel
+    "id": 5,
+    "name": "Viaplay Sports"
+  },
+  "translations": { ... }
 }
 ```
 
 Cache-Control: `public, max-age=300` (5 min)
+
+**NOTA:** `brand` se construye exclusivamente desde el Sponsor. Los campos legacy `campaign.brand_name`, `campaign.brand_icon_url`, `campaign.brand_logo_url` se usan solo como fallback si el sponsor no tiene los datos.
 
 ### 5.4 Configuracion de Engagement por Match
 
