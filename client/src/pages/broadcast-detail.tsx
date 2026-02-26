@@ -863,9 +863,20 @@ export default function BroadcastDetailPage() {
     }));
   };
 
+  const breadcrumbs = campaignData
+    ? [
+        { label: 'Campaigns', href: '/campaigns' },
+        { label: campaignData.name, href: `/campaigns/${campaignData.id}` },
+        { label: broadcast?.broadcastName ?? 'Broadcast' },
+      ]
+    : [
+        { label: 'Campaigns', href: '/campaigns' },
+        { label: 'Broadcast' },
+      ];
+
   if (isLoading) {
     return (
-      <AppLayout>
+      <AppLayout breadcrumbs={[{ label: 'Campaigns', href: '/campaigns' }, { label: 'Loading...' }]}>
         <div className="text-center py-12">
           <p className="text-gray-500 dark:text-gray-400">Loading broadcast...</p>
         </div>
@@ -875,7 +886,7 @@ export default function BroadcastDetailPage() {
 
   if (!broadcast) {
     return (
-      <AppLayout>
+      <AppLayout breadcrumbs={[{ label: 'Campaigns', href: '/campaigns' }, { label: 'Not Found' }]}>
         <div className="text-center py-12">
           <p className="text-gray-900 dark:text-white">Broadcast not found</p>
         </div>
@@ -889,7 +900,7 @@ export default function BroadcastDetailPage() {
   const inactivePolls = polls.filter(p => !p.isActive);
 
   return (
-    <AppLayout>
+    <AppLayout breadcrumbs={breadcrumbs}>
       <div className="-mx-8 -mt-6 flex h-[calc(100vh-64px)] overflow-hidden">
         <main className="flex-1 overflow-y-auto px-8 py-6">
           <div className="flex items-center justify-between mb-6">

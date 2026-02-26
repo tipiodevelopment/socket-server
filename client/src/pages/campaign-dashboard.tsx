@@ -101,11 +101,13 @@ export default function CampaignDashboard() {
     },
   });
 
+  const activeTabLabel = TABS.find(t => t.value === activeTab)?.label ?? 'Overview';
   const breadcrumbs: BreadcrumbItem[] = [
     { label: 'Campaigns', href: '/campaigns' },
   ];
   if (campaign) {
-    breadcrumbs.push({ label: campaign.name });
+    breadcrumbs.push({ label: campaign.name, href: `/campaigns/${campaignId}` });
+    breadcrumbs.push({ label: activeTabLabel });
   } else {
     breadcrumbs.push({ label: 'Loading...' });
   }

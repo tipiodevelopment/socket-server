@@ -47,6 +47,33 @@ interface AppLayoutProps {
   headerBreadcrumbHref?: string;
 }
 
+function HeaderBreadcrumbs({ breadcrumbs }: { breadcrumbs: BreadcrumbItem[] }) {
+  const root = { label: 'Dashboard', href: '/' };
+  const startsWithDash = breadcrumbs[0]?.label === 'Dashboard';
+  const all = startsWithDash ? breadcrumbs : [root, ...breadcrumbs];
+  return (
+    <div className="flex items-center gap-1 flex-wrap" data-testid="breadcrumbs-header">
+      {all.map((crumb, i) => {
+        const isLast = i === all.length - 1;
+        return (
+          <span key={i} className="flex items-center gap-1">
+            {i > 0 && <ChevronRight className="w-3.5 h-3.5 text-white/20 dark:text-white/20 text-gray-300 flex-shrink-0" />}
+            {isLast ? (
+              <span className="text-sm font-semibold text-gray-900 dark:text-white truncate max-w-[180px]" data-testid={`breadcrumb-current`}>{crumb.label}</span>
+            ) : crumb.href ? (
+              <Link href={crumb.href}>
+                <span className="text-sm text-gray-400 dark:text-white/40 hover:text-gray-700 dark:hover:text-white/80 transition-colors cursor-pointer truncate max-w-[120px]" data-testid={`breadcrumb-link-${i}`}>{crumb.label}</span>
+              </Link>
+            ) : (
+              <span className="text-sm text-gray-400 dark:text-white/40 truncate max-w-[120px]">{crumb.label}</span>
+            )}
+          </span>
+        );
+      })}
+    </div>
+  );
+}
+
 const NAV_ITEMS = [
   { href: '/', label: 'Dashboard', icon: LayoutDashboard, exact: true },
   { href: '/apps', label: 'Apps', icon: Smartphone },
@@ -71,6 +98,12 @@ export function AppLayout({ children, breadcrumbs = [], title, subtitle, actions
 
   const currentPage = NAV_ITEMS.find(item => isActiveRoute(item.href, location, item.exact));
   const pageTitle = title || currentPage?.label || 'Dashboard';
+
+  const effectiveBreadcrumbs: BreadcrumbItem[] = breadcrumbs.length > 0
+    ? breadcrumbs
+    : headerBreadcrumb
+    ? [{ label: pageTitle, href: currentPage?.href }, { label: headerBreadcrumb, href: headerBreadcrumbHref || undefined }]
+    : [];
 
   return (
     <div className="min-h-screen flex bg-background">
@@ -147,19 +180,11 @@ export function AppLayout({ children, breadcrumbs = [], title, subtitle, actions
                 {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
               </Button>
 
-              <div className="flex items-center gap-2">
-                <h1 className="text-base font-semibold text-gray-900 dark:text-white" data-testid="text-page-title">{pageTitle}</h1>
-                {headerBreadcrumb && (
-                  <>
-                    <ChevronRight className="w-4 h-4 text-gray-300 dark:text-white/30" />
-                    {headerBreadcrumbHref ? (
-                      <Link href={headerBreadcrumbHref}>
-                        <span className="text-sm text-gray-500 dark:text-white/50 hover:text-gray-700 dark:hover:text-white/80 transition-colors cursor-pointer">{headerBreadcrumb}</span>
-                      </Link>
-                    ) : (
-                      <span className="text-sm text-gray-500 dark:text-white/50">{headerBreadcrumb}</span>
-                    )}
-                  </>
+              <div className="flex items-center gap-2 min-w-0">
+                {effectiveBreadcrumbs.length > 0 ? (
+                  <HeaderBreadcrumbs breadcrumbs={effectiveBreadcrumbs} />
+                ) : (
+                  <h1 className="text-sm font-semibold text-gray-900 dark:text-white" data-testid="text-page-title">{pageTitle}</h1>
                 )}
               </div>
             </div>
@@ -207,33 +232,6 @@ export function AppLayout({ children, breadcrumbs = [], title, subtitle, actions
         </header>
 
         <main className="flex-1 px-4 sm:px-6 py-6 overflow-auto max-w-[1440px] mx-auto w-full">
-          {breadcrumbs.length > 0 && (
-            <Breadcrumb className="mb-4">
-              <BreadcrumbList>
-                {breadcrumbs.map((crumb, index) => (
-                  <BreadcrumbUIItem key={index}>
-                    {index > 0 && <BreadcrumbSeparator />}
-                    {crumb.href && index < breadcrumbs.length - 1 ? (
-                      <BreadcrumbLink asChild>
-                        <Link href={crumb.href}>{crumb.label}</Link>
-                      </BreadcrumbLink>
-                    ) : (
-                      <BreadcrumbPage>{crumb.label}</BreadcrumbPage>
-                    )}
-                  </BreadcrumbUIItem>
-                ))}
-              </BreadcrumbList>
-            </Breadcrumb>
-          )}
-
-          {(title || subtitle) && !breadcrumbs.length && (
-            <div className="mb-6">
-              {subtitle && (
-                <p className="text-sm text-gray-500 dark:text-white/50 mt-1">{subtitle}</p>
-              )}
-            </div>
-          )}
-
           {children}
         </main>
       </div>

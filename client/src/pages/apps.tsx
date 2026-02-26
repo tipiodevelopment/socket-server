@@ -197,8 +197,8 @@ export default function AppsPage() {
 
   return (
     <AppLayout
+      breadcrumbs={[{ label: 'Apps' }]}
       title="Client Apps"
-      subtitle="Manage your client applications and their campaigns"
     >
       <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
         <DialogContent className="max-h-[85vh] overflow-y-auto">

@@ -203,7 +203,7 @@ export default function AppDetailPage() {
 
   if (appLoading || userLoading || (!app && !userId)) {
     return (
-      <AppLayout breadcrumbs={[{ label: 'My Apps', href: '/apps' }, { label: 'Loading...' }]}>
+      <AppLayout breadcrumbs={[{ label: 'Apps', href: '/apps' }, { label: 'Loading...' }]}>
         <div className="text-center py-12">
           <p className="text-gray-500 dark:text-gray-400">Loading app...</p>
         </div>
@@ -213,7 +213,7 @@ export default function AppDetailPage() {
 
   if (!app) {
     return (
-      <AppLayout breadcrumbs={[{ label: 'My Apps', href: '/apps' }, { label: 'Not Found' }]}>
+      <AppLayout breadcrumbs={[{ label: 'Apps', href: '/apps' }, { label: 'Not Found' }]}>
         <div className="text-center py-12">
           <p className="text-gray-900 dark:text-gray-100">App not found</p>
         </div>
@@ -224,7 +224,7 @@ export default function AppDetailPage() {
   const statusBadge = getStatusBadge(app.status || 'active');
 
   return (
-    <AppLayout breadcrumbs={[{ label: 'My Apps', href: '/apps' }, { label: app.name }]}>
+    <AppLayout breadcrumbs={[{ label: 'Apps', href: '/apps' }, { label: app.name }]}>
       <div className="space-y-6">
         {app.bannerUrl && (
           <div className="relative h-32 rounded-xl overflow-hidden -mt-2 mb-2">

@@ -232,8 +232,8 @@ export default function SponsorsPage() {
 
   return (
     <AppLayout
+      breadcrumbs={[{ label: 'Sponsors' }]}
       title="Sponsors"
-      subtitle="Manage sponsor profiles for campaigns"
       actions={
         <Dialog
           open={createDialogOpen}

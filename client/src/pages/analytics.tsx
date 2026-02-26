@@ -592,7 +592,8 @@ export default function AnalyticsPage() {
 
   const breadcrumbs: { label: string; href?: string }[] = [{ label: 'Analytics', href: '/analytics' }];
   if (view.type !== 'global') {
-    breadcrumbs.push({ label: view.type === 'app' ? 'App Detail' : view.type === 'campaign' ? 'Campaign Detail' : 'Broadcast Detail', href: '#' });
+    const drillLabel = view.type === 'app' ? 'App' : view.type === 'campaign' ? 'Campaign' : 'Broadcast';
+    breadcrumbs.push({ label: drillLabel });
   }
 
   return (
