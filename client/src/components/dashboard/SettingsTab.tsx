@@ -1,9 +1,7 @@
 import { useState, useEffect } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
@@ -18,13 +16,12 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { Settings, Trash2, Upload, X, Link, Calendar, Palette, Zap, ToggleRight } from "lucide-react";
+import { Trash2, X } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
-import { Campaign, UpdateCampaign, Channel, CampaignEngagementConfig, CampaignUiConfig, CampaignFeatureFlags } from "@shared/schema";
+import { Campaign, UpdateCampaign, Channel, CampaignEngagementConfig, CampaignFeatureFlags } from "@shared/schema";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
-import { ImageUploadWithPreview } from "@/components/ImageUploadWithPreview";
 import { useLocation } from "wouter";
 
 interface SettingsTabProps {
@@ -64,8 +61,8 @@ const COUNTRY_OPTIONS = [
 export function SettingsTab({ campaignId, campaign }: SettingsTabProps) {
   const { toast } = useToast();
   const [, setLocation] = useLocation();
+
   const [name, setName] = useState(campaign.name);
-  const [activeTab, setActiveTab] = useState('basic');
   const [description, setDescription] = useState(campaign.description || '');
   const [startDate, setStartDate] = useState(
     campaign.startDate ? new Date(campaign.startDate).toISOString().slice(0, 16) : ''
@@ -73,19 +70,12 @@ export function SettingsTab({ campaignId, campaign }: SettingsTabProps) {
   const [endDate, setEndDate] = useState(
     campaign.endDate ? new Date(campaign.endDate).toISOString().slice(0, 16) : ''
   );
-  const [logo, setLogo] = useState(campaign.logo || '');
   const [isSegmented, setIsSegmented] = useState(campaign.isSegmented === 'true');
   const [targetCountries, setTargetCountries] = useState<string[]>(campaign.targetCountries || []);
   const [targetPercentage, setTargetPercentage] = useState<number>(campaign.targetPercentage || 100);
   const [countrySearch, setCountrySearch] = useState('');
   const [channelId, setChannelId] = useState<number | null>(campaign.channelId || null);
-  const [matchId, setMatchId] = useState(campaign.matchId || '');
-  const [matchName, setMatchName] = useState(campaign.matchName || '');
-  const [matchStartTime, setMatchStartTime] = useState(
-    campaign.matchStartTime ? new Date(campaign.matchStartTime).toISOString().slice(0, 16) : ''
-  );
   const [reachuApiKey, setReachuApiKey] = useState(campaign.reachuApiKey || '');
-
 
   // Engagement config
   const [demoMode, setDemoMode] = useState(false);
@@ -95,10 +85,6 @@ export function SettingsTab({ campaignId, campaign }: SettingsTabProps) {
   const [maxContestsPerMatch, setMaxContestsPerMatch] = useState(10);
   const [enableRealTimeUpdates, setEnableRealTimeUpdates] = useState(true);
   const [updateInterval, setUpdateInterval] = useState(1000);
-
-  // UI config
-  const [primaryColor, setPrimaryColor] = useState('#007AFF');
-  const [secondaryColor, setSecondaryColor] = useState('#5856D6');
 
   // Feature flags
   const [enableLiveStreaming, setEnableLiveStreaming] = useState(true);
@@ -111,22 +97,14 @@ export function SettingsTab({ campaignId, campaign }: SettingsTabProps) {
     queryKey: [`/api/channels?userId=${campaign.userId}`],
   });
 
-  // Fetch engagement config
-  const { data: engagementConfig, isLoading: isLoadingEngagement } = useQuery<CampaignEngagementConfig | null>({
+  const { data: engagementConfig } = useQuery<CampaignEngagementConfig | null>({
     queryKey: [`/api/campaigns/${campaignId}/engagement-config`],
   });
 
-  // Fetch UI config
-  const { data: uiConfig, isLoading: isLoadingUi } = useQuery<CampaignUiConfig | null>({
-    queryKey: [`/api/campaigns/${campaignId}/ui-config`],
-  });
-
-  // Fetch feature flags
-  const { data: featureFlagsData, isLoading: isLoadingFlags } = useQuery<CampaignFeatureFlags | null>({
+  const { data: featureFlagsData } = useQuery<CampaignFeatureFlags | null>({
     queryKey: [`/api/campaigns/${campaignId}/feature-flags`],
   });
 
-  // Sync engagement config to state when loaded
   useEffect(() => {
     if (engagementConfig) {
       if (engagementConfig.demoMode !== undefined) setDemoMode(engagementConfig.demoMode);
@@ -139,15 +117,6 @@ export function SettingsTab({ campaignId, campaign }: SettingsTabProps) {
     }
   }, [engagementConfig]);
 
-  // Sync UI config to state when loaded
-  useEffect(() => {
-    if (uiConfig) {
-      if (uiConfig.primaryColor) setPrimaryColor(uiConfig.primaryColor);
-      if (uiConfig.secondaryColor) setSecondaryColor(uiConfig.secondaryColor);
-    }
-  }, [uiConfig]);
-
-  // Sync feature flags to state when loaded
   useEffect(() => {
     if (featureFlagsData) {
       if (featureFlagsData.enableLiveStreaming !== undefined) setEnableLiveStreaming(featureFlagsData.enableLiveStreaming);
@@ -164,21 +133,13 @@ export function SettingsTab({ campaignId, campaign }: SettingsTabProps) {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/campaigns', campaignId] });
-      // Invalidate all campaign queries (including tenant-scoped ones)
       queryClient.invalidateQueries({ 
         predicate: (query) => query.queryKey[0] === '/api/campaigns'
       });
-      toast({
-        title: 'Campaign Updated',
-        description: 'Your changes have been saved successfully.',
-      });
+      toast({ title: 'Campaign Updated', description: 'Your changes have been saved.' });
     },
     onError: () => {
-      toast({
-        title: 'Error',
-        description: 'Failed to update campaign.',
-        variant: 'destructive',
-      });
+      toast({ title: 'Error', description: 'Failed to update campaign.', variant: 'destructive' });
     },
   });
 
@@ -187,49 +148,27 @@ export function SettingsTab({ campaignId, campaign }: SettingsTabProps) {
       return await apiRequest('DELETE', `/api/campaigns/${campaignId}`);
     },
     onSuccess: () => {
-      // Invalidate all campaign queries (including tenant-scoped ones)
       queryClient.invalidateQueries({ 
         predicate: (query) => query.queryKey[0] === '/api/campaigns'
       });
-      toast({
-        title: 'Campaign Deleted',
-        description: 'The campaign has been permanently deleted.',
-      });
+      toast({ title: 'Campaign Deleted', description: 'The campaign has been permanently deleted.' });
       setLocation('/');
     },
     onError: () => {
-      toast({
-        title: 'Error',
-        description: 'Failed to delete campaign.',
-        variant: 'destructive',
-      });
+      toast({ title: 'Error', description: 'Failed to delete campaign.', variant: 'destructive' });
     },
   });
 
-  // Mutations for config sections
   const saveEngagementConfigMutation = useMutation({
     mutationFn: async (data: any) => {
       return await apiRequest('PUT', `/api/campaigns/${campaignId}/engagement-config`, data);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [`/api/campaigns/${campaignId}/engagement-config`] });
-      toast({ title: 'Saved', description: 'Engagement settings saved successfully.' });
+      toast({ title: 'Saved', description: 'Engagement settings saved.' });
     },
     onError: () => {
       toast({ title: 'Error', description: 'Failed to save engagement settings.', variant: 'destructive' });
-    },
-  });
-
-  const saveUiConfigMutation = useMutation({
-    mutationFn: async (data: any) => {
-      return await apiRequest('PUT', `/api/campaigns/${campaignId}/ui-config`, data);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [`/api/campaigns/${campaignId}/ui-config`] });
-      toast({ title: 'Saved', description: 'UI theme saved successfully.' });
-    },
-    onError: () => {
-      toast({ title: 'Error', description: 'Failed to save UI theme.', variant: 'destructive' });
     },
   });
 
@@ -239,12 +178,46 @@ export function SettingsTab({ campaignId, campaign }: SettingsTabProps) {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [`/api/campaigns/${campaignId}/feature-flags`] });
-      toast({ title: 'Saved', description: 'Feature flags saved successfully.' });
+      toast({ title: 'Saved', description: 'Feature flags saved.' });
     },
     onError: () => {
       toast({ title: 'Error', description: 'Failed to save feature flags.', variant: 'destructive' });
     },
   });
+
+  const handleSaveBasicInfo = (e: React.FormEvent) => {
+    e.preventDefault();
+    updateCampaignMutation.mutate({ name, description });
+  };
+
+  const handleSaveDates = (e: React.FormEvent) => {
+    e.preventDefault();
+    updateCampaignMutation.mutate({
+      startDate: startDate ? new Date(startDate).toISOString() : null,
+      endDate: endDate ? new Date(endDate).toISOString() : null,
+    });
+  };
+
+  const handleSaveChannel = () => {
+    updateCampaignMutation.mutate({ channelId });
+  };
+
+  const handleSaveReachuApiKey = () => {
+    updateCampaignMutation.mutate({ reachuApiKey: reachuApiKey || null });
+  };
+
+  const handleSaveSegmentation = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (isSegmented && targetCountries.length === 0) {
+      toast({ title: 'Validation Error', description: 'Select at least one country for segmentation.', variant: 'destructive' });
+      return;
+    }
+    updateCampaignMutation.mutate({
+      isSegmented: isSegmented ? 'true' : 'false',
+      targetCountries: isSegmented ? targetCountries : null,
+      targetPercentage: isSegmented ? targetPercentage : null,
+    });
+  };
 
   const handleSaveEngagement = (e: React.FormEvent) => {
     e.preventDefault();
@@ -259,14 +232,6 @@ export function SettingsTab({ campaignId, campaign }: SettingsTabProps) {
     });
   };
 
-  const handleSaveUiTheme = (e: React.FormEvent) => {
-    e.preventDefault();
-    saveUiConfigMutation.mutate({
-      primaryColor,
-      secondaryColor,
-    });
-  };
-
   const handleSaveFeatureFlags = (e: React.FormEvent) => {
     e.preventDefault();
     saveFeatureFlagsMutation.mutate({
@@ -275,78 +240,6 @@ export function SettingsTab({ campaignId, campaign }: SettingsTabProps) {
       enableEngagement: enableEngagement ? 'true' : 'false',
       enablePolls: enablePolls ? 'true' : 'false',
       enableContests: enableContests ? 'true' : 'false',
-    });
-  };
-
-  const handleSaveBasicInfo = (e: React.FormEvent) => {
-    e.preventDefault();
-    updateCampaignMutation.mutate({
-      name,
-      description,
-    });
-  };
-
-  const handleSaveDates = (e: React.FormEvent) => {
-    e.preventDefault();
-    
-    // Always include both dates in the update
-    // Send as ISO strings (the backend will convert them to Date objects)
-    const updates: UpdateCampaign = {
-      startDate: startDate ? new Date(startDate).toISOString() : null,
-      endDate: endDate ? new Date(endDate).toISOString() : null
-    };
-    
-    updateCampaignMutation.mutate(updates);
-  };
-
-  const handleSaveLogo = () => {
-    updateCampaignMutation.mutate({ logo });
-  };
-
-  const handleSaveChannel = () => {
-    updateCampaignMutation.mutate({ channelId });
-  };
-
-  const handleSaveReachuApiKey = () => {
-    updateCampaignMutation.mutate({ reachuApiKey: reachuApiKey || null });
-  };
-
-  const handleSaveMatchContext = (e: React.FormEvent) => {
-    e.preventDefault();
-    updateCampaignMutation.mutate({
-      matchId: matchId || null,
-      matchName: matchName || null,
-      matchStartTime: matchStartTime ? new Date(matchStartTime).toISOString() : null,
-    });
-  };
-
-  const handleClearMatchContext = () => {
-    setMatchId('');
-    setMatchName('');
-    setMatchStartTime('');
-    updateCampaignMutation.mutate({
-      matchId: null,
-      matchName: null,
-      matchStartTime: null,
-    });
-  };
-
-  const handleSaveSegmentation = (e: React.FormEvent) => {
-    e.preventDefault();
-    
-    if (isSegmented && targetCountries.length === 0) {
-      toast({
-        title: 'Validation Error',
-        description: 'Please select at least one country for segmentation',
-        variant: 'destructive',
-      });
-      return;
-    }
-
-    updateCampaignMutation.mutate({
-      isSegmented: isSegmented ? 'true' : 'false',
-      targetCountries: isSegmented ? targetCountries : null,
-      targetPercentage: isSegmented ? targetPercentage : null,
     });
   };
 
@@ -361,25 +254,20 @@ export function SettingsTab({ campaignId, campaign }: SettingsTabProps) {
     country.name.toLowerCase().includes(countrySearch.toLowerCase())
   );
 
+  const isSaving = updateCampaignMutation.isPending;
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 max-w-2xl">
+
       {/* Basic Information */}
-      <Card className="border-0">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Settings className="w-5 h-5" />
-            Basic Information
-          </CardTitle>
-          <CardDescription>
-            Update your campaign's basic details
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
+      <div>
+        <h2 className="text-sm font-semibold text-gray-400 uppercase mb-1">Basic Information</h2>
+        <p className="text-xs text-gray-500 mb-4">Update your campaign's name and description</p>
+        <div className="border border-white/10 rounded-lg p-6">
           <form onSubmit={handleSaveBasicInfo} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="campaign-name">Campaign Name</Label>
+            <div className="space-y-1.5">
+              <div className="text-xs text-gray-500 uppercase font-medium">Campaign Name</div>
               <Input
-                id="campaign-name"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 placeholder="Enter campaign name"
@@ -387,10 +275,9 @@ export function SettingsTab({ campaignId, campaign }: SettingsTabProps) {
                 data-testid="input-campaign-name"
               />
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="campaign-description">Description</Label>
+            <div className="space-y-1.5">
+              <div className="text-xs text-gray-500 uppercase font-medium">Description</div>
               <Textarea
-                id="campaign-description"
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 placeholder="Enter campaign description"
@@ -398,39 +285,72 @@ export function SettingsTab({ campaignId, campaign }: SettingsTabProps) {
                 data-testid="input-campaign-description"
               />
             </div>
-            <Button 
-              type="submit" 
-              disabled={updateCampaignMutation.isPending}
+            <button
+              type="submit"
+              disabled={isSaving}
+              className="px-4 py-1.5 bg-white hover:bg-gray-200 text-black rounded text-xs transition font-medium disabled:opacity-50"
               data-testid="button-save-basic-info"
             >
-              {updateCampaignMutation.isPending ? 'Saving...' : 'Save Changes'}
-            </Button>
+              {isSaving ? 'Saving...' : 'Save Changes'}
+            </button>
           </form>
-        </CardContent>
-      </Card>
+        </div>
+      </div>
+
+      {/* Campaign Schedule */}
+      <div>
+        <h2 className="text-sm font-semibold text-gray-400 uppercase mb-1">Campaign Schedule</h2>
+        <p className="text-xs text-gray-500 mb-4">Set the start and end dates</p>
+        <div className="border border-white/10 rounded-lg p-6">
+          <form onSubmit={handleSaveDates} className="space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <div className="text-xs text-gray-500 uppercase font-medium">Start Date</div>
+                <Input
+                  type="datetime-local"
+                  value={startDate}
+                  onChange={(e) => setStartDate(e.target.value)}
+                  data-testid="input-start-date"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <div className="text-xs text-gray-500 uppercase font-medium">End Date</div>
+                <Input
+                  type="datetime-local"
+                  value={endDate}
+                  onChange={(e) => setEndDate(e.target.value)}
+                  data-testid="input-end-date"
+                />
+              </div>
+            </div>
+            <button
+              type="submit"
+              disabled={isSaving}
+              className="px-4 py-1.5 bg-white hover:bg-gray-200 text-black rounded text-xs transition font-medium disabled:opacity-50"
+              data-testid="button-save-dates"
+            >
+              {isSaving ? 'Saving...' : 'Save Schedule'}
+            </button>
+          </form>
+        </div>
+      </div>
 
       {/* Channel Assignment */}
-      <Card className="border-0">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Link className="w-5 h-5" />
-            Channel Assignment
-          </CardTitle>
-          <CardDescription>
-            Optional — assign to a channel for grouping or legacy integrations
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="channel-select">Channel</Label>
+      <div>
+        <h2 className="text-sm font-semibold text-gray-400 uppercase mb-1">Channel Assignment</h2>
+        <p className="text-xs text-gray-500 mb-4">Optional — assign to a channel for grouping or legacy integrations</p>
+        <div className="border border-white/10 rounded-lg p-6 space-y-4">
+          <div className="space-y-1.5">
+            <div className="text-xs text-gray-500 uppercase font-medium">Channel</div>
             <Select
               value={channelId?.toString() || ""}
               onValueChange={(value) => setChannelId(value ? parseInt(value) : null)}
             >
-              <SelectTrigger id="channel-select" data-testid="select-channel">
-                <SelectValue placeholder="Select a channel" />
+              <SelectTrigger data-testid="select-channel">
+                <SelectValue placeholder="No channel" />
               </SelectTrigger>
               <SelectContent>
+                <SelectItem value="">No channel</SelectItem>
                 {channels.map((channel) => (
                   <SelectItem key={channel.id} value={channel.id.toString()}>
                     {channel.name}
@@ -439,32 +359,25 @@ export function SettingsTab({ campaignId, campaign }: SettingsTabProps) {
               </SelectContent>
             </Select>
           </div>
-          <Button 
+          <button
             onClick={handleSaveChannel}
-            disabled={updateCampaignMutation.isPending}
+            disabled={isSaving}
+            className="px-4 py-1.5 bg-white hover:bg-gray-200 text-black rounded text-xs transition font-medium disabled:opacity-50"
             data-testid="button-save-channel"
           >
-            {updateCampaignMutation.isPending ? 'Saving...' : 'Save Channel'}
-          </Button>
-        </CardContent>
-      </Card>
+            {isSaving ? 'Saving...' : 'Save Channel'}
+          </button>
+        </div>
+      </div>
 
       {/* Reachu Integration */}
-      <Card className="border-0">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Zap className="w-5 h-5" />
-            Reachu Integration
-          </CardTitle>
-          <CardDescription>
-            API key for Reachu commerce integration (optional)
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="reachu-api-key">Reachu API Key</Label>
+      <div>
+        <h2 className="text-sm font-semibold text-gray-400 uppercase mb-1">Reachu Integration</h2>
+        <p className="text-xs text-gray-500 mb-4">API key for Reachu commerce integration</p>
+        <div className="border border-white/10 rounded-lg p-6 space-y-4">
+          <div className="space-y-1.5">
+            <div className="text-xs text-gray-500 uppercase font-medium">API Key</div>
             <Input
-              id="reachu-api-key"
               value={reachuApiKey}
               onChange={(e) => setReachuApiKey(e.target.value)}
               placeholder="Enter Reachu API key..."
@@ -472,243 +385,87 @@ export function SettingsTab({ campaignId, campaign }: SettingsTabProps) {
               data-testid="input-campaign-reachu-key"
             />
           </div>
-          <Button
+          <button
             onClick={handleSaveReachuApiKey}
-            disabled={updateCampaignMutation.isPending}
+            disabled={isSaving}
+            className="px-4 py-1.5 bg-white hover:bg-gray-200 text-black rounded text-xs transition font-medium disabled:opacity-50"
             data-testid="button-save-campaign-reachu-key"
           >
-            {updateCampaignMutation.isPending ? 'Saving...' : 'Save API Key'}
-          </Button>
-        </CardContent>
-      </Card>
-
-      {/* Campaign Dates */}
-      <Card className="border-0">
-        <CardHeader>
-          <CardTitle>Campaign Schedule</CardTitle>
-          <CardDescription>
-            Set the start and end dates for your campaign
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={handleSaveDates} className="space-y-4">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="start-date">Start Date</Label>
-                <Input
-                  id="start-date"
-                  type="datetime-local"
-                  value={startDate}
-                  onChange={(e) => setStartDate(e.target.value)}
-                  data-testid="input-start-date"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="end-date">End Date</Label>
-                <Input
-                  id="end-date"
-                  type="datetime-local"
-                  value={endDate}
-                  onChange={(e) => setEndDate(e.target.value)}
-                  data-testid="input-end-date"
-                />
-              </div>
-            </div>
-            <Button 
-              type="submit" 
-              disabled={updateCampaignMutation.isPending}
-              data-testid="button-save-dates"
-            >
-              {updateCampaignMutation.isPending ? 'Saving...' : 'Save Schedule'}
-            </Button>
-          </form>
-        </CardContent>
-      </Card>
-
-      {/* Campaign Logo */}
-      <Card className="border-0">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Upload className="w-5 h-5" />
-            Campaign Logo
-          </CardTitle>
-          <CardDescription>
-            Upload or provide a URL for your campaign logo
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <ImageUploadWithPreview
-            value={logo}
-            onChange={setLogo}
-            label="Logo"
-            testId="campaign-logo"
-          />
-          <Button 
-            onClick={handleSaveLogo}
-            disabled={updateCampaignMutation.isPending}
-            data-testid="button-save-logo"
-          >
-            {updateCampaignMutation.isPending ? 'Saving...' : 'Save Logo'}
-          </Button>
-        </CardContent>
-      </Card>
-
-      {/* Match Context */}
-      <Card className="border-0">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Calendar className="w-5 h-5" />
-            Match Context
-          </CardTitle>
-          <CardDescription>
-            Associate this campaign with a specific match or event for context-aware targeting
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={handleSaveMatchContext} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="match-id">Match ID</Label>
-              <Input
-                id="match-id"
-                value={matchId}
-                onChange={(e) => setMatchId(e.target.value)}
-                placeholder="Enter external match identifier (e.g., match-123)"
-                data-testid="input-match-id"
-              />
-              <p className="text-xs text-muted-foreground">
-                External identifier to link this campaign to a specific match
-              </p>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="match-name">Match Name</Label>
-              <Input
-                id="match-name"
-                value={matchName}
-                onChange={(e) => setMatchName(e.target.value)}
-                placeholder="Enter match name (e.g., Team A vs Team B)"
-                data-testid="input-match-name"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="match-start-time">Match Start Time</Label>
-              <Input
-                id="match-start-time"
-                type="datetime-local"
-                value={matchStartTime}
-                onChange={(e) => setMatchStartTime(e.target.value)}
-                data-testid="input-match-start-time"
-              />
-            </div>
-            <div className="flex gap-2">
-              <Button 
-                type="submit" 
-                disabled={updateCampaignMutation.isPending}
-                data-testid="button-save-match-context"
-              >
-                {updateCampaignMutation.isPending ? 'Saving...' : 'Save Match Context'}
-              </Button>
-              {(matchId || matchName || matchStartTime) && (
-                <Button 
-                  type="button"
-                  variant="outline"
-                  onClick={handleClearMatchContext}
-                  disabled={updateCampaignMutation.isPending}
-                  data-testid="button-clear-match-context"
-                >
-                  Clear Match Context
-                </Button>
-              )}
-            </div>
-          </form>
-        </CardContent>
-      </Card>
+            {isSaving ? 'Saving...' : 'Save API Key'}
+          </button>
+        </div>
+      </div>
 
       {/* Targeting & Segmentation */}
-      <Card className="border-0">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Settings className="w-5 h-5" />
-            Targeting & Segmentation
-          </CardTitle>
-          <CardDescription>
-            Restrict campaign visibility by country and user percentage
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
+      <div>
+        <h2 className="text-sm font-semibold text-gray-400 uppercase mb-1">Targeting & Segmentation</h2>
+        <p className="text-xs text-gray-500 mb-4">Restrict campaign visibility by country and user percentage</p>
+        <div className="border border-white/10 rounded-lg p-6">
           <form onSubmit={handleSaveSegmentation} className="space-y-4">
-            <div className="flex items-center space-x-2">
+            <label className="flex items-center gap-3 cursor-pointer">
               <Checkbox
-                id="enable-segmentation"
                 checked={isSegmented}
                 onCheckedChange={(checked) => setIsSegmented(checked as boolean)}
                 data-testid="checkbox-enable-segmentation"
               />
-              <Label htmlFor="enable-segmentation" className="cursor-pointer">
-                Enable segmentation for this campaign
-              </Label>
-            </div>
+              <span className="text-sm text-gray-200">Enable segmentation for this campaign</span>
+            </label>
 
             {isSegmented && (
               <>
                 <div className="space-y-2">
-                  <Label>Target Countries</Label>
-                  <p className="text-xs text-muted-foreground">
-                    Select which countries can see this campaign
-                  </p>
+                  <div className="text-xs text-gray-500 uppercase font-medium">Target Countries</div>
+                  <p className="text-xs text-gray-600">Select which countries can see this campaign</p>
                   <Input
                     placeholder="Search countries..."
                     value={countrySearch}
                     onChange={(e) => setCountrySearch(e.target.value)}
                     data-testid="input-country-search"
                   />
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mt-3 max-h-60 overflow-y-auto border rounded-lg p-3">
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5 mt-3 max-h-56 overflow-y-auto border border-white/10 rounded-lg p-3">
                     {filteredCountries.map(country => (
-                      <label key={country.code} className="flex items-center space-x-2 cursor-pointer hover:bg-accent p-2 rounded">
+                      <label key={country.code} className="flex items-center gap-2 cursor-pointer hover:bg-white/5 px-2 py-1.5 rounded">
                         <Checkbox
                           checked={targetCountries.includes(country.code)}
                           onCheckedChange={() => toggleCountry(country.code)}
                           data-testid={`checkbox-country-${country.code}`}
                         />
-                        <span className="text-sm">{country.code}</span>
+                        <span className="text-xs text-gray-300">{country.code} — {country.name}</span>
                       </label>
                     ))}
                   </div>
-                  <div className="flex flex-wrap gap-2 mt-3">
-                    {targetCountries.map(code => {
-                      const country = COUNTRY_OPTIONS.find(c => c.code === code);
-                      return (
-                        <Badge key={code} variant="secondary" className="flex items-center gap-1" data-testid={`badge-country-${code}`}>
-                          {country?.name || code}
-                          <button
-                            type="button"
-                            onClick={() => toggleCountry(code)}
-                            className="hover:text-destructive"
-                          >
-                            <X className="w-3 h-3" />
-                          </button>
-                        </Badge>
-                      );
-                    })}
-                  </div>
+                  {targetCountries.length > 0 && (
+                    <div className="flex flex-wrap gap-2 mt-2">
+                      {targetCountries.map(code => {
+                        const country = COUNTRY_OPTIONS.find(c => c.code === code);
+                        return (
+                          <span key={code} className="flex items-center gap-1 px-2 py-1 bg-white/5 border border-white/10 rounded text-xs text-gray-300" data-testid={`badge-country-${code}`}>
+                            {country?.name || code}
+                            <button type="button" onClick={() => toggleCountry(code)} className="hover:text-white ml-0.5">
+                              <X className="w-3 h-3" />
+                            </button>
+                          </span>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="target-percentage">
-                    User Percentage: {targetPercentage}%
-                  </Label>
-                  <p className="text-xs text-muted-foreground">
-                    Only show this campaign to this percentage of users (deterministic by user ID)
-                  </p>
-                  <Input
-                    id="target-percentage"
+                  <div className="text-xs text-gray-500 uppercase font-medium">
+                    User Percentage — {targetPercentage}%
+                  </div>
+                  <p className="text-xs text-gray-600">Show to this percentage of users (deterministic by user ID)</p>
+                  <input
                     type="range"
                     min="1"
                     max="100"
                     value={targetPercentage}
                     onChange={(e) => setTargetPercentage(parseInt(e.target.value))}
+                    className="w-full accent-white"
                     data-testid="input-target-percentage"
                   />
-                  <div className="flex gap-2">
+                  <div className="flex items-center gap-2">
                     <Input
                       type="number"
                       min="1"
@@ -721,40 +478,34 @@ export function SettingsTab({ campaignId, campaign }: SettingsTabProps) {
                       className="w-20"
                       data-testid="input-percentage-number"
                     />
-                    <span className="text-sm text-muted-foreground">%</span>
+                    <span className="text-xs text-gray-500">%</span>
                   </div>
                 </div>
               </>
             )}
 
-            <Button 
-              type="submit" 
-              disabled={updateCampaignMutation.isPending}
+            <button
+              type="submit"
+              disabled={isSaving}
+              className="px-4 py-1.5 bg-white hover:bg-gray-200 text-black rounded text-xs transition font-medium disabled:opacity-50"
               data-testid="button-save-segmentation"
             >
-              {updateCampaignMutation.isPending ? 'Saving...' : 'Save Targeting Settings'}
-            </Button>
+              {isSaving ? 'Saving...' : 'Save Targeting'}
+            </button>
           </form>
-        </CardContent>
-      </Card>
+        </div>
+      </div>
 
       {/* Engagement Settings */}
-      <Card className="border-0">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Zap className="w-5 h-5" />
-            Engagement Settings
-          </CardTitle>
-          <CardDescription>
-            Configure polls, contests, and real-time updates
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={handleSaveEngagement} className="space-y-4">
+      <div>
+        <h2 className="text-sm font-semibold text-gray-400 uppercase mb-1">Engagement Settings</h2>
+        <p className="text-xs text-gray-500 mb-4">Configure polls, contests, and real-time defaults for this campaign</p>
+        <div className="border border-white/10 rounded-lg p-6">
+          <form onSubmit={handleSaveEngagement} className="space-y-5">
             <div className="flex items-center justify-between">
               <div>
-                <Label>Demo Mode</Label>
-                <p className="text-xs text-muted-foreground">Use mock data (for testing only)</p>
+                <div className="text-sm text-gray-200">Demo Mode</div>
+                <div className="text-xs text-gray-500 mt-0.5">Use mock data for testing only</div>
               </div>
               <Switch
                 checked={demoMode}
@@ -762,11 +513,11 @@ export function SettingsTab({ campaignId, campaign }: SettingsTabProps) {
                 data-testid="switch-demo-mode"
               />
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="poll-duration">Default Poll Duration (seconds)</Label>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <div className="text-xs text-gray-500 uppercase font-medium">Default Poll Duration (s)</div>
                 <Input
-                  id="poll-duration"
                   type="number"
                   value={defaultPollDuration}
                   onChange={(e) => setDefaultPollDuration(parseInt(e.target.value) || 300)}
@@ -775,10 +526,9 @@ export function SettingsTab({ campaignId, campaign }: SettingsTabProps) {
                   data-testid="input-poll-duration"
                 />
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="contest-duration">Default Contest Duration (seconds)</Label>
+              <div className="space-y-1.5">
+                <div className="text-xs text-gray-500 uppercase font-medium">Default Contest Duration (s)</div>
                 <Input
-                  id="contest-duration"
                   type="number"
                   value={defaultContestDuration}
                   onChange={(e) => setDefaultContestDuration(parseInt(e.target.value) || 600)}
@@ -787,10 +537,9 @@ export function SettingsTab({ campaignId, campaign }: SettingsTabProps) {
                   data-testid="input-contest-duration"
                 />
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="max-votes">Max Votes Per Poll</Label>
+              <div className="space-y-1.5">
+                <div className="text-xs text-gray-500 uppercase font-medium">Max Votes Per Poll</div>
                 <Input
-                  id="max-votes"
                   type="number"
                   value={maxVotesPerPoll}
                   onChange={(e) => setMaxVotesPerPoll(parseInt(e.target.value) || 1)}
@@ -799,10 +548,9 @@ export function SettingsTab({ campaignId, campaign }: SettingsTabProps) {
                   data-testid="input-max-votes"
                 />
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="max-contests">Max Contests Per Match</Label>
+              <div className="space-y-1.5">
+                <div className="text-xs text-gray-500 uppercase font-medium">Max Contests Per Broadcast</div>
                 <Input
-                  id="max-contests"
                   type="number"
                   value={maxContestsPerMatch}
                   onChange={(e) => setMaxContestsPerMatch(parseInt(e.target.value) || 10)}
@@ -812,10 +560,11 @@ export function SettingsTab({ campaignId, campaign }: SettingsTabProps) {
                 />
               </div>
             </div>
+
             <div className="flex items-center justify-between">
               <div>
-                <Label>Enable Real-Time Updates</Label>
-                <p className="text-xs text-muted-foreground">Use WebSocket for live updates</p>
+                <div className="text-sm text-gray-200">Real-Time Updates</div>
+                <div className="text-xs text-gray-500 mt-0.5">Use WebSocket for live data</div>
               </div>
               <Switch
                 checked={enableRealTimeUpdates}
@@ -823,11 +572,11 @@ export function SettingsTab({ campaignId, campaign }: SettingsTabProps) {
                 data-testid="switch-realtime-updates"
               />
             </div>
+
             {!enableRealTimeUpdates && (
-              <div className="space-y-2">
-                <Label htmlFor="update-interval">Polling Interval (ms)</Label>
+              <div className="space-y-1.5">
+                <div className="text-xs text-gray-500 uppercase font-medium">Polling Interval (ms)</div>
                 <Input
-                  id="update-interval"
                   type="number"
                   value={updateInterval}
                   onChange={(e) => setUpdateInterval(parseInt(e.target.value) || 1000)}
@@ -837,218 +586,104 @@ export function SettingsTab({ campaignId, campaign }: SettingsTabProps) {
                 />
               </div>
             )}
-            <Button 
-              type="submit" 
+
+            <button
+              type="submit"
               disabled={saveEngagementConfigMutation.isPending}
+              className="px-4 py-1.5 bg-white hover:bg-gray-200 text-black rounded text-xs transition font-medium disabled:opacity-50"
               data-testid="button-save-engagement"
             >
               {saveEngagementConfigMutation.isPending ? 'Saving...' : 'Save Engagement Settings'}
-            </Button>
+            </button>
           </form>
-        </CardContent>
-      </Card>
-
-      {/* UI Theme */}
-      <Card className="border-0">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Palette className="w-5 h-5" />
-            UI Theme
-          </CardTitle>
-          <CardDescription>
-            Customize colors for SDK components
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={handleSaveUiTheme} className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="primary-color">Primary Color</Label>
-                <div className="flex gap-2">
-                  <Input
-                    id="primary-color"
-                    type="color"
-                    value={primaryColor}
-                    onChange={(e) => setPrimaryColor(e.target.value)}
-                    className="w-12 h-10 p-1"
-                    data-testid="input-primary-color"
-                  />
-                  <Input
-                    value={primaryColor}
-                    onChange={(e) => setPrimaryColor(e.target.value)}
-                    placeholder="#007AFF"
-                    className="flex-1"
-                  />
-                </div>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="secondary-color">Secondary Color</Label>
-                <div className="flex gap-2">
-                  <Input
-                    id="secondary-color"
-                    type="color"
-                    value={secondaryColor}
-                    onChange={(e) => setSecondaryColor(e.target.value)}
-                    className="w-12 h-10 p-1"
-                    data-testid="input-secondary-color"
-                  />
-                  <Input
-                    value={secondaryColor}
-                    onChange={(e) => setSecondaryColor(e.target.value)}
-                    placeholder="#5856D6"
-                    className="flex-1"
-                  />
-                </div>
-              </div>
-            </div>
-            <div className="flex gap-2">
-              <div className="w-12 h-12 rounded-lg" style={{ backgroundColor: primaryColor }} />
-              <div className="w-12 h-12 rounded-lg" style={{ backgroundColor: secondaryColor }} />
-              <span className="text-sm text-muted-foreground self-center ml-2">Color preview</span>
-            </div>
-            <Button 
-              type="submit" 
-              disabled={saveUiConfigMutation.isPending}
-              data-testid="button-save-ui-theme"
-            >
-              {saveUiConfigMutation.isPending ? 'Saving...' : 'Save UI Theme'}
-            </Button>
-          </form>
-        </CardContent>
-      </Card>
+        </div>
+      </div>
 
       {/* Feature Flags */}
-      <Card className="border-0">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <ToggleRight className="w-5 h-5" />
-            Feature Flags
-          </CardTitle>
-          <CardDescription>
-            Enable or disable SDK features for this campaign
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={handleSaveFeatureFlags} className="space-y-4">
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
+      <div>
+        <h2 className="text-sm font-semibold text-gray-400 uppercase mb-1">Feature Flags</h2>
+        <p className="text-xs text-gray-500 mb-4">Enable or disable SDK features for this campaign</p>
+        <div className="border border-white/10 rounded-lg p-6">
+          <form onSubmit={handleSaveFeatureFlags} className="space-y-5">
+            {[
+              { label: 'Live Streaming', desc: 'Enable video live streaming features', state: enableLiveStreaming, set: setEnableLiveStreaming, testId: 'switch-live-streaming' },
+              { label: 'Product Catalog', desc: 'Enable product browsing and shopping', state: enableProductCatalog, set: setEnableProductCatalog, testId: 'switch-product-catalog' },
+              { label: 'Engagement', desc: 'Enable polls, contests, and interactions', state: enableEngagement, set: setEnableEngagement, testId: 'switch-engagement' },
+              { label: 'Polls', desc: 'Allow users to vote in polls', state: enablePolls, set: setEnablePolls, testId: 'switch-polls' },
+              { label: 'Contests', desc: 'Allow users to participate in contests', state: enableContests, set: setEnableContests, testId: 'switch-contests' },
+            ].map(({ label, desc, state, set, testId }) => (
+              <div key={label} className="flex items-center justify-between">
                 <div>
-                  <Label>Live Streaming</Label>
-                  <p className="text-xs text-muted-foreground">Enable video live streaming features</p>
+                  <div className="text-sm text-gray-200">{label}</div>
+                  <div className="text-xs text-gray-500 mt-0.5">{desc}</div>
                 </div>
-                <Switch
-                  checked={enableLiveStreaming}
-                  onCheckedChange={setEnableLiveStreaming}
-                  data-testid="switch-live-streaming"
-                />
+                <Switch checked={state} onCheckedChange={set} data-testid={testId} />
               </div>
-              <div className="flex items-center justify-between">
-                <div>
-                  <Label>Product Catalog</Label>
-                  <p className="text-xs text-muted-foreground">Enable product browsing and shopping</p>
-                </div>
-                <Switch
-                  checked={enableProductCatalog}
-                  onCheckedChange={setEnableProductCatalog}
-                  data-testid="switch-product-catalog"
-                />
-              </div>
-              <div className="flex items-center justify-between">
-                <div>
-                  <Label>Engagement</Label>
-                  <p className="text-xs text-muted-foreground">Enable polls, contests, and interactions</p>
-                </div>
-                <Switch
-                  checked={enableEngagement}
-                  onCheckedChange={setEnableEngagement}
-                  data-testid="switch-engagement"
-                />
-              </div>
-              <div className="flex items-center justify-between">
-                <div>
-                  <Label>Polls</Label>
-                  <p className="text-xs text-muted-foreground">Allow users to vote in polls</p>
-                </div>
-                <Switch
-                  checked={enablePolls}
-                  onCheckedChange={setEnablePolls}
-                  data-testid="switch-polls"
-                />
-              </div>
-              <div className="flex items-center justify-between">
-                <div>
-                  <Label>Contests</Label>
-                  <p className="text-xs text-muted-foreground">Allow users to participate in contests</p>
-                </div>
-                <Switch
-                  checked={enableContests}
-                  onCheckedChange={setEnableContests}
-                  data-testid="switch-contests"
-                />
-              </div>
-            </div>
-            <Button 
-              type="submit" 
+            ))}
+
+            <button
+              type="submit"
               disabled={saveFeatureFlagsMutation.isPending}
+              className="px-4 py-1.5 bg-white hover:bg-gray-200 text-black rounded text-xs transition font-medium disabled:opacity-50"
               data-testid="button-save-feature-flags"
             >
               {saveFeatureFlagsMutation.isPending ? 'Saving...' : 'Save Feature Flags'}
-            </Button>
+            </button>
           </form>
-        </CardContent>
-      </Card>
+        </div>
+      </div>
 
       {/* Danger Zone */}
-      <Card className="border-0 border-destructive/50">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-destructive">
-            <Trash2 className="w-5 h-5" />
-            Danger Zone
-          </CardTitle>
-          <CardDescription>
-            Permanently delete this campaign and all its data
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <AlertDialog>
-            <AlertDialogTrigger asChild>
-              <Button 
-                variant="destructive" 
-                data-testid="button-delete-campaign"
-              >
-                <Trash2 className="w-4 h-4 mr-2" />
-                Delete Campaign
-              </Button>
-            </AlertDialogTrigger>
-            <AlertDialogContent>
-              <AlertDialogHeader>
-                <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
-                <AlertDialogDescription>
-                  This action cannot be undone. This will permanently delete the campaign
-                  "<strong>{campaign.name}</strong>" and all associated data including:
-                  <ul className="list-disc list-inside mt-2 space-y-1">
-                    <li>All campaign components</li>
-                    <li>Scheduled components</li>
-                    <li>Event history</li>
-                    <li>Form states</li>
-                  </ul>
-                </AlertDialogDescription>
-              </AlertDialogHeader>
-              <AlertDialogFooter>
-                <AlertDialogCancel data-testid="button-cancel-delete">Cancel</AlertDialogCancel>
-                <AlertDialogAction
-                  onClick={() => deleteCampaignMutation.mutate()}
-                  disabled={deleteCampaignMutation.isPending}
-                  className="bg-destructive hover:bg-destructive/90"
-                  data-testid="button-confirm-delete"
+      <div>
+        <h2 className="text-sm font-semibold text-red-400/80 uppercase mb-1">Danger Zone</h2>
+        <p className="text-xs text-gray-500 mb-4">Permanent and irreversible actions</p>
+        <div className="border border-red-500/20 bg-red-500/5 rounded-lg p-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="text-sm text-gray-200">Delete Campaign</div>
+              <div className="text-xs text-gray-500 mt-0.5">Permanently delete this campaign and all associated data</div>
+            </div>
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <button
+                  className="px-4 py-1.5 bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 rounded text-xs transition font-medium flex items-center gap-1.5"
+                  data-testid="button-delete-campaign"
                 >
-                  {deleteCampaignMutation.isPending ? 'Deleting...' : 'Delete Campaign'}
-                </AlertDialogAction>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
-        </CardContent>
-      </Card>
+                  <Trash2 className="w-3.5 h-3.5" />
+                  Delete
+                </button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    This action cannot be undone. This will permanently delete the campaign
+                    "<strong>{campaign.name}</strong>" and all associated data including:
+                    <ul className="list-disc list-inside mt-2 space-y-1">
+                      <li>All campaign components</li>
+                      <li>Scheduled components</li>
+                      <li>Event history</li>
+                      <li>Form states</li>
+                    </ul>
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel data-testid="button-cancel-delete">Cancel</AlertDialogCancel>
+                  <AlertDialogAction
+                    onClick={() => deleteCampaignMutation.mutate()}
+                    disabled={deleteCampaignMutation.isPending}
+                    className="bg-destructive hover:bg-destructive/90"
+                    data-testid="button-confirm-delete"
+                  >
+                    {deleteCampaignMutation.isPending ? 'Deleting...' : 'Delete Campaign'}
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          </div>
+        </div>
+      </div>
+
     </div>
   );
 }

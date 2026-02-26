@@ -4276,14 +4276,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: 'Campaign not found' });
       }
 
-      // Verify campaign belongs to a channel of this client app
-      if (!campaign.channelId) {
-        return res.status(400).json({ message: 'Campaign has no channel assigned' });
+      // Verify campaign belongs to this client app — direct match or via channel (legacy)
+      const directMatch = campaign.clientAppId === clientApp.id;
+      let channelMatch = false;
+      let channel = null;
+      if (campaign.channelId) {
+        channel = await storage.getChannel(campaign.channelId);
+        channelMatch = !!(channel && channel.clientAppId === clientApp.id);
       }
-
-      const channel = await storage.getChannel(campaign.channelId);
-      
-      if (!channel || channel.clientAppId !== clientApp.id) {
+      if (!directMatch && !channelMatch) {
         return res.status(403).json({ message: 'Campaign does not belong to this API key' });
       }
 
@@ -4301,8 +4302,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
           campaignId: campaign.id,
           campaignName: campaign.name,
           campaignLogo: campaign.logo ? toAbsoluteUrl(campaign.logo, req) : null,
-          channelId: channel.id,
-          channelName: channel.name,
+          channelId: channel?.id || null,
+          channelName: channel?.name || null,
           offers: []
         });
       }
@@ -4313,8 +4314,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
           campaignId: campaign.id,
           campaignName: campaign.name,
           campaignLogo: campaign.logo ? toAbsoluteUrl(campaign.logo, req) : null,
-          channelId: channel.id,
-          channelName: channel.name,
+          channelId: channel?.id || null,
+          channelName: channel?.name || null,
           offers: [] 
         });
       }
@@ -4350,8 +4351,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         campaignId: campaign.id,
         campaignName: campaign.name,
         campaignLogo: campaign.logo ? toAbsoluteUrl(campaign.logo, req) : null,
-        channelId: channel.id,
-        channelName: channel.name,
+        channelId: channel?.id || null,
+        channelName: channel?.name || null,
         offers
       };
 
