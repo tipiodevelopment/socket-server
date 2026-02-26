@@ -3692,79 +3692,73 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const matchIdFilter = req.query.matchId as string | undefined;
       const now = new Date();
 
-      // Get all channels for this client app
-      const channels = await storage.getClientAppChannels(clientApp.id);
-      
-      // Get all campaigns for each channel
+      // Get all campaigns for this client app directly (channel is now campaign-level metadata)
+      const clientAppCampaigns = await storage.getClientAppCampaigns(clientApp.id);
       const allCampaigns: any[] = [];
-      
-      for (const channel of channels) {
-        const channelCampaigns = await storage.getChannelCampaigns(channel.id);
-        
-        for (const campaign of channelCampaigns) {
-          // Filter by matchId if provided
-          if (matchIdFilter && campaign.matchId !== matchIdFilter) {
-            continue;
-          }
 
-          // Check if campaign is active
-          const isPaused = campaign.isPaused === 'true';
-          const startDate = campaign.startDate ? new Date(campaign.startDate) : null;
-          const endDate = campaign.endDate ? new Date(campaign.endDate) : null;
-          
-          const isWithinDates = (!startDate || startDate <= now) && (!endDate || endDate >= now);
-          const isActive = !isPaused && isWithinDates;
-
-          if (!isActive) {
-            continue;
-          }
-
-          // Get active components for this campaign
-          const components = await storage.getCampaignComponents(campaign.id);
-          const activeComponents = components
-            .filter(c => c.status === 'active')
-            .map(cc => {
-              const component: any = {
-                id: cc.componentId,
-                type: cc.component.type,
-                name: cc.instanceName || cc.component.name,
-                config: normalizeUrls(cc.customConfig || cc.component.config, req.protocol, req.get('host')),
-                status: cc.status
-              };
-
-              // Include matchContext if component has matchId
-              if (cc.matchId) {
-                component.matchContext = {
-                  matchId: cc.matchId
-                };
-              }
-
-              return component;
-            });
-
-          const campaignData: any = {
-            campaignId: campaign.id,
-            campaignName: campaign.name,
-            campaignLogo: campaign.logo ? toAbsoluteUrl(campaign.logo, req) : null,
-            isActive: true,
-            startDate: campaign.startDate,
-            endDate: campaign.endDate,
-            isPaused: isPaused,
-            components: activeComponents
-          };
-
-          // Include matchContext if campaign has matchId
-          if (campaign.matchId) {
-            campaignData.matchContext = {
-              matchId: campaign.matchId,
-              matchName: campaign.matchName || null,
-              startTime: campaign.matchStartTime ? campaign.matchStartTime.toISOString() : null,
-              channelId: campaign.channelId
-            };
-          }
-
-          allCampaigns.push(campaignData);
+      for (const campaign of clientAppCampaigns) {
+        // Filter by matchId if provided
+        if (matchIdFilter && campaign.matchId !== matchIdFilter) {
+          continue;
         }
+
+        // Check if campaign is active
+        const isPaused = campaign.isPaused === 'true';
+        const startDate = campaign.startDate ? new Date(campaign.startDate) : null;
+        const endDate = campaign.endDate ? new Date(campaign.endDate) : null;
+        
+        const isWithinDates = (!startDate || startDate <= now) && (!endDate || endDate >= now);
+        const isActive = !isPaused && isWithinDates;
+
+        if (!isActive) {
+          continue;
+        }
+
+        // Get active components for this campaign
+        const components = await storage.getCampaignComponents(campaign.id);
+        const activeComponents = components
+          .filter(c => c.status === 'active')
+          .map(cc => {
+            const component: any = {
+              id: cc.componentId,
+              type: cc.component.type,
+              name: cc.instanceName || cc.component.name,
+              config: normalizeUrls(cc.customConfig || cc.component.config, req.protocol, req.get('host')),
+              status: cc.status
+            };
+
+            // Include matchContext if component has matchId
+            if (cc.matchId) {
+              component.matchContext = {
+                matchId: cc.matchId
+              };
+            }
+
+            return component;
+          });
+
+        const campaignData: any = {
+          campaignId: campaign.id,
+          campaignName: campaign.name,
+          campaignLogo: campaign.logo ? toAbsoluteUrl(campaign.logo, req) : null,
+          isActive: true,
+          startDate: campaign.startDate,
+          endDate: campaign.endDate,
+          isPaused: isPaused,
+          components: activeComponents
+        };
+
+        // Include matchContext if campaign has matchId
+        if (campaign.matchId) {
+          campaignData.matchContext = {
+            matchId: campaign.matchId,
+            matchName: campaign.matchName || null,
+            startTime: campaign.matchStartTime ? campaign.matchStartTime.toISOString() : null,
+            channelId: campaign.channelId
+          };
+        }
+
+        allCampaigns.push(campaignData);
       }
 
       // Sort by startDate (most recent first)
@@ -3928,25 +3922,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: 'Campaign not found' });
       }
 
-      // Verify campaign belongs to a channel of this client app
-      if (!campaign.channelId) {
-        return res.status(400).json({ message: 'Campaign has no channel assigned' });
-      }
+      // Resolve channel if campaign has one (optional — channel is now campaign-level metadata)
+      const channel = campaign.channelId ? await storage.getChannel(campaign.channelId) : null;
 
-      const channel = await storage.getChannel(campaign.channelId);
-      
-      if (!channel || channel.clientAppId !== clientApp.id) {
+      // Verify campaign belongs to this client app (directly or via legacy channel association)
+      const belongsByClientApp = campaign.clientAppId === clientApp.id;
+      const belongsByChannel = channel && channel.clientAppId === clientApp.id;
+      if (!belongsByClientApp && !belongsByChannel) {
         return res.status(403).json({ message: 'Campaign does not belong to this API key' });
       }
 
-      const dynamicConfig = channel.dynamicConfig as any || {};
+      const dynamicConfig = (channel?.dynamicConfig as any) || {};
 
       const config: any = {
         campaignId: campaign.id,
         campaignName: campaign.name,
         campaignLogo: campaign.logo ? toAbsoluteUrl(campaign.logo, req) : null,
-        channelId: channel.id,
-        channelName: channel.name,
+        channelId: channel?.id ?? null,
+        channelName: channel?.name ?? null,
         environment: dynamicConfig.environment || 'production',
         campaigns: {
           webSocketBaseURL: dynamicConfig.webSocketBaseURL || `${req.protocol}://${req.get('host')}`,

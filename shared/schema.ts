@@ -29,7 +29,7 @@ export const clientApps = pgTable("client_apps", {
 
 export const channels = pgTable("channels", {
   id: serial("id").primaryKey(),
-  clientAppId: integer("client_app_id").notNull().references(() => clientApps.id, { onDelete: 'cascade' }),
+  clientAppId: integer("client_app_id").references(() => clientApps.id, { onDelete: 'set null' }),
   name: varchar("name", { length: 255 }).notNull(),
   description: text("description"),
   dynamicConfig: json("dynamic_config"),

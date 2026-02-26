@@ -412,7 +412,7 @@ export function SettingsTab({ campaignId, campaign }: SettingsTabProps) {
             Channel Assignment
           </CardTitle>
           <CardDescription>
-            Assign this campaign to a channel to enable SDK integration and get an API key
+            Optional — assign to a channel for grouping or legacy integrations
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -433,11 +433,6 @@ export function SettingsTab({ campaignId, campaign }: SettingsTabProps) {
                 ))}
               </SelectContent>
             </Select>
-            {!channelId && (
-              <p className="text-sm text-amber-600">
-                This campaign needs a channel to work with the SDK endpoints
-              </p>
-            )}
           </div>
           <Button 
             onClick={handleSaveChannel}

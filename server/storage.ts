@@ -45,6 +45,7 @@ export interface IStorage {
   getCampaign(id: number): Promise<Campaign | undefined>;
   getAllCampaigns(): Promise<Campaign[]>;
   getChannelCampaigns(channelId: number): Promise<Campaign[]>;
+  getClientAppCampaigns(clientAppId: number): Promise<Campaign[]>;
   getUserCampaigns(userId: number): Promise<Campaign[]>;
   updateCampaign(id: number, campaign: Partial<InsertCampaign>): Promise<Campaign | undefined>;
   deleteCampaign(id: number): Promise<void>;
@@ -361,6 +362,12 @@ export class MemStorage implements IStorage {
   async getChannelCampaigns(channelId: number): Promise<Campaign[]> {
     return await db.select().from(campaigns)
       .where(eq(campaigns.channelId, channelId))
+      .orderBy(desc(campaigns.createdAt));
+  }
+
+  async getClientAppCampaigns(clientAppId: number): Promise<Campaign[]> {
+    return await db.select().from(campaigns)
+      .where(eq(campaigns.clientAppId, clientAppId))
       .orderBy(desc(campaigns.createdAt));
   }
 
