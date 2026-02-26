@@ -343,14 +343,14 @@ export function SettingsTab({ campaignId, campaign }: SettingsTabProps) {
           <div className="space-y-1.5">
             <div className="text-xs text-gray-500 uppercase font-medium">Channel</div>
             <Select
-              value={channelId?.toString() || ""}
-              onValueChange={(value) => setChannelId(value ? parseInt(value) : null)}
+              value={channelId?.toString() || "__none__"}
+              onValueChange={(value) => setChannelId(value === "__none__" ? null : parseInt(value))}
             >
               <SelectTrigger data-testid="select-channel">
                 <SelectValue placeholder="No channel" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">No channel</SelectItem>
+                <SelectItem value="__none__">No channel</SelectItem>
                 {channels.map((channel) => (
                   <SelectItem key={channel.id} value={channel.id.toString()}>
                     {channel.name}

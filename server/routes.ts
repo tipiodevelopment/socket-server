@@ -4016,15 +4016,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       const { campaign, translations, engagementConfig, uiConfig, featureFlags } = fullConfig;
       
-      // Verify campaign belongs to a channel of this client app
+      // Verify campaign belongs to this client app — direct match or via channel (legacy)
+      const directMatch = campaign.clientAppId === clientApp.id;
+      let channelMatch = false;
+      let channel = null;
       if (campaign.channelId) {
-        const channel = await storage.getChannel(campaign.channelId);
-        if (!channel || channel.clientAppId !== clientApp.id) {
-          return res.status(403).json({ 
-            error: 'Campaign does not belong to this API key',
-            code: 'FORBIDDEN'
-          });
-        }
+        channel = await storage.getChannel(campaign.channelId);
+        channelMatch = !!(channel && channel.clientAppId === clientApp.id);
+      }
+      if (!directMatch && !channelMatch) {
+        return res.status(403).json({ 
+          error: 'Campaign does not belong to this API key',
+          code: 'FORBIDDEN'
+        });
       }
       
       // Build sponsorBadgeText from translations
