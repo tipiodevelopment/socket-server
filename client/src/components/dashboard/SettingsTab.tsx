@@ -370,17 +370,17 @@ export function SettingsTab({ campaignId, campaign }: SettingsTabProps) {
         </div>
       </div>
 
-      {/* Reachu Integration */}
+      {/* Commerce Integration */}
       <div>
-        <h2 className="text-sm font-semibold text-gray-400 uppercase mb-1">Reachu Integration</h2>
-        <p className="text-xs text-gray-500 mb-4">API key for Reachu commerce integration</p>
+        <h2 className="text-sm font-semibold text-gray-400 uppercase mb-1">Commerce Integration</h2>
+        <p className="text-xs text-gray-500 mb-4">API key for the Commerce module integration</p>
         <div className="border border-white/10 rounded-lg p-6 space-y-4">
           <div className="space-y-1.5">
             <div className="text-xs text-gray-500 uppercase font-medium">API Key</div>
             <Input
               value={reachuApiKey}
               onChange={(e) => setReachuApiKey(e.target.value)}
-              placeholder="Enter Reachu API key..."
+              placeholder="Enter Commerce API key..."
               className="font-mono text-sm"
               data-testid="input-campaign-reachu-key"
             />

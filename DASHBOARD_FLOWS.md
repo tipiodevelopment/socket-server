@@ -363,7 +363,7 @@ Archivos:
 | Basic Information | `GET /api/campaigns/:id` | `PUT /api/campaigns/:id` |
 | Campaign Schedule | `GET /api/campaigns/:id` | `PUT /api/campaigns/:id` |
 | Channel Assignment | `GET /api/channels` + `GET /api/campaigns/:id` | `PUT /api/campaigns/:id` { channelId } |
-| Reachu Integration | `GET /api/campaigns/:id` | `PUT /api/campaigns/:id` { reachuApiKey } |
+| Commerce Integration | `GET /api/campaigns/:id` | `PUT /api/campaigns/:id` { reachuApiKey } |
 | Targeting & Segmentation | `GET /api/campaigns/:id` | `PUT /api/campaigns/:id` { targetCountries, isSegmented, ... } |
 | Engagement Settings | `GET /api/campaigns/:id/engagement-config` | `PUT /api/campaigns/:id/engagement-config` |
 | Feature Flags | `GET /api/campaigns/:id/feature-flags` | `PUT /api/campaigns/:id/feature-flags` |
@@ -395,8 +395,8 @@ Usuario modifica campo → click "Save"
 - Solo asignar channel si se necesita por agrupacion o integracion legacy
 
 **IntegrationsTab:**
-- Muestra integraciones disponibles (Reachu, etc.)
-- Vinculacion de cuenta Reachu: `GET /api/reachu/channels`
+- Muestra integraciones disponibles (Commerce, etc.)
+- Vinculacion de cuenta Commerce: `GET /api/reachu/channels`
 
 ---
 
@@ -623,7 +623,7 @@ Crear campana (/campaigns/new)
   → Redirect a /campaigns/:campaignId (tab Overview)
 
 Configurar campana (tab Settings)
-  → PUT /api/campaigns/:id (nombre, descripcion, fechas, canal, reachuApiKey)
+  → PUT /api/campaigns/:id (nombre, descripcion, fechas, canal, reachuApiKey = Commerce key)
   → PUT /api/campaigns/:id/engagement-config (duraciones, limites)
   → PUT /api/campaigns/:id/feature-flags (habilitar/deshabilitar features)
 

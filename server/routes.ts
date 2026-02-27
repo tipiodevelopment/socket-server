@@ -4102,6 +4102,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
           secondaryColor: sponsor.secondaryColor || null,
         };
       }
+
+      // Commerce integration — always present so SDK can read without null-checking
+      config.integrations = {
+        commerce: {
+          enabled: !!(campaign.reachuApiKey),
+          apiKey: campaign.reachuApiKey || null,
+          channelId: campaign.reachuChannelId || null,
+        }
+      };
       
       res.set('Cache-Control', 'public, max-age=300');
       res.json(config);

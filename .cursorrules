@@ -102,6 +102,37 @@ Mobile SDK integration endpoints. Two-step initialization flow:
 **Other SDK:**
 - `/v1/sdk/config` — Campaign config for Swift SDK (legacy)
 
+### API Key Architecture (definitive model — Feb 2026)
+
+**App level — hardcoded in `vio-config.json`:**
+```json
+{
+  "apiKey": "<Vio App API Key>",
+  "restAPIBaseURL": "https://api-dev.vio.live",
+  "webSocketBaseURL": "https://api-dev.vio.live"
+}
+```
+- ONE single Vio App API Key per client app (`client_apps.api_key`)
+- Used for ALL Vio backend endpoints — no separate `campaignAdminApiKey` or `campaignApiKey`
+- Authenticated via `?apiKey=` query param or `X-Api-Key:` header
+
+**Campaign level — delivered by the server:**
+The Commerce module API key is NOT hardcoded in the app. The SDK reads it from `GET /v1/campaigns/:id/config`:
+```json
+{
+  "integrations": {
+    "commerce": {
+      "enabled": true,
+      "apiKey": "COMMERCE-KEY-HERE",
+      "channelId": "commerce-channel-id"
+    }
+  }
+}
+```
+- `enabled: false` → do not initialize the Commerce module
+- Stored in DB as `campaigns.reachuApiKey` / `campaigns.reachuChannelId` (internal field names)
+- Configured in the dashboard: Campaign Settings → Commerce Integration section
+
 ### Analytics APIs (`/api/analytics/*`) — Session-based
 SQL-based analytics with drill-down hierarchy: Global → App → Campaign → Broadcast.
 - `/api/analytics/overview` — Platform-wide KPIs (apps, campaigns, broadcasts, engagement totals)
@@ -160,7 +191,7 @@ Full broadcast management view with split layout. **All data is real — zero ha
 ### Campaign Dashboard (`/campaigns/:campaignId`)
 Tabbed: **Overview | Broadcasts | Components | Live | Analytics | Settings**. Tab navigation via callback-based `onNavigateTab` prop (not DOM manipulation).
 - **Live tab:** Contains `<EventsTab>` (real-time event dispatch) + `<ScheduledTab>`. Forms start empty and auto-save per campaign to DB via `campaignFormState` table.
-- **Settings tab:** Contains `<SettingsTab>` + `<IntegrationsTab>`. Sections: Basic Information, Campaign Schedule, Channel Assignment (optional), Reachu Integration, Targeting & Segmentation, Engagement Settings, Feature Flags, Danger Zone. Styled with raw divs + `border-white/10` (NOT shadcn Cards). Campaign Logo, Match Context, and UI Theme sections were removed — branding comes from Sponsor.
+- **Settings tab:** Contains `<SettingsTab>` + `<IntegrationsTab>`. Sections: Basic Information, Campaign Schedule, Channel Assignment (optional), Commerce Integration, Targeting & Segmentation, Engagement Settings, Feature Flags, Danger Zone. Styled with raw divs + `border-white/10` (NOT shadcn Cards). Campaign Logo, Match Context, and UI Theme sections were removed — branding comes from Sponsor.
 - **Analytics tab:** Real broadcast performance data. Queries `GET /api/broadcasts?campaignId=X` on tab activation. Shows KPI cards (total broadcasts, live count, total viewers, peak viewers) + per-broadcast table with status badges.
 - **Broadcasts tab:** Create/list/delete broadcasts. "New Broadcast" form has an **"External Content ID"** field that maps to `broadcasts.externalId`. Each card has a pencil icon to edit name/externalId/status/dates via PUT.
 
@@ -259,7 +290,8 @@ Dashboard → Apps → Campaigns → Sponsors → Broadcasts → Components → 
 - **broadcast-detail.tsx:** Zero hardcoded data. "Load Demo" button seeds demo data. "Send Live" buttons on polls and contests dispatch real-time WebSocket events to SDK clients.
 - **campaign-dashboard.tsx:** Tabs reorganized to Overview | Broadcasts | Components | Live | Analytics | Settings. "New Broadcast" form includes "External Content ID" field. Broadcast cards have a pencil icon for inline editing.
 - **EventsTab.tsx:** No demo data. Forms start empty and auto-save per campaign. Event Log panel removed. Campaign Logo section removed entirely.
-- **SettingsTab.tsx (Feb 2026 — latest):** Removed Campaign Logo, Match Context, and UI Theme sections. Remaining 8 sections: Basic Information, Campaign Schedule, Channel Assignment (optional — "No channel" option available), Reachu Integration, Targeting & Segmentation, Engagement Settings, Feature Flags, Danger Zone. Fully restyled with raw divs + `border-white/10` (removed all shadcn Card usage). Style matches OverviewTab.
+- **SettingsTab.tsx (Feb 2026 — latest):** Removed Campaign Logo, Match Context, and UI Theme sections. Remaining 8 sections: Basic Information, Campaign Schedule, Channel Assignment (optional — "No channel" option available), Commerce Integration, Targeting & Segmentation, Engagement Settings, Feature Flags, Danger Zone. Fully restyled with raw divs + `border-white/10` (removed all shadcn Card usage). Style matches OverviewTab.
+- **Commerce Integration (Feb 2026):** "Reachu Integration" renamed to "Commerce Integration" in UI and docs. The Commerce API key is stored in `campaigns.reachuApiKey` (internal DB name preserved). The key is now exposed via `GET /v1/campaigns/:id/config` → `response.integrations.commerce.apiKey` so the SDK reads it dynamically instead of hardcoding it. `integrations.commerce` block is always present in the response (`enabled: false` when no key configured).
 - **Config endpoint `/v1/campaigns/:id/config` (Feb 2026):** Authorization now supports direct match (`campaign.clientAppId === clientApp.id`) OR channel legacy fallback. No longer returns 400 when campaign has no channel assigned. Channel references use optional chaining (`channel?.id`, `channel?.name`).
 - **Brand data in SDK config:** `brand.name`, `brand.iconUrl`, `brand.logoUrl` come from the linked Sponsor. Legacy campaign brand fields used only as fallback.
 

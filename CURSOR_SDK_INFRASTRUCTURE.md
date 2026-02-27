@@ -358,24 +358,58 @@ Response: { "token": "eyJhbGciOi...", "expiresIn": "7d" }
 
 ### 4.2 API Key - Para SDK endpoints
 
-```
-GET /v1/sdk/campaigns?apiKey=<api_key>
-# O via header:
-GET /v1/sdk/campaigns
-X-Api-Key: <api_key>
-# O via Bundle ID:
-GET /v1/sdk/campaigns
-X-App-Bundle-ID: com.example.app
+**MODELO DEFINITIVO DE API KEYS (Feb 2026)**
+
+El SDK debe tener UNA sola Vio App API Key. No hay `campaignAdminApiKey` ni `campaignApiKey` separados.
+
+```json
+// vio-config.json correcto:
+{
+  "apiKey": "<Vio App API Key>",
+  "restAPIBaseURL": "https://api-dev.vio.live",
+  "webSocketBaseURL": "https://api-dev.vio.live"
+}
 ```
 
-- La API Key se genera al crear un Client App
+La App API Key se usa para TODOS los endpoints Vio:
+
+| Endpoint | Auth |
+|----------|------|
+| `GET /v1/sdk/campaigns` | `?apiKey=` o `X-Api-Key:` o `X-App-Bundle-ID:` |
+| `GET /v1/sdk/broadcast` | `?apiKey=` o `X-Api-Key:` |
+| `GET /v1/campaigns/:id/config` | `?apiKey=` o `X-Api-Key:` |
+| `GET /v1/offers` | `?apiKey=` o `X-Api-Key:` |
+| `GET /v1/engagement/config` | `?apiKey=` o `X-Api-Key:` |
+| `GET /v1/localization/:lang` | `?apiKey=` o `X-Api-Key:` |
+| `POST /v1/engagement/polls/:id/vote` | `?apiKey=` o `X-Api-Key:` |
+| `POST /v1/engagement/contests/:id/participate` | `?apiKey=` o `X-Api-Key:` |
+
+- La API Key se genera al crear un Client App en el dashboard
 - Se valida contra la tabla `client_apps.api_key`
-- Se usa en endpoints `/v1/sdk/*`, `/v1/offers`, `/v1/campaigns/*/config`, `/v1/engagement/config`, `/v1/localization/*`
+
+**Commerce Integration Key (nivel campaña):**
+La Commerce API key (antes llamada "Reachu") NO va en el config del app. El SDK la lee dinámicamente de la respuesta de `GET /v1/campaigns/:id/config`:
+
+```json
+// response.integrations.commerce
+{
+  "integrations": {
+    "commerce": {
+      "enabled": true,
+      "apiKey": "KCXF10Y-...",
+      "channelId": "commerce-channel-id"
+    }
+  }
+}
+```
+
+- Si `enabled: false` o `apiKey: null` → no inicializar el módulo Commerce
+- La key se configura por campaña en el Settings tab del dashboard (sección "Commerce Integration")
 
 ### 4.3 Sin Auth - Dashboard interno
 
 - Los endpoints `/api/*` (excepto `/api/auth/token`) no requieren autenticacion
-- Proteccion por sesion simulada en el frontend (localStorage `reachu_simulated_user_id`)
+- Proteccion por sesion simulada en el frontend
 
 ---
 
@@ -531,6 +565,13 @@ Response 200:
     "enableProducts": true,
     "enableAds": true
   },
+  "integrations": {            ← SIEMPRE presente (enabled: false si no configurado)
+    "commerce": {
+      "enabled": true,         ← false si la campana no tiene Commerce key
+      "apiKey": "KCXF10Y-...", ← null si no configurado
+      "channelId": "ch-123"    ← null si no configurado
+    }
+  },
   "channel": {                 ← null si la campana no tiene channel
     "id": 5,
     "name": "Viaplay Sports"
@@ -542,6 +583,8 @@ Response 200:
 Cache-Control: `public, max-age=300` (5 min)
 
 **NOTA:** `brand` se construye exclusivamente desde el Sponsor. Los campos legacy `campaign.brand_name`, `campaign.brand_icon_url`, `campaign.brand_logo_url` se usan solo como fallback si el sponsor no tiene los datos.
+
+**NOTA Commerce:** `integrations.commerce.apiKey` es la key del módulo Commerce (antes "Reachu"). El SDK debe leerla aquí en lugar de tenerla hardcodeada en el app config. Si `enabled: false`, no inicializar el módulo Commerce.
 
 ### 5.4 Configuracion de Engagement por Match
 
