@@ -417,11 +417,65 @@ La Commerce API key (antes llamada "Reachu") NO va en el config del app. El SDK 
 
 Estos son los endpoints que consume el SDK de iOS. Cursor necesita conocer cada uno para implementar las llamadas desde Swift.
 
-### Flujo SDK de dos pasos (Feb 2026)
+### Flujo SDK completo (Feb 2026)
 
-**Paso 1 - Al lanzar la app:** Llamar a `GET /v1/sdk/campaigns` para obtener todas las campanas activas y sus componentes de nivel campaña (banners, carruseles). Estos se muestran siempre, independientemente del contenido que vea el usuario.
+**Prerequisito — Configuracion del app (`vio-config.json`):**
+```json
+{
+  "apiKey": "<Vio App API Key>",
+  "restAPIBaseURL": "https://api-dev.vio.live",
+  "webSocketBaseURL": "https://api-dev.vio.live"
+}
+```
+Una sola key Vio por cliente. No hay `campaignAdminApiKey` ni `campaignApiKey` separados. La Commerce key NO va aqui — el servidor la entrega dinamicamente.
 
-**Paso 2 - Al abrir un stream:** Llamar a `GET /v1/sdk/broadcast?contentId=xxx` para resolver si hay engagement para ese contenido especifico. Si `hasEngagement: true`, activar componentes de broadcast (polls, contests, chat) y conectar al WebSocket.
+---
+
+**Paso 1 — Al lanzar la app:**
+```
+GET /v1/sdk/campaigns?apiKey=<key>
+```
+Devuelve todas las campanas activas + componentes de nivel campaña (banners, carruseles). Se muestran siempre, sin importar que stream esta viendo el usuario.
+
+**Paso 2 — Al abrir una campaña (o al lanzar si solo hay una):**
+```
+GET /v1/campaigns/{id}/config?apiKey=<key>
+```
+Devuelve la configuracion dinamica completa de la campaña:
+- Branding (brand.name, brand.logoUrl — desde el Sponsor)
+- Feature flags (enablePolls, enableContests, etc.)
+- Engagement settings (defaultPollDuration, etc.)
+- **`integrations.commerce`** — clave de Commerce si esta configurada
+
+```json
+{
+  "integrations": {
+    "commerce": {
+      "enabled": true,
+      "apiKey": "COMMERCE-KEY-HERE",
+      "channelId": "commerce-channel-id"
+    }
+  }
+}
+```
+Si `enabled: true` → el SDK inicializa el modulo Commerce con esa key.
+Si `enabled: false` → no inicializar el modulo Commerce.
+La key viene del campo `campaigns.reachuApiKey` en la DB (nombre interno).
+
+**Paso 3 — Al abrir un stream especifico:**
+```
+GET /v1/sdk/broadcast?contentId=match-789&country=NO&apiKey=<key>
+```
+Resuelve `contentId` → `externalId` en tabla broadcasts. Si `hasEngagement: true`, activa polls, contests, chat y conecta al WebSocket.
+
+**Paso 4 — Interaccion en tiempo real:**
+- WebSocket: `wss://api-dev.vio.live/ws/{campaignId}` — recibe eventos `poll_created`, `broadcast_started`, `broadcast_ended`, etc.
+- Votar en poll: `POST /v1/engagement/polls/{id}/vote?apiKey=<key>`
+- Participar en contest: `POST /v1/engagement/contests/{id}/participate?apiKey=<key>`
+- Siempre la misma Vio App API Key
+
+**Modulo Commerce — flujo separado:**
+Una vez que el SDK tiene `integrations.commerce.apiKey` del Paso 2, la usa exclusivamente para llamadas al sistema de productos externo. Esas llamadas no pasan por el backend Vio — van directo al servidor Commerce con su propia key. Vio actua como distribuidor seguro de esa key sin que este hardcodeada en el app.
 
 ---
 

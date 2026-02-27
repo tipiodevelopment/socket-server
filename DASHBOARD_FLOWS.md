@@ -839,6 +839,34 @@ Response:
 SDK: guarda lista de campanas, conecta WS a /ws/35, muestra banners
 ```
 
+### Paso 1b: Campaign Config (branding + Commerce key)
+
+```
+GET /v1/campaigns/35/config
+  Headers: X-Api-Key: viaplay_api_key_...
+
+Response:
+{
+  "brand": { "name": "Viaplay", "logoUrl": "..." },
+  "features": { "enablePolls": true, "enableContests": true },
+  "engagement": { "defaultPollDuration": 300 },
+  "integrations": {
+    "commerce": {
+      "enabled": false,       ← true si hay key configurada en la campaña
+      "apiKey": null,         ← la Commerce key si está configurada
+      "channelId": null
+    }
+  }
+}
+
+SDK:
+  - Aplica branding de campaña
+  - Si integrations.commerce.enabled → inicializa módulo Commerce con esa apiKey
+  - Si enabled: false → módulo Commerce no se inicializa
+  - La Commerce key viene del campo campaigns.reachuApiKey en DB (nombre interno)
+  - El módulo Commerce llama directo al servidor externo — no pasa por Vio
+```
+
 ### Paso 2: Stream Open (contentId resolution)
 
 ```
@@ -893,7 +921,21 @@ POST /v1/engagement/contests/:contestId/participate
   Rate limit: 5 participaciones/minuto por IP
 ```
 
-### Config del SDK (para branding):
+### vio-config.json — UNA sola API key
+
+El app iOS tiene un archivo de configuración con **una sola key Vio**:
+```json
+{
+  "apiKey": "<Vio App API Key>",
+  "restAPIBaseURL": "https://api-dev.vio.live",
+  "webSocketBaseURL": "https://api-dev.vio.live"
+}
+```
+- `apiKey` = `client_apps.api_key` en la DB
+- Se usa para TODOS los endpoints Vio: `/v1/sdk/*`, `/v1/campaigns/*/config`, `/v1/engagement/*`, `/v1/offers`
+- La Commerce key **NO va aquí** — la entrega el servidor dinámicamente
+
+### Config del SDK (branding + Commerce key):
 
 ```
 GET /v1/campaigns/:campaignId/config
@@ -912,8 +954,22 @@ Response incluye:
   },
   sponsor: { id, name, primaryColor, secondaryColor, ... },
   features: { polls, contests, chat, products },
-  engagement: { defaultPollDuration, maxVotesPerPoll, ... }
+  engagement: { defaultPollDuration, maxVotesPerPoll, ... },
+  integrations: {
+    commerce: {
+      enabled: true,              ← false si no hay key configurada
+      apiKey: "COMMERCE-KEY",     ← campaigns.reachuApiKey en DB (nombre interno)
+      channelId: "channel-id"     ← campaigns.reachuChannelId en DB (nombre interno)
+    }
+  }
 ```
+
+**Flujo Commerce en el SDK:**
+1. SDK llama `GET /v1/campaigns/{id}/config`
+2. Lee `integrations.commerce.apiKey` del response
+3. Si `enabled: true` → inicializa el módulo Commerce con esa key
+4. El módulo Commerce llama **directo** al servidor externo de Commerce usando esa key (no pasa por Vio)
+5. Vio actúa solo como distribuidor seguro de la key — nunca hardcodeada en el app
 
 ---
 

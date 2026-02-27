@@ -297,14 +297,56 @@ Dashboard → Apps → Campaigns → Sponsors → Broadcasts → Components → 
 
 ## SDK contentId Architecture (Feb 2026)
 
-Two-step flow for resolving a stream/content to engagement:
+### vio-config.json — ONE Vio App API Key only
+```json
+{
+  "apiKey": "<Vio App API Key>",
+  "restAPIBaseURL": "https://api-dev.vio.live",
+  "webSocketBaseURL": "https://api-dev.vio.live"
+}
+```
+- `apiKey` = `client_apps.api_key` in the DB — identifies the client (Viaplay, XXL, etc.)
+- Used for ALL Vio endpoints: `/v1/sdk/*`, `/v1/campaigns/*/config`, `/v1/engagement/*`, `/v1/offers`
+- NO `campaignAdminApiKey`, NO `campaignApiKey`. One key for everything Vio.
+- The Commerce key is NOT in this file — delivered dynamically by the server via `/v1/campaigns/{id}/config`.
 
-1. **App launch:** `GET /v1/sdk/campaigns` → all active campaign-level components for the app
-2. **Stream open:** `GET /v1/sdk/broadcast?contentId={id}&country={CC}` → resolves `externalId` → broadcast → campaign
+### SDK Initialization Flow (4 steps)
 
-The `externalId` on a broadcast is set by the admin in the "External Content ID" field when creating/editing a broadcast in the dashboard.
+**Step 1 — App launch:**
+```
+GET /v1/sdk/campaigns?apiKey=<key>
+```
+Returns all active campaigns + campaign-level components (banners, carousels). Shown regardless of what the user is watching.
 
-**Response when `hasEngagement: true`:**
+**Step 2 — Campaign config (on launch or campaign switch):**
+```
+GET /v1/campaigns/{id}/config?apiKey=<key>
+```
+Returns dynamic campaign config. The `integrations.commerce` block is **always** present:
+```json
+{
+  "integrations": {
+    "commerce": {
+      "enabled": true,
+      "apiKey": "COMMERCE-KEY-HERE",
+      "channelId": "commerce-channel-id"
+    }
+  }
+}
+```
+- `enabled: true` → SDK initializes Commerce module with that key.
+- `enabled: false` (apiKey is null) → do not initialize Commerce module.
+- Source in DB: `campaigns.reachuApiKey` + `campaigns.reachuChannelId` (internal names, never exposed publicly).
+- The Commerce key comes from the server — the SDK uses it to call the external Commerce system directly, bypassing the Vio backend. Vio is a secure key distributor only.
+
+**Step 3 — Stream open:**
+```
+GET /v1/sdk/broadcast?contentId={id}&country={CC}&apiKey=<key>
+```
+Resolves `contentId` → `broadcasts.externalId` → campaign. Returns `hasEngagement: true/false`.
+`externalId` is set by the admin in the "External Content ID" field when creating/editing a broadcast.
+
+Response when `hasEngagement: true`:
 ```json
 {
   "hasEngagement": true,
@@ -316,13 +358,20 @@ The `externalId` on a broadcast is set by the admin in the "External Content ID"
   "campaignComponents": [...],
   "broadcastComponents": {
     "chat": { "enabled": true },
-    "polls": [{ "id": 1, "question": "...", "isActive": true, "options": [...] }],
+    "polls": [{ "id": 1, "question": "...", "isActive": true, "duration": 60, "options": [...] }],
     "contests": [{ "id": 2, "title": "...", "isActive": true }]
   }
 }
 ```
+Cache: `hasEngagement: false` → `public, max-age=30`; `hasEngagement: true` → `private, max-age=10` + ETag.
 
-**WS events for broadcast lifecycle (new):**
+**Step 4 — Real-time interaction:**
+- WebSocket: `wss://api-dev.vio.live/ws/{campaignId}` — events: `poll_created`, `broadcast_started`, `broadcast_ended`, etc.
+- Vote: `POST /v1/engagement/polls/{id}/vote?apiKey=<key>`
+- Contest: `POST /v1/engagement/contests/{id}/participate?apiKey=<key>`
+- Always the same single Vio App API Key.
+
+### WS events for broadcast lifecycle
 - `broadcast_started` → fired when `status` changes to `'live'` on any PUT broadcast route
 - `broadcast_ended` → fired when `status` changes to `'ended'` on any PUT broadcast route
 
