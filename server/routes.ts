@@ -30,6 +30,7 @@ import { isCampaignActive, hasCampaignEnded, isCampaignUpcoming, normalizeUrls }
 import { calculateScheduledTimes, validateScheduling } from "./utils/scheduling";
 import { voteQueue, contestParticipationQueue, isQueueEnabled } from "./queue/queues";
 import { createRateLimiter, rateLimitPresets } from "./middleware/rate-limiter";
+import { validateBroadcastId } from "./middleware/broadcast-validator";
 import { setVoteBroadcastFunction } from "./services/vote-processor";
 
 const JWT_SECRET = process.env.SESSION_SECRET || 'default-dev-secret';
@@ -2894,11 +2895,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // ========================================
 
   // SDK: Vote on a poll (public endpoint, uses apiKey)
-  app.post('/v1/engagement/polls/:pollId/vote', createRateLimiter(rateLimitPresets.voting), async (req, res) => {
+  app.post('/v1/engagement/polls/:pollId/vote', createRateLimiter(rateLimitPresets.voting), validateBroadcastId, async (req, res) => {
     try {
       const pollId = parseInt(req.params.pollId);
       if (isNaN(pollId) || pollId <= 0) {
         return res.status(400).json({ message: 'Invalid pollId' });
+      }
+
+      if ((req as any).broadcastEnded) {
+        return res.status(400).json({ message: 'Broadcast has ended, voting is closed' });
       }
 
       const parsed = voteInputSchema.safeParse(req.body);
@@ -2993,11 +2998,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // SDK: Participate in a contest (public)
-  app.post('/v1/engagement/contests/:contestId/participate', createRateLimiter(rateLimitPresets.participation), async (req, res) => {
+  app.post('/v1/engagement/contests/:contestId/participate', createRateLimiter(rateLimitPresets.participation), validateBroadcastId, async (req, res) => {
     try {
       const contestId = parseInt(req.params.contestId);
       if (isNaN(contestId) || contestId <= 0) {
         return res.status(400).json({ message: 'Invalid contestId' });
+      }
+
+      if ((req as any).broadcastEnded) {
+        return res.status(400).json({ message: 'Broadcast has ended, participation is closed' });
       }
 
       const parsed = participateInputSchema.safeParse(req.body);

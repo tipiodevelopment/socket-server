@@ -2,7 +2,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { ShoppingBag, Radio } from "lucide-react";
+import { ShoppingBag } from "lucide-react";
 import { Campaign } from "@shared/schema";
 
 interface IntegrationsTabProps {
@@ -13,96 +13,51 @@ interface IntegrationsTabProps {
 export function IntegrationsTab({ campaignId, campaign }: IntegrationsTabProps) {
   return (
     <div className="space-y-6">
-      {/* Reachu Integration */}
+      {/* Commerce Integration */}
       <Card className="border-0">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <ShoppingBag className="w-5 h-5" />
-            Reachu.io Channel
+            Commerce Channel
           </CardTitle>
           <CardDescription>
-            Connect a Reachu channel to fetch products in real-time
+            Connect a Commerce channel to fetch products in real-time
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label htmlFor="reachu-channel-id">Channel ID</Label>
+              <Label htmlFor="commerce-channel-id">Channel ID</Label>
               <Input 
-                id="reachu-channel-id"
+                id="commerce-channel-id"
                 value={campaign.reachuChannelId || ''} 
                 placeholder="No channel configured"
                 disabled
-                data-testid="input-reachu-channel-id"
+                data-testid="input-commerce-channel-id"
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="reachu-api-key">API Key</Label>
+              <Label htmlFor="commerce-api-key">API Key</Label>
               <Input 
-                id="reachu-api-key"
+                id="commerce-api-key"
                 type="password"
                 value={campaign.reachuApiKey || ''} 
                 placeholder="No API key configured"
                 disabled
-                data-testid="input-reachu-api-key"
+                data-testid="input-commerce-api-key"
               />
             </div>
           </div>
           {campaign.reachuChannelId && (
-            <Badge variant="default" className="bg-green-600" data-testid="badge-reachu-connected">
-              ✓ Connected to Reachu
+            <Badge variant="default" className="bg-green-600" data-testid="badge-commerce-connected">
+              ✓ Commerce Connected
             </Badge>
           )}
           {!campaign.reachuChannelId && (
             <div className="text-sm text-muted-foreground">
-              No Reachu channel connected. Configure this integration during campaign creation.
+              No Commerce channel connected. Configure this integration in the campaign Settings tab.
             </div>
           )}
-        </CardContent>
-      </Card>
-
-      {/* Tipio Integration */}
-      <Card className="border-0">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Radio className="w-5 h-5" />
-            Tipio.no Liveshow
-          </CardTitle>
-          <CardDescription>
-            Connect this campaign to a Tipio liveshow
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="space-y-2">
-            <Label>Tipio Integration</Label>
-            <p className="text-sm text-muted-foreground">Livestream data managed via campaign settings</p>
-          </div>
-          
-          {/* Show livestream data if available */}
-          {campaign.tipioLivestreamData ? (
-            <div className="mt-4 p-4 bg-muted rounded-lg">
-              <h4 className="font-medium mb-2">Livestream Details</h4>
-              <div className="space-y-1 text-sm text-muted-foreground">
-                {(() => {
-                  const data = campaign.tipioLivestreamData as any;
-                  return (
-                    <>
-                      {data.title ? <div key="title">Title: {data.title}</div> : null}
-                      {data.broadcasting !== undefined ? (
-                        <div key="status">
-                          Status: {data.broadcasting ? 
-                            <Badge variant="default" className="bg-red-600 ml-2">● LIVE</Badge> : 
-                            <Badge variant="secondary" className="ml-2">Offline</Badge>
-                          }
-                        </div>
-                      ) : null}
-                      {data.date ? <div key="date">Start: {new Date(data.date).toLocaleString()}</div> : null}
-                    </>
-                  );
-                })()}
-              </div>
-            </div>
-          ) : null}
         </CardContent>
       </Card>
 
@@ -118,8 +73,7 @@ export function IntegrationsTab({ campaignId, campaign }: IntegrationsTabProps) 
             <div className="flex-1">
               <h4 className="font-medium mb-1">About Integrations</h4>
               <p className="text-sm text-muted-foreground">
-                Integrations are configured when creating a campaign and cannot be modified afterwards. 
-                To change integrations, you'll need to create a new campaign with the desired configuration.
+                The Commerce API key is configured per campaign in the Settings tab. It is delivered dynamically to the SDK via the config endpoint — it is never hardcoded in the app.
               </p>
             </div>
           </div>

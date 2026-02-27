@@ -11,7 +11,7 @@ export async function validateBroadcastId(
   res: Response,
   next: NextFunction
 ) {
-  const broadcastId = req.query.broadcastId as string || req.query.matchId as string || req.params.broadcastId;
+  const broadcastId = req.body?.broadcastId as string || req.query.broadcastId as string || req.query.matchId as string || req.params.broadcastId;
 
   if (!broadcastId) {
     return next();

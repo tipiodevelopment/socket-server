@@ -927,22 +927,6 @@ export type LiveshowTriggerComponent = z.infer<typeof liveshowTriggerComponentSc
 export type CustomComponent = z.infer<typeof customComponentSchema>;
 export type ScheduledComponentData = z.infer<typeof scheduledComponentDataSchema>;
 
-// Tipio Livestream Schema
-export const tipioLivestreamSchema = z.object({
-  id: z.number().optional(),
-  title: z.string(),
-  liveStreamId: z.string(),
-  hls: z.string().nullable(),
-  player: z.string(),
-  thumbnail: z.string(),
-  broadcasting: z.boolean(),
-  date: z.string(),
-  end_date: z.string(),
-  streamDone: z.boolean().nullable(),
-  videoId: z.string()
-});
-
-export type TipioLivestream = z.infer<typeof tipioLivestreamSchema>;
 
 // Reachu Channel Schema (for API responses)
 export const reachuChannelSchema = z.object({

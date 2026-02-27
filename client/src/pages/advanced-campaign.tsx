@@ -286,23 +286,6 @@ export default function AdvancedCampaign() {
                 </CardContent>
               </Card>
 
-              <Card className="bg-gray-800 border-0">
-                <CardHeader>
-                  <CardTitle className="text-white flex items-center gap-2">
-                    <Radio className="w-5 h-5" />
-                    Tipio.no Liveshow
-                  </CardTitle>
-                  <CardDescription className="text-gray-400">
-                    Connect this campaign to a Tipio liveshow
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div>
-                    <Label className="text-gray-300">Tipio Integration</Label>
-                    <p className="text-sm text-gray-400">Livestream data managed via campaign settings</p>
-                  </div>
-                </CardContent>
-              </Card>
             </TabsContent>
 
             {/* Components Tab */}
