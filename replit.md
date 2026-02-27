@@ -2,7 +2,7 @@
 
 ## Overview
 
-Vio is a real-time event broadcasting platform designed for multi-campaign management. It enables administrators to create campaigns with custom sponsor branding and manage real-time broadcasts that include interactive elements like polls, contests, ads, and shoppable products. The platform aims to provide a scalable solution for interactive audience engagement, supporting multi-tenant SaaS for agencies and brands to manage their client applications, channels, and campaigns with data isolation.
+Vio is a real-time event broadcasting platform for multi-campaign management, enabling administrators to create campaigns with custom sponsor branding and manage real-time broadcasts. It supports interactive elements like polls, contests, ads, and shoppable products. The platform aims to provide a scalable solution for interactive audience engagement, supporting multi-tenant SaaS for agencies and brands to manage client applications, channels, and campaigns with data isolation.
 
 ## User Preferences
 
@@ -13,7 +13,7 @@ Publishing rule: Every time the app is published, update the `.cursorrules` file
 
 ### Design System
 
-Vio employs a monochromatic dark theme. The primary background is `#0a0e1a`, with cards and surfaces at `#141824`. Text is primarily white, with `text-gray-400` for secondary and `text-gray-500` for muted text. Accent colors use white backgrounds with dark text. The system strictly avoids blue/purple gradients. Icons are exclusively from Lucide React, and the font is Inter. Status badges are distinctively styled for "Live," "Upcoming," and "Ended" states, and broadcast elements (Polls, Contests, Ads) are color-coded in blue, purple, and green, respectively.
+Vio uses a monochromatic dark theme with `#0a0e1a` as the primary background and `#141824` for cards. Text is white, with `text-gray-400` for secondary and `text-gray-500` for muted text. Accent colors use white backgrounds with dark text, avoiding blue/purple gradients. Icons are from Lucide React, and the font is Inter. Status badges are styled for "Live," "Upcoming," and "Ended" states, and broadcast elements (Polls, Contests, Ads) are color-coded in blue, purple, and green, respectively.
 
 ### Technical Implementation
 
@@ -39,73 +39,45 @@ The platform is built with a full-stack TypeScript environment.
 
 ### Feature Specifications
 
-- **Broadcast Detail Page:** All data is real (no hardcoded mocks). Queries `/api/broadcasts/:id/ads`, `/api/broadcasts/:id/products`, `/api/broadcasts/:id/chat`, `/api/broadcasts/:id/analytics`. Live chat sidebar with functional send button. Analytics tab shows real poll/contest/viewer data. "Load Demo" button seeds real data via `/api/seed-demo`. Event timeline built from real polls and contests.
-- **Component Library:** A grid-based library for reusable UI components, allowing filtering and providing integration code snippets (e.g., iOS Swift). Components can be instanced multiple times per campaign with unique configurations.
-- **Campaign Dashboard:** Tabs reorganizados: Overview | Broadcasts | Components | Live | Analytics | Settings. El tab "Live" contiene los disparos de eventos en tiempo real (EventsTab + ScheduledTab). El tab "Settings" tiene la configuración del campaign (logo, integraciones). Los formularios del tab Live ahora empiezan vacíos (sin datos demo hardcodeados de iPhone/PSG/Barcelona) y se auto-guardan en DB por campaign. Analytics tab muestra datos reales (total broadcasts, live count, total/peak viewers, tabla por broadcast).
+- **Broadcast Detail Page:** Displays real-time data for ads, products, chat, and analytics. Includes a live chat sidebar and a "Load Demo" button for seeding data.
+- **Component Library:** A grid-based library for reusable UI components with filtering and integration code snippets (e.g., iOS Swift). Components can be instanced multiple times per campaign.
+- **Campaign Dashboard:** Tabs include Overview, Broadcasts, Components, Live, Analytics, and Settings. The "Live" tab manages real-time event triggers, and "Settings" configures campaign details. Forms auto-save to the database.
 - **Sponsor Management:** CRUD operations for sponsors, including logo/avatar uploads and color configuration, linked to campaign branding.
-- **Geographic Targeting & User Segmentation:** Server-side features for segmenting users based on location and other criteria, using deterministic hashing for consistent assignment.
-- **Admin Panel:** Forms for polls/products/contests now start empty (no Apple/PSG demo data). Data loads from DB via form state API.
-- **App Detail:** Stats cards no longer show hardcoded trend percentages (↑12%, ↑8%, etc.).
-- **Broadcast Detail — Send Live:** Polls and contests now have a "Send Live" button that fires a real-time WebSocket event to all connected SDKs via `/api/events/poll` and `/api/events/contest`, using the broadcast's campaignId.
-- **EventsTab restructure:** Removed Event Log panel, Campaign Logo section (now only in Settings), and all hardcoded demo data (iPhone, PSG, Barcelona). Forms start empty and auto-save per campaign via DB.
-- **EventLog component:** Intentionally unused/removed from EventsTab. The component file still exists but is not rendered anywhere.
-- **Broadcast External ID:** Visible and inline-editable in broadcast-detail header (pencil icon). Also displayed in campaign-dashboard broadcast cards when set.
-- **Broadcast Edit Dialog:** Each broadcast card in the Broadcasts tab now has a pencil icon that opens an edit dialog with fields for name, externalId, status, startTime, endTime. Uses `PUT /api/broadcasts/:broadcastId`. Status changes fire WebSocket events (broadcast_started, broadcast_ended).
-- **Brand Configuration removed from Settings:** The "Brand Configuration" section (brandName, iconUrl, logoUrl, iconAssetName) was removed from the campaign Settings tab. The SDK endpoint `/v1/campaigns/:id/config` now sources brand data from the linked sponsor (sponsor.name → brand.name, sponsor.avatarUrl → brand.iconUrl, sponsor.logoUrl → brand.logoUrl), with fallback to the legacy campaign brand fields for backwards compatibility. The `sponsor` object is still included separately in the SDK response.
-- **Channel moved to campaign level:** `channels.client_app_id` is now nullable — channels are standalone entities, no longer owned by apps. SDK discovery (`GET /v1/sdk/campaigns`) now resolves campaigns directly via `campaigns.client_app_id` instead of navigating app → channels → campaigns. `GET /v1/campaigns/:id/config` now authorizes via `campaign.clientAppId` direct match OR via channel (legacy fallback) — both paths verified and tested. Channel assignment in SettingsTab is optional metadata with a "No channel" option. Existing channel-linked campaigns continue to work (backwards compatible).
-- **Config endpoint guard corrected:** `GET /v1/campaigns/:id/config` previously skipped authorization if campaign had no `channelId`. Now uses explicit `directMatch || channelMatch` pattern — same as the offers endpoint — so campaigns linked via `clientAppId` are properly authorized while campaigns with no matching app get 403.
-- **Campaign Settings tab reorganized:** Removed obsolete sections: Campaign Logo (branding comes from Sponsor), Match Context (covered by broadcast externalId), and UI Theme (colors belong to Sponsor). Remaining sections: Basic Info, Schedule, Channel Assignment, Commerce Integration, Targeting & Segmentation, Engagement Settings, Feature Flags, Danger Zone. UI restyled to match the monochromatic dark pattern used in OverviewTab — raw divs with `border-white/10` instead of shadcn Cards.
-- **Commerce Integration (definitive naming):** The ecommerce module is called "Commerce" in all public interfaces (API fields, UI labels, documentation). DB fields remain `campaigns.reachuApiKey` / `campaigns.reachuChannelId` (internal names preserved — no migration needed). The Commerce API key is delivered dynamically via both `GET /v1/campaigns/:id/config` and `GET /v1/sdk/config` as `integrations.commerce.apiKey` — the SDK reads it from the server instead of hardcoding it. The `integrations.commerce` block is always present in both responses (`enabled: false` when no key configured).
-- **API Key Architecture (definitive):** The SDK uses ONE single Vio App API Key (`client_apps.api_key`) for all Vio backend endpoints. Commerce module key is campaign-level, delivered via config endpoint as `integrations.commerce.apiKey`. No `campaignAdminApiKey` or `campaignApiKey` fields needed in `vio-config.json`. Legacy `vio-config.json` with three keys still works but is deprecated.
-- **OverviewTab cache fix:** Creating or deleting broadcasts now invalidates both `/api/broadcasts` and `/api/campaigns/:id/broadcasts` query keys, so the Overview section stays in sync.
-- **Poll duration field:** `duration` (integer, seconds) added to polls table. Exposed in createPoll/updatePoll routes and in the broadcast-detail "Create Poll" dialog. The SDK endpoint returns it so clients know how long to display the poll.
+- **Geographic Targeting & User Segmentation:** Server-side features for user segmentation based on location and other criteria using deterministic hashing.
+- **Admin Panel:** Forms for polls, products, and contests start empty and load data from the database.
+- **Broadcast Edit Dialog:** Allows editing broadcast name, externalId, status, startTime, and endTime. Status changes trigger WebSocket events.
+- **Channel and Client App Architecture:** Channels are standalone entities. SDK discovery resolves campaigns directly via `campaigns.client_app_id`.
+- **Commerce Integration:** The ecommerce module is named "Commerce" in all public interfaces. The Commerce API key is delivered dynamically via config endpoints.
+- **API Key Architecture:** The SDK uses a single Vio App API Key (`client_apps.api_key`) for all Vio backend endpoints. The Commerce module key is campaign-level.
 
 ### Database Tables
 
-New tables added in this session:
-- `broadcast_ads` — ads linked to broadcasts (name, description, imageUrl, ctaUrl, adType, duration, isActive, displayOrder)
-- `broadcast_products` — shoppable products per broadcast (name, subtitle, price/originalPrice as varchar, buyUrl, status, displayOrder)
-- `chat_messages` — live chat messages per broadcast (username, message, createdAt, type ['message'|'tweet'], metadata json for tweet metadata)
-- Broadcasts table extended with `viewerCount` and `peakViewers` integer columns
-- Broadcasts table extended with `externalId` (varchar 255, nullable) — maps partner content IDs (e.g. Viaplay stream IDs) to broadcasts; indexed on `(externalId, campaignId)` for fast SDK lookups; unique per app (enforced via query through campaign→channel→clientApp chain)
-- `campaign_components` extended with `locationId` (varchar 100, nullable) — SDK slot identifier (e.g. "top-banner", "sidebar-carousel") for component placement filtering
+Key tables and their extensions:
+- `broadcast_ads`: Ads linked to broadcasts (name, description, imageUrl, ctaUrl, adType, duration, isActive, displayOrder).
+- `broadcast_products`: Shoppable products per broadcast (name, subtitle, price/originalPrice as varchar, buyUrl, status, displayOrder).
+- `chat_messages`: Live chat messages per broadcast (username, message, createdAt, type, metadata).
+- `broadcasts`: Extended with `viewerCount`, `peakViewers`, and `externalId` (indexed on `(externalId, campaignId)` for SDK lookups).
+- `campaign_components`: Extended with `locationId` for SDK slot identification.
 
 ### API Architecture
 
-- **Dashboard APIs (`/api/*`):** Session-based, for internal dashboard operations, including CRUD for core entities, campaign configuration, broadcast management, and file uploads.
-- **Admin APIs (`/v1/*`):** Secured with JWT Bearer tokens, providing full CRUD for broadcasts, polls, and contests.
-- **SDK APIs (`/v1/sdk/*` and `/v1/engagement/*`):** Authenticated via API keys, enabling campaign auto-discovery, configuration retrieval for SDKs, engagement actions (voting, contest participation), offer retrieval with targeting, and localization strings.
+- **Dashboard APIs (`/api/*`):** Session-based for internal operations (CRUD, configuration, uploads).
+- **Admin APIs (`/v1/*`):** JWT Bearer token secured for full CRUD of broadcasts, polls, and contests.
+- **SDK APIs (`/v1/sdk/*` and `/v1/engagement/*`):** API key authenticated for campaign discovery, configuration, engagement actions, offers, and localization.
 
-### SDK Engagement Flow (contentId Architecture)
+### SDK Engagement Flow
 
 Two-step SDK initialization:
-1. `GET /v1/sdk/campaigns` — on app launch; returns ALL active campaigns + campaign-level components (banners, carousels) for the app. Uses `X-App-Bundle-ID` or `apiKey`.
-2. `GET /v1/sdk/broadcast?contentId=xxx&country=NO` — when user opens a specific stream; resolves `contentId` → `externalId` on `broadcasts` table → returns `hasEngagement: true/false`.
+1. `GET /v1/sdk/campaigns`: Returns all active campaigns and campaign-level components.
+2. `GET /v1/sdk/broadcast?contentId=xxx&country=NO`: Resolves `contentId` to `externalId` and returns `hasEngagement` status. If true, includes `broadcastId`, `broadcastName`, `status`, `campaignId`, `websocketChannel`, `campaignComponents`, `broadcastComponents.polls`, `broadcastComponents.contests`, and `broadcastComponents.chat.enabled`.
 
-**`hasEngagement: true` response includes:**
-- `broadcastId`, `broadcastName`, `status`, `campaignId`
-- `websocketChannel` (e.g. `/ws/42`) for real-time events
-- `campaignComponents` — active campaign-level components (already loaded in step 1, but also returned here for convenience)
-- `broadcastComponents.polls` — active polls with options
-- `broadcastComponents.contests` — active contests
-- `broadcastComponents.chat.enabled` — always true when engagement exists
+WebSocket events include `campaign_ended`, `campaign_started`, `broadcast_started`, `broadcast_ended`, `chat_message`, `tweet`, and `score_update`.
 
-**Cache strategy:** `hasEngagement: false` → `Cache-Control: public, max-age=30`; `hasEngagement: true` → `Cache-Control: private, max-age=10` + `ETag`.
+New SDK endpoints include chat history, tweeting, live score updates, match stats, live scores, and filtered campaign components.
 
-**WebSocket events:** `campaign_ended` ✅, `campaign_started` ✅, `campaign_paused` ✅, `campaign_resumed` ✅, `broadcast_started` ✅ (fires when status → 'live'), `broadcast_ended` ✅ (fires when status → 'ended'), `chat_message` ✅ (fires on POST /api/broadcasts/:id/chat), `tweet` ✅ (fires on POST /api/broadcasts/:id/tweet), `score_update` ✅ (fires on PUT /api/broadcasts/:id/match-data). `broadcast_ended` hides only broadcast-level components; campaign-level components remain active until `campaign_ended`.
+### Deployment
 
-**New SDK endpoints (T1-T4):**
-- `GET /v1/sdk/broadcasts/:id/chat` — chat history (last N messages, includes tweets)
-- `POST /api/broadcasts/:id/tweet` — send tweet to chat (type='tweet', metadata: tweetId, via, metrics) + WS emit
-- `PUT /api/broadcasts/:id/match-data` — update live score (homeTeam, awayTeam, minute, matchStatus, stats) + WS `score_update`
-- `GET /v1/sdk/broadcasts/:id/score` — current score (homeTeam, awayTeam, minute, matchStatus)
-- `GET /v1/sdk/broadcasts/:id/stats` — match stats (possession, shots, etc.)
-- `GET /v1/sdk/livescores` — all live broadcasts with matchData for the app
-- `GET /v1/sdk/components?locationId=&campaignId=` — active campaign components filtered by locationId slot
-
-**Dashboard UI additions:**
-- **Match Data section** in broadcast-detail — form to set teams, scores, minute, status → sends via WS `score_update`
-- **Tweet mode toggle** in live chat sidebar — send messages as type='tweet' (shown with blue @-tag badge)
+The platform targets `vm` (Always-On) deployment. Scaling to `autoscale` requires addressing stateful WebSockets (using `broadcastToCampaign()`) and the in-memory scheduler. The recommended solution for scaling involves Redis Pub/Sub and BullMQ.
 
 ## External Dependencies
 

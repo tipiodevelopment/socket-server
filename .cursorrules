@@ -381,6 +381,93 @@ Cache: `hasEngagement: false` → `public, max-age=30`; `hasEngagement: true` �
 - `broadcast_started` → fired when `status` changes to `'live'` on any PUT broadcast route
 - `broadcast_ended` → fired when `status` changes to `'ended'` on any PUT broadcast route
 
+## Deployment & Scaling Architecture
+
+### Estado actual (Feb 2026) — `vm` deployment target
+
+El servidor corre en modo **Always-On VM** (`deploymentTarget = "vm"`). Esto es **intencional** y necesario por dos razones estructurales:
+
+#### Bloqueante 1 — WebSockets con estado
+Los WebSockets son conexiones TCP persistentes atadas a una instancia de servidor específica. En `autoscale`, múltiples instancias se levantan y apagan según la carga. Si el SDK del cliente A está conectado a la instancia 1, y el dashboard admin dispara un evento desde la instancia 2, el cliente A nunca recibe el mensaje.
+
+Flujo actual:
+```
+Admin (dashboard) → POST /api/broadcasts/:id/chat
+                 → broadcastToCampaign(campaignId, event) [in-process]
+                 → wss://host/ws/42 → todos los SDKs conectados ✅
+```
+
+Con autoscale sin solución:
+```
+Admin → Instancia 2 → broadcastToCampaign() → solo SDKs en instancia 2 ❌
+                                             → SDKs en instancia 1 NO reciben ❌
+```
+
+#### Bloqueante 2 — Scheduler en memoria
+`server/scheduler.ts` es un `setInterval` que vive en RAM. Con múltiples instancias, cada instancia tendría su propio scheduler duplicado activando/desactivando componentes varias veces. Con autoscale a cero instancias, el scheduler dejaría de correr.
+
+---
+
+### Opciones para escalar (sin implementar, "puerta abierta")
+
+#### Opción A — Redis Pub/Sub + BullMQ (camino más limpio)
+**Nivel de esfuerzo: medio**
+
+Reemplazar `broadcastToCampaign()` en memoria por publicación en un canal Redis. Cada instancia se suscribe a Redis y reenvía los mensajes a sus clientes WebSocket locales.
+
+```
+Admin → Instancia 2 → Redis PUBLISH ws:campaign:42 → Instancia 1 (suscrita) → SDKs ✅
+                                                     → Instancia 2 (suscrita) → SDKs ✅
+```
+
+Para el scheduler: usar **BullMQ** (ya está parcialmente preparado — hay un `QueueAdapter` en el código con `USE_QUEUE=true` como flag). BullMQ usa Redis y garantiza que los jobs se ejecutan una sola vez aunque haya múltiples instancias.
+
+**Cambios requeridos:**
+- `server/routes.ts`: `broadcastToCampaign` publica en Redis en lugar de iterar websockets locales
+- `server/scheduler.ts`: migrar a BullMQ jobs con `removeOnComplete`
+- Nueva variable de entorno: `REDIS_URL`
+- El WebSocket server sigue en cada instancia, pero actúa solo como "último tramo" desde Redis
+
+#### Opción B — Servicio WebSocket dedicado (separación de responsabilidades)
+**Nivel de esfuerzo: alto**
+
+Mantener un servidor `vm` pequeño dedicado solo a WebSockets. Las instancias autoscale del API le notifican vía HTTP interno cuando ocurre un evento.
+
+```
+Admin → API (autoscale) → POST ws-server.internal/notify → WS Server (vm) → SDKs ✅
+```
+
+Ventaja: el API es completamente stateless. Desventaja: complejidad operacional, dos servicios que mantener.
+
+#### Opción C — WebSocket as a Service (Pusher / Ably / Soketi)
+**Nivel de esfuerzo: bajo, pero dependencia externa**
+
+Delegar los WebSockets a un servicio externo. El backend solo llama a su API REST para hacer broadcast; no mantiene conexiones.
+
+```
+Admin → API (autoscale) → Pusher.trigger("campaign-42", "poll", data) → SDKs ✅
+```
+
+El SDK iOS conecta directamente a Pusher/Ably en lugar de al servidor Vio. Requiere cambios en el SDK iOS.
+
+---
+
+### Lo que ya está preparado en el código
+
+| Pieza | Estado | Notas |
+|-------|--------|-------|
+| BullMQ queue adapter | ✅ Código existe | Activar con `USE_QUEUE=true` env var |
+| `broadcastToCampaign()` exportada | ✅ | Función aislada, fácil de reemplazar con Redis publish |
+| `QueueAdapter` pattern | ✅ | `server/queue/` ya abstrae el proveedor |
+| Redis no configurado | ❌ | Añadir `REDIS_URL` y librerías `ioredis` |
+| WS broadcasting acoplado al proceso | ❌ | `broadcastToCampaign` itera sobre `wss.clients` local |
+
+### Decisión actual
+**No escalar por ahora.** `vm` es suficiente para el tráfico actual. Cuando sea necesario escalar, **Opción A (Redis Pub/Sub + BullMQ)** es el camino recomendado porque:
+- Mantiene la arquitectura WebSocket nativa (sin cambios en el SDK iOS)
+- BullMQ ya está parcialmente integrado
+- Redis es compatible con Replit Secrets y Neon Stack
+
 ## Architect Review Notes (Feb 2026)
 
 Pending improvements identified by architecture review:
