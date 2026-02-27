@@ -4,91 +4,46 @@
 
 ---
 
-## 🔴 1. Verificar endpoint crítico ahora mismo
+## ✅ 1. Verificar endpoint crítico — HECHO
 
-```bash
-curl "https://api-dev.vio.live/v1/campaigns/28/config?apiKey=xxl_api_key_507d4014243d8360"
-```
-
-Debe devolver exactamente:
-```json
-{
-  "brand": {
-    "name": "XXL Sports",
-    "logoUrl": "https://...",
-    "iconUrl": "https://..."
-  },
-  "features": {
-    "enablePolls": true,
-    "enableContests": true,
-    "enableChat": true
-  },
-  "integrations": {
-    "commerce": {
-      "enabled": true/false,
-      "apiKey": "KCXF10Y-..." o null,
-      "channelId": "..." o null
-    }
-  }
-}
-```
-
-Si no devuelve esto exactamente → fixear antes de todo lo demás.
+`GET /v1/campaigns/28/config?apiKey=xxl_api_key_507d4014243d8360`  
+Devuelve `integrations.commerce` con `enabled`, `apiKey`, `channelId`. ✓
 
 ---
 
-## 🔴 2. Verificar flujo contentId
+## ✅ 2. Verificar flujo contentId — HECHO
 
-```bash
-curl "https://api-dev.vio.live/v1/sdk/broadcast?contentId=real-madrid-barcelona-2025-01-24&country=NO&apiKey=viaplay_api_key_0c611e983b314ff8"
-```
-
-Debe devolver `hasEngagement: true` + broadcastId + polls activos.
-
-Si devuelve `hasEngagement: false` → verificar que el broadcast con ese `external_id` existe y está `live`.
+`GET /v1/sdk/broadcast?contentId=real-madrid-barcelona-2025-01-24&country=NO&apiKey=viaplay_api_key_0c611e983b314ff8`  
+Devuelve `hasEngagement: true` + broadcastId + 2 polls activos. ✓
 
 ---
 
-## 🔴 3. Transacciones DB en votos — CRÍTICO para producción
+## ✅ 3. Transacciones DB en votos — HECHO
 
-**Archivo:** `server/services/vote-processor.ts`
-
-```typescript
-// Envolver en transacción Drizzle
-await db.transaction(async (tx) => {
-  // 1. Verificar que usuario no ha votado (dentro de tx)
-  // 2. INSERT poll_votes
-  // 3. UPDATE poll_options SET vote_count = vote_count + 1
-  // 4. UPDATE polls SET total_votes = total_votes + 1
-});
-```
-
-Sin transacción, si falla entre pasos 2 y 3, el voto queda registrado pero los contadores no se actualizan.
+`createPollVoteWithCountUpdate` en `server/storage.ts` ahora verifica el voto duplicado **dentro** de la transacción Drizzle, eliminando la race condition. ✓
 
 ---
 
-## 🔴 4. Crear campaña con sponsor Elkjøp para testing
+## ✅ 4. Datos de test con Elkjøp — HECHO
 
-En el dashboard:
-1. Crear nueva campaña
-2. Asignar sponsor: **Elkjøp** (ya existe en el sistema)
-3. Crear un broadcast con `external_id = "real-madrid-barcelona-2025-01-24"`
-4. Crear 2 polls activos en ese broadcast
-5. Anotar el `campaignId` y el `apiKey` de la Client App aquí
-
-Esto permite a Cursor y Viobot testear el loop completo.
+- Broadcast `real-madrid-vs-barcelona-2026-02-25` en campaña 35 (Viaplay Demo 2025, sponsor Elkjøp)
+- Status: `live`, end_time: 3h desde ahora (27/02/2026)
+- External ID: `real-madrid-barcelona-2025-01-24`
+- Poll 15: "¿Quién ganará el partido?" (3 opciones)
+- Poll 16: "¿Quién marcará el primer gol?" (4 opciones)
+- API key para test: `viaplay_api_key_0c611e983b314ff8` ✓
 
 ---
 
-## 🟡 5. Cleanup Tipio — ver CLEANUP_TIPIO.md
+## ✅ 5. Rename Commerce / documentación — HECHO
 
-- `IntegrationsTab.tsx` → eliminar sección "Tipio.no Liveshow" o marcar como "coming soon"
-- `advanced-campaign.tsx` → eliminar referencias a Tipio Integration
-- `shared/schema.ts` → renombrar tipos exportados `TipioLivestream` → eliminar o renombrar (NO tocar el campo DB `tipio_livestream_data`)
+- `integrations.commerce` en API (NO `integrations.tipio`)
+- UI SettingsTab: "Commerce Integration"
+- Docs actualizados: `CURSOR_SDK_INFRASTRUCTURE.md`, `.cursorrules`, `DASHBOARD_FLOWS.md`, `replit.md` ✓
 
 ---
 
-## 🟡 6. Broadcast validator en todos los endpoints de engagement
+## 🟡 6. Broadcast validator en endpoints de engagement
 
 Verificar que `validateBroadcastId` middleware está aplicado en:
 - `POST /v1/engagement/polls/:pollId/vote`
@@ -96,14 +51,31 @@ Verificar que `validateBroadcastId` middleware está aplicado en:
 
 ---
 
-## 🟡 7. Dashboard — asegurarse que fluye sin errores
+## 🟡 7. Dashboard — flujo sin errores para demo
 
-El flujo que debe funcionar sin bugs para la demo:
 ```
 Crear campaña → Asignar sponsor → Crear broadcast → Programar poll → Ver en SDK
 ```
 
 Probar entero y reportar cualquier error de UI o API.
+
+---
+
+## ❓ PREGUNTAS PENDIENTES — necesitan respuesta antes de continuar
+
+**P1 — Cleanup Tipio en UI (archivos frontend):**
+
+Los siguientes archivos aún muestran referencias a "Tipio.no Liveshow" que son visibles para el usuario:
+- `client/src/components/dashboard/IntegrationsTab.tsx` — sección "Tipio.no Liveshow" con datos del livestream
+- `client/src/pages/advanced-campaign.tsx` — Card "Tipio.no Liveshow"
+
+¿Elimino estas secciones del UI, o las reemplazo con un placeholder "coming soon"?
+
+**P2 — `tipioLivestreamSchema` en schema.ts:**
+
+`shared/schema.ts` exporta `tipioLivestreamSchema` y `TipioLivestream` (tipos que ya no se usan en ningún lado). El campo DB `tipio_livestream_data` se mantiene.
+
+¿Elimino los exports del schema (limpieza de código sin tocar la DB)?
 
 ---
 
