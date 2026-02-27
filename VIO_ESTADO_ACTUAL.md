@@ -119,10 +119,13 @@ Tanto `/v1/sdk/config` como `/v1/campaigns/{id}/config` devuelven:
 ## 5. Legacy — qué se mantiene y por qué
 
 ### `event-streamer-angelo100.replit.app`
-- **Qué es:** Servidor separado de Replit, anterior a este backend
-- **Por qué se mantiene:** El SDK lo usa en la demo Viaplay para `active-components` y WebSocket de componentes
-- **Decisión:** Se mantiene para demos de reuniones, no se migra por ahora
-- **Riesgo:** Si ese servidor cae, la demo rompe. No afecta producción real.
+- **Qué es:** Dominio viejo del mismo backend Vio — mismo código, mismos endpoints
+- **Por qué aún aparece:** Está hardcodeado en `OfferBannerModels` y `EventStreamerManager` del SDK iOS
+- **Estado:** DEPRECADO — se puede eliminar ahora
+- **Acción para el SDK:** Reemplazar la URL hardcodeada por `VioConfiguration.shared.campaignConfiguration.restAPIBaseURL`
+- **Endpoints que usaba → ya existen en `api-dev.vio.live`:**
+  - `GET /api/campaigns/{id}/active-components` ✅ (línea 2237 en routes.ts)
+  - `WebSocket /ws/{campaignId}` ✅
 
 ### `graph-ql-dev.vio.live/graphql`
 - **Qué es:** Backend GraphQL independiente (no es este repositorio)
@@ -189,8 +192,8 @@ Estas preguntas están pendientes de respuesta del equipo iOS (ver `VIO_SDK_RESP
 3. **¿El `liveShow.campaignId: 28` es hardcodeado o dinámico por build?**  
    Si es hardcodeado, el flujo de discovery (`GET /v1/sdk/campaigns`) no se está aprovechando.
 
-4. **`event-streamer-angelo100.replit.app` — ¿cuándo se puede deprecar?**  
-   Necesitamos saber si hay una fecha para migrar `active-components` al backend principal.
+4. ~~`event-streamer-angelo100.replit.app` — ¿cuándo se puede deprecar?~~  
+   **RESUELTO:** Es el mismo backend Vio, solo un dominio viejo. El SDK solo necesita reemplazar la URL hardcodeada por `restAPIBaseURL`. Todos los endpoints ya existen en `api-dev.vio.live`.
 
 ### Baja prioridad
 5. **¿Qué versión del SDK está en demo Viaplay?**  

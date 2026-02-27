@@ -12,6 +12,12 @@ Vio is a multi-tenant SaaS platform for managing real-time event broadcasts with
 - **Storage:** Replit Object Storage for file uploads, Uppy as upload client
 - **Docs:** OpenAPI 3.0 specification (`openapi.yaml`, ~5700 lines, 80 endpoints)
 
+## Known External Services (NOT part of this repo)
+
+- **`event-streamer-angelo100.replit.app`** — DEPRECATED domain. Same backend code as this repo, different old deployment. The iOS SDK has this URL hardcoded in `OfferBannerModels` and `EventStreamerManager` — should be replaced with `restAPIBaseURL` from config. All endpoints already exist in `api-dev.vio.live`. Nothing to implement here.
+- **`graph-ql-dev.vio.live/graphql`** — Separate GraphQL backend, not managed in this repo. Used by `SdkClient` and `VCastingVideoPlayer` in the iOS SDK. Out of scope.
+- **`stg-dev-microservices.tipioapp.com`** — Tipio external API server. The iOS SDK calls it directly using the Tipio key received from `integrations.tipio.apiKey` in the config endpoint. Vio does not proxy or interact with it.
+
 ## Project Structure
 
 ```

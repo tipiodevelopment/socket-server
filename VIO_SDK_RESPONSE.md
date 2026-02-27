@@ -132,8 +132,21 @@ Vemos en el reporte que `CampaignManager` llama a `/v1/sdk/config`. Ese endpoint
 ### 3. ¿Qué es `VioEnvironment.baseURL` (GraphQL)?
 El reporte muestra `https://graph-ql-dev.vio.live/graphql` hardcodeado en `SdkClient` y `VCastingVideoPlayer`. ¿Es un backend separado de Vio o un sistema externo? ¿Lo gestiona el equipo de Replit o es independiente?
 
-### 4. ¿Qué es `event-streamer-angelo100.replit.app`?
-Aparece hardcodeado como backend de "active-components" y WebSocket de componentes. ¿Es un servicio legacy que debe migrarse al backend principal `api-dev.vio.live`, o es un servicio paralelo que se mantiene?
+### 4. `event-streamer-angelo100.replit.app` — acción requerida
+Es el mismo backend Vio, solo un dominio viejo. Todos sus endpoints ya existen en `api-dev.vio.live`. **No hay ningún servicio paralelo que mantener.**
+
+Cambio requerido en el SDK: reemplazar la URL hardcodeada en `OfferBannerModels` y `EventStreamerManager`:
+```swift
+// ANTES (hardcodeado)
+"https://event-streamer-angelo100.replit.app"
+
+// DESPUÉS (dinámico desde config)
+VioConfiguration.shared.campaignConfiguration.restAPIBaseURL
+```
+
+Los endpoints siguen siendo exactamente iguales:
+- `GET /api/campaigns/{id}/active-components` → ya en `api-dev.vio.live`
+- `WebSocket /ws/{campaignId}` → ya en `api-dev.vio.live`
 
 ### 5. ¿El `liveShow.campaignId` en el config es siempre 28?
 ¿O varía por entorno/build del app? Si varía, ¿cómo se configura para producción?
