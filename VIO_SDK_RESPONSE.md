@@ -35,7 +35,7 @@ Sí. Responde **200 con la key correcta** e incluye:
 - Branding (brand.name, brand.logoUrl — del Sponsor)
 - Feature flags
 - Engagement settings
-- Bloque Tipio: `integrations.tipio` (ver abajo)
+- Bloque Tipio: `integrations.commerce` (ver abajo)
 
 ### ¿La campaña 28 existe y está activa?
 
@@ -69,7 +69,7 @@ El SDK actualmente tiene 3 keys en `vio-config.json`. Eso es un error de diseño
 | `POST /v1/engagement/polls/{id}/vote` | Vio App key | `apiKey` |
 | `POST /v1/engagement/contests/{id}/participate` | Vio App key | `apiKey` |
 | `GET /v1/offers` | Vio App key | `apiKey` |
-| **Tipio (productos)** | Tipio key | viene del servidor → `integrations.tipio.apiKey` |
+| **Tipio (productos)** | Tipio key | viene del servidor → `integrations.commerce.apiKey` |
 
 ### ¿De dónde saca el SDK la Tipio key?
 
@@ -83,7 +83,7 @@ Respuesta incluye:
 ```json
 {
   "integrations": {
-    "tipio": {
+    "commerce": {
       "enabled": true,
       "apiKey": "KCXF10Y-W5T4PCR-GG5119A-Z64SQ9S",
       "channelId": "tipio-channel-id"
@@ -152,7 +152,7 @@ Los endpoints siguen siendo exactamente iguales:
 ¿O varía por entorno/build del app? Si varía, ¿cómo se configura para producción?
 
 ### 6. ¿Qué versión del SDK está en la demo Viaplay?
-Necesitamos saber si están en una versión que ya soporta leer `integrations.tipio.apiKey` del response del config, o si necesitan actualizar el módulo Tipio también.
+Necesitamos saber si están en una versión que ya soporta leer `integrations.commerce.apiKey` del response del config, o si necesitan actualizar el módulo Tipio también.
 
 ---
 
@@ -162,7 +162,7 @@ Para que el equipo iOS sepa qué cambió en `api-dev.vio.live`:
 
 | Cambio | Descripción |
 |--------|-------------|
-| `integrations.tipio` | Bloque siempre presente en `/v1/campaigns/{id}/config` (antes no existía) |
+| `integrations.commerce` | Bloque siempre presente en `/v1/campaigns/{id}/config` (antes no existía) |
 | Auth directa | El config endpoint acepta `campaign.clientAppId` directo, sin requerir canal asignado |
 | "Reachu" → "Tipio" | Renombrado en toda la API pública y UI del dashboard |
 

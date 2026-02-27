@@ -3983,9 +3983,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
 
-      // Tipio integration — always present so SDK can read without null-checking
+      // Commerce integration (ex-Reachu) — always present so SDK can read without null-checking — always present so SDK can read without null-checking
       config.integrations = {
-        tipio: {
+        commerce: {
           enabled: !!(campaign.reachuApiKey),
           apiKey: campaign.reachuApiKey || null,
           channelId: campaign.reachuChannelId || null,
@@ -4112,9 +4112,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         };
       }
 
-      // Tipio integration — always present so SDK can read without null-checking
+      // Commerce integration (ex-Reachu) — always present so SDK can read without null-checking — always present so SDK can read without null-checking
       config.integrations = {
-        tipio: {
+        commerce: {
           enabled: !!(campaign.reachuApiKey),
           apiKey: campaign.reachuApiKey || null,
           channelId: campaign.reachuChannelId || null,

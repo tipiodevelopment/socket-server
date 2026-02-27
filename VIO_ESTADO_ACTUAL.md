@@ -54,7 +54,7 @@ La Tipio key NO va en `vio-config.json`. El SDK la recibe al llamar al config en
 
 ```
 GET /v1/campaigns/{id}/config?apiKey=<Vio App Key>
-→ response.integrations.tipio.apiKey
+→ response.integrations.commerce.apiKey
 ```
 
 - Si `enabled: true` → inicializar módulo Tipio
@@ -68,7 +68,7 @@ GET /v1/campaigns/{id}/config?apiKey=<Vio App Key>
 | Método | Endpoint | Auth | Descripción |
 |--------|----------|------|-------------|
 | GET | `/v1/sdk/campaigns` | apiKey | Campañas activas + componentes de campaña |
-| GET | `/v1/sdk/config` | apiKey | Config legacy por campaña (incluye `integrations.tipio`) |
+| GET | `/v1/sdk/config` | apiKey | Config legacy por campaña (incluye `integrations.commerce`) |
 | GET | `/v1/sdk/broadcast` | apiKey | Resolución contentId → broadcast |
 | GET | `/v1/campaigns/{id}/config` | apiKey | Config dinámica + branding + Tipio |
 | POST | `/v1/engagement/polls/{id}/vote` | apiKey | Votar en poll |
@@ -95,14 +95,14 @@ GET /v1/campaigns/{id}/config?apiKey=<Vio App Key>
 
 ---
 
-## 4. Bloque `integrations.tipio` — presente en ambos endpoints
+## 4. Bloque `integrations.commerce` — presente en ambos endpoints
 
 Tanto `/v1/sdk/config` como `/v1/campaigns/{id}/config` devuelven:
 
 ```json
 {
   "integrations": {
-    "tipio": {
+    "commerce": {
       "enabled": false,
       "apiKey": null,
       "channelId": null
@@ -136,7 +136,7 @@ Tanto `/v1/sdk/config` como `/v1/campaigns/{id}/config` devuelven:
 ### Campos DB `reachuApiKey` / `reachuChannelId`
 - **Qué son:** Nombre interno de los campos de Tipio en la DB
 - **Por qué se mantienen:** Renombrar requiere migración destructiva
-- **En la API pública:** Se exponen como `integrations.tipio.apiKey` / `integrations.tipio.channelId`
+- **En la API pública:** Se exponen como `integrations.commerce.apiKey` / `integrations.commerce.channelId`
 
 ---
 
@@ -186,7 +186,7 @@ Estas preguntas están pendientes de respuesta del equipo iOS (ver `VIO_SDK_RESP
    Impacta directamente cuándo se puede simplificar el modelo de config en el SDK.
 
 2. **`/v1/sdk/config` vs `/v1/campaigns/{id}/config` — ¿cuál usa el SDK actualmente?**  
-   Ambos existen y ahora ambos incluyen `integrations.tipio`. Pero si el SDK usa `/v1/sdk/config`, necesita pasar `?campaignId=28` en la URL o da 400.
+   Ambos existen y ahora ambos incluyen `integrations.commerce`. Pero si el SDK usa `/v1/sdk/config`, necesita pasar `?campaignId=28` en la URL o da 400.
 
 ### Media prioridad
 3. **¿El `liveShow.campaignId: 28` es hardcodeado o dinámico por build?**  
@@ -197,7 +197,7 @@ Estas preguntas están pendientes de respuesta del equipo iOS (ver `VIO_SDK_RESP
 
 ### Baja prioridad
 5. **¿Qué versión del SDK está en demo Viaplay?**  
-   Para saber si ya soporta leer `integrations.tipio.apiKey` del config response.
+   Para saber si ya soporta leer `integrations.commerce.apiKey` del config response.
 
 6. **`graph-ql-dev.vio.live` — ¿quién lo gestiona y cuándo se documenta?**  
    No bloquea nada hoy pero habría que documentarlo para que Cursor lo entienda.
@@ -208,8 +208,8 @@ Estas preguntas están pendientes de respuesta del equipo iOS (ver `VIO_SDK_RESP
 
 | Cambio | Archivo(s) | Estado |
 |--------|-----------|--------|
-| `integrations.tipio` en `/v1/campaigns/{id}/config` | `server/routes.ts` | ✅ |
-| `integrations.tipio` en `/v1/sdk/config` | `server/routes.ts` | ✅ |
+| `integrations.commerce` en `/v1/campaigns/{id}/config` | `server/routes.ts` | ✅ |
+| `integrations.commerce` en `/v1/sdk/config` | `server/routes.ts` | ✅ |
 | UI: "Tipio Integration" en Settings tab | `SettingsTab.tsx` | ✅ |
 | Reachu → Commerce → Tipio en docs | `CURSOR_SDK_INFRASTRUCTURE.md`, `.cursorrules`, `DASHBOARD_FLOWS.md`, `replit.md` | ✅ |
 | Respuesta al reporte iOS | `VIO_SDK_RESPONSE.md` | ✅ |
