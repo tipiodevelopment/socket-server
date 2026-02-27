@@ -136,8 +136,8 @@ export let broadcastToCampaign: (campaignId: number, message: string) => void = 
   console.warn('[WebSocket] broadcastToCampaign called before initialization');
 };
 
-export async function registerRoutes(app: Express): Promise<Server> {
-  const httpServer = createServer(app);
+export async function registerRoutes(app: Express, existingServer?: Server): Promise<Server> {
+  const httpServer = existingServer ?? createServer(app);
 
   // Register analytics routes
   const { registerAnalyticsRoutes } = await import("./analytics");
