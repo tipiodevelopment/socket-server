@@ -3983,6 +3983,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
 
+      // Tipio integration — always present so SDK can read without null-checking
+      config.integrations = {
+        tipio: {
+          enabled: !!(campaign.reachuApiKey),
+          apiKey: campaign.reachuApiKey || null,
+          channelId: campaign.reachuChannelId || null,
+        }
+      };
+
       res.json(config);
     } catch (error) {
       console.error('Error fetching SDK config:', error);
