@@ -181,6 +181,7 @@ export const campaignComponents = pgTable("campaign_components", {
   endTime: timestamp("end_time"), // Optional: auto-deactivate at this time (null = no end)
   activatedAt: timestamp("activated_at"),
   matchId: varchar("match_id", { length: 255 }),
+  locationId: varchar("location_id", { length: 100 }), // SDK slot identifier e.g. "top-banner", "sidebar-carousel"
   videoStartTime: integer("video_start_time"),
   videoEndTime: integer("video_end_time"),
   scheduledStartTime: timestamp("scheduled_start_time"),
@@ -346,6 +347,8 @@ export const chatMessages = pgTable("chat_messages", {
   broadcastId: varchar("broadcast_id", { length: 255 }).notNull().references(() => broadcasts.broadcastId, { onDelete: 'cascade' }),
   username: varchar("username", { length: 100 }).notNull(),
   message: text("message").notNull(),
+  type: varchar("type", { length: 50 }).notNull().default('message'), // 'message' | 'tweet'
+  metadata: json("metadata"), // For tweets: { tweetId, via, metrics: { likes, retweets } }
   createdAt: timestamp("created_at").defaultNow().notNull()
 }, (table) => [
   index("idx_chat_messages_broadcast_id").on(table.broadcastId),

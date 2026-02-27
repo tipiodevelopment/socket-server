@@ -65,9 +65,10 @@ The platform is built with a full-stack TypeScript environment.
 New tables added in this session:
 - `broadcast_ads` — ads linked to broadcasts (name, description, imageUrl, ctaUrl, adType, duration, isActive, displayOrder)
 - `broadcast_products` — shoppable products per broadcast (name, subtitle, price/originalPrice as varchar, buyUrl, status, displayOrder)
-- `chat_messages` — live chat messages per broadcast (username, message, createdAt)
+- `chat_messages` — live chat messages per broadcast (username, message, createdAt, type ['message'|'tweet'], metadata json for tweet metadata)
 - Broadcasts table extended with `viewerCount` and `peakViewers` integer columns
 - Broadcasts table extended with `externalId` (varchar 255, nullable) — maps partner content IDs (e.g. Viaplay stream IDs) to broadcasts; indexed on `(externalId, campaignId)` for fast SDK lookups; unique per app (enforced via query through campaign→channel→clientApp chain)
+- `campaign_components` extended with `locationId` (varchar 100, nullable) — SDK slot identifier (e.g. "top-banner", "sidebar-carousel") for component placement filtering
 
 ### API Architecture
 
@@ -91,7 +92,20 @@ Two-step SDK initialization:
 
 **Cache strategy:** `hasEngagement: false` → `Cache-Control: public, max-age=30`; `hasEngagement: true` → `Cache-Control: private, max-age=10` + `ETag`.
 
-**WebSocket events:** `campaign_ended` ✅, `campaign_started` ✅, `campaign_paused` ✅, `campaign_resumed` ✅, `broadcast_started` ✅ (fires when status → 'live'), `broadcast_ended` ✅ (fires when status → 'ended'). `broadcast_ended` hides only broadcast-level components; campaign-level components remain active until `campaign_ended`.
+**WebSocket events:** `campaign_ended` ✅, `campaign_started` ✅, `campaign_paused` ✅, `campaign_resumed` ✅, `broadcast_started` ✅ (fires when status → 'live'), `broadcast_ended` ✅ (fires when status → 'ended'), `chat_message` ✅ (fires on POST /api/broadcasts/:id/chat), `tweet` ✅ (fires on POST /api/broadcasts/:id/tweet), `score_update` ✅ (fires on PUT /api/broadcasts/:id/match-data). `broadcast_ended` hides only broadcast-level components; campaign-level components remain active until `campaign_ended`.
+
+**New SDK endpoints (T1-T4):**
+- `GET /v1/sdk/broadcasts/:id/chat` — chat history (last N messages, includes tweets)
+- `POST /api/broadcasts/:id/tweet` — send tweet to chat (type='tweet', metadata: tweetId, via, metrics) + WS emit
+- `PUT /api/broadcasts/:id/match-data` — update live score (homeTeam, awayTeam, minute, matchStatus, stats) + WS `score_update`
+- `GET /v1/sdk/broadcasts/:id/score` — current score (homeTeam, awayTeam, minute, matchStatus)
+- `GET /v1/sdk/broadcasts/:id/stats` — match stats (possession, shots, etc.)
+- `GET /v1/sdk/livescores` — all live broadcasts with matchData for the app
+- `GET /v1/sdk/components?locationId=&campaignId=` — active campaign components filtered by locationId slot
+
+**Dashboard UI additions:**
+- **Match Data section** in broadcast-detail — form to set teams, scores, minute, status → sends via WS `score_update`
+- **Tweet mode toggle** in live chat sidebar — send messages as type='tweet' (shown with blue @-tag badge)
 
 ## External Dependencies
 

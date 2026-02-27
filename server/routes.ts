@@ -3536,10 +3536,67 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { broadcastId } = req.params;
       const { username, message } = req.body;
       if (!username || !message) return res.status(400).json({ message: 'username and message are required' });
-      const chatMsg = await storage.createChatMessage({ broadcastId, username, message });
+      const chatMsg = await storage.createChatMessage({ broadcastId, username, message, type: 'message' });
+      // Emit WebSocket event to all SDK clients on this broadcast's campaign
+      const broadcast = await storage.getBroadcast(broadcastId);
+      if (broadcast?.campaignId) {
+        broadcastToCampaign(broadcast.campaignId, JSON.stringify({
+          type: 'chat_message',
+          data: { id: chatMsg.id, broadcastId, username, message, type: 'message', createdAt: chatMsg.createdAt }
+        }));
+      }
       res.status(201).json(chatMsg);
     } catch (error) {
       res.status(500).json({ message: 'Error creating chat message' });
+    }
+  });
+
+  // ========================================
+  // Tweet Endpoint (T2)
+  // ========================================
+  app.post('/api/broadcasts/:broadcastId/tweet', async (req, res) => {
+    try {
+      const { broadcastId } = req.params;
+      const { username, message, tweetId, via, metrics } = req.body;
+      if (!username || !message) return res.status(400).json({ message: 'username and message are required' });
+      const metadata = tweetId ? { tweetId, via: via || null, metrics: metrics || null } : null;
+      const chatMsg = await storage.createChatMessage({ broadcastId, username, message, type: 'tweet', metadata });
+      const broadcast = await storage.getBroadcast(broadcastId);
+      if (broadcast?.campaignId) {
+        broadcastToCampaign(broadcast.campaignId, JSON.stringify({
+          type: 'tweet',
+          data: { id: chatMsg.id, broadcastId, username, message, type: 'tweet', metadata, createdAt: chatMsg.createdAt }
+        }));
+      }
+      res.status(201).json(chatMsg);
+    } catch (error) {
+      res.status(500).json({ message: 'Error creating tweet' });
+    }
+  });
+
+  // ========================================
+  // Match Data Endpoint (T3)
+  // ========================================
+  app.put('/api/broadcasts/:broadcastId/match-data', async (req, res) => {
+    try {
+      const { broadcastId } = req.params;
+      const broadcast = await storage.getBroadcast(broadcastId);
+      if (!broadcast) return res.status(404).json({ message: 'Broadcast not found' });
+      const { homeTeam, awayTeam, minute, matchStatus, stats } = req.body;
+      const matchData = { homeTeam, awayTeam, minute: minute ?? null, matchStatus: matchStatus || 'NS', stats: stats || null };
+      const existingMetadata = (broadcast.metadata as any) || {};
+      const updated = await storage.updateBroadcast(broadcastId, {
+        metadata: { ...existingMetadata, matchData }
+      });
+      if (broadcast.campaignId) {
+        broadcastToCampaign(broadcast.campaignId, JSON.stringify({
+          type: 'score_update',
+          data: { broadcastId, ...matchData }
+        }));
+      }
+      res.json({ broadcastId, matchData, metadata: updated?.metadata });
+    } catch (error) {
+      res.status(500).json({ message: 'Error updating match data' });
     }
   });
 
@@ -4403,6 +4460,150 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error('Error fetching offers:', error);
       res.status(500).json({ message: 'Error fetching offers' });
+    }
+  });
+
+  // ========================================
+  // T1 — SDK Chat History
+  // GET /v1/sdk/broadcasts/:broadcastId/chat
+  // ========================================
+  app.get('/v1/sdk/broadcasts/:broadcastId/chat', validateApiKey, async (req, res) => {
+    try {
+      const { broadcastId } = req.params;
+      const limit = req.query.limit ? parseInt(req.query.limit as string) : 50;
+      const broadcast = await storage.getBroadcast(broadcastId);
+      if (!broadcast) return res.status(404).json({ message: 'Broadcast not found' });
+      const messages = await storage.getChatMessages(broadcastId, limit);
+      res.json({ broadcastId, messages, count: messages.length });
+    } catch (error) {
+      res.status(500).json({ message: 'Error fetching chat history' });
+    }
+  });
+
+  // ========================================
+  // T3 — SDK Score Endpoint
+  // GET /v1/sdk/broadcasts/:broadcastId/score
+  // ========================================
+  app.get('/v1/sdk/broadcasts/:broadcastId/score', validateApiKey, async (req, res) => {
+    try {
+      const { broadcastId } = req.params;
+      const broadcast = await storage.getBroadcast(broadcastId);
+      if (!broadcast) return res.status(404).json({ message: 'Broadcast not found' });
+      const meta = (broadcast.metadata as any) || {};
+      const matchData = meta.matchData || null;
+      if (!matchData) return res.json({ broadcastId, hasScore: false });
+      res.set('Cache-Control', 'public, max-age=10');
+      res.json({
+        broadcastId,
+        hasScore: true,
+        homeTeam: matchData.homeTeam || null,
+        awayTeam: matchData.awayTeam || null,
+        minute: matchData.minute ?? null,
+        matchStatus: matchData.matchStatus || 'NS',
+      });
+    } catch (error) {
+      res.status(500).json({ message: 'Error fetching score' });
+    }
+  });
+
+  // ========================================
+  // T3 — SDK Stats Endpoint
+  // GET /v1/sdk/broadcasts/:broadcastId/stats
+  // ========================================
+  app.get('/v1/sdk/broadcasts/:broadcastId/stats', validateApiKey, async (req, res) => {
+    try {
+      const { broadcastId } = req.params;
+      const broadcast = await storage.getBroadcast(broadcastId);
+      if (!broadcast) return res.status(404).json({ message: 'Broadcast not found' });
+      const meta = (broadcast.metadata as any) || {};
+      const matchData = meta.matchData || null;
+      if (!matchData?.stats) return res.json({ broadcastId, hasStats: false });
+      res.set('Cache-Control', 'public, max-age=30');
+      res.json({ broadcastId, hasStats: true, stats: matchData.stats });
+    } catch (error) {
+      res.status(500).json({ message: 'Error fetching stats' });
+    }
+  });
+
+  // ========================================
+  // T3 — SDK Livescores
+  // GET /v1/sdk/livescores
+  // ========================================
+  app.get('/v1/sdk/livescores', validateApiKey, async (req, res) => {
+    try {
+      const clientApp = (req as any).clientApp;
+      const campaigns = await storage.getClientAppCampaigns(clientApp.id);
+      const livescores: any[] = [];
+      for (const campaign of campaigns) {
+        const broadcastList = await storage.getCampaignBroadcasts(campaign.id);
+        for (const b of broadcastList) {
+          if (b.status !== 'live') continue;
+          const meta = (b.metadata as any) || {};
+          if (!meta.matchData) continue;
+          const md = meta.matchData;
+          livescores.push({
+            broadcastId: b.broadcastId,
+            broadcastName: b.broadcastName,
+            campaignId: campaign.id,
+            externalId: b.externalId || null,
+            homeTeam: md.homeTeam || null,
+            awayTeam: md.awayTeam || null,
+            minute: md.minute ?? null,
+            matchStatus: md.matchStatus || 'NS',
+          });
+        }
+      }
+      res.set('Cache-Control', 'public, max-age=15');
+      res.json({ livescores, count: livescores.length });
+    } catch (error) {
+      res.status(500).json({ message: 'Error fetching livescores' });
+    }
+  });
+
+  // ========================================
+  // T4 — SDK Components by locationId
+  // GET /v1/sdk/components?locationId=&campaignId=
+  // ========================================
+  app.get('/v1/sdk/components', validateApiKey, async (req, res) => {
+    try {
+      const clientApp = (req as any).clientApp;
+      const locationId = req.query.locationId as string | undefined;
+      const campaignIdParam = req.query.campaignId as string | undefined;
+
+      let targetCampaignIds: number[] = [];
+      if (campaignIdParam) {
+        const cid = parseInt(campaignIdParam);
+        if (!isNaN(cid)) targetCampaignIds = [cid];
+      } else {
+        const appCampaigns = await storage.getClientAppCampaigns(clientApp.id);
+        targetCampaignIds = appCampaigns.map(c => c.id);
+      }
+
+      const result: any[] = [];
+      for (const campaignId of targetCampaignIds) {
+        const comps = await storage.getCampaignComponents(campaignId);
+        const filtered = comps.filter(cc => {
+          if (cc.status !== 'active') return false;
+          if (locationId && cc.locationId !== locationId) return false;
+          return true;
+        });
+        for (const cc of filtered) {
+          result.push({
+            instanceId: cc.id,
+            campaignId,
+            componentId: cc.componentId,
+            locationId: cc.locationId || null,
+            instanceName: cc.instanceName || null,
+            type: cc.component?.type || null,
+            config: cc.customConfig || cc.component?.config || null,
+          });
+        }
+      }
+
+      res.set('Cache-Control', 'public, max-age=30');
+      res.json({ components: result, count: result.length });
+    } catch (error) {
+      res.status(500).json({ message: 'Error fetching components' });
     }
   });
 

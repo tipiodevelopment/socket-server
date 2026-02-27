@@ -11,7 +11,7 @@ import { useToast } from '@/hooks/use-toast';
 import { queryClient, apiRequest } from '@/lib/queryClient';
 import { AppLayout } from '@/components/AppLayout';
 import type { Broadcast, Poll, PollOptionRecord, Contest, Campaign, BroadcastAd, BroadcastProduct, ChatMessage } from '@shared/schema';
-import { ArrowLeft, Plus, Trash2, BarChart3, Trophy, X, MoreVertical, CheckCircle, Play, SkipBack, SkipForward, Maximize2, Send, Megaphone, ShoppingBag, ExternalLink, Eye, TrendingUp, Vote, MessageSquare, RefreshCw, Users, Radio, Pencil, Check } from 'lucide-react';
+import { ArrowLeft, Plus, Trash2, BarChart3, Trophy, X, MoreVertical, CheckCircle, Play, SkipBack, SkipForward, Maximize2, Send, Megaphone, ShoppingBag, ExternalLink, Eye, TrendingUp, Vote, MessageSquare, RefreshCw, Users, Radio, Pencil, Check, AtSign, Swords } from 'lucide-react';
 import { useState, useRef, useEffect } from 'react';
 import { useUser } from '@/contexts/UserContext';
 
@@ -550,6 +550,7 @@ function ShoppableProductsSection({ broadcastId }: { broadcastId: string }) {
 function LiveChatSidebar({ broadcastId, analytics, reachuUserId }: { broadcastId: string; analytics?: BroadcastAnalytics; reachuUserId: string | null }) {
   const [activeTab, setActiveTab] = useState<'chat' | 'analytics'>('chat');
   const [chatInput, setChatInput] = useState('');
+  const [tweetMode, setTweetMode] = useState(false);
   const chatBottomRef = useRef<HTMLDivElement>(null);
   const [lastRefreshed, setLastRefreshed] = useState<Date>(new Date());
 
@@ -563,8 +564,12 @@ function LiveChatSidebar({ broadcastId, analytics, reachuUserId }: { broadcastId
   }, [dataUpdatedAt]);
 
   const sendMessageMutation = useMutation({
-    mutationFn: (message: string) =>
-      apiRequest('POST', `/api/broadcasts/${broadcastId}/chat`, { username: reachuUserId ?? 'Guest', message }),
+    mutationFn: (message: string) => {
+      if (tweetMode) {
+        return apiRequest('POST', `/api/broadcasts/${broadcastId}/tweet`, { username: reachuUserId ?? 'Guest', message });
+      }
+      return apiRequest('POST', `/api/broadcasts/${broadcastId}/chat`, { username: reachuUserId ?? 'Guest', message });
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/broadcasts', broadcastId, 'chat'] });
       setChatInput('');
@@ -620,13 +625,14 @@ function LiveChatSidebar({ broadcastId, analytics, reachuUserId }: { broadcastId
           ) : (
             <>
               {messages.map((msg) => (
-                <div key={msg.id} className="flex items-start space-x-2" data-testid={`chat-message-${msg.id}`}>
-                  <div className="w-6 h-6 rounded bg-[#3d8b7a]/10 dark:bg-white/10 flex items-center justify-center flex-shrink-0">
-                    <span className="text-[9px] text-gray-500 dark:text-gray-400 font-semibold">{msg.username.charAt(0).toUpperCase()}</span>
+                <div key={msg.id} className={`flex items-start space-x-2 ${(msg as any).type === 'tweet' ? 'bg-blue-50 dark:bg-blue-900/10 rounded-lg px-2 py-1.5 -mx-2' : ''}`} data-testid={`chat-message-${msg.id}`}>
+                  <div className={`w-6 h-6 rounded flex items-center justify-center flex-shrink-0 ${(msg as any).type === 'tweet' ? 'bg-blue-100 dark:bg-blue-900/30' : 'bg-[#3d8b7a]/10 dark:bg-white/10'}`}>
+                    {(msg as any).type === 'tweet' ? <AtSign className="w-3 h-3 text-blue-500" /> : <span className="text-[9px] text-gray-500 dark:text-gray-400 font-semibold">{msg.username.charAt(0).toUpperCase()}</span>}
                   </div>
                   <div className="flex-1">
                     <div className="flex items-center space-x-2 mb-1">
                       <span className="text-xs font-semibold text-gray-900 dark:text-white">{msg.username}</span>
+                      {(msg as any).type === 'tweet' && <span className="text-[9px] px-1 py-0.5 rounded bg-blue-100 dark:bg-blue-900/30 text-blue-500 font-medium">tweet</span>}
                       <span className="text-[10px] text-gray-400 dark:text-gray-500">{timeAgo(msg.createdAt)}</span>
                     </div>
                     <p className="text-xs text-gray-600 dark:text-gray-300">{msg.message}</p>
@@ -663,33 +669,119 @@ function LiveChatSidebar({ broadcastId, analytics, reachuUserId }: { broadcastId
       </div>
 
       <div className="p-4 border-t border-gray-200 dark:border-white/10">
-        {reachuUserId && (
-          <div className="flex items-center gap-1.5 mb-2">
-            <Users className="w-2.5 h-2.5 text-gray-400 dark:text-gray-500" />
-            <span className="text-[10px] text-gray-400 dark:text-gray-500">Sending as <span className="font-semibold text-gray-600 dark:text-gray-300">{reachuUserId}</span></span>
-          </div>
-        )}
+        <div className="flex items-center justify-between mb-2">
+          {reachuUserId && (
+            <div className="flex items-center gap-1.5">
+              <Users className="w-2.5 h-2.5 text-gray-400 dark:text-gray-500" />
+              <span className="text-[10px] text-gray-400 dark:text-gray-500">As <span className="font-semibold text-gray-600 dark:text-gray-300">{reachuUserId}</span></span>
+            </div>
+          )}
+          <button
+            onClick={() => setTweetMode(t => !t)}
+            className={`flex items-center gap-1 px-2 py-1 rounded text-[10px] font-semibold transition ${tweetMode ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400' : 'text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300'}`}
+            data-testid="button-toggle-tweet-mode"
+          >
+            <AtSign className="w-2.5 h-2.5" /> {tweetMode ? 'Tweet mode' : 'Tweet'}
+          </button>
+        </div>
         <div className="flex items-center space-x-2">
           <input
             type="text"
             value={chatInput}
             onChange={(e) => setChatInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Type a message..."
-            className="flex-1 px-3 py-2 bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded text-xs text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:border-gray-300 dark:focus:border-white/30"
+            placeholder={tweetMode ? 'Send a tweet...' : 'Type a message...'}
+            className={`flex-1 px-3 py-2 bg-gray-50 dark:bg-white/5 border rounded text-xs text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none transition ${tweetMode ? 'border-blue-300 dark:border-blue-700 focus:border-blue-400 dark:focus:border-blue-500' : 'border-gray-200 dark:border-white/10 focus:border-gray-300 dark:focus:border-white/30'}`}
             data-testid="input-chat-message"
           />
           <button
             onClick={handleSend}
             disabled={sendMessageMutation.isPending || !chatInput.trim()}
-            className="w-9 h-9 flex items-center justify-center rounded bg-[#3d8b7a] text-white dark:bg-white dark:text-black hover:bg-[#2f7365] dark:hover:bg-gray-200 transition disabled:opacity-50"
+            className={`w-9 h-9 flex items-center justify-center rounded transition disabled:opacity-50 ${tweetMode ? 'bg-blue-500 hover:bg-blue-600 text-white' : 'bg-[#3d8b7a] text-white dark:bg-white dark:text-black hover:bg-[#2f7365] dark:hover:bg-gray-200'}`}
             data-testid="button-send-message"
           >
-            <Send className="w-3.5 h-3.5" />
+            {tweetMode ? <AtSign className="w-3.5 h-3.5" /> : <Send className="w-3.5 h-3.5" />}
           </button>
         </div>
       </div>
     </aside>
+  );
+}
+
+function MatchDataSection({ broadcastId }: { broadcastId: string }) {
+  const { toast } = useToast();
+  const [homeTeamName, setHomeTeamName] = useState('');
+  const [homeScore, setHomeScore] = useState('0');
+  const [awayTeamName, setAwayTeamName] = useState('');
+  const [awayScore, setAwayScore] = useState('0');
+  const [minute, setMinute] = useState('');
+  const [matchStatus, setMatchStatus] = useState('NS');
+
+  const updateMutation = useMutation({
+    mutationFn: () => apiRequest('PUT', `/api/broadcasts/${broadcastId}/match-data`, {
+      homeTeam: { name: homeTeamName, score: parseInt(homeScore) || 0 },
+      awayTeam: { name: awayTeamName, score: parseInt(awayScore) || 0 },
+      minute: minute ? parseInt(minute) : null,
+      matchStatus,
+    }),
+    onSuccess: () => toast({ title: 'Match data updated', description: 'Score sent via WebSocket to all clients.' }),
+    onError: () => toast({ title: 'Error', description: 'Failed to update match data.', variant: 'destructive' }),
+  });
+
+  return (
+    <div className="bg-white dark:bg-[#141824] border border-gray-200 dark:border-white/10 rounded-xl p-5">
+      <div className="flex items-center gap-2 mb-4">
+        <Swords className="w-4 h-4 text-gray-400 dark:text-gray-500" />
+        <h2 className="text-sm font-semibold text-gray-900 dark:text-white">Match Data</h2>
+        <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 font-medium ml-auto">Live Score</span>
+      </div>
+
+      <div className="grid grid-cols-2 gap-4 mb-4">
+        <div>
+          <label className="block text-xs text-gray-400 dark:text-gray-500 mb-1">Home Team</label>
+          <input value={homeTeamName} onChange={e => setHomeTeamName(e.target.value)} placeholder="e.g. Real Madrid" className="w-full px-3 py-2 bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded text-xs text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:border-gray-300 dark:focus:border-white/30" data-testid="input-home-team-name" />
+        </div>
+        <div>
+          <label className="block text-xs text-gray-400 dark:text-gray-500 mb-1">Away Team</label>
+          <input value={awayTeamName} onChange={e => setAwayTeamName(e.target.value)} placeholder="e.g. Barcelona" className="w-full px-3 py-2 bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded text-xs text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:border-gray-300 dark:focus:border-white/30" data-testid="input-away-team-name" />
+        </div>
+      </div>
+
+      <div className="grid grid-cols-4 gap-3 mb-4">
+        <div>
+          <label className="block text-xs text-gray-400 dark:text-gray-500 mb-1">Home Score</label>
+          <input type="number" min="0" value={homeScore} onChange={e => setHomeScore(e.target.value)} className="w-full px-3 py-2 bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded text-xs text-gray-900 dark:text-white focus:outline-none focus:border-gray-300 dark:focus:border-white/30 text-center font-bold text-base" data-testid="input-home-score" />
+        </div>
+        <div>
+          <label className="block text-xs text-gray-400 dark:text-gray-500 mb-1">Away Score</label>
+          <input type="number" min="0" value={awayScore} onChange={e => setAwayScore(e.target.value)} className="w-full px-3 py-2 bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded text-xs text-gray-900 dark:text-white focus:outline-none focus:border-gray-300 dark:focus:border-white/30 text-center font-bold text-base" data-testid="input-away-score" />
+        </div>
+        <div>
+          <label className="block text-xs text-gray-400 dark:text-gray-500 mb-1">Minute</label>
+          <input type="number" min="0" max="120" value={minute} onChange={e => setMinute(e.target.value)} placeholder="45" className="w-full px-3 py-2 bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded text-xs text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:border-gray-300 dark:focus:border-white/30 text-center" data-testid="input-match-minute" />
+        </div>
+        <div>
+          <label className="block text-xs text-gray-400 dark:text-gray-500 mb-1">Status</label>
+          <select value={matchStatus} onChange={e => setMatchStatus(e.target.value)} className="w-full px-2 py-2 bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded text-xs text-gray-900 dark:text-white focus:outline-none focus:border-gray-300 dark:focus:border-white/30" data-testid="select-match-status">
+            <option value="NS">NS</option>
+            <option value="1H">1H</option>
+            <option value="HT">HT</option>
+            <option value="2H">2H</option>
+            <option value="ET">ET</option>
+            <option value="FT">FT</option>
+          </select>
+        </div>
+      </div>
+
+      <button
+        onClick={() => updateMutation.mutate()}
+        disabled={updateMutation.isPending || !homeTeamName || !awayTeamName}
+        className="w-full py-2 rounded bg-gray-900 dark:bg-white text-white dark:text-black text-xs font-semibold hover:bg-gray-700 dark:hover:bg-gray-200 transition disabled:opacity-50"
+        data-testid="button-update-match-data"
+      >
+        {updateMutation.isPending ? 'Sending...' : 'Update Score & Send Live'}
+      </button>
+    </div>
   );
 }
 
@@ -1220,6 +1312,7 @@ export default function BroadcastDetailPage() {
             )}
           </div>
 
+          <MatchDataSection broadcastId={broadcastId!} />
           <ScheduledAdsSection broadcastId={broadcastId!} />
           <ShoppableProductsSection broadcastId={broadcastId!} />
         </main>
