@@ -1066,10 +1066,20 @@ export class MemStorage implements IStorage {
 
   async createPollVoteWithCountUpdate(vote: InsertPollVote, optionId: number): Promise<PollVote> {
     return await db.transaction(async (tx) => {
+      // 1. Check duplicate inside transaction to prevent race conditions
+      const [existing] = await tx.select().from(pollVotes)
+        .where(and(eq(pollVotes.pollId, vote.pollId), eq(pollVotes.userId, vote.userId!)))
+        .limit(1);
+      if (existing) {
+        throw new Error('User has already voted on this poll');
+      }
+      // 2. Insert vote
       const [newVote] = await tx.insert(pollVotes).values(vote).returning();
+      // 3. Increment option count
       await tx.update(pollOptions)
         .set({ voteCount: sql`${pollOptions.voteCount} + 1` })
         .where(eq(pollOptions.id, optionId));
+      // 4. Increment poll total
       await tx.update(polls)
         .set({ totalVotes: sql`${polls.totalVotes} + 1` })
         .where(eq(polls.id, vote.pollId));

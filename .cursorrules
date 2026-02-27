@@ -16,7 +16,7 @@ Vio is a multi-tenant SaaS platform for managing real-time event broadcasts with
 
 - **`event-streamer-angelo100.replit.app`** — DEPRECATED domain. Same backend code as this repo, different old deployment. The iOS SDK has this URL hardcoded in `OfferBannerModels` and `EventStreamerManager` — should be replaced with `restAPIBaseURL` from config. All endpoints already exist in `api-dev.vio.live`. Nothing to implement here.
 - **`graph-ql-dev.vio.live/graphql`** — Separate GraphQL backend, not managed in this repo. Used by `SdkClient` and `VCastingVideoPlayer` in the iOS SDK. Out of scope.
-- **`stg-dev-microservices.tipioapp.com`** — Tipio external API server. The iOS SDK calls it directly using the Tipio key received from `integrations.tipio.apiKey` in the config endpoint. Vio does not proxy or interact with it.
+- **`stg-dev-microservices.tipioapp.com`** — Tipio external API server. The iOS SDK calls it directly using the Commerce key received from `integrations.commerce.apiKey` in the config endpoint. Vio does not proxy or interact with it.
 
 ## Project Structure
 
@@ -123,11 +123,11 @@ Mobile SDK integration endpoints. Two-step initialization flow:
 - Authenticated via `?apiKey=` query param or `X-Api-Key:` header
 
 **Campaign level — delivered by the server:**
-The Tipio module API key is NOT hardcoded in the app. The SDK reads it from `GET /v1/campaigns/:id/config`:
+The Commerce module API key is NOT hardcoded in the app. The SDK reads it from `GET /v1/campaigns/:id/config`:
 ```json
 {
   "integrations": {
-    "tipio": {
+    "commerce": {
       "enabled": true,
       "apiKey": "COMMERCE-KEY-HERE",
       "channelId": "commerce-channel-id"
@@ -135,9 +135,9 @@ The Tipio module API key is NOT hardcoded in the app. The SDK reads it from `GET
   }
 }
 ```
-- `enabled: false` → do not initialize the Tipio module
-- Stored in DB as `campaigns.reachuApiKey` / `campaigns.reachuChannelId` (internal field names)
-- Configured in the dashboard: Campaign Settings → Tipio Integration section
+- `enabled: false` → do not initialize the Commerce module
+- Stored in DB as `campaigns.reachuApiKey` / `campaigns.reachuChannelId` (internal field names, never exposed publicly)
+- Configured in the dashboard: Campaign Settings → Commerce Integration section
 
 ### Analytics APIs (`/api/analytics/*`) — Session-based
 SQL-based analytics with drill-down hierarchy: Global → App → Campaign → Broadcast.

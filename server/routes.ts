@@ -4092,7 +4092,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
           enableProductCatalog: featureFlags?.enableProductCatalog !== 'false',
           enableEngagement: featureFlags?.enableEngagement !== 'false',
           enablePolls: featureFlags?.enablePolls !== 'false',
-          enableContests: featureFlags?.enableContests !== 'false'
+          enableContests: featureFlags?.enableContests !== 'false',
+          enableChat: featureFlags?.enableChat !== 'false'
         },
         cache: {
           ttl: 300,

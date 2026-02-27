@@ -387,14 +387,14 @@ La App API Key se usa para TODOS los endpoints Vio:
 - La API Key se genera al crear un Client App en el dashboard
 - Se valida contra la tabla `client_apps.api_key`
 
-**Tipio Integration Key (nivel campaña):**
-La Tipio API key (antes llamada "Reachu") NO va en el config del app. El SDK la lee dinámicamente de la respuesta de `GET /v1/campaigns/:id/config`:
+**Commerce Integration Key (nivel campaña):**
+La Commerce API key NO va en el config del app. El SDK la lee dinámicamente de la respuesta de `GET /v1/campaigns/:id/config`:
 
 ```json
-// response.integrations.tipio
+// response.integrations.commerce
 {
   "integrations": {
-    "tipio": {
+    "commerce": {
       "enabled": true,
       "apiKey": "KCXF10Y-...",
       "channelId": "commerce-channel-id"
@@ -403,8 +403,8 @@ La Tipio API key (antes llamada "Reachu") NO va en el config del app. El SDK la 
 }
 ```
 
-- Si `enabled: false` o `apiKey: null` → no inicializar el módulo Tipio
-- La key se configura por campaña en el Settings tab del dashboard (sección "Tipio Integration")
+- Si `enabled: false` o `apiKey: null` → no inicializar el módulo Commerce
+- La key se configura por campaña en el Settings tab del dashboard (sección "Commerce Integration")
 
 ### 4.3 Sin Auth - Dashboard interno
 
@@ -445,12 +445,12 @@ Devuelve la configuracion dinamica completa de la campaña:
 - Branding (brand.name, brand.logoUrl — desde el Sponsor)
 - Feature flags (enablePolls, enableContests, etc.)
 - Engagement settings (defaultPollDuration, etc.)
-- **`integrations.tipio`** — clave de Commerce si esta configurada
+- **`integrations.commerce`** — clave del módulo Commerce si esta configurada
 
 ```json
 {
   "integrations": {
-    "tipio": {
+    "commerce": {
       "enabled": true,
       "apiKey": "COMMERCE-KEY-HERE",
       "channelId": "commerce-channel-id"
@@ -460,7 +460,7 @@ Devuelve la configuracion dinamica completa de la campaña:
 ```
 Si `enabled: true` → el SDK inicializa el modulo Commerce con esa key.
 Si `enabled: false` → no inicializar el modulo Commerce.
-La key viene del campo `campaigns.reachuApiKey` en la DB (nombre interno).
+La key viene del campo `campaigns.reachuApiKey` en la DB (nombre interno, nunca expuesto publicamente).
 
 **Paso 3 — Al abrir un stream especifico:**
 ```
@@ -620,8 +620,8 @@ Response 200:
     "enableAds": true
   },
   "integrations": {            ← SIEMPRE presente (enabled: false si no configurado)
-    "tipio": {
-      "enabled": true,         ← false si la campana no tiene Tipio key
+    "commerce": {
+      "enabled": true,         ← false si la campana no tiene Commerce key
       "apiKey": "KCXF10Y-...", ← null si no configurado
       "channelId": "ch-123"    ← null si no configurado
     }
@@ -638,7 +638,7 @@ Cache-Control: `public, max-age=300` (5 min)
 
 **NOTA:** `brand` se construye exclusivamente desde el Sponsor. Los campos legacy `campaign.brand_name`, `campaign.brand_icon_url`, `campaign.brand_logo_url` se usan solo como fallback si el sponsor no tiene los datos.
 
-**NOTA Commerce:** `integrations.tipio.apiKey` es la key del módulo Tipio (antes "Reachu"). El SDK debe leerla aquí en lugar de tenerla hardcodeada en el app config. Si `enabled: false`, no inicializar el módulo Tipio.
+**NOTA Commerce:** `integrations.commerce.apiKey` es la key del módulo Commerce (campo interno en DB: `campaigns.reachuApiKey`). El SDK debe leerla aquí en lugar de tenerla hardcodeada en el app config. Si `enabled: false`, no inicializar el módulo Commerce.
 
 ### 5.4 Configuracion de Engagement por Match
 

@@ -363,7 +363,7 @@ Archivos:
 | Basic Information | `GET /api/campaigns/:id` | `PUT /api/campaigns/:id` |
 | Campaign Schedule | `GET /api/campaigns/:id` | `PUT /api/campaigns/:id` |
 | Channel Assignment | `GET /api/channels` + `GET /api/campaigns/:id` | `PUT /api/campaigns/:id` { channelId } |
-| Tipio Integration | `GET /api/campaigns/:id` | `PUT /api/campaigns/:id` { reachuApiKey } |
+| Commerce Integration | `GET /api/campaigns/:id` | `PUT /api/campaigns/:id` { reachuApiKey } |
 | Targeting & Segmentation | `GET /api/campaigns/:id` | `PUT /api/campaigns/:id` { targetCountries, isSegmented, ... } |
 | Engagement Settings | `GET /api/campaigns/:id/engagement-config` | `PUT /api/campaigns/:id/engagement-config` |
 | Feature Flags | `GET /api/campaigns/:id/feature-flags` | `PUT /api/campaigns/:id/feature-flags` |
@@ -395,8 +395,8 @@ Usuario modifica campo → click "Save"
 - Solo asignar channel si se necesita por agrupacion o integracion legacy
 
 **IntegrationsTab:**
-- Muestra integraciones disponibles (Tipio, etc.)
-- Vinculacion de cuenta Tipio: `GET /api/reachu/channels`
+- Muestra integraciones disponibles (Commerce, etc.)
+- Commerce channels (legado): `GET /api/reachu/channels`
 
 ---
 
@@ -623,7 +623,7 @@ Crear campana (/campaigns/new)
   → Redirect a /campaigns/:campaignId (tab Overview)
 
 Configurar campana (tab Settings)
-  → PUT /api/campaigns/:id (nombre, descripcion, fechas, canal, reachuApiKey = Tipio key)
+  → PUT /api/campaigns/:id (nombre, descripcion, fechas, canal, reachuApiKey = Commerce key)
   → PUT /api/campaigns/:id/engagement-config (duraciones, limites)
   → PUT /api/campaigns/:id/feature-flags (habilitar/deshabilitar features)
 
@@ -839,7 +839,7 @@ Response:
 SDK: guarda lista de campanas, conecta WS a /ws/35, muestra banners
 ```
 
-### Paso 1b: Campaign Config (branding + Tipio key)
+### Paso 1b: Campaign Config (branding + Commerce key)
 
 ```
 GET /v1/campaigns/35/config
@@ -851,9 +851,9 @@ Response:
   "features": { "enablePolls": true, "enableContests": true },
   "engagement": { "defaultPollDuration": 300 },
   "integrations": {
-    "tipio": {
+    "commerce": {
       "enabled": false,       ← true si hay key configurada en la campaña
-      "apiKey": null,         ← la Tipio key si está configurada
+      "apiKey": null,         ← la Commerce key si está configurada
       "channelId": null
     }
   }
@@ -861,10 +861,10 @@ Response:
 
 SDK:
   - Aplica branding de campaña
-  - Si integrations.tipio.enabled → inicializa módulo Tipio con esa apiKey
-  - Si enabled: false → módulo Tipio no se inicializa
-  - La Tipio key viene del campo campaigns.reachuApiKey en DB (nombre interno)
-  - El módulo Tipio llama directo al servidor externo — no pasa por Vio
+  - Si integrations.commerce.enabled → inicializa módulo Commerce con esa apiKey
+  - Si enabled: false → módulo Commerce no se inicializa
+  - La Commerce key viene del campo campaigns.reachuApiKey en DB (nombre interno)
+  - El módulo Commerce llama directo al servidor externo — no pasa por Vio
 ```
 
 ### Paso 2: Stream Open (contentId resolution)
@@ -933,9 +933,9 @@ El app iOS tiene un archivo de configuración con **una sola key Vio**:
 ```
 - `apiKey` = `client_apps.api_key` en la DB
 - Se usa para TODOS los endpoints Vio: `/v1/sdk/*`, `/v1/campaigns/*/config`, `/v1/engagement/*`, `/v1/offers`
-- La Tipio key **NO va aquí** — la entrega el servidor dinámicamente
+- La Commerce key **NO va aquí** — la entrega el servidor dinámicamente
 
-### Config del SDK (branding + Tipio key):
+### Config del SDK (branding + Commerce key):
 
 ```
 GET /v1/campaigns/:campaignId/config
@@ -956,19 +956,19 @@ Response incluye:
   features: { polls, contests, chat, products },
   engagement: { defaultPollDuration, maxVotesPerPoll, ... },
   integrations: {
-    tipio: {
+    commerce: {
       enabled: true,              ← false si no hay key configurada
-      apiKey: "COMMERCE-KEY",     ← campaigns.reachuApiKey en DB (nombre interno)
-      channelId: "channel-id"     ← campaigns.reachuChannelId en DB (nombre interno)
+      apiKey: "COMMERCE-KEY",     ← campaigns.reachuApiKey en DB (nombre interno, no expuesto)
+      channelId: "channel-id"     ← campaigns.reachuChannelId en DB (nombre interno, no expuesto)
     }
   }
 ```
 
 **Flujo Commerce en el SDK:**
 1. SDK llama `GET /v1/campaigns/{id}/config`
-2. Lee `integrations.tipio.apiKey` del response
-3. Si `enabled: true` → inicializa el módulo Tipio con esa key
-4. El módulo Tipio llama **directo** al servidor externo de Commerce usando esa key (no pasa por Vio)
+2. Lee `integrations.commerce.apiKey` del response
+3. Si `enabled: true` → inicializa el módulo Commerce con esa key
+4. El módulo Commerce llama **directo** al servidor externo usando esa key (no pasa por Vio)
 5. Vio actúa solo como distribuidor seguro de la key — nunca hardcodeada en el app
 
 ---
