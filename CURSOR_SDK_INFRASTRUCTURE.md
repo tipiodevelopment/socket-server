@@ -387,14 +387,14 @@ La App API Key se usa para TODOS los endpoints Vio:
 - La API Key se genera al crear un Client App en el dashboard
 - Se valida contra la tabla `client_apps.api_key`
 
-**Commerce Integration Key (nivel campaña):**
-La Commerce API key (antes llamada "Reachu") NO va en el config del app. El SDK la lee dinámicamente de la respuesta de `GET /v1/campaigns/:id/config`:
+**Tipio Integration Key (nivel campaña):**
+La Tipio API key (antes llamada "Reachu") NO va en el config del app. El SDK la lee dinámicamente de la respuesta de `GET /v1/campaigns/:id/config`:
 
 ```json
-// response.integrations.commerce
+// response.integrations.tipio
 {
   "integrations": {
-    "commerce": {
+    "tipio": {
       "enabled": true,
       "apiKey": "KCXF10Y-...",
       "channelId": "commerce-channel-id"
@@ -403,8 +403,8 @@ La Commerce API key (antes llamada "Reachu") NO va en el config del app. El SDK 
 }
 ```
 
-- Si `enabled: false` o `apiKey: null` → no inicializar el módulo Commerce
-- La key se configura por campaña en el Settings tab del dashboard (sección "Commerce Integration")
+- Si `enabled: false` o `apiKey: null` → no inicializar el módulo Tipio
+- La key se configura por campaña en el Settings tab del dashboard (sección "Tipio Integration")
 
 ### 4.3 Sin Auth - Dashboard interno
 
@@ -427,7 +427,7 @@ Estos son los endpoints que consume el SDK de iOS. Cursor necesita conocer cada 
   "webSocketBaseURL": "https://api-dev.vio.live"
 }
 ```
-Una sola key Vio por cliente. No hay `campaignAdminApiKey` ni `campaignApiKey` separados. La Commerce key NO va aqui — el servidor la entrega dinamicamente.
+Una sola key Vio por cliente. No hay `campaignAdminApiKey` ni `campaignApiKey` separados. La Tipio key NO va aqui — el servidor la entrega dinamicamente.
 
 ---
 
@@ -445,12 +445,12 @@ Devuelve la configuracion dinamica completa de la campaña:
 - Branding (brand.name, brand.logoUrl — desde el Sponsor)
 - Feature flags (enablePolls, enableContests, etc.)
 - Engagement settings (defaultPollDuration, etc.)
-- **`integrations.commerce`** — clave de Commerce si esta configurada
+- **`integrations.tipio`** — clave de Commerce si esta configurada
 
 ```json
 {
   "integrations": {
-    "commerce": {
+    "tipio": {
       "enabled": true,
       "apiKey": "COMMERCE-KEY-HERE",
       "channelId": "commerce-channel-id"
@@ -475,7 +475,7 @@ Resuelve `contentId` → `externalId` en tabla broadcasts. Si `hasEngagement: tr
 - Siempre la misma Vio App API Key
 
 **Modulo Commerce — flujo separado:**
-Una vez que el SDK tiene `integrations.commerce.apiKey` del Paso 2, la usa exclusivamente para llamadas al sistema de productos externo. Esas llamadas no pasan por el backend Vio — van directo al servidor Commerce con su propia key. Vio actua como distribuidor seguro de esa key sin que este hardcodeada en el app.
+Una vez que el SDK tiene `integrations.tipio.apiKey` del Paso 2, la usa exclusivamente para llamadas al sistema de productos externo. Esas llamadas no pasan por el backend Vio — van directo al servidor Tipio con su propia key. Vio actua como distribuidor seguro de esa key sin que este hardcodeada en el app.
 
 ---
 
@@ -620,8 +620,8 @@ Response 200:
     "enableAds": true
   },
   "integrations": {            ← SIEMPRE presente (enabled: false si no configurado)
-    "commerce": {
-      "enabled": true,         ← false si la campana no tiene Commerce key
+    "tipio": {
+      "enabled": true,         ← false si la campana no tiene Tipio key
       "apiKey": "KCXF10Y-...", ← null si no configurado
       "channelId": "ch-123"    ← null si no configurado
     }
@@ -638,7 +638,7 @@ Cache-Control: `public, max-age=300` (5 min)
 
 **NOTA:** `brand` se construye exclusivamente desde el Sponsor. Los campos legacy `campaign.brand_name`, `campaign.brand_icon_url`, `campaign.brand_logo_url` se usan solo como fallback si el sponsor no tiene los datos.
 
-**NOTA Commerce:** `integrations.commerce.apiKey` es la key del módulo Commerce (antes "Reachu"). El SDK debe leerla aquí en lugar de tenerla hardcodeada en el app config. Si `enabled: false`, no inicializar el módulo Commerce.
+**NOTA Commerce:** `integrations.tipio.apiKey` es la key del módulo Tipio (antes "Reachu"). El SDK debe leerla aquí en lugar de tenerla hardcodeada en el app config. Si `enabled: false`, no inicializar el módulo Tipio.
 
 ### 5.4 Configuracion de Engagement por Match
 
