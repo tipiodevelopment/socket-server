@@ -35,18 +35,15 @@ app.use(express.urlencoded({ extended: false }));
 app.get('/health', (_req, res) => res.status(200).json({ status: 'ok', timestamp: new Date().toISOString() }));
 app.get('/_health', (_req, res) => res.status(200).json({ status: 'ok' }));
 
-// Root endpoint — in production, serve index.html immediately so the / health check
-// passes from the first millisecond. dist/public exists because build ran before start.
-// In dev, Vite handles / so this block is skipped entirely.
+// Production: serve static files synchronously BEFORE listen() so that GET /
+// responds immediately with index.html. This makes health checks pass from the
+// first moment. The SPA catch-all (for deep-link routes like /campaigns) is added
+// later by serveStatic() in the async IIFE, after API routes are registered.
 if (process.env.NODE_ENV !== 'development') {
-  const distIndex = path.join(process.cwd(), 'dist', 'public', 'index.html');
-  app.get('/', (_req, res) => {
-    if (fs.existsSync(distIndex)) {
-      res.sendFile(distIndex);
-    } else {
-      res.status(200).json({ status: 'starting' });
-    }
-  });
+  const distPath = path.join(process.cwd(), 'dist', 'public');
+  if (fs.existsSync(distPath)) {
+    app.use(express.static(distPath));
+  }
 }
 
 app.use((req, res, next) => {
