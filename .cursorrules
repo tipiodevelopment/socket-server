@@ -383,12 +383,22 @@ Cache: `hasEngagement: false` → `public, max-age=30`; `hasEngagement: true` �
 
 ## Deployment & Scaling Architecture
 
-### Estado actual (Feb 2026) — `vm` deployment target
+### Estado actual (Feb 2026) — `autoscale` deployment target
 
-El servidor corre en modo **Always-On VM** (`deploymentTarget = "vm"`). Esto es **intencional** y necesario por dos razones estructurales:
+El servidor corre en modo **Autoscale** (`deploymentTarget = "autoscale"`). Este es el target que funciona de forma estable en Replit para este proyecto.
 
-#### Bloqueante 1 — WebSockets con estado
-Los WebSockets son conexiones TCP persistentes atadas a una instancia de servidor específica. En `autoscale`, múltiples instancias se levantan y apagan según la carga. Si el SDK del cliente A está conectado a la instancia 1, y el dashboard admin dispara un evento desde la instancia 2, el cliente A nunca recibe el mensaje.
+**Historial de la decisión:** Se intentó `vm` (Always-On) en múltiples ocasiones. El servidor arrancaba correctamente (puerto abierto en ~320ms, app lista en ~1.7s), corría sin errores durante 60+ segundos con el scheduler funcionando — pero el health check de Replit seguía marcando el deployment como fallido sin una razón técnica clara en los logs. El `autoscale` resolvió el problema inmediatamente en el primer intento.
+
+**Run command actual:** `node dist/index.js` (usa el auto-start code en `server/index.ts` que enlaza el puerto antes de cargar las rutas).
+**Build command:** `npm run build` (Vite + esbuild frontend + backend).
+
+#### Comportamiento en autoscale (instancia única actual)
+- WebSockets funcionan porque hay una sola instancia (sin problema de cross-instance broadcasting)
+- El scheduler (`server/scheduler.ts`) vive en RAM de esa instancia — funciona igual que en `vm`
+- Si el tráfico sube y Replit escala a múltiples instancias, aparecen los bloqueantes documentados abajo
+
+#### Bloqueante al escalar — WebSockets con estado
+Los WebSockets son conexiones TCP persistentes atadas a una instancia de servidor específica. Si el SDK del cliente A está conectado a la instancia 1, y el dashboard admin dispara un evento desde la instancia 2, el cliente A nunca recibe el mensaje.
 
 Flujo actual:
 ```
@@ -397,14 +407,14 @@ Admin (dashboard) → POST /api/broadcasts/:id/chat
                  → wss://host/ws/42 → todos los SDKs conectados ✅
 ```
 
-Con autoscale sin solución:
+Con múltiples instancias sin solución:
 ```
 Admin → Instancia 2 → broadcastToCampaign() → solo SDKs en instancia 2 ❌
                                              → SDKs en instancia 1 NO reciben ❌
 ```
 
-#### Bloqueante 2 — Scheduler en memoria
-`server/scheduler.ts` es un `setInterval` que vive en RAM. Con múltiples instancias, cada instancia tendría su propio scheduler duplicado activando/desactivando componentes varias veces. Con autoscale a cero instancias, el scheduler dejaría de correr.
+#### Bloqueante al escalar — Scheduler en memoria
+`server/scheduler.ts` es un `setInterval` que vive en RAM. Con múltiples instancias, cada instancia tendría su propio scheduler duplicado activando/desactivando componentes varias veces.
 
 ---
 
@@ -463,7 +473,7 @@ El SDK iOS conecta directamente a Pusher/Ably en lugar de al servidor Vio. Requi
 | WS broadcasting acoplado al proceso | ❌ | `broadcastToCampaign` itera sobre `wss.clients` local |
 
 ### Decisión actual
-**No escalar por ahora.** `vm` es suficiente para el tráfico actual. Cuando sea necesario escalar, **Opción A (Redis Pub/Sub + BullMQ)** es el camino recomendado porque:
+**Autoscale, instancia única, sin escalar por ahora.** Para el tráfico actual una sola instancia es suficiente y los WebSockets/scheduler funcionan correctamente. Cuando sea necesario escalar, **Opción A (Redis Pub/Sub + BullMQ)** es el camino recomendado porque:
 - Mantiene la arquitectura WebSocket nativa (sin cambios en el SDK iOS)
 - BullMQ ya está parcialmente integrado
 - Redis es compatible con Replit Secrets y Neon Stack

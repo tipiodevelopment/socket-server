@@ -77,7 +77,7 @@ New SDK endpoints include chat history, tweeting, live score updates, match stat
 
 ### Deployment
 
-The platform targets `vm` (Always-On) deployment. Scaling to `autoscale` requires addressing stateful WebSockets (using `broadcastToCampaign()`) and the in-memory scheduler. The recommended solution for scaling involves Redis Pub/Sub and BullMQ.
+The platform runs on **`autoscale`** deployment (changed from `vm` in Feb 2026 after `vm` health checks failed persistently despite the server starting correctly). Build: `npm run build`. Run: `node dist/index.js`. At current traffic levels, autoscale runs as a single instance, so WebSockets and the in-memory scheduler work correctly. Scaling to multiple instances requires Redis Pub/Sub for WebSocket broadcasting and BullMQ for the scheduler (code foundation already present in `server/queue/`).
 
 ## External Dependencies
 
