@@ -174,7 +174,7 @@ Users (agencias/marcas)
 | name | varchar(255) | Nombre de la app |
 | bundle_id | varchar(255) UNIQUE | Bundle ID (com.example.app) |
 | api_key | text UNIQUE | API Key para autenticacion SDK |
-| reachu_api_key | text | API Key de Reachu (opcional) |
+| reachu_api_key | text | Commerce API Key (nombre interno DB, no exponer en API pública) |
 | created_at | timestamp | Fecha de creacion |
 
 ### 3.3 `channels`
@@ -200,7 +200,7 @@ Users (agencias/marcas)
 | start_date | timestamp | Fecha de inicio |
 | end_date | timestamp | Fecha de fin |
 | is_paused | varchar(10) | 'true'/'false' — estado de pausa (varchar, no boolean) |
-| reachu_api_key | text | API Key Reachu (nivel campana) |
+| reachu_api_key | text | Commerce API Key (nivel campana) — expuesta via `integrations.commerce.apiKey` en config endpoint |
 | is_segmented | varchar(10) | 'true'/'false' — targeting activo |
 | target_countries | text[] | Paises objetivo (ISO codes) |
 | target_percentage | integer | Porcentaje de usuarios (1-100) |
