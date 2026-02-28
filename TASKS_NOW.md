@@ -4,11 +4,19 @@
 
 ---
 
-## 🎯 Contexto — qué estamos haciendo
+## 🎯 Contexto — por qué existe este proyecto
 
-Estamos conectando el SDK de iOS (VioSwiftSDK) con el backend real paso a paso.
-El flujo correcto es:
+**Vio.live** es una segunda pantalla para eventos deportivos.
 
+El usuario ve el partido en TV. En el móvil tiene la app de Viaplay o TV2 con el SDK de Vio integrado. Cuando el partido tiene engagement activo, aparece un overlay con polls, contests, chat y score en tiempo real. En el momento de máxima emoción (un gol, una jugada clave) puede aparecer un producto comprable — una camiseta, una apuesta, lo que sea. El timing lo es todo.
+
+**Por qué importa el dashboard:**
+El dashboard es la herramienta del operador de Vio — la persona que durante el partido gestiona qué se muestra y cuándo. Crea los broadcasts, programa los polls, activa los componentes. Si el dashboard tiene huecos, el operador no puede trabajar. Si el operador no puede trabajar, la demo no funciona. Si la demo no funciona, no hay deal con Viaplay ni TV2.
+
+**Dónde estamos ahora:**
+Angelo está probando el SDK de iOS en Xcode conectándolo al backend real por primera vez. Vamos paso a paso — primero que cargue la campaña, luego el branding del sponsor, luego el broadcast, luego los polls. Cada paso que funciona es un paso más cerca de poder mostrarle esto a Viaplay y TV2.
+
+**El flujo que debe funcionar:**
 ```
 1. App launch → GET /v1/sdk/campaigns → campaña activa
 2. GET /v1/campaigns/:id/config → branding del Sponsor (logo Elkjøp)
@@ -17,7 +25,7 @@ El flujo correcto es:
 5. WebSocket /ws/35 → polls/contests/chat/score en tiempo real
 ```
 
-Hoy Angelo está probando el SDK en Xcode. Vamos encontrando huecos y corrigiéndolos.
+Hoy Angelo está probando el SDK en Xcode. Vamos encontrando huecos y los documentamos aquí para que Replit los resuelva. No es crítica — es proceso normal de integración.
 
 ---
 
@@ -36,6 +44,14 @@ GET /v1/sdk/broadcasts/real-madrid-vs-barcelona-2026-02-25/score?apiKey=...
 ---
 
 ## 🔴 TAREA 1 — Editar status de broadcast desde el dashboard (BLOQUEANTE)
+
+**Por qué importa:**
+El operador necesita controlar cuándo un broadcast está "live". Si no puede cambiarlo desde el dashboard, tiene que pedirle a un desarrollador que lo haga via curl — eso es inaceptable en una demo con Viaplay o TV2. El operador debe poder:
+- Marcar un broadcast como `live` cuando empieza el partido
+- Marcarlo como `ended` cuando termina
+- Cambiar su estado si hay algún error
+
+Hoy Angelo no pudo hacerlo y el broadcast estaba `ended` con fecha pasada. Viobot lo tuvo que corregir via API directamente.
 
 **Problema encontrado hoy:** Desde el dashboard no se puede cambiar el status de un broadcast (live/upcoming/ended). Angelo intentó hacerlo y no pudo. Viobot tuvo que hacerlo via curl.
 
@@ -62,6 +78,9 @@ GET /v1/sdk/broadcasts/real-madrid-vs-barcelona-2026-02-25/score?apiKey=...
 ---
 
 ## 🔴 TAREA 2 — Verificar que /v1/campaigns/:id/config devuelve branding correcto
+
+**Por qué importa:**
+El branding del sponsor (Elkjøp) es lo primero que ve el usuario cuando abre el overlay de Vio. Si el logo no carga o es incorrecto, la demo se ve rota. Viaplay necesita ver que el sistema de branding funciona — es parte del valor que vendemos: cada cliente ve su sponsor con su logo y colores, dinámicamente desde el backend.
 
 El SDK llama a este endpoint al inicializar para obtener el logo del sponsor (Elkjøp).
 
@@ -91,6 +110,9 @@ Si no devuelve `brand.logoUrl` con la URL de Elkjøp → el SDK no va a mostrar 
 
 ## 🟡 TAREA 3 — Historial de chat en el broadcast
 
+**Por qué importa:**
+Cuando un usuario abre el overlay de engagement a mitad del partido, debe ver los mensajes de chat anteriores — no una pantalla vacía. Es lo mismo que cuando abres WhatsApp: ves el historial, no empiezas de cero. Sin este endpoint, el chat parece roto aunque el WebSocket funcione perfectamente.
+
 El SDK va a llamar a este endpoint cuando el usuario abra el overlay de engagement:
 
 ```
@@ -110,6 +132,9 @@ app.get('/v1/sdk/broadcasts/:broadcastId/chat', validateApiKey, async (req, res)
 ---
 
 ## 🟡 TAREA 4 — Componentes por locationId
+
+**Por qué importa:**
+Los componentes (banners, countdown, carrusel de productos) son la capa de monetización. El desarrollador de Viaplay define en su código dónde pueden aparecer estos componentes — "aquí puede ir un banner", "aquí un countdown". El backend decide qué mostrar en cada slot. Sin este endpoint, los componentes nunca llegan al SDK aunque estén activos en el dashboard.
 
 El SDK pide componentes filtrando por locationId (el desarrollador define slots en el código):
 
