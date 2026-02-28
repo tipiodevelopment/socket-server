@@ -197,7 +197,7 @@ Full broadcast management view with split layout. **All data is real — zero ha
 ### Campaign Dashboard (`/campaigns/:campaignId`)
 Tabbed: **Overview | Broadcasts | Components | Live | Analytics | Settings**. Tab navigation via callback-based `onNavigateTab` prop (not DOM manipulation).
 - **Live tab:** Contains `<EventsTab>` (real-time event dispatch) + `<ScheduledTab>`. Forms start empty and auto-save per campaign to DB via `campaignFormState` table.
-- **Settings tab:** Contains `<SettingsTab>` + `<IntegrationsTab>`. Sections: Basic Information, Campaign Schedule, Channel Assignment (optional), Tipio Integration, Targeting & Segmentation, Engagement Settings, Feature Flags, Danger Zone. Styled with raw divs + `border-white/10` (NOT shadcn Cards). Campaign Logo, Match Context, and UI Theme sections were removed — branding comes from Sponsor.
+- **Settings tab:** Contains `<SettingsTab>` + `<IntegrationsTab>`. Sections: Basic Information, Campaign Schedule, Channel Assignment (optional), Commerce Integration, Targeting & Segmentation, Engagement Settings, Feature Flags, Danger Zone. Styled with raw divs + `border-white/10` (NOT shadcn Cards). Campaign Logo, Match Context, and UI Theme sections were removed — branding comes from Sponsor.
 - **Analytics tab:** Real broadcast performance data. Queries `GET /api/broadcasts?campaignId=X` on tab activation. Shows KPI cards (total broadcasts, live count, total viewers, peak viewers) + per-broadcast table with status badges.
 - **Broadcasts tab:** Create/list/delete broadcasts. "New Broadcast" form has an **"External Content ID"** field that maps to `broadcasts.externalId`. Each card has a pencil icon to edit name/externalId/status/dates via PUT.
 
@@ -296,8 +296,8 @@ Dashboard → Apps → Campaigns → Sponsors → Broadcasts → Components → 
 - **broadcast-detail.tsx:** Zero hardcoded data. "Load Demo" button seeds demo data. "Send Live" buttons on polls and contests dispatch real-time WebSocket events to SDK clients.
 - **campaign-dashboard.tsx:** Tabs reorganized to Overview | Broadcasts | Components | Live | Analytics | Settings. "New Broadcast" form includes "External Content ID" field. Broadcast cards have a pencil icon for inline editing.
 - **EventsTab.tsx:** No demo data. Forms start empty and auto-save per campaign. Event Log panel removed. Campaign Logo section removed entirely.
-- **SettingsTab.tsx (Feb 2026 — latest):** Removed Campaign Logo, Match Context, and UI Theme sections. Remaining 8 sections: Basic Information, Campaign Schedule, Channel Assignment (optional — "No channel" option available), Tipio Integration, Targeting & Segmentation, Engagement Settings, Feature Flags, Danger Zone. Fully restyled with raw divs + `border-white/10` (removed all shadcn Card usage). Style matches OverviewTab.
-- **Tipio Integration (Feb 2026):** "Reachu Integration" renamed to "Tipio Integration" in UI and docs. The Tipio API key is stored in `campaigns.reachuApiKey` (internal DB name preserved). The key is now exposed via `GET /v1/campaigns/:id/config` → `response.integrations.tipio.apiKey` so the SDK reads it dynamically instead of hardcoding it. `integrations.tipio` block is always present in the response (`enabled: false` when no key configured).
+- **SettingsTab.tsx (Feb 2026 — latest):** Removed Campaign Logo, Match Context, and UI Theme sections. Remaining 8 sections: Basic Information, Campaign Schedule, Channel Assignment (optional — "No channel" option available), Commerce Integration, Targeting & Segmentation, Engagement Settings, Feature Flags, Danger Zone. Fully restyled with raw divs + `border-white/10` (removed all shadcn Card usage). Style matches OverviewTab.
+- **Commerce Integration (Feb 2026):** "Reachu Integration" renamed to "Commerce Integration" in UI and docs. The Commerce API key is stored in `campaigns.reachuApiKey` (internal DB name preserved). The key is now exposed via `GET /v1/campaigns/:id/config` → `response.integrations.commerce.apiKey` so the SDK reads it dynamically instead of hardcoding it. `integrations.commerce` block is always present in the response (`enabled: false` when no key configured).
 - **Config endpoint `/v1/campaigns/:id/config` (Feb 2026):** Authorization now supports direct match (`campaign.clientAppId === clientApp.id`) OR channel legacy fallback. No longer returns 400 when campaign has no channel assigned. Channel references use optional chaining (`channel?.id`, `channel?.name`).
 - **Brand data in SDK config:** `brand.name`, `brand.iconUrl`, `brand.logoUrl` come from the linked Sponsor. Legacy campaign brand fields used only as fallback.
 
@@ -314,7 +314,7 @@ Dashboard → Apps → Campaigns → Sponsors → Broadcasts → Components → 
 - `apiKey` = `client_apps.api_key` in the DB — identifies the client (Viaplay, XXL, etc.)
 - Used for ALL Vio endpoints: `/v1/sdk/*`, `/v1/campaigns/*/config`, `/v1/engagement/*`, `/v1/offers`
 - NO `campaignAdminApiKey`, NO `campaignApiKey`. One key for everything Vio.
-- The Tipio key is NOT in this file — delivered dynamically by the server via `/v1/campaigns/{id}/config`.
+- The Commerce key is NOT in this file — delivered dynamically by the server via `/v1/campaigns/{id}/config`.
 
 ### SDK Initialization Flow (4 steps)
 
@@ -328,11 +328,11 @@ Returns all active campaigns + campaign-level components (banners, carousels). S
 ```
 GET /v1/campaigns/{id}/config?apiKey=<key>
 ```
-Returns dynamic campaign config. The `integrations.tipio` block is **always** present:
+Returns dynamic campaign config. The `integrations.commerce` block is **always** present:
 ```json
 {
   "integrations": {
-    "tipio": {
+    "commerce": {
       "enabled": true,
       "apiKey": "COMMERCE-KEY-HERE",
       "channelId": "commerce-channel-id"
@@ -340,10 +340,10 @@ Returns dynamic campaign config. The `integrations.tipio` block is **always** pr
   }
 }
 ```
-- `enabled: true` → SDK initializes Tipio module with that key.
-- `enabled: false` (apiKey is null) → do not initialize Tipio module.
+- `enabled: true` → SDK initializes Commerce module with that key.
+- `enabled: false` (apiKey is null) → do not initialize Commerce module.
 - Source in DB: `campaigns.reachuApiKey` + `campaigns.reachuChannelId` (internal names, never exposed publicly).
-- The Tipio key comes from the server — the SDK uses it to call the external Commerce system directly, bypassing the Vio backend. Vio is a secure key distributor only.
+- The Commerce key comes from the server — the SDK uses it to call the external Commerce system directly, bypassing the Vio backend. Vio is a secure key distributor only.
 
 **Step 3 — Stream open:**
 ```

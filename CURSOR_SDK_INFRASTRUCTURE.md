@@ -427,7 +427,7 @@ Estos son los endpoints que consume el SDK de iOS. Cursor necesita conocer cada 
   "webSocketBaseURL": "https://api-dev.vio.live"
 }
 ```
-Una sola key Vio por cliente. No hay `campaignAdminApiKey` ni `campaignApiKey` separados. La Tipio key NO va aqui — el servidor la entrega dinamicamente.
+Una sola key Vio por cliente. No hay `campaignAdminApiKey` ni `campaignApiKey` separados. La Commerce key NO va aqui — el servidor la entrega dinamicamente.
 
 ---
 
@@ -475,7 +475,7 @@ Resuelve `contentId` → `externalId` en tabla broadcasts. Si `hasEngagement: tr
 - Siempre la misma Vio App API Key
 
 **Modulo Commerce — flujo separado:**
-Una vez que el SDK tiene `integrations.tipio.apiKey` del Paso 2, la usa exclusivamente para llamadas al sistema de productos externo. Esas llamadas no pasan por el backend Vio — van directo al servidor Tipio con su propia key. Vio actua como distribuidor seguro de esa key sin que este hardcodeada en el app.
+Una vez que el SDK tiene `integrations.commerce.apiKey` del Paso 2, la usa exclusivamente para llamadas al sistema de productos externo. Esas llamadas no pasan por el backend Vio — van directo al servidor externo con su propia key. Vio actua como distribuidor seguro de esa key sin que este hardcodeada en el app.
 
 ---
 
