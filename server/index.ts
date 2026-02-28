@@ -1,7 +1,5 @@
 import express, { type Request, Response, NextFunction } from "express";
-import { createServer } from "http";
-import path from "path";
-import fs from "fs";
+import type * as httpTypes from "http";
 import cors from "cors";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
@@ -10,158 +8,161 @@ import { startScheduler } from "./scheduler";
 import { initializeWorkers } from "./queue/workers";
 import { isQueueEnabled } from "./queue/queues";
 
-const app = express();
-const isProduction = process.env.NODE_ENV !== 'development';
-
-app.use(cors({
-  origin: '*',
-  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'Accept'],
-  credentials: false
-}));
-
 declare module 'http' {
   interface IncomingMessage {
     rawBody: unknown
   }
 }
-app.use(express.json({
-  verify: (req, _res, buf) => {
-    req.rawBody = buf;
-  }
-}));
-app.use(express.urlencoded({ extended: false }));
 
-// ── Immediate health check endpoints ─────────────────────────────────────────
-// Registered first so they always respond instantly, even before full init.
-app.get('/health', (_req, res) => res.status(200).json({ status: 'ok', timestamp: new Date().toISOString() }));
-app.get('/_health', (_req, res) => res.status(200).json({ status: 'ok' }));
+const isProduction = process.env.NODE_ENV !== 'development';
 
-// ── Production root / static setup (synchronous, before listen) ───────────────
-// In production the build already ran, so dist/public/index.html exists.
-// We read it once into memory so GET / can respond INSTANTLY with no disk I/O.
-// This is what Cloud Run / Replit health checks hit and must receive a 200.
-if (isProduction) {
-  const distPublic = path.join(process.cwd(), 'dist', 'public');
-  const indexFile = path.join(distPublic, 'index.html');
+/**
+ * Configures and returns the Express application on an existing HTTP server.
+ * Called by preserver.ts (production fast-start) or directly in dev mode.
+ */
+export async function setupApp(
+  server: httpTypes.Server
+): Promise<(req: httpTypes.IncomingMessage, res: httpTypes.ServerResponse) => void> {
+  const app = express();
 
-  // Read index.html into memory synchronously once at startup
-  let indexHtml: string | null = null;
-  try {
-    indexHtml = fs.readFileSync(indexFile, 'utf-8');
-    console.log(`[Startup] index.html loaded from ${indexFile} (${indexHtml.length} bytes)`);
-  } catch (e) {
-    console.warn(`[Startup] Could not read ${indexFile}:`, e);
-  }
+  app.use(cors({
+    origin: '*',
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'Accept'],
+    credentials: false,
+  }));
 
-  // GET / — serves from memory, zero disk I/O, instant 200 for health checks
-  app.get('/', (_req, res) => {
-    if (indexHtml) {
-      res.setHeader('Content-Type', 'text/html; charset=utf-8');
-      return res.status(200).send(indexHtml);
-    }
-    // Fallback if build artefact missing — still return 200
-    return res.status(200).json({ status: 'ok' });
-  });
+  app.use(express.json({
+    verify: (req, _res, buf) => { req.rawBody = buf; },
+  }));
+  app.use(express.urlencoded({ extended: false }));
 
-  // Other static assets (CSS, JS, images) served from dist/public
-  if (fs.existsSync(distPublic)) {
-    app.use(express.static(distPublic));
-  }
-}
+  // Health endpoints — also handled by preserver before express is ready
+  app.get('/health', (_req, res) =>
+    res.status(200).json({ status: 'ok', timestamp: new Date().toISOString() })
+  );
+  app.get('/_health', (_req, res) => res.status(200).json({ status: 'ok' }));
 
-// ── Request logger ────────────────────────────────────────────────────────────
-app.use((req, res, next) => {
-  const start = Date.now();
-  const reqPath = req.path;
-  let capturedJsonResponse: Record<string, any> | undefined = undefined;
+  // Request logger
+  app.use((req, res, next) => {
+    const start = Date.now();
+    const reqPath = req.path;
+    let capturedJsonResponse: Record<string, any> | undefined;
 
-  const originalResJson = res.json;
-  res.json = function (bodyJson, ...args) {
-    capturedJsonResponse = bodyJson;
-    return originalResJson.apply(res, [bodyJson, ...args]);
-  };
+    const originalResJson = res.json;
+    res.json = function (bodyJson, ...args) {
+      capturedJsonResponse = bodyJson;
+      return originalResJson.apply(res, [bodyJson, ...args]);
+    };
 
-  res.on("finish", () => {
-    const duration = Date.now() - start;
-    if (reqPath.startsWith("/api")) {
-      let logLine = `${req.method} ${reqPath} ${res.statusCode} in ${duration}ms`;
-      if (capturedJsonResponse) {
-        logLine += ` :: ${JSON.stringify(capturedJsonResponse)}`;
+    res.on('finish', () => {
+      if (reqPath.startsWith('/api')) {
+        let logLine = `${req.method} ${reqPath} ${res.statusCode} in ${Date.now() - start}ms`;
+        if (capturedJsonResponse) logLine += ` :: ${JSON.stringify(capturedJsonResponse)}`;
+        if (logLine.length > 80) logLine = logLine.slice(0, 79) + '…';
+        log(logLine);
       }
-      if (logLine.length > 80) {
-        logLine = logLine.slice(0, 79) + "…";
-      }
-      log(logLine);
-    }
-  });
-
-  next();
-});
-
-// ── Start listening immediately ───────────────────────────────────────────────
-// Server is bound BEFORE async init so health checks pass from the first request.
-const port = parseInt(process.env.PORT || '5000', 10);
-const httpServer = createServer(app);
-
-httpServer.on('error', (err: NodeJS.ErrnoException) => {
-  if (err.code === 'EADDRINUSE') {
-    console.error(`❌ Port ${port} is already in use. Is another server running?`);
-  } else {
-    console.error('❌ Server error:', err);
-  }
-  process.exit(1);
-});
-
-httpServer.listen(port, '0.0.0.0', () => {
-  log(`serving on port ${port}`);
-});
-
-// ── Async initialization: routes, WebSocket, scheduler, SPA catch-all ─────────
-(async () => {
-  try {
-    const requiredEnvVars = ['DATABASE_URL', 'SESSION_SECRET'];
-    const missingEnvVars = requiredEnvVars.filter(v => !process.env[v]);
-    if (missingEnvVars.length > 0) {
-      console.error(`❌ Missing required environment variables: ${missingEnvVars.join(', ')}`);
-      process.exit(1);
-    }
-    console.log('✅ Environment variables verified (DATABASE_URL, SESSION_SECRET)');
-
-    detectAndCacheBaseUrl();
-
-    await registerRoutes(app, httpServer);
-    console.log('✅ Routes registered successfully');
-
-    startScheduler();
-    console.log('✅ Scheduler started');
-
-    if (isQueueEnabled()) {
-      initializeWorkers();
-      console.log('✅ Queue workers initialized');
-    } else {
-      console.log('ℹ️ Queue disabled (USE_QUEUE != true), using synchronous processing');
-    }
-
-    app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
-      const status = err.status || err.statusCode || 500;
-      const message = err.message || "Internal Server Error";
-      res.status(status).json({ message });
-      console.error(`Error handler caught: ${status} - ${message}`);
     });
+    next();
+  });
 
-    if (!isProduction) {
-      await setupVite(app, httpServer);
-      console.log('✅ Vite dev server setup complete');
-    } else {
-      // serveStatic adds express.static again (harmless) + SPA catch-all for deep links
-      serveStatic(app);
-      console.log('✅ Static files + SPA catch-all ready');
-    }
-
-    console.log('✅ Application started successfully');
-  } catch (error) {
-    console.error('❌ Fatal error during application startup:', error);
+  const missingEnv = ['DATABASE_URL', 'SESSION_SECRET'].filter(v => !process.env[v]);
+  if (missingEnv.length > 0) {
+    console.error(`❌ Missing required environment variables: ${missingEnv.join(', ')}`);
     process.exit(1);
   }
-})();
+  console.log('✅ Environment variables verified');
+
+  detectAndCacheBaseUrl();
+
+  await registerRoutes(app, server);
+  console.log('✅ Routes registered');
+
+  startScheduler();
+  console.log('✅ Scheduler started');
+
+  if (isQueueEnabled()) {
+    initializeWorkers();
+    console.log('✅ Queue workers initialized');
+  } else {
+    console.log('ℹ️ Queue disabled');
+  }
+
+  app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
+    const status = err.status || err.statusCode || 500;
+    res.status(status).json({ message: err.message || 'Internal Server Error' });
+  });
+
+  if (!isProduction) {
+    await setupVite(app, server);
+    console.log('✅ Vite dev server ready');
+  } else {
+    serveStatic(app);
+    console.log('✅ Static files + SPA catch-all ready');
+  }
+
+  console.log('✅ Application fully initialized');
+  return app;
+}
+
+// ── Auto-start when this file is the entry point ─────────────────────────────
+// In production with preserver.ts: process.env.VIO_PRESERVER=1 is set before
+// importing this module, so we skip the auto-start (preserver owns the server).
+// In development (tsx server/index.ts) or without preserver: we start ourselves.
+if (!process.env.VIO_PRESERVER) {
+  (async () => {
+    const { createServer } = await import('http');
+    const { readFileSync, existsSync } = await import('fs');
+    const { join } = await import('path');
+
+    const port = parseInt(process.env.PORT || '5000');
+    const server = createServer();
+
+    server.on('error', (err: NodeJS.ErrnoException) => {
+      console.error('❌ Server error:', err.code === 'EADDRINUSE'
+        ? `Port ${port} already in use`
+        : err.message);
+      process.exit(1);
+    });
+
+    // In production: register GET / immediately so health checks pass while
+    // the async setup below is still running (routes, drizzle, vite, etc.)
+    if (isProduction) {
+      let indexHtml = '';
+      const indexPath = join(process.cwd(), 'dist', 'public', 'index.html');
+      try {
+        indexHtml = readFileSync(indexPath, 'utf-8');
+        console.log(`[Startup] index.html cached (${indexHtml.length} bytes)`);
+      } catch {
+        console.warn('[Startup] index.html not found');
+      }
+
+      server.on('request', (req, res) => {
+        const url = (req.url ?? '/').split('?')[0];
+        if (url === '/health' || url === '/_health') {
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ status: 'ok', timestamp: new Date().toISOString() }));
+          return;
+        }
+        if (url === '/') {
+          res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+          res.end(indexHtml || '<!DOCTYPE html><html><body></body></html>');
+          return;
+        }
+        // All other requests: allow express to handle them (once registered below)
+      });
+    }
+
+    // Bind the port FIRST — health checks will pass from this moment
+    server.listen(port, '0.0.0.0', () => {
+      log(`serving on port ${port}`);
+    });
+
+    // Then complete the full async setup
+    const app = await setupApp(server);
+
+    // Replace the minimal handler with the full express handler
+    server.removeAllListeners('request');
+    server.on('request', app);
+  })();
+}
