@@ -31,10 +31,23 @@ app.use(express.json({
 }));
 app.use(express.urlencoded({ extended: false }));
 
-// Health check — responds immediately, even before full initialization
-app.get('/health', (_req, res) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString() });
-});
+// Health check endpoints — respond immediately before any async setup
+app.get('/health', (_req, res) => res.status(200).json({ status: 'ok', timestamp: new Date().toISOString() }));
+app.get('/_health', (_req, res) => res.status(200).json({ status: 'ok' }));
+
+// Root endpoint — in production, serve index.html immediately so the / health check
+// passes from the first millisecond. dist/public exists because build ran before start.
+// In dev, Vite handles / so this block is skipped entirely.
+if (process.env.NODE_ENV !== 'development') {
+  const distIndex = path.join(process.cwd(), 'dist', 'public', 'index.html');
+  app.get('/', (_req, res) => {
+    if (fs.existsSync(distIndex)) {
+      res.sendFile(distIndex);
+    } else {
+      res.status(200).json({ status: 'starting' });
+    }
+  });
+}
 
 app.use((req, res, next) => {
   const start = Date.now();
