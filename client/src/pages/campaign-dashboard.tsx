@@ -2,7 +2,7 @@ import { useParams, Link, useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useState, useMemo } from "react";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Pause, Play, MoreVertical, BarChart3, Radio, Puzzle, Settings, Activity, Eye, TrendingUp, ExternalLink, Zap } from "lucide-react";
+import { ArrowLeft, Pause, Play, MoreVertical, BarChart3, Radio, Puzzle, Settings, Activity, Eye, TrendingUp, ExternalLink, Zap, Square } from "lucide-react";
 import { Campaign, Sponsor, Broadcast } from "@shared/schema";
 import { OverviewTab } from "@/components/dashboard/OverviewTab";
 import { EventsTab } from "@/components/dashboard/EventsTab";
@@ -445,6 +445,38 @@ function BroadcastsTab({ campaignId }: { campaignId: number }) {
     },
   });
 
+  const [pendingStatusId, setPendingStatusId] = useState<string | null>(null);
+
+  const quickStatusMutation = useMutation({
+    mutationFn: async ({ broadcastId, newStatus, broadcast }: { broadcastId: string; newStatus: string; broadcast: Broadcast }) => {
+      return await apiRequest('PUT', `/api/broadcasts/${broadcastId}`, {
+        broadcastName: broadcast.broadcastName,
+        externalId: broadcast.externalId,
+        startTime: broadcast.startTime,
+        endTime: broadcast.endTime,
+        status: newStatus,
+      });
+    },
+    onSuccess: (_, { newStatus }) => {
+      invalidateBroadcasts();
+      setPendingStatusId(null);
+      const description =
+        newStatus === 'live' ? 'Broadcast is now Live. WebSocket event emitted.' :
+        newStatus === 'ended' ? 'Broadcast ended. WebSocket event emitted.' :
+        'Broadcast status updated.';
+      toast({ title: 'Status Updated', description });
+    },
+    onError: () => {
+      setPendingStatusId(null);
+      toast({ title: 'Error', description: 'Failed to update broadcast status.', variant: 'destructive' });
+    },
+  });
+
+  const handleQuickStatus = (broadcast: Broadcast, newStatus: string) => {
+    setPendingStatusId(broadcast.broadcastId);
+    quickStatusMutation.mutate({ broadcastId: broadcast.broadcastId, newStatus, broadcast });
+  };
+
   const openEditDialog = (broadcast: Broadcast) => {
     setEditBroadcast(broadcast);
     const toLocalDatetime = (dt: string | Date | null | undefined) => {
@@ -657,6 +689,30 @@ function BroadcastsTab({ campaignId }: { campaignId: number }) {
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
+                  {broadcast.status === 'upcoming' && (
+                    <button
+                      onClick={() => handleQuickStatus(broadcast, 'live')}
+                      disabled={pendingStatusId === broadcast.broadcastId}
+                      className="px-2.5 py-1 text-xs font-medium bg-green-500/15 hover:bg-green-500/25 text-green-400 rounded border border-green-500/30 transition flex items-center gap-1 disabled:opacity-50"
+                      data-testid={`button-go-live-${broadcast.broadcastId}`}
+                      title="Mark as Live"
+                    >
+                      <Play className="w-3 h-3" />
+                      Go Live
+                    </button>
+                  )}
+                  {broadcast.status === 'live' && (
+                    <button
+                      onClick={() => handleQuickStatus(broadcast, 'ended')}
+                      disabled={pendingStatusId === broadcast.broadcastId}
+                      className="px-2.5 py-1 text-xs font-medium bg-red-500/15 hover:bg-red-500/25 text-red-400 rounded border border-red-500/30 transition flex items-center gap-1 disabled:opacity-50"
+                      data-testid={`button-end-broadcast-${broadcast.broadcastId}`}
+                      title="End broadcast"
+                    >
+                      <Square className="w-3 h-3" />
+                      End
+                    </button>
+                  )}
                   <button
                     onClick={() => openEditDialog(broadcast)}
                     className="p-1.5 text-gray-400 hover:text-gray-700 dark:hover:text-white rounded hover:bg-gray-100 dark:hover:bg-white/10 transition"
