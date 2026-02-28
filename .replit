@@ -7,7 +7,7 @@ channel = "stable-24_05"
 
 [deployment]
 deploymentTarget = "vm"
-build = ["bash", "-c", "npm run build"]
+build = ["npm", "run", "build"]
 run = ["node", "dist/preserver.js"]
 
 [[ports]]
