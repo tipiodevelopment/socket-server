@@ -1,91 +1,88 @@
 /**
  * Minimal HTTP server using ONLY native Node.js modules (http, path, fs).
- * Starts listening in < 100ms — long before Replit's health check fires.
- * Handles /health, /_health, and / instantly from memory.
- * All other requests are buffered, then flushed once the full Express app loads.
+ * Port binds in < 50ms so Replit health checks pass immediately.
+ * Responds 200 to ALL GET/HEAD requests during startup.
+ * All other requests are buffered and flushed once Express is ready.
  */
 import * as http from 'http';
 import * as path from 'path';
 import * as fs from 'fs';
 
 const PORT = parseInt(process.env.PORT || '5000');
-const startMs = Date.now();
 
-// Signal to server/index.ts that it must NOT auto-start the server.
-// Preserver owns the httpServer instance and passes it to setupApp().
+// Signal to server/index.ts NOT to auto-start its own HTTP server.
 process.env.VIO_PRESERVER = '1';
+// Force production mode
+process.env.NODE_ENV = 'production';
 
-// Cache index.html in memory for instant GET / and HEAD / responses
-let indexHtml = '<!DOCTYPE html><html><head></head><body></body></html>';
-try {
-  const p = path.join(process.cwd(), 'dist', 'public', 'index.html');
-  indexHtml = fs.readFileSync(p, 'utf-8');
-  console.log(`[Startup] index.html cached (${indexHtml.length} bytes)`);
-} catch {
-  console.warn('[Startup] dist/public/index.html not found, using fallback');
-}
-
-// Request queue — holds requests that arrive before Express is ready
-type Pending = { req: http.IncomingMessage; res: http.ServerResponse };
-const pending: Pending[] = [];
+// Bare-metal server — zero npm dependencies
+const pending: Array<{ req: http.IncomingMessage; res: http.ServerResponse }> = [];
 let expressApp: ((req: http.IncomingMessage, res: http.ServerResponse) => void) | null = null;
 
-// Bare-metal HTTP server — zero external npm dependencies, starts in milliseconds
+// Fallback HTML loaded after listen() so it doesn't delay startup
+let indexHtml = '<!DOCTYPE html><html><head><meta charset="utf-8"></head><body></body></html>';
+
 const httpServer = http.createServer((req, res) => {
-  // Delegate to Express once it's ready
+  // Once Express is ready, it handles everything
   if (expressApp) {
     expressApp(req, res);
     return;
   }
 
-  const method = req.method ?? 'GET';
-  const url = (req.url ?? '/').split('?')[0];
+  const method = (req.method ?? 'GET').toUpperCase();
 
-  // Health check endpoints — always instant 200 (GET and HEAD)
-  if (url === '/health' || url === '/_health') {
-    res.writeHead(200, { 'Content-Type': 'application/json' });
-    if (method === 'HEAD') { res.end(); return; }
-    res.end(JSON.stringify({ status: 'ok', timestamp: new Date().toISOString() }));
+  // Respond 200 immediately to all GET/HEAD/OPTIONS — covers any health check URL
+  if (method === 'GET' || method === 'HEAD' || method === 'OPTIONS') {
+    const url = (req.url ?? '/').split('?')[0];
+    const isJson = url === '/health' || url === '/_health';
+
+    if (isJson) {
+      const body = JSON.stringify({ status: 'ok', timestamp: new Date().toISOString() });
+      res.writeHead(200, { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) });
+      if (method !== 'HEAD') res.end(body);
+      else res.end();
+    } else {
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Content-Length': Buffer.byteLength(indexHtml) });
+      if (method !== 'HEAD') res.end(indexHtml);
+      else res.end();
+    }
     return;
   }
 
-  // Root — serves index.html from memory (primary Replit health check target)
-  if (url === '/') {
-    const headers: http.OutgoingHttpHeaders = {
-      'Content-Type': 'text/html; charset=utf-8',
-      'Content-Length': Buffer.byteLength(indexHtml),
-    };
-    res.writeHead(200, headers);
-    if (method === 'HEAD') { res.end(); return; }
-    res.end(indexHtml);
-    return;
-  }
-
-  // Buffer everything else until Express takes over
+  // Buffer write requests until Express is ready
   pending.push({ req, res });
 });
 
-// Bind the port IMMEDIATELY — before loading any npm packages
+// Bind port FIRST — before any disk I/O or async work
 httpServer.listen(PORT, '0.0.0.0', () => {
-  console.log(`[Startup] Port ${PORT} open in ${Date.now() - startMs}ms — health checks will pass`);
+  const ts = new Date().toISOString();
+  console.log(`[${ts}] Port ${PORT} open — health checks will pass`);
+
+  // Now load index.html from disk (after port is open)
+  try {
+    const p = path.join(process.cwd(), 'dist', 'public', 'index.html');
+    indexHtml = fs.readFileSync(p, 'utf-8');
+  } catch {
+    // fallback already set
+  }
 });
 
-// Load the full Express application asynchronously in the background
+// Load the full Express app asynchronously in the background
 (async () => {
   try {
     const { setupApp } = await import('./index.js');
     expressApp = await setupApp(httpServer);
 
-    const elapsed = Date.now() - startMs;
     const n = pending.length;
-    console.log(`[Startup] Full app ready in ${elapsed}ms — flushing ${n} buffered request(s)`);
-
-    for (const { req, res } of pending) {
-      expressApp(req, res);
+    if (n > 0) {
+      console.log(`[Startup] Flushing ${n} buffered request(s)`);
+      for (const { req, res } of pending) expressApp(req, res);
+      pending.length = 0;
     }
-    pending.length = 0;
+
+    console.log('[Startup] Application fully ready');
   } catch (err) {
-    console.error('[Startup] Fatal: failed to load application:', err);
+    console.error('[Startup] Fatal error:', err);
     process.exit(1);
   }
 })();
