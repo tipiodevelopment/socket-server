@@ -78,29 +78,9 @@ _Actualizado: 2026-03-02 · Viobot_
 
 ---
 
-## 🟡 #166 [BACKEND] Añadir locationId al serializer de /v1/sdk/campaigns
+## ✅ #166 [BACKEND] Añadir locationId al serializer de /v1/sdk/campaigns
 
-### Problema
-`GET /v1/sdk/campaigns` devuelve componentes sin `locationId`.
-El SDK carga componentes desde esa ruta — el campo llega `nil` y el slot system no funciona.
-
-### Fix
-En `server/routes.ts`, donde se serializa la respuesta de `/v1/sdk/campaigns`,
-añadir `locationId` al objeto de cada componente.
-
-Ya está implementado en `/v1/sdk/components` — es copiar el mismo campo.
-
-Buscar donde se construye el array de componentes para la respuesta de campaigns,
-algo como:
-```js
-// Antes:
-{ id: cc.id, type: cc.type, name: cc.name, config: ..., status: cc.status }
-
-// Después:
-{ id: cc.id, type: cc.type, name: cc.name, config: ..., status: cc.status, locationId: cc.locationId || null }
-```
-
-### Criterio de aceptación
-```
-GET /v1/sdk/campaigns → campaigns[0].components[0].locationId === "sport-detail-carousel"
-```
+`GET /v1/sdk/campaigns` ahora incluye `locationId` en cada componente.
+Verificado:
+- `RProductCarousel 1: locationId="sport-detail-carousel"` ✅
+- `RProductBanner 1: locationId="sport-detail-banner"` ✅

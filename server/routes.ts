@@ -3858,7 +3858,8 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
               type: cc.component.type,
               name: cc.instanceName || cc.component.name,
               config: normalizeUrls(cc.customConfig || cc.component.config, req.protocol, req.get('host')),
-              status: cc.status
+              status: cc.status,
+              locationId: cc.locationId || null
             };
 
             // Include matchContext if component has matchId

@@ -77,6 +77,13 @@ Cuando atacar: Después de que el flujo Swift + backend esté validado end-to-en
 
 ## COMPLETADO
 
+### VIO-025 · Replit · ✅ 2026-03-02
+**#166: locationId en serializer /v1/sdk/campaigns**
+- `locationId: cc.locationId || null` añadido al `map()` de componentes en `/v1/sdk/campaigns`
+- Verificado: `RProductCarousel 1 → "sport-detail-carousel"`, `RProductBanner 1 → "sport-detail-banner"` ✅
+
+---
+
 ### VIO-024 · Replit · ✅ 2026-03-02
 **#165: Location Slot System — dashboard + API**
 - `campaign_components.locationId` persistido en `POST /api/campaigns/:id/components`
