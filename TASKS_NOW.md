@@ -112,3 +112,101 @@ El SDK Swift usa una estructura `SponsorAssets` que centraliza todos los datos d
 
 El app se despliega una sola vez y puede correr múltiples campañas con sponsors diferentes.
 Todos los colores y assets del sponsor vienen del backend — nada hardcodeado en el SDK.
+
+---
+
+## 🔴 #163 [BACKEND+DASHBOARD] Activar Commerce + ProductCarousel para demo TV2
+
+### Contexto
+El SDK tiene `VProductCarousel` que ya escucha `activeComponents` via WS.
+Para que funcione necesita: commerce habilitado en la campaña + componente activo.
+
+---
+
+### PASO 1 — Actualizar integrations.commerce en campaña 35
+
+Endpoint: `PATCH /api/campaigns/35` (o el que corresponda para actualizar config)
+
+```json
+"integrations": {
+  "commerce": {
+    "enabled": true,
+    "apiKey": "KCXF10Y-W5T4PCR-GG5119A-Z64SQ9S",
+    "channelId": null
+  }
+}
+```
+
+Si no hay endpoint para esto, añadir: `PATCH /api/campaigns/:id/integrations`
+
+---
+
+### PASO 2 — Crear component template en biblioteca
+
+`POST /api/components`
+
+```json
+{
+  "type": "product_carousel",
+  "name": "Elkjøp Product Carousel",
+  "isTemplate": "true",
+  "config": {
+    "productIds": ["408841", "408874", "408895", "408896"],
+    "autoPlay": false,
+    "interval": 3000
+  }
+}
+```
+
+Guardar el `id` que devuelve (lo necesitamos para el paso 3).
+
+---
+
+### PASO 3 — Añadir el componente a campaña 35 y activarlo
+
+`POST /api/campaigns/35/components`
+```json
+{
+  "componentId": "<id del paso 2>",
+  "status": "active"
+}
+```
+
+---
+
+### PASO 4 — ComponentsTab.tsx: añadir forms faltantes
+
+En `CampaignComponentConfigForm.renderConfigFields()` faltan estos casos:
+
+**`carousel_auto`** — añadir:
+```tsx
+case 'carousel_auto':
+  return (
+    <>
+      <Label>Reachu Channel ID</Label>
+      <Input value={config.channelId || ''} onChange={...} placeholder="465" />
+      <Label>Display Count</Label>
+      <Input type="number" value={config.displayCount || 5} onChange={...} />
+    </>
+  );
+```
+
+**`product_carousel`** — añadir campo `channelId` (para modo auto sin productIds específicos):
+```tsx
+<Label>Channel ID (opcional, para cargar todo el canal)</Label>
+<Input value={config.channelId || ''} onChange={...} placeholder="465" />
+```
+
+**`product_store`** — añadir (igual que en ComponentLibraryTab):
+```tsx
+case 'product_store':
+  // selector mode (all/filtered) + productIds si filtered
+```
+
+---
+
+### Criterio de aceptación
+- [ ] `GET /v1/campaigns/35/config` devuelve `integrations.commerce.enabled: true`
+- [ ] `GET /v1/sdk/components?campaignId=35` devuelve el carousel con status `active`
+- [ ] Dashboard ComponentsTab muestra forms para `carousel_auto` y `product_store`
+
