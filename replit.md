@@ -47,8 +47,9 @@ The platform is built with a full-stack TypeScript environment.
 - **Admin Panel:** Forms for polls, products, and contests start empty and load data from the database.
 - **Broadcast Edit Dialog:** Allows editing broadcast name, externalId, status, startTime, and endTime. Status changes trigger WebSocket events.
 - **Channel and Client App Architecture:** Channels are standalone entities. SDK discovery resolves campaigns directly via `campaigns.client_app_id`.
-- **Commerce Integration:** The ecommerce module is named "Commerce" in all public interfaces. The Commerce API key is delivered dynamically via config endpoints.
-- **API Key Architecture:** The SDK uses a single Vio App API Key (`client_apps.api_key`) for all Vio backend endpoints. The Commerce module key is campaign-level.
+- **Commerce Integration:** The ecommerce module is named "Commerce" in all public interfaces. The Commerce API key is delivered dynamically via config endpoints. Supports `product_carousel` and `product_banner` components linked to Commerce product IDs.
+- **API Key Architecture:** The SDK uses a single Vio App API Key (`client_apps.api_key`) for all Vio backend endpoints. The Commerce module key is campaign-level, delivered via `integrations.commerce.apiKey` in the config response.
+- **Location Slot System:** Campaign components can be assigned a `locationId` (e.g. `sport-detail-banner`, `sport-detail-carousel`). The SDK queries `GET /v1/sdk/components?locationId=` to resolve which component is active for each UI slot. Operators assign slots in the dashboard when adding components to a campaign.
 
 ### Database Tables
 

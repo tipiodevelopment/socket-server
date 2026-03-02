@@ -2333,7 +2333,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   app.post('/api/campaigns/:id/components', async (req, res) => {
     try {
       const campaignId = parseInt(req.params.id);
-      const { componentId, status, instanceName } = req.body;
+      const { componentId, status, instanceName, locationId } = req.body;
       
       if (!componentId) {
         return res.status(400).json({ message: 'Missing required field: componentId' });
@@ -2384,7 +2384,8 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
         campaignId,
         componentId,
         instanceName: finalInstanceName,
-        status: status || 'inactive'
+        status: status || 'inactive',
+        locationId: locationId || null,
       });
       
       res.status(201).json(campaignComponent);
@@ -2399,9 +2400,12 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
     try {
       const campaignId = parseInt(req.params.id);
       const { componentId } = req.params;
-      const { status } = req.body;
+      const { status, locationId } = req.body;
       
-      if (!status || !['active', 'inactive'].includes(status)) {
+      if (!status && locationId === undefined) {
+        return res.status(400).json({ message: 'Provide "status" and/or "locationId"' });
+      }
+      if (status && !['active', 'inactive'].includes(status)) {
         return res.status(400).json({ message: 'Invalid status. Must be "active" or "inactive"' });
       }
 
@@ -2422,38 +2426,45 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
         }
       }
 
-      const updated = await storage.updateCampaignComponentStatus(campaignId, componentId, status);
-      
+      let updated: any;
+      if (status) {
+        updated = await storage.updateCampaignComponentStatus(campaignId, componentId, status);
+      } else {
+        updated = await storage.getComponentById(componentId);
+      }
+
+      if (locationId !== undefined) {
+        updated = await storage.updateCampaignComponentLocationId(campaignId, componentId, locationId || null);
+      }
+
       if (!updated) {
         return res.status(404).json({ message: 'Campaign component not found' });
       }
 
-      // Check if campaign is active before broadcasting
-      const campaign = await storage.getCampaign(campaignId);
-      if (campaign && isCampaignActive(campaign)) {
-        // Get full component details for broadcast
-        const fullComponent = await storage.getComponentById(componentId);
-        
-        // Build event with optional matchId
-        const event: any = {
-          type: 'component_status_changed',
-          campaignId,
-          componentId,
-          status,
-          component: fullComponent ? {
-            id: fullComponent.id,
-            type: fullComponent.type,
-            name: fullComponent.name,
-            config: normalizeUrls(updated.customConfig || fullComponent.config, req.protocol, req.get('host'))
-          } : null
-        };
-        // Include matchId if component or campaign is associated with a match
-        if (updated.matchId) {
-          event.matchId = updated.matchId;
-        } else if (campaign.matchId) {
-          event.matchId = campaign.matchId;
+      // Only broadcast WS event when status changes (not for locationId-only updates)
+      if (status) {
+        const campaign = await storage.getCampaign(campaignId);
+        if (campaign && isCampaignActive(campaign)) {
+          const fullComponent = await storage.getComponentById(componentId);
+          const event: any = {
+            type: 'component_status_changed',
+            campaignId,
+            componentId,
+            status,
+            component: fullComponent ? {
+              id: fullComponent.id,
+              type: fullComponent.type,
+              name: fullComponent.name,
+              config: normalizeUrls(updated.customConfig || fullComponent.config, req.protocol, req.get('host'))
+            } : null
+          };
+          if (updated.matchId) {
+            event.matchId = updated.matchId;
+          } else if (campaign.matchId) {
+            event.matchId = campaign.matchId;
+          }
+          broadcastToCampaignImpl(campaignId, JSON.stringify(event));
         }
-        broadcastToCampaignImpl(campaignId, JSON.stringify(event));
       }
       
       res.json(updated);

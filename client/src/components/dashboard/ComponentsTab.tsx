@@ -23,6 +23,7 @@ export function ComponentsTab({ campaignId }: ComponentsTabProps) {
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [selectedComponentId, setSelectedComponentId] = useState<string>('');
   const [instanceName, setInstanceName] = useState<string>('');
+  const [locationId, setLocationId] = useState<string>('');
   const [editingConfigFor, setEditingConfigFor] = useState<(CampaignComponent & { component: Component }) | null>(null);
 
   const { data: campaign } = useQuery<Campaign>({
@@ -40,10 +41,11 @@ export function ComponentsTab({ campaignId }: ComponentsTabProps) {
   const isPaused = campaign?.isPaused === 'true';
 
   const addComponentMutation = useMutation({
-    mutationFn: async ({ componentId, instanceName }: { componentId: string; instanceName?: string }) => {
+    mutationFn: async ({ componentId, instanceName, locationId }: { componentId: string; instanceName?: string; locationId?: string }) => {
       return await apiRequest('POST', `/api/campaigns/${campaignId}/components`, {
         componentId,
         instanceName: instanceName || undefined,
+        locationId: locationId || undefined,
         status: 'inactive',
       });
     },
@@ -53,6 +55,7 @@ export function ComponentsTab({ campaignId }: ComponentsTabProps) {
       setIsAddDialogOpen(false);
       setSelectedComponentId('');
       setInstanceName('');
+      setLocationId('');
       toast({
         title: 'Component Added',
         description: 'The component has been added to this campaign.',
@@ -229,8 +232,27 @@ export function ComponentsTab({ campaignId }: ComponentsTabProps) {
                           Leave empty to auto-generate a name using SDK conventions
                         </p>
                       </div>
+                      <div className="space-y-2">
+                        <Label>Location Slot (Optional)</Label>
+                        <Select value={locationId} onValueChange={setLocationId}>
+                          <SelectTrigger data-testid="select-location-id">
+                            <SelectValue placeholder="None (manual activation)" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="">None (manual activation)</SelectItem>
+                            <SelectItem value="sport-detail-banner">sport-detail-banner</SelectItem>
+                            <SelectItem value="sport-detail-carousel">sport-detail-carousel</SelectItem>
+                            <SelectItem value="sport-home-banner">sport-home-banner</SelectItem>
+                            <SelectItem value="sport-home-carousel">sport-home-carousel</SelectItem>
+                            <SelectItem value="casting-overlay-banner">casting-overlay-banner</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <p className="text-xs text-muted-foreground">
+                          The SDK fetches the active component for this slot by name
+                        </p>
+                      </div>
                       <Button
-                        onClick={() => selectedComponentId && addComponentMutation.mutate({ componentId: selectedComponentId, instanceName: instanceName.trim() || undefined })}
+                        onClick={() => selectedComponentId && addComponentMutation.mutate({ componentId: selectedComponentId, instanceName: instanceName.trim() || undefined, locationId: locationId || undefined })}
                         disabled={!selectedComponentId || addComponentMutation.isPending}
                         className="w-full"
                         data-testid="button-confirm-add"
@@ -868,10 +890,10 @@ export function CampaignComponentConfigForm({
                 id="productId"
                 value={config.productId || ''}
                 onChange={(e) => setConfig({ ...config, productId: e.target.value })}
-                placeholder="408841"
+                placeholder="408895"
                 data-testid="input-productId"
               />
-              <p className="text-xs text-muted-foreground">Reachu product ID. The SDK will fetch product details.</p>
+              <p className="text-xs text-muted-foreground">ID del producto en Commerce. El título del banner es editorial (no se toma del producto).</p>
             </div>
 
             <ImageUploadWithPreview
