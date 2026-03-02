@@ -278,3 +278,66 @@ Si alguno falta, añadirlo.
 - [ ] Config tiene `productId: "408895"` y textos en noruego
 - [ ] Dashboard muestra el componente activo en campaña 35
 
+
+---
+
+## 🔴 #165 [DASHBOARD] locationId — slot system para componentes
+
+### Contexto
+El desarrollador implementa slots fijos en la UI con nombres semánticos (`locationId`).
+El operador en el dashboard asigna qué componente va en cada slot.
+Así el código Swift nunca cambia — solo el dashboard cambia el contenido.
+
+### Ejemplo
+```
+Developer (código Swift, una vez):
+  VProductBanner(locationId: "sport-detail-banner")
+  VProductCarousel(locationId: "sport-detail-carousel")
+
+Operador (dashboard, cada campaña):
+  Componente "Samsung TV Banner" → locationId: "sport-detail-banner"
+  Componente "Elkjøp Carousel"  → locationId: "sport-detail-carousel"
+```
+
+### LocationIds estándar (definidos por el SDK)
+```
+sport-detail-banner      → Banner debajo del header en SportDetailView
+sport-detail-carousel    → Carousel de productos en SportDetailView
+sport-home-banner        → Banner en la home de deportes
+sport-home-carousel      → Carousel en la home de deportes
+casting-overlay-banner   → Banner durante el stream
+```
+
+### Cambios requeridos en Dashboard
+
+**1. Añadir campo locationId al añadir componente a campaña**
+
+En `ComponentsTab.tsx` → Dialog "Add Component to Campaign":
+```tsx
+<Label>Location Slot (opcional)</Label>
+<Select value={locationId} onValueChange={setLocationId}>
+  <SelectItem value="">Ninguno (activación manual)</SelectItem>
+  <SelectItem value="sport-detail-banner">sport-detail-banner</SelectItem>
+  <SelectItem value="sport-detail-carousel">sport-detail-carousel</SelectItem>
+  <SelectItem value="sport-home-banner">sport-home-banner</SelectItem>
+  <SelectItem value="sport-home-carousel">sport-home-carousel</SelectItem>
+  <SelectItem value="casting-overlay-banner">casting-overlay-banner</SelectItem>
+</Select>
+<p className="text-xs">El SDK busca el componente activo para este slot</p>
+```
+
+**2. Incluir locationId en POST /api/campaigns/:id/components**
+```json
+{ "componentId": "...", "locationId": "sport-detail-banner", "status": "active" }
+```
+
+**3. Actualizar los componentes de campaña 35**
+- product-banner-template → locationId: "sport-detail-banner"
+- Elkjøp Product Carousel (6f6c5337-...) → locationId: "sport-detail-carousel"
+
+**4. Verificar que GET /v1/sdk/components?campaignId=35&locationId=sport-detail-banner devuelve el banner**
+
+### Criterio de aceptación
+- [ ] Dashboard muestra selector de locationId al añadir componente
+- [ ] GET /v1/sdk/components?campaignId=35&locationId=sport-detail-banner → devuelve product_banner
+- [ ] GET /v1/sdk/components?campaignId=35&locationId=sport-detail-carousel → devuelve product_carousel
