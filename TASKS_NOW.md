@@ -210,3 +210,71 @@ case 'product_store':
 - [ ] `GET /v1/sdk/components?campaignId=35` devuelve el carousel con status `active`
 - [ ] Dashboard ComponentsTab muestra forms para `carousel_auto` y `product_store`
 
+
+---
+
+## 🔴 #164 [DASHBOARD] ProductBanner — activar en campaña 35 + UI productId
+
+### Contexto
+`VProductBanner` en el SDK muestra un banner con imagen de fondo, texto editorial y botón CTA.
+Al hacer tap → abre modal con datos del producto (nombre, precio, variantes) desde Commerce GraphQL.
+El `title` y `subtitle` son editoriales (los escribe el operador), NO del producto.
+
+### Arquitectura de campos
+| Campo | Quién lo controla | Notas |
+|---|---|---|
+| `productId` | Operador en dashboard | ID de Commerce (408841, 408895, etc.) |
+| `backgroundImageUrl` | Operador en dashboard | Imagen de fondo del banner |
+| `title` | Operador en dashboard | Copy editorial — NO el nombre del producto |
+| `subtitle` | Operador en dashboard | Copy secundario |
+| `ctaText` | Operador en dashboard | Texto del botón |
+| `ctaLink` / `deeplink` | Operador en dashboard | Destino del botón |
+| Colores/estilos | Operador en dashboard | Con defaults del sponsor |
+
+### PASO 1 — Actualizar product-banner-template
+
+`PATCH /api/components/product-banner-template`
+
+```json
+{
+  "config": {
+    "productId": "408895",
+    "backgroundImageUrl": "/objects/uploads/326707ae-4430-41c8-a417-dad29cea3602",
+    "title": "Kampanjepris — Samsung Neo QLED",
+    "subtitle": "Kun under kampen",
+    "ctaText": "Se produkt",
+    "buttonBackgroundColor": "#f7b23b",
+    "buttonTextColor": "#000000",
+    "overlayOpacity": 0.5,
+    "bannerHeight": 200,
+    "textAlignment": "left",
+    "contentVerticalAlignment": "center"
+  }
+}
+```
+
+### PASO 2 — Activar en campaña 35
+
+`POST /api/campaigns/35/components`
+```json
+{
+  "componentId": "product-banner-template",
+  "status": "active"
+}
+```
+
+### PASO 3 — Verificar UI en ComponentsTab.tsx
+
+El form de `product_banner` en `ComponentsTab.tsx` ya tiene campo `productId`.
+Confirmar que:
+- El campo `productId` tiene placeholder con ejemplo: `"408895"`
+- Hay nota explicativa: "ID del producto en Commerce. El título del banner es editorial (no se toma del producto)."
+- El campo `backgroundImageUrl` usa `ImageUploadWithPreview`
+
+Si alguno falta, añadirlo.
+
+### Criterio de aceptación
+- [ ] `GET /v1/sdk/components?campaignId=35` devuelve `product_banner` con status active
+- [ ] Config tiene `productId: "408895"` y textos en noruego
+- [ ] Dashboard muestra el componente activo en campaña 35
+
