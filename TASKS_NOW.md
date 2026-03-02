@@ -61,3 +61,54 @@ if (activeBroadcast) {
 - [ ] Evento `contest` incluye `broadcastId`
 - [ ] Al conectar, cliente recibe polls/contests activos del broadcast actual
 - [ ] Tests pasan
+
+---
+
+## 🟡 #162 [BACKEND] Mover sponsorBadgeText de brand a sponsor
+
+### Contexto
+El SDK usa `sponsor.badgeText` para mostrar "Sponset av" / "Sponsored by" en el badge.
+Actualmente el texto está en `brand.sponsorBadgeText` — debería estar en `sponsor` también
+para que toda la data del sponsor esté en un único lugar.
+
+### Cambio requerido en `server/routes.ts` o donde se construya el config
+
+Añadir `badgeText` a la sección `sponsor` en la respuesta de `/v1/campaigns/:id/config`:
+
+```json
+"sponsor": {
+    "id": 3,
+    "name": "Elkjøp",
+    "logoUrl": "...",
+    "avatarUrl": "...",
+    "primaryColor": "#f7b23b",
+    "secondaryColor": "#f7b23b",
+    "badgeText": {            ← AÑADIR ESTO
+        "no": "Sponset av",
+        "en": "Sponsored by",
+        "sv": "Sponsrad av"
+    }
+}
+```
+
+### Notas
+- Mantener `brand.sponsorBadgeText` también (no romper compatibilidad)
+- El SDK ya tiene el fallback: lee `sponsor.badgeText` primero, fallback a `brand.sponsorBadgeText`
+- Solo necesita añadirse al serializador/builder del config endpoint
+
+### Criterio de aceptación
+- [ ] `GET /v1/campaigns/35/config` devuelve `sponsor.badgeText` con textos localizados
+
+---
+
+## ℹ️ Contexto arquitectura sponsor (para referencia)
+
+El SDK Swift usa una estructura `SponsorAssets` que centraliza todos los datos del sponsor:
+- `sponsor.logoUrl` → badge "Sponset av Elkjøp"
+- `sponsor.avatarUrl` → avatar circular en polls, contests, tweets
+- `sponsor.primaryColor` → color acento (bordes, botones) — el SDK calcula contraste automáticamente
+- `sponsor.secondaryColor` → color secundario
+- `sponsor.badgeText` → texto localizado del badge
+
+El app se despliega una sola vez y puede correr múltiples campañas con sponsors diferentes.
+Todos los colores y assets del sponsor vienen del backend — nada hardcodeado en el SDK.
