@@ -9,7 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
-import type { Campaign } from '@shared/schema';
+import type { Campaign, Broadcast } from '@shared/schema';
 import { ObjectUploader } from '@/components/ObjectUploader';
 
 interface ProductForm {
@@ -52,6 +52,20 @@ export function EventsTab({ campaignId, campaign }: EventsTabProps) {
 
   // WebSocket connection — only need connection status now
   const { connectionStatus } = useWebSocket({ campaignId });
+
+  // Fetch live broadcast for this campaign so we can tag events with broadcastId
+  const { data: campaignBroadcasts } = useQuery<Broadcast[]>({
+    queryKey: ['/api/broadcasts', campaignId],
+    queryFn: async () => {
+      const params = new URLSearchParams({ campaignId: String(campaignId) });
+      const res = await fetch(`/api/broadcasts?${params.toString()}`);
+      if (!res.ok) throw new Error('Failed to fetch broadcasts');
+      return res.json();
+    },
+    enabled: !!campaignId,
+    staleTime: 30000,
+  });
+  const liveBroadcastId = campaignBroadcasts?.find(b => b.status === 'live')?.broadcastId ?? null;
 
   // Product forms state — starts empty, loads from DB if saved
   const [productForms, setProductForms] = useState<ProductForm[]>([
@@ -251,6 +265,7 @@ export function EventsTab({ campaignId, campaign }: EventsTabProps) {
         duration: parseInt(data.duration),
         imageUrl: data.imageUrl || undefined,
         campaignId,
+        broadcastId: liveBroadcastId || undefined,
       }),
     onSuccess: () => {
       toast({ title: "Poll Started", description: "Sent to all connected clients" });
@@ -269,6 +284,7 @@ export function EventsTab({ campaignId, campaign }: EventsTabProps) {
         deadline: data.deadline,
         maxParticipants: parseInt(data.maxParticipants),
         campaignId,
+        broadcastId: liveBroadcastId || undefined,
       }),
     onSuccess: () => {
       toast({ title: "Contest Launched", description: "Sent to all connected clients" });

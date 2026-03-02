@@ -247,6 +247,59 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       } catch (error) {
         console.error('Error checking campaign status on connection:', error);
       }
+
+      // Emit initial state: active polls and contests from the live broadcast
+      try {
+        const campaignBroadcasts = await storage.getCampaignBroadcasts(campaignId);
+        const activeBroadcast = campaignBroadcasts.find(b => b.status === 'live');
+        if (activeBroadcast) {
+          const [polls, contests] = await Promise.all([
+            storage.getBroadcastPolls(activeBroadcast.broadcastId),
+            storage.getBroadcastContests(activeBroadcast.broadcastId)
+          ]);
+          const activePolls = polls.filter(p => p.isActive);
+          const activeContests = contests.filter((c: any) => c.isActive);
+
+          for (const poll of activePolls) {
+            if (ws.readyState === WebSocket.OPEN) {
+              ws.send(JSON.stringify({
+                type: 'poll',
+                broadcastId: activeBroadcast.broadcastId,
+                data: {
+                  id: String(poll.id),
+                  question: poll.question,
+                  options: poll.options.map((o: any) => ({ text: o.text })),
+                  duration: poll.duration ?? 60,
+                },
+                timestamp: Date.now()
+              }));
+            }
+          }
+
+          for (const contest of activeContests) {
+            if (ws.readyState === WebSocket.OPEN) {
+              ws.send(JSON.stringify({
+                type: 'contest',
+                broadcastId: activeBroadcast.broadcastId,
+                data: {
+                  id: String(contest.id),
+                  name: contest.title,
+                  prize: contest.prize || '',
+                  deadline: contest.endTime ? new Date(contest.endTime).toISOString() : '',
+                  maxParticipants: 100
+                },
+                timestamp: Date.now()
+              }));
+            }
+          }
+
+          if (activePolls.length > 0 || activeContests.length > 0) {
+            console.log(`[WS] Sent initial state to new client: ${activePolls.length} polls, ${activeContests.length} contests for broadcast ${activeBroadcast.broadcastId}`);
+          }
+        }
+      } catch (error) {
+        console.error('Error emitting initial broadcast state on connection:', error);
+      }
     }
 
     ws.on('pong', () => {
@@ -576,6 +629,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
 
       const pollEvent: WebSocketEvent = {
         type: 'poll',
+        broadcastId: req.body.broadcastId || undefined,
         data: {
           id: `poll_${randomUUID()}`,
           question: req.body.question,
@@ -631,6 +685,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       
       const contestEvent: WebSocketEvent = {
         type: 'contest',
+        broadcastId: req.body.broadcastId || undefined,
         data: {
           id: `contest_${randomUUID()}`,
           name: req.body.name,
@@ -708,6 +763,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       } else if (type === 'poll') {
         event = {
           type: 'poll',
+          broadcastId: req.body.broadcastId || undefined,
           data: {
             id: `poll_${randomUUID()}`,
             ...data
@@ -718,6 +774,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       } else if (type === 'contest') {
         event = {
           type: 'contest',
+          broadcastId: req.body.broadcastId || undefined,
           data: {
             id: `contest_${randomUUID()}`,
             ...data

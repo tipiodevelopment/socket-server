@@ -79,6 +79,21 @@ Cuando atacar: Después de que el flujo Swift + backend esté validado end-to-en
 
 ## COMPLETADO
 
+### VIO-020 · Replit · ✅ 2026-03-02
+**#160: broadcastId en eventos WebSocket + estado inicial al conectar**
+
+- `pollEventSchema` y `contestEventSchema` incluyen `broadcastId?: string` ✅
+- `/api/events/poll`, `/api/events/contest`, `/api/campaigns/:id/events` → pasan `broadcastId` del request ✅
+- EventsTab auto-detecta el broadcast live y lo incluye en las peticiones de poll/contest ✅
+- Al conectar `/ws/:campaignId` → se emiten polls/contests activos del broadcast live con `broadcastId` ✅
+- Verificado: conectar a /ws/35 entrega inmediatamente 2 polls con `broadcastId: "real-madrid-vs-barcelona-2026-02-25"` ✅
+
+### VIO-003 · Replit · ✅ verificado 2026-03-02
+GET /v1/sdk/broadcasts/:broadcastId/chat operativo — verificado en producción.
+
+### VIO-004 · Replit · ✅ verificado 2026-03-02
+GET /v1/sdk/components?locationId= operativo — verificado en producción.
+
 ### VIO-001 · Replit · ✅ 2026-02-28
 Status buttons "Go Live" / "End" en lista de broadcasts del dashboard.
 

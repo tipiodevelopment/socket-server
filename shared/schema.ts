@@ -840,6 +840,7 @@ export const pollOptionSchema = z.object({
 export const pollEventSchema = z.object({
   id: z.number().optional(),
   type: z.literal("poll"),
+  broadcastId: z.string().optional(),
   data: z.object({
     id: z.string(),
     question: z.string(),
@@ -854,6 +855,7 @@ export const pollEventSchema = z.object({
 export const contestEventSchema = z.object({
   id: z.number().optional(),
   type: z.literal("contest"),
+  broadcastId: z.string().optional(),
   data: z.object({
     id: z.string(),
     name: z.string(),
