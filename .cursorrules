@@ -51,7 +51,7 @@ Key tables: `users`, `sponsors`, `client_apps`, `channels`, `campaigns`, `compon
 
 Configuration tables: `campaign_translations`, `campaign_engagement_config`, `campaign_ui_config`, `campaign_feature_flags`, `sdk_translations`
 
-Recent schema additions (Feb 2026):
+Schema additions (Feb 2026):
 - `broadcasts.viewerCount` (integer, default 0) — current viewer count
 - `broadcasts.peakViewers` (integer, default 0) — peak concurrent viewers
 - `broadcasts.externalId` (varchar 255, nullable) — partner content ID (e.g. Viaplay stream ID). Index on `(externalId, campaignId)`. Lookup is scoped to clientApp via campaign.clientAppId.
@@ -59,6 +59,11 @@ Recent schema additions (Feb 2026):
 - `broadcast_ads` — ads linked to a broadcast (name, description, imageUrl, ctaUrl, adType, duration as varchar, isActive, displayOrder)
 - `broadcast_products` — shoppable products (name, subtitle, price/originalPrice as varchar NOT integer, buyUrl, status, displayOrder)
 - `chat_messages` — live chat per broadcast (username, message, createdAt)
+
+Schema additions (Mar 2026):
+- `campaign_components.locationId` (varchar 100, nullable) — SDK slot identifier (e.g. `"sport-detail-banner"`, `"sport-detail-carousel"`). Used by SDK to query `GET /v1/sdk/components?locationId=`. Set by operator in dashboard when adding a component to a campaign.
+- `polls.broadcastId` / `contests.broadcastId` (added to event schema) — included in WS events so SDK can filter by broadcast
+- `sponsors.badgeText` — localized badge text object `{ no, en, sv }` returned in config endpoint as `sponsor.badgeText`
 
 All schemas, insert schemas, and types are exported from `shared/schema.ts`.
 

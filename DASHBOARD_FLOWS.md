@@ -274,10 +274,37 @@ Archivo: `client/src/components/dashboard/ComponentsTab.tsx`
 - `GET /api/components` — biblioteca global de componentes
 
 **Acciones:**
-- Asignar componente a campana: `POST /api/campaigns/:id/components`
+- Asignar componente a campana: `POST /api/campaigns/:id/components { componentId, instanceName?, locationId?, status }`
 - Actualizar config de componente en campana: `PATCH /api/campaigns/:id/components/:componentId/config`
-- Activar/desactivar: `PATCH /api/campaigns/:id/components/:componentId`
+- Activar/desactivar / actualizar locationId: `PATCH /api/campaigns/:id/components/:componentId { status?, locationId? }`
 - Eliminar de campana: `DELETE /api/campaigns/:id/components/:componentId`
+
+**Location Slot System (Mar 2026):**
+
+El dialog "Add Component to Campaign" incluye un selector de Location Slot:
+```
+Select Component:        [Dropdown con componentes disponibles]
+Instance Name:           [Input opcional — auto-generado si vacío]
+Location Slot:           [Select opcional]
+  Opciones:              None (manual activation)
+                         sport-detail-banner
+                         sport-detail-carousel
+                         sport-home-banner
+                         sport-home-carousel
+                         casting-overlay-banner
+```
+
+El `locationId` se persiste en `campaign_components.location_id`. El SDK lo usa para resolver componentes por slot:
+```
+GET /v1/sdk/components?campaignId=35&locationId=sport-detail-banner
+→ devuelve el componente activo para ese slot
+```
+
+Para actualizar el `locationId` de un componente ya añadido:
+```
+PATCH /api/campaigns/:id/components/:componentId
+Body: { "locationId": "sport-detail-banner" }   ← no requiere "status"
+```
 
 ---
 

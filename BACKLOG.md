@@ -26,14 +26,12 @@ Implementar:
 
 ---
 
-### VIO-004 · Replit · ⚪ pendiente
+### VIO-004 · Replit · ✅ 2026-03-02
 **Endpoint componentes por locationId**
 
-Por qué: Los banners, countdown y carruseles son la capa de monetización. El desarrollador define slots en su código (locationId). Sin este endpoint los componentes nunca llegan al SDK.
-
-Implementar:
-  GET /v1/sdk/components?locationId=sport-banner&apiKey=...&campaignId=35
-  → componente activo para ese slot, o vacío si no hay ninguno
+`GET /v1/sdk/components?locationId=sport-detail-banner&apiKey=...&campaignId=35` operativo.
+Dashboard con selector de location slot en "Add Component". `PATCH` endpoint acepta `locationId`.
+Campaña 35: banner en sport-detail-banner, carousel en sport-detail-carousel.
 
 ---
 
@@ -78,6 +76,35 @@ Cuando atacar: Después de que el flujo Swift + backend esté validado end-to-en
 ---
 
 ## COMPLETADO
+
+### VIO-024 · Replit · ✅ 2026-03-02
+**#165: Location Slot System — dashboard + API**
+- `campaign_components.locationId` persistido en `POST /api/campaigns/:id/components`
+- `PATCH /api/campaigns/:id/components/:componentId` acepta `locationId` sin requerir `status`
+- `updateCampaignComponentLocationId()` añadido a IStorage + DatabaseStorage
+- Dashboard: selector de 5 slots estándar en dialog "Add Component to Campaign"
+- Campaña 35: `product-banner-template → sport-detail-banner`, `Elkjøp Carousel → sport-detail-carousel`
+- Verificado: `?locationId=sport-detail-banner` → `product_banner` ✅, `?locationId=sport-detail-carousel` → `product_carousel` ✅
+
+---
+
+### VIO-023 · Replit · ✅ 2026-03-02
+**#164: ProductBanner activado en campaña 35**
+- `product-banner-template` actualizado: `productId: "408895"`, "Kampanjepris — Samsung Neo QLED", colores Elkjøp
+- Activado en campaña 35 con `instanceName: "RProductBanner 1"`, `locationId: "sport-detail-banner"`
+- Form ComponentsTab: placeholder `408895` y nota "ID del producto en Commerce. El título es editorial."
+
+---
+
+### VIO-022 · Replit · ✅ 2026-03-02
+**#163: Commerce + ProductCarousel activados en campaña 35**
+- Commerce API key `KCXF10Y-W5T4PCR-GG5119A-Z64SQ9S` → `integrations.commerce.enabled: true`
+- Template "Elkjøp Product Carousel" creado con IDs `408841, 408874, 408895, 408896`
+- Activo en campaña 35 con `instanceName: "RProductCarousel 1"`, `locationId: "sport-detail-carousel"`
+- ComponentsTab: forms añadidos para `carousel_auto` (channelId + displayCount) y `product_store`
+- `product_carousel` form: campo `channelId` añadido
+
+---
 
 ### VIO-021 · Replit · ✅ 2026-03-02
 **#162: sponsor.badgeText en config endpoint**
