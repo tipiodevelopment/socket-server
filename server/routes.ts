@@ -4233,6 +4233,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
           avatarUrl: sponsor.avatarUrl ? toAbsoluteUrl(sponsor.avatarUrl, req) : null,
           primaryColor: sponsor.primaryColor || null,
           secondaryColor: sponsor.secondaryColor || null,
+          badgeText: finalSponsorBadgeText,
         };
       }
 

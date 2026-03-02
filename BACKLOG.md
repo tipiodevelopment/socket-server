@@ -79,6 +79,12 @@ Cuando atacar: Después de que el flujo Swift + backend esté validado end-to-en
 
 ## COMPLETADO
 
+### VIO-021 · Replit · ✅ 2026-03-02
+**#162: sponsor.badgeText en config endpoint**
+- `sponsor.badgeText` añadido a `/v1/campaigns/:id/config` con textos localizados ✅
+- `brand.sponsorBadgeText` mantenido para compatibilidad ✅
+- Verificado: `{ "no": "Sponset av", "en": "Sponsored by", "sv": "Sponsrad av" }` ✅
+
 ### VIO-020 · Replit · ✅ 2026-03-02
 **#160: broadcastId en eventos WebSocket + estado inicial al conectar**
 
