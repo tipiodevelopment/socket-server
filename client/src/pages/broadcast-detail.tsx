@@ -2,6 +2,7 @@ import { useParams, Link, useLocation } from 'wouter';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
@@ -799,7 +800,7 @@ export default function BroadcastDetailPage() {
   const [pollDialogOpen, setPollDialogOpen] = useState(false);
   const [contestDialogOpen, setContestDialogOpen] = useState(false);
   const [pollForm, setPollForm] = useState({ question: '', options: ['', ''], duration: '60' });
-  const [contestForm, setContestForm] = useState({ title: '', description: '', prize: '', contestType: 'quiz', imageUrl: '' });
+  const [contestForm, setContestForm] = useState({ title: '', description: '', prize: '', contestType: 'giveaway', imageUrl: '', isActive: true });
   const [editingExternalId, setEditingExternalId] = useState(false);
   const [externalIdValue, setExternalIdValue] = useState('');
 
@@ -881,14 +882,14 @@ export default function BroadcastDetailPage() {
   });
 
   const createContestMutation = useMutation({
-    mutationFn: async (data: { title: string; description: string; prize: string; contestType: string; imageUrl: string }) => {
+    mutationFn: async (data: { title: string; description: string; prize: string; contestType: string; imageUrl: string; isActive: boolean }) => {
       return await apiRequest('POST', `/api/broadcasts/${broadcastId}/contests`, data);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/broadcasts', broadcastId] });
       toast({ title: 'Contest Created' });
       setContestDialogOpen(false);
-      setContestForm({ title: '', description: '', prize: '', contestType: 'quiz', imageUrl: '' });
+      setContestForm({ title: '', description: '', prize: '', contestType: 'giveaway', imageUrl: '', isActive: true });
     },
     onError: () => {
       toast({ title: 'Error', description: 'Failed to create contest.', variant: 'destructive' });
@@ -1253,11 +1254,12 @@ export default function BroadcastDetailPage() {
                     </div>
                     <div className="grid gap-2">
                       <Label>Description</Label>
-                      <Input
+                      <Textarea
                         data-testid="input-contest-description"
                         value={contestForm.description}
                         onChange={(e) => setContestForm(prev => ({ ...prev, description: e.target.value }))}
-                        placeholder="Brief description"
+                        placeholder="Brief description shown in the SDK"
+                        rows={3}
                       />
                     </div>
                     <div className="grid grid-cols-2 gap-4">
@@ -1291,6 +1293,17 @@ export default function BroadcastDetailPage() {
                         value={contestForm.imageUrl}
                         onChange={(e) => setContestForm(prev => ({ ...prev, imageUrl: e.target.value }))}
                         placeholder="https://... (optional, shown in SDK)"
+                      />
+                    </div>
+                    <div className="flex items-center justify-between rounded-lg border border-gray-200 dark:border-white/10 px-4 py-3">
+                      <div>
+                        <Label className="text-sm font-medium">Active on creation</Label>
+                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Activates immediately and sends a live WS event</p>
+                      </div>
+                      <Switch
+                        checked={contestForm.isActive}
+                        onCheckedChange={(checked) => setContestForm(prev => ({ ...prev, isActive: checked }))}
+                        data-testid="switch-contest-is-active"
                       />
                     </div>
                   </div>
