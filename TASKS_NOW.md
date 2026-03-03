@@ -78,6 +78,45 @@ _Actualizado: 2026-03-02 · Viobot_
 
 ---
 
+## ✅ #167 [FULL-STACK] Dashboard de Concursos — Fase 1
+
+### Cambios implementados
+
+**Schema** (`shared/schema.ts`):
+- `contests.imageUrl: varchar("image_url", { length: 1000 })` añadido ✅
+- DB migrada con `npm run db:push` ✅
+
+**API** (`server/routes.ts`):
+- `POST /api/broadcasts/:id/contests` — acepta y persiste `imageUrl` + emite WS event si `isActive: true` ✅
+- `PUT /api/contests/:id` — acepta `imageUrl` + emite WS event al activar (`isActive: true`) ✅
+
+**WebSocket — formato de evento contest** (unificado):
+```json
+{
+  "type": "contest",
+  "broadcastId": "real-madrid-vs-barcelona-2026-02-25",
+  "id": "9",
+  "title": "Elkjøp Konkurranse",
+  "description": "Delta og vinn to billetter...",
+  "prize": "To billetter til Champions League",
+  "contestType": "giveaway",
+  "imageUrl": "https://...",
+  "isActive": true,
+  "timestamp": 1741042800000
+}
+```
+- Initial state al conectar WS también usa este formato ✅
+
+**UI** (`client/src/pages/broadcast-detail.tsx`):
+- Campo "Image URL" añadido al form "Create Contest" ✅
+- ContestCard: muestra thumbnail si hay `imageUrl`, sino Trophy icon ✅
+
+**Verificado:**
+- `POST` con `imageUrl` → respuesta incluye `imageUrl` ✅
+- Contest eliminado del demo ✅
+
+---
+
 ## ✅ #166 [BACKEND] Añadir locationId al serializer de /v1/sdk/campaigns
 
 `GET /v1/sdk/campaigns` ahora incluye `locationId` en cada componente.

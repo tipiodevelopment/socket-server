@@ -281,13 +281,13 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
               ws.send(JSON.stringify({
                 type: 'contest',
                 broadcastId: activeBroadcast.broadcastId,
-                data: {
-                  id: String(contest.id),
-                  name: contest.title,
-                  prize: contest.prize || '',
-                  deadline: contest.endTime ? new Date(contest.endTime).toISOString() : '',
-                  maxParticipants: 100
-                },
+                id: String(contest.id),
+                title: contest.title,
+                description: contest.description || '',
+                prize: contest.prize || '',
+                contestType: contest.contestType,
+                imageUrl: contest.imageUrl || null,
+                isActive: true,
                 timestamp: Date.now()
               }));
             }
@@ -3425,20 +3425,22 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
         return res.status(404).json({ message: 'Broadcast not found' });
       }
 
-      const { title, description, prize, contestType, startTime, endTime, isActive, videoStartTime, videoEndTime, broadcastStartTime } = req.body;
+      const { title, description, prize, contestType, startTime, endTime, isActive, imageUrl, videoStartTime, videoEndTime, broadcastStartTime } = req.body;
       if (!title || !contestType) {
         return res.status(400).json({ message: 'title and contestType are required' });
       }
 
+      const contestIsActive = isActive !== undefined ? isActive : true;
       const contestData: any = {
         broadcastId,
         title,
         description: description || null,
         prize: prize || null,
         contestType,
+        imageUrl: imageUrl || null,
         startTime: startTime ? new Date(startTime) : null,
         endTime: endTime ? new Date(endTime) : null,
-        isActive: isActive !== undefined ? isActive : true
+        isActive: contestIsActive
       };
 
       if (videoStartTime !== undefined && videoEndTime !== undefined && broadcastStartTime) {
@@ -3456,6 +3458,22 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
 
       const contest = await storage.createContest(contestData);
 
+      if (contestIsActive && broadcast.campaignId) {
+        const wsEvent = {
+          type: 'contest',
+          broadcastId,
+          id: String(contest.id),
+          title: contest.title,
+          description: contest.description || '',
+          prize: contest.prize || '',
+          contestType: contest.contestType,
+          imageUrl: contest.imageUrl || null,
+          isActive: true,
+          timestamp: Date.now()
+        };
+        broadcastToCampaignImpl(broadcast.campaignId, JSON.stringify(wsEvent));
+      }
+
       res.status(201).json(contest);
     } catch (error) {
       console.error('Error creating contest:', error);
@@ -3466,13 +3484,14 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   app.put('/api/contests/:contestId', async (req, res) => {
     try {
       const contestId = parseInt(req.params.contestId);
-      const { title, description, prize, contestType, isActive, startTime, endTime } = req.body;
+      const { title, description, prize, contestType, isActive, imageUrl, startTime, endTime } = req.body;
       const updateData: any = {};
       if (title !== undefined) updateData.title = title;
       if (description !== undefined) updateData.description = description;
       if (prize !== undefined) updateData.prize = prize;
       if (contestType !== undefined) updateData.contestType = contestType;
       if (isActive !== undefined) updateData.isActive = isActive;
+      if (imageUrl !== undefined) updateData.imageUrl = imageUrl || null;
       if (startTime !== undefined) updateData.startTime = startTime ? new Date(startTime) : null;
       if (endTime !== undefined) updateData.endTime = endTime ? new Date(endTime) : null;
 
@@ -3480,6 +3499,27 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       if (!updated) {
         return res.status(404).json({ message: 'Contest not found' });
       }
+
+      // Emit WS event when activating a contest
+      if (isActive === true) {
+        const broadcast = await storage.getBroadcast(updated.broadcastId);
+        if (broadcast?.campaignId) {
+          const wsEvent = {
+            type: 'contest',
+            broadcastId: updated.broadcastId,
+            id: String(updated.id),
+            title: updated.title,
+            description: updated.description || '',
+            prize: updated.prize || '',
+            contestType: updated.contestType,
+            imageUrl: updated.imageUrl || null,
+            isActive: true,
+            timestamp: Date.now()
+          };
+          broadcastToCampaignImpl(broadcast.campaignId, JSON.stringify(wsEvent));
+        }
+      }
+
       res.json(updated);
     } catch (error) {
       console.error('Error updating contest:', error);

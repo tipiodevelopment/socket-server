@@ -335,8 +335,12 @@ function ContestCard({ contest, onToggle, onDelete, campaignId }: {
       </div>
 
       <div className="flex items-start space-x-3">
-        <div className={`w-12 h-12 rounded flex items-center justify-center flex-shrink-0 ${contest.isActive ? 'bg-purple-500/20' : 'bg-gray-50 dark:bg-white/5'}`}>
-          <Trophy className={`w-5 h-5 ${contest.isActive ? 'text-purple-400' : 'text-gray-500 dark:text-gray-400'}`} />
+        <div className={`w-12 h-12 rounded flex items-center justify-center flex-shrink-0 overflow-hidden ${contest.isActive ? 'bg-purple-500/20' : 'bg-gray-50 dark:bg-white/5'}`}>
+          {contest.imageUrl ? (
+            <img src={contest.imageUrl} alt="" className="w-12 h-12 object-cover rounded" data-testid={`img-contest-${contest.id}`} />
+          ) : (
+            <Trophy className={`w-5 h-5 ${contest.isActive ? 'text-purple-400' : 'text-gray-500 dark:text-gray-400'}`} />
+          )}
         </div>
         <div className="flex-1 min-w-0">
           <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-1" data-testid={`text-contest-title-${contest.id}`}>{contest.title}</h3>
@@ -795,7 +799,7 @@ export default function BroadcastDetailPage() {
   const [pollDialogOpen, setPollDialogOpen] = useState(false);
   const [contestDialogOpen, setContestDialogOpen] = useState(false);
   const [pollForm, setPollForm] = useState({ question: '', options: ['', ''], duration: '60' });
-  const [contestForm, setContestForm] = useState({ title: '', description: '', prize: '', contestType: 'quiz' });
+  const [contestForm, setContestForm] = useState({ title: '', description: '', prize: '', contestType: 'quiz', imageUrl: '' });
   const [editingExternalId, setEditingExternalId] = useState(false);
   const [externalIdValue, setExternalIdValue] = useState('');
 
@@ -877,14 +881,14 @@ export default function BroadcastDetailPage() {
   });
 
   const createContestMutation = useMutation({
-    mutationFn: async (data: { title: string; description: string; prize: string; contestType: string }) => {
+    mutationFn: async (data: { title: string; description: string; prize: string; contestType: string; imageUrl: string }) => {
       return await apiRequest('POST', `/api/broadcasts/${broadcastId}/contests`, data);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/broadcasts', broadcastId] });
       toast({ title: 'Contest Created' });
       setContestDialogOpen(false);
-      setContestForm({ title: '', description: '', prize: '', contestType: 'quiz' });
+      setContestForm({ title: '', description: '', prize: '', contestType: 'quiz', imageUrl: '' });
     },
     onError: () => {
       toast({ title: 'Error', description: 'Failed to create contest.', variant: 'destructive' });
@@ -1263,7 +1267,7 @@ export default function BroadcastDetailPage() {
                           data-testid="input-contest-prize"
                           value={contestForm.prize}
                           onChange={(e) => setContestForm(prev => ({ ...prev, prize: e.target.value }))}
-                          placeholder="e.g. $250"
+                          placeholder="e.g. To billetter"
                         />
                       </div>
                       <div className="grid gap-2">
@@ -1279,6 +1283,15 @@ export default function BroadcastDetailPage() {
                           </SelectContent>
                         </Select>
                       </div>
+                    </div>
+                    <div className="grid gap-2">
+                      <Label>Image URL</Label>
+                      <Input
+                        data-testid="input-contest-image-url"
+                        value={contestForm.imageUrl}
+                        onChange={(e) => setContestForm(prev => ({ ...prev, imageUrl: e.target.value }))}
+                        placeholder="https://... (optional, shown in SDK)"
+                      />
                     </div>
                   </div>
                   <DialogFooter>

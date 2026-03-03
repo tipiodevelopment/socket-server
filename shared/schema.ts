@@ -279,6 +279,7 @@ export const contests = pgTable("contests", {
   startTime: timestamp("start_time"),
   endTime: timestamp("end_time"),
   isActive: boolean("is_active").notNull().default(true),
+  imageUrl: varchar("image_url", { length: 1000 }),
   videoStartTime: integer("video_start_time"),
   videoEndTime: integer("video_end_time"),
   broadcastStartTime: timestamp("broadcast_start_time"),
