@@ -1,175 +1,98 @@
-# TASKS_NOW — socket-server
+# TASKS_NOW.md — Vio Backend (socket-server)
+_Actualizado: 2026-03-04 23:38 Oslo_
 
-_Actualizado: 2026-03-02 · Viobot_
+## 🔴 ACTIVO AHORA
 
----
+### TASK-B01 — Campo `paymentMethods` en campañas + config SDK
+**Prioridad:** Alta  
+**Branch:** `feature/payment-methods`
 
-## ✅ COMPLETADO EN ESTA SESIÓN
+Añadir soporte para métodos de pago configurables por campaña.
 
-### #160 — broadcastId en eventos WebSocket
-- `pollEventSchema` / `contestEventSchema` incluyen `broadcastId?: string`
-- Al conectar `/ws/:campaignId` → emite inmediatamente polls/contests activos con `broadcastId`
-- Verificado: `/ws/35` entrega 2 polls con `broadcastId: "real-madrid-vs-barcelona-2026-02-25"` ✅
-
-### #162 — sponsor.badgeText en config endpoint
-- `GET /v1/campaigns/:id/config` → `sponsor.badgeText: { "no": "Sponset av", "en": "Sponsored by", "sv": "Sponsrad av" }`
-- `brand.sponsorBadgeText` mantenido para compatibilidad ✅
-
-### #163 — Commerce + ProductCarousel activados en campaña 35
-- Commerce API key `KCXF10Y-W5T4PCR-GG5119A-Z64SQ9S` activada → `integrations.commerce.enabled: true` ✅
-- Template `Elkjøp Product Carousel` creado con 4 product IDs → activo en campaña 35 ✅
-- Dashboard ComponentsTab: forms añadidos para `carousel_auto`, `product_store` ✅
-
-### #164 — ProductBanner activado en campaña 35
-- `product-banner-template` actualizado: `productId: "408895"`, textos en noruego, colores Elkjøp
-- Activado en campaña 35 con `locationId: "sport-detail-banner"` ✅
-- Form en ComponentsTab: placeholder y nota actualizados para Commerce ✅
-
-### #165 — Location Slot System
-- **Backend:** `POST /api/campaigns/:id/components` acepta y persiste `locationId`
-- **Backend:** `PATCH /api/campaigns/:id/components/:componentId` acepta `locationId` (sin requerir `status`)
-- **Storage:** `updateCampaignComponentLocationId()` añadido a IStorage + DatabaseStorage
-- **Dashboard:** dialog "Add Component" tiene selector de 5 location slots estándar
-- **Datos campaña 35:** `product-banner-template → sport-detail-banner`, `Elkjøp Carousel → sport-detail-carousel`
-- SDK verificado: `?locationId=sport-detail-banner` → `product_banner` ✅, `?locationId=sport-detail-carousel` → `product_carousel` ✅
-
----
-
-## 🔴 SIGUIENTE — SDK iOS
-
-### Lo que Angelo necesita para la demo TV2
-
-```
-1. Leer integrations.commerce.apiKey desde GET /v1/campaigns/:id/config
-2. Instanciar VProductBanner con locationId: "sport-detail-banner"
-3. Instanciar VProductCarousel con locationId: "sport-detail-carousel"
-4. El SDK llama: GET /v1/sdk/components?campaignId=35&locationId=sport-detail-banner
-5. Si hay componente activo → renderizarlo
+#### 1. DB: campo `paymentMethods` en tabla `campaigns`
+```sql
+ALTER TABLE campaigns ADD COLUMN payment_methods JSONB DEFAULT '["apple_pay"]';
 ```
 
-**Backend listo — nada pendiente en Replit para esta parte.**
-
----
-
-## ⚪ BACKLOG — Replit
-
-| ID | Tarea | Prioridad |
-|----|-------|-----------|
-| VIO-003 | `GET /v1/sdk/broadcasts/:broadcastId/chat` — historial de chat | 🟡 Media |
-| — | Transacciones DB en votos (insert poll_vote + update counts en una tx) | 🟡 Media |
-| — | Paginación en listados de broadcasts y componentes | ⚪ Baja |
-| — | Dashboard: editar `locationId` en componentes ya añadidos a campaña | ⚪ Baja |
-
----
-
-## 📊 DATOS DEMO ACTIVOS — campaña 35
-
-| Campo | Valor |
-|-------|-------|
-| Vio App API Key | `viaplay_api_key_0c611e983b314ff8` |
-| campaignId | 35 |
-| contentId | `real-madrid-barcelona-2025-01-24` |
-| broadcastId | `real-madrid-vs-barcelona-2026-02-25` |
-| Sponsor | Elkjøp (`#f7b23b`) |
-| Commerce API Key | `KCXF10Y-W5T4PCR-GG5119A-Z64SQ9S` |
-| Product Banner | productId `408895`, slot `sport-detail-banner` |
-| Product Carousel | IDs `408841, 408874, 408895, 408896`, slot `sport-detail-carousel` |
-| Polls activos | 15 (¿Quién ganará?) + 16 (¿Quién marcará?) |
-
----
-
-## ✅ #167 [FULL-STACK] Dashboard de Concursos — Fase 1
-
-### Cambios implementados
-
-**Schema** (`shared/schema.ts`):
-- `contests.imageUrl: varchar("image_url", { length: 1000 })` añadido ✅
-- DB migrada con `npm run db:push` ✅
-
-**API** (`server/routes.ts`):
-- `POST /api/broadcasts/:id/contests` — acepta y persiste `imageUrl` + emite WS event si `isActive: true` ✅
-- `PUT /api/contests/:id` — acepta `imageUrl` + emite WS event al activar (`isActive: true`) ✅
-
-**WebSocket — formato de evento contest** (unificado):
+#### 2. Exponer en config SDK
+`GET /v1/campaigns/:id/config` → añadir:
 ```json
 {
-  "type": "contest",
-  "broadcastId": "real-madrid-vs-barcelona-2026-02-25",
-  "id": "9",
-  "title": "Elkjøp Konkurranse",
-  "description": "Delta og vinn to billetter...",
-  "prize": "To billetter til Champions League",
-  "contestType": "giveaway",
-  "imageUrl": "https://...",
-  "isActive": true,
-  "timestamp": 1741042800000
+  "checkout": {
+    "paymentMethods": ["apple_pay", "klarna", "vipps"]
+  }
 }
 ```
-- Initial state al conectar WS también usa este formato ✅
 
-**UI** (`client/src/pages/broadcast-detail.tsx`):
-- Campo "Image URL" añadido al form "Create Contest" ✅
-- ContestCard: muestra thumbnail si hay `imageUrl`, sino Trophy icon ✅
+#### 3. Dashboard UI
+En la página de campaña añadir sección "Payment Methods" con checkboxes:
+- ☑ Apple Pay
+- ☑ Klarna
+- ☐ Vipps
+- ☐ Stripe Link
 
-**Verificado:**
-- `POST` con `imageUrl` → respuesta incluye `imageUrl` ✅
-- Contest eliminado del demo ✅
-
----
-
-## ✅ #166 [BACKEND] Añadir locationId al serializer de /v1/sdk/campaigns
-
-`GET /v1/sdk/campaigns` ahora incluye `locationId` en cada componente.
-Verificado:
-- `RProductCarousel 1: locationId="sport-detail-carousel"` ✅
-- `RProductBanner 1: locationId="sport-detail-banner"` ✅
+#### 4. Activar en campañas existentes (via dashboard o seed)
+- Campaña 35 (Viaplay): `["apple_pay"]`
+- Campaña 36 (TV2): `["apple_pay"]`
 
 ---
 
-## Aclaración: Tres imágenes distintas en el Contest Card
+### TASK-B02 — `POST /api/checkout/confirm-apple-pay`
+**Prioridad:** Media (necesario para producción, demo funciona sin esto)  
+**Branch:** `feature/payment-methods`
 
-El card de concurso tiene **3 imágenes con orígenes distintos**:
-
-### 1. `imageUrl` — Imagen del premio/concurso
-- **Qué es**: Imagen grande del concurso (Samsung TV, tickets Champions, spinner "SPINN OG VINN")
-- **Origen**: La sube el operador al crear el contest en el dashboard
-- **Campo**: `contests.image_url` en la DB
-- **Se muestra**: Banner principal del card (full width, ~140px)
-- **Dashboard**: `ImageUploadWithPreview` en el form de creación de contest ✅ (implementado Mar 2026)
-
-### 2. `sponsor.avatarUrl` — Avatar circular del sponsor
-- **Qué es**: Icono circular pequeño (ej: logo cuadrado Elkjøp)
-- **Origen**: `GET /v1/campaigns/:id/config` → `brand.iconUrl`
-- **Se muestra**: Círculo 32×32 en el header del card
-- **NO se configura por contest** — viene del campaign config
-
-### 3. `sponsor.logoUrl` — Badge del sponsor
-- **Qué es**: Logo horizontal del sponsor (ej: "ELKJØP")
-- **Origen**: `GET /v1/campaigns/:id/config` → `brand.logoUrl`
-- **Se muestra**: Badge top-right del card con color primario del sponsor
-- **NO se configura por contest** — viene del campaign config
+Endpoint para confirmar pago Apple Pay con Stripe.
 
 ```
-┌─────────────────────────────┐
-│ [Avatar] Elkjøp       [Logo]│  ← brand.iconUrl + brand.logoUrl
-├─────────────────────────────┤
-│   [  imagen del premio  ]   │  ← contests.image_url (sube el operador)
-├─────────────────────────────┤
-│ Delta og vinn to billetter  │
-│ 🏆 To billetter Champions   │
-│ [      Delta-knappen  ]     │
-└─────────────────────────────┘
+POST /api/checkout/confirm-apple-pay
+Authorization: X-API-Key (SDK key)
+Body: {
+  "clientSecret": "pi_xxx_secret_xxx",
+  "applePayToken": "<base64 del PKPaymentToken.paymentData>",
+  "buyer": {
+    "name": "Angelo Sepulveda",
+    "email": "angelo@vio.live",
+    "phone": "+47 900 00 000",
+    "address": {
+      "street": "Karl Johans gate 1",
+      "city": "Oslo",
+      "postalCode": "0154",
+      "country": "NO"
+    }
+  }
+}
+Response: { "success": true, "orderId": "pi_xxx" }
 ```
+
+**Implementación:**
+```js
+// 1. Decodificar el applePayToken (base64 → JSON)
+// 2. Llamar Stripe:
+const paymentMethod = await stripe.paymentMethods.create({
+  type: 'card',
+  card: { token: applePayTokenData }
+});
+const intent = await stripe.paymentIntents.confirm(clientSecret, {
+  payment_method: paymentMethod.id
+});
+// 3. Retornar { success: intent.status === 'succeeded', orderId: intent.id }
+```
+
+**Nota:** La clave privada Apple Pay para descifrar el token en producción:
+- Archivo: `~/vio-apple-pay.p12` (en angelos-air)
+- Contraseña: `vio2026`
+- Para Stripe: subir el certificado en dashboard.stripe.com → Settings → Apple Pay
 
 ---
 
-## ✅ RESUELTO (Mar 4 2026): imageUrl absoluta en WS events de contests
+## ✅ COMPLETADO RECIENTEMENTE
+- Carousel `sport-detail-carousel` activado en campaña 36 (TV2) ✅
+- Carousel `sport-home-carousel` activado en campaña 36 (TV2) ✅
+- `normalizeUrls()` en WS contest events ✅
+- broadcastId en pollEventSchema + contestEventSchema ✅
+- Sponsor badge (`badgeText`) en config endpoint ✅
 
-**Fix aplicado en `server/routes.ts`** en las 3 ubicaciones de emisión WS:
-- Snapshot inicial al conectar (~línea 289)
-- POST /api/broadcasts/:id/contests al crear con isActive (~línea 3473)
-- PUT /api/contests/:id al activar (~línea 3518)
-
-`normalizeUrls(contest.imageUrl)` convierte `/objects/uploads/xxx` → `https://api-dev.vio.live/objects/uploads/xxx`.
-
-Verificado: `GET /v1/campaigns/35/config` devuelve `integrations.commerce` con `apiKey: "KCXF10Y-..."` ✅
+## 📋 BACKLOG
+- Demo mode endpoint: `POST /api/broadcasts/:id/demo/start` — secuencia automática de eventos
+- Highlights endpoint: `GET /v1/sdk/broadcasts/:id/highlights`
+- Engagement products: backend resuelve productId → Commerce antes de emitir WS
