@@ -160,3 +160,23 @@ El card de concurso tiene **3 imágenes con orígenes distintos**:
 │ [      Delta-knappen  ]     │
 └─────────────────────────────┘
 ```
+
+---
+
+## BUG: imageUrl relativa en WS snapshot de contests
+
+**Problema**: Al emitir el snapshot inicial de contests al conectar el WS, `imageUrl` sale como `/objects/uploads/xxx` (relativa) en vez de `https://api-dev.vio.live/objects/uploads/xxx` (absoluta). El SDK no puede cargar la imagen.
+
+**Fix en `server/routes.ts`** (~línea 289), en el bloque de snapshot inicial de contests:
+
+```typescript
+// ANTES:
+imageUrl: contest.imageUrl || null,
+
+// DESPUÉS:
+imageUrl: contest.imageUrl ? normalizeUrls(contest.imageUrl, req.protocol, req.get('host')) : null,
+```
+
+Aplicar el mismo fix en la línea ~3470 (POST /api/broadcasts/:id/contests — emisión WS al crear).
+
+`normalizeUrls` ya existe y está importado — convierte `/objects/...` a URL absoluta.
