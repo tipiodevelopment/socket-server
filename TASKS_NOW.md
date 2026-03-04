@@ -123,3 +123,40 @@ _Actualizado: 2026-03-02 · Viobot_
 Verificado:
 - `RProductCarousel 1: locationId="sport-detail-carousel"` ✅
 - `RProductBanner 1: locationId="sport-detail-banner"` ✅
+
+---
+
+## Aclaración: Tres imágenes distintas en el Contest Card
+
+El card de concurso tiene **3 imágenes con orígenes distintos**:
+
+### 1. `imageUrl` — Imagen del premio/concurso
+- **Qué es**: Imagen grande del concurso (Samsung TV, tickets Champions, spinner "SPINN OG VINN")
+- **Origen**: La sube el operador al crear el contest en el dashboard
+- **Campo**: `contests.image_url` en la DB
+- **Se muestra**: Banner principal del card (full width, ~140px)
+- **Pendiente**: Añadir widget de upload de imagen en el form de creación de contest
+
+### 2. `sponsor.avatarUrl` — Avatar circular del sponsor
+- **Qué es**: Icono circular pequeño (ej: logo cuadrado Elkjøp)
+- **Origen**: `GET /v1/campaigns/:id/config` → `brand.iconUrl`
+- **Se muestra**: Círculo 32×32 en el header del card
+- **NO se configura por contest** — viene del campaign config
+
+### 3. `sponsor.logoUrl` — Badge del sponsor
+- **Qué es**: Logo horizontal del sponsor (ej: "ELKJØP")
+- **Origen**: `GET /v1/campaigns/:id/config` → `brand.logoUrl`
+- **Se muestra**: Badge top-right del card con color primario del sponsor
+- **NO se configura por contest** — viene del campaign config
+
+```
+┌─────────────────────────────┐
+│ [Avatar] Elkjøp       [Logo]│  ← brand.iconUrl + brand.logoUrl
+├─────────────────────────────┤
+│   [  imagen del premio  ]   │  ← contests.image_url (sube el operador)
+├─────────────────────────────┤
+│ Delta og vinn to billetter  │
+│ 🏆 To billetter Champions   │
+│ [      Delta-knappen  ]     │
+└─────────────────────────────┘
+```
