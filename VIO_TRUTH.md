@@ -123,6 +123,20 @@ El bloque `integrations.commerce` siempre está presente (con `enabled: false` s
 
 ---
 
+### Imágenes en Contest Card — tres orígenes distintos
+
+| Campo | Origen | Qué muestra |
+|---|---|---|
+| `contests.imageUrl` | Sube el operador al crear el contest (via upload en dashboard) | Banner imagen del premio (full width, ~140px) en el card |
+| `brand.iconUrl` / `sponsor.avatarUrl` | `GET /v1/campaigns/:id/config` → `brand.iconUrl` | Avatar circular 32×32 del sponsor (header del card) |
+| `brand.logoUrl` / `sponsor.logoUrl` | `GET /v1/campaigns/:id/config` → `brand.logoUrl` | Badge logo sponsor top-right del card |
+
+**Regla:** `imageUrl` se configura por contest individual. `avatarUrl` y `logoUrl` son del sponsor de la campaña — nunca se hardcodean en el contest.
+
+**Dashboard (Replit):** El formulario de creación de contest usa `ImageUploadWithPreview` — upload directo a object storage → URL generada se guarda en `contests.image_url`.
+
+---
+
 ## 🧩 LOCATION SLOT SYSTEM (nuevo Mar 2026)
 
 Los desarrolladores definen slots fijos en la UI del SDK con nombres semánticos. El operador asigna el componente desde el dashboard.
