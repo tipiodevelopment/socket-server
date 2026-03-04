@@ -135,7 +135,7 @@ El card de concurso tiene **3 imágenes con orígenes distintos**:
 - **Origen**: La sube el operador al crear el contest en el dashboard
 - **Campo**: `contests.image_url` en la DB
 - **Se muestra**: Banner principal del card (full width, ~140px)
-- **Pendiente**: Añadir widget de upload de imagen en el form de creación de contest
+- **Dashboard**: `ImageUploadWithPreview` en el form de creación de contest ✅ (implementado Mar 2026)
 
 ### 2. `sponsor.avatarUrl` — Avatar circular del sponsor
 - **Qué es**: Icono circular pequeño (ej: logo cuadrado Elkjøp)
