@@ -180,3 +180,42 @@ imageUrl: contest.imageUrl ? normalizeUrls(contest.imageUrl, req.protocol, req.g
 Aplicar el mismo fix en la línea ~3470 (POST /api/broadcasts/:id/contests — emisión WS al crear).
 
 `normalizeUrls` ya existe y está importado — convierte `/objects/...` a URL absoluta.
+
+---
+
+## URGENTE: Fix imageUrl relativa en WS events de contests
+
+### Problema
+El backend emite `imageUrl: "/objects/uploads/xxx"` (ruta relativa) en los eventos WS de contests.
+El SDK necesita la URL absoluta `https://api-dev.vio.live/objects/uploads/xxx` para cargar la imagen.
+
+### Fix en `server/routes.ts`
+
+**Ubicación 1** — Snapshot inicial al conectar (~línea 289):
+```typescript
+// ANTES:
+imageUrl: contest.imageUrl || null,
+
+// DESPUÉS:
+imageUrl: contest.imageUrl ? normalizeUrls(contest.imageUrl, req.protocol, req.get('host')) : null,
+```
+
+**Ubicación 2** — POST /api/broadcasts/:id/contests — emisión WS al crear (~línea 3470):
+```typescript
+// ANTES:
+imageUrl: contest.imageUrl || null,
+
+// DESPUÉS:
+imageUrl: contest.imageUrl ? normalizeUrls(contest.imageUrl, req.protocol, req.get('host')) : null,
+```
+
+`normalizeUrls` ya está importado desde `./utils` — convierte `/objects/...` → URL absoluta.
+
+**Verificar**: Después del fix, al conectar el WS debe llegar:
+```json
+{
+  "type": "contest",
+  "broadcastId": "barcelona-psg-2026-03-03",
+  "imageUrl": "https://api-dev.vio.live/objects/uploads/ca724309-..."
+}
+```
