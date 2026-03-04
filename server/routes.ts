@@ -286,7 +286,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
                 description: contest.description || '',
                 prize: contest.prize || '',
                 contestType: contest.contestType,
-                imageUrl: contest.imageUrl || null,
+                imageUrl: contest.imageUrl ? normalizeUrls(contest.imageUrl) : null,
                 isActive: true,
                 timestamp: Date.now()
               }));
@@ -3467,7 +3467,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
           description: contest.description || '',
           prize: contest.prize || '',
           contestType: contest.contestType,
-          imageUrl: contest.imageUrl || null,
+          imageUrl: contest.imageUrl ? normalizeUrls(contest.imageUrl, req.protocol, req.get('host')) : null,
           isActive: true,
           timestamp: Date.now()
         };
@@ -3512,7 +3512,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
             description: updated.description || '',
             prize: updated.prize || '',
             contestType: updated.contestType,
-            imageUrl: updated.imageUrl || null,
+            imageUrl: updated.imageUrl ? normalizeUrls(updated.imageUrl, req.protocol, req.get('host')) : null,
             isActive: true,
             timestamp: Date.now()
           };

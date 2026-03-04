@@ -493,13 +493,13 @@ ReachuSDK.configure(
                       </div>
 
                       <div className="pt-4 border-t border-white/10">
-                        <Label className="text-muted-foreground text-sm">Reachu API Key</Label>
+                        <Label className="text-muted-foreground text-sm">Commerce API Key</Label>
                         <p className="text-xs text-muted-foreground mt-1 mb-2">
-                          External API key for Reachu integration (optional)
+                          External API key for Commerce integration (optional)
                         </p>
                         <div className="flex items-center gap-2 mt-1">
                           <Input
-                            placeholder="Enter Reachu API key..."
+                            placeholder="Enter Commerce API key..."
                             value={editingReachuKey[app.id] ?? app.reachuApiKey ?? ''}
                             onChange={(e) => setEditingReachuKey(prev => ({ ...prev, [app.id]: e.target.value }))}
                             className="flex-1 font-mono text-sm"

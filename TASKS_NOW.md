@@ -163,59 +163,13 @@ El card de concurso tiene **3 imágenes con orígenes distintos**:
 
 ---
 
-## BUG: imageUrl relativa en WS snapshot de contests
+## ✅ RESUELTO (Mar 4 2026): imageUrl absoluta en WS events de contests
 
-**Problema**: Al emitir el snapshot inicial de contests al conectar el WS, `imageUrl` sale como `/objects/uploads/xxx` (relativa) en vez de `https://api-dev.vio.live/objects/uploads/xxx` (absoluta). El SDK no puede cargar la imagen.
+**Fix aplicado en `server/routes.ts`** en las 3 ubicaciones de emisión WS:
+- Snapshot inicial al conectar (~línea 289)
+- POST /api/broadcasts/:id/contests al crear con isActive (~línea 3473)
+- PUT /api/contests/:id al activar (~línea 3518)
 
-**Fix en `server/routes.ts`** (~línea 289), en el bloque de snapshot inicial de contests:
+`normalizeUrls(contest.imageUrl)` convierte `/objects/uploads/xxx` → `https://api-dev.vio.live/objects/uploads/xxx`.
 
-```typescript
-// ANTES:
-imageUrl: contest.imageUrl || null,
-
-// DESPUÉS:
-imageUrl: contest.imageUrl ? normalizeUrls(contest.imageUrl, req.protocol, req.get('host')) : null,
-```
-
-Aplicar el mismo fix en la línea ~3470 (POST /api/broadcasts/:id/contests — emisión WS al crear).
-
-`normalizeUrls` ya existe y está importado — convierte `/objects/...` a URL absoluta.
-
----
-
-## URGENTE: Fix imageUrl relativa en WS events de contests
-
-### Problema
-El backend emite `imageUrl: "/objects/uploads/xxx"` (ruta relativa) en los eventos WS de contests.
-El SDK necesita la URL absoluta `https://api-dev.vio.live/objects/uploads/xxx` para cargar la imagen.
-
-### Fix en `server/routes.ts`
-
-**Ubicación 1** — Snapshot inicial al conectar (~línea 289):
-```typescript
-// ANTES:
-imageUrl: contest.imageUrl || null,
-
-// DESPUÉS:
-imageUrl: contest.imageUrl ? normalizeUrls(contest.imageUrl, req.protocol, req.get('host')) : null,
-```
-
-**Ubicación 2** — POST /api/broadcasts/:id/contests — emisión WS al crear (~línea 3470):
-```typescript
-// ANTES:
-imageUrl: contest.imageUrl || null,
-
-// DESPUÉS:
-imageUrl: contest.imageUrl ? normalizeUrls(contest.imageUrl, req.protocol, req.get('host')) : null,
-```
-
-`normalizeUrls` ya está importado desde `./utils` — convierte `/objects/...` → URL absoluta.
-
-**Verificar**: Después del fix, al conectar el WS debe llegar:
-```json
-{
-  "type": "contest",
-  "broadcastId": "barcelona-psg-2026-03-03",
-  "imageUrl": "https://api-dev.vio.live/objects/uploads/ca724309-..."
-}
-```
+Verificado: `GET /v1/campaigns/35/config` devuelve `integrations.commerce` con `apiKey: "KCXF10Y-..."` ✅
