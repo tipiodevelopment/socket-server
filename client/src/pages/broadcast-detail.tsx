@@ -11,6 +11,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { useToast } from '@/hooks/use-toast';
 import { queryClient, apiRequest } from '@/lib/queryClient';
 import { AppLayout } from '@/components/AppLayout';
+import { ImageUploadWithPreview } from '@/components/ImageUploadWithPreview';
 import type { Broadcast, Poll, PollOptionRecord, Contest, Campaign, BroadcastAd, BroadcastProduct, ChatMessage } from '@shared/schema';
 import { ArrowLeft, Plus, Trash2, BarChart3, Trophy, X, MoreVertical, CheckCircle, Play, SkipBack, SkipForward, Maximize2, Send, Megaphone, ShoppingBag, ExternalLink, Eye, TrendingUp, Vote, MessageSquare, RefreshCw, Users, Radio, Pencil, Check, AtSign, Swords } from 'lucide-react';
 import { useState, useRef, useEffect } from 'react';
@@ -1286,15 +1287,13 @@ export default function BroadcastDetailPage() {
                         </Select>
                       </div>
                     </div>
-                    <div className="grid gap-2">
-                      <Label>Image URL</Label>
-                      <Input
-                        data-testid="input-contest-image-url"
-                        value={contestForm.imageUrl}
-                        onChange={(e) => setContestForm(prev => ({ ...prev, imageUrl: e.target.value }))}
-                        placeholder="https://... (optional, shown in SDK)"
-                      />
-                    </div>
+                    <ImageUploadWithPreview
+                      label="Image"
+                      value={contestForm.imageUrl}
+                      onChange={(url) => setContestForm(prev => ({ ...prev, imageUrl: url }))}
+                      placeholder="https://... or upload an image"
+                      testId="input-contest-image-url"
+                    />
                     <div className="flex items-center justify-between rounded-lg border border-gray-200 dark:border-white/10 px-4 py-3">
                       <div>
                         <Label className="text-sm font-medium">Active on creation</Label>
