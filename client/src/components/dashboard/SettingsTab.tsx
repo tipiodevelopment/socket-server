@@ -76,6 +76,7 @@ export function SettingsTab({ campaignId, campaign }: SettingsTabProps) {
   const [countrySearch, setCountrySearch] = useState('');
   const [channelId, setChannelId] = useState<number | null>(campaign.channelId || null);
   const [reachuApiKey, setReachuApiKey] = useState(campaign.reachuApiKey || '');
+  const [paymentMethods, setPaymentMethods] = useState<string[]>((campaign.paymentMethods as string[] | null) || ['apple_pay']);
 
   // Engagement config
   const [demoMode, setDemoMode] = useState(false);
@@ -204,6 +205,16 @@ export function SettingsTab({ campaignId, campaign }: SettingsTabProps) {
 
   const handleSaveReachuApiKey = () => {
     updateCampaignMutation.mutate({ reachuApiKey: reachuApiKey || null });
+  };
+
+  const handleTogglePaymentMethod = (method: string) => {
+    setPaymentMethods(prev =>
+      prev.includes(method) ? prev.filter(m => m !== method) : [...prev, method]
+    );
+  };
+
+  const handleSavePaymentMethods = () => {
+    updateCampaignMutation.mutate({ paymentMethods });
   };
 
   const handleSaveSegmentation = (e: React.FormEvent) => {
@@ -392,6 +403,38 @@ export function SettingsTab({ campaignId, campaign }: SettingsTabProps) {
             data-testid="button-save-campaign-reachu-key"
           >
             {isSaving ? 'Saving...' : 'Save API Key'}
+          </button>
+        </div>
+      </div>
+
+      {/* Payment Methods */}
+      <div>
+        <h2 className="text-sm font-semibold text-gray-400 uppercase mb-1">Payment Methods</h2>
+        <p className="text-xs text-gray-500 mb-4">Select which payment methods are enabled for checkout in this campaign</p>
+        <div className="border border-white/10 rounded-lg p-6 space-y-4">
+          {[
+            { id: 'apple_pay', label: 'Apple Pay' },
+            { id: 'klarna', label: 'Klarna' },
+            { id: 'vipps', label: 'Vipps' },
+            { id: 'stripe_link', label: 'Stripe Link' },
+          ].map(({ id, label }) => (
+            <div key={id} className="flex items-center gap-3">
+              <Checkbox
+                id={`pm-${id}`}
+                checked={paymentMethods.includes(id)}
+                onCheckedChange={() => handleTogglePaymentMethod(id)}
+                data-testid={`checkbox-payment-${id}`}
+              />
+              <label htmlFor={`pm-${id}`} className="text-sm text-white cursor-pointer">{label}</label>
+            </div>
+          ))}
+          <button
+            onClick={handleSavePaymentMethods}
+            disabled={updateCampaignMutation.isPending}
+            className="px-4 py-1.5 bg-white hover:bg-gray-200 text-black rounded text-xs transition font-medium disabled:opacity-50 mt-2"
+            data-testid="button-save-payment-methods"
+          >
+            {updateCampaignMutation.isPending ? 'Saving...' : 'Save Payment Methods'}
           </button>
         </div>
       </div>

@@ -73,6 +73,7 @@ export const campaigns = pgTable("campaigns", {
   brandIconAsset: varchar("brand_icon_asset", { length: 255 }),
   brandIconUrl: text("brand_icon_url"),
   brandLogoUrl: text("brand_logo_url"),
+  paymentMethods: json("payment_methods").$type<string[]>(),
   createdAt: timestamp("created_at").defaultNow().notNull()
 });
 

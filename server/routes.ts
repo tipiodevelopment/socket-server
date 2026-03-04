@@ -3,6 +3,7 @@ import { createServer, type Server } from "http";
 import { WebSocketServer, WebSocket } from "ws";
 import { createHash } from "crypto";
 import jwt from "jsonwebtoken";
+import Stripe from "stripe";
 import { storage } from "./storage";
 import { 
   webSocketEventSchema, 
@@ -3838,6 +3839,67 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
     }
   };
 
+  // POST /api/checkout/confirm-apple-pay — Confirm Apple Pay payment via Stripe
+  app.post('/api/checkout/confirm-apple-pay', validateApiKey, async (req, res) => {
+    try {
+      const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
+      if (!stripeSecretKey) {
+        return res.status(503).json({ error: 'Payment processing not configured', code: 'STRIPE_NOT_CONFIGURED' });
+      }
+
+      const stripe = new Stripe(stripeSecretKey, { apiVersion: '2025-01-27.acacia' });
+
+      const { clientSecret, applePayToken, buyer } = req.body;
+
+      if (!clientSecret || !applePayToken) {
+        return res.status(400).json({ error: 'clientSecret and applePayToken are required', code: 'MISSING_PARAMS' });
+      }
+
+      // Decode the Apple Pay token (base64 → JSON)
+      let tokenData: any;
+      try {
+        const decoded = Buffer.from(applePayToken, 'base64').toString('utf-8');
+        tokenData = JSON.parse(decoded);
+      } catch {
+        return res.status(400).json({ error: 'Invalid applePayToken format', code: 'INVALID_TOKEN' });
+      }
+
+      // Create a payment method from the Apple Pay token
+      const paymentMethod = await stripe.paymentMethods.create({
+        type: 'card',
+        card: { token: tokenData.token || tokenData } as any,
+        billing_details: buyer ? {
+          name: buyer.name || undefined,
+          email: buyer.email || undefined,
+          phone: buyer.phone || undefined,
+          address: buyer.address ? {
+            line1: buyer.address.street || undefined,
+            city: buyer.address.city || undefined,
+            postal_code: buyer.address.postalCode || undefined,
+            country: buyer.address.country || undefined,
+          } : undefined,
+        } : undefined,
+      });
+
+      // Extract payment intent ID from clientSecret
+      const intentId = clientSecret.split('_secret_')[0];
+
+      // Confirm the payment intent
+      const intent = await stripe.paymentIntents.confirm(intentId, {
+        payment_method: paymentMethod.id,
+      });
+
+      const success = intent.status === 'succeeded';
+      res.json({ success, orderId: intent.id, status: intent.status });
+    } catch (error: any) {
+      console.error('[Checkout] Apple Pay confirmation error:', error);
+      if (error.type === 'StripeCardError') {
+        return res.status(402).json({ error: error.message, code: 'CARD_ERROR' });
+      }
+      res.status(500).json({ error: 'Payment confirmation failed', code: 'PAYMENT_ERROR' });
+    }
+  });
+
   // GET /v1/sdk/campaigns - Auto-Discovery endpoint
   // Discovers all active campaigns using API key or Bundle ID
   app.get('/v1/sdk/campaigns', async (req, res) => {
@@ -4158,13 +4220,18 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
         }
       }
 
-      // Commerce integration (ex-Reachu) — always present so SDK can read without null-checking — always present so SDK can read without null-checking
+      // Commerce integration (ex-Reachu) — always present so SDK can read without null-checking
       config.integrations = {
         commerce: {
           enabled: !!(campaign.reachuApiKey),
           apiKey: campaign.reachuApiKey || null,
           channelId: campaign.reachuChannelId || null,
         }
+      };
+
+      // Checkout config — payment methods enabled for this campaign
+      config.checkout = {
+        paymentMethods: (campaign.paymentMethods as string[] | null) || ["apple_pay"],
       };
 
       res.json(config);
@@ -4289,7 +4356,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
         };
       }
 
-      // Commerce integration (ex-Reachu) — always present so SDK can read without null-checking — always present so SDK can read without null-checking
+      // Commerce integration (ex-Reachu) — always present so SDK can read without null-checking
       config.integrations = {
         commerce: {
           enabled: !!(campaign.reachuApiKey),
@@ -4297,7 +4364,12 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
           channelId: campaign.reachuChannelId || null,
         }
       };
-      
+
+      // Checkout config — payment methods enabled for this campaign
+      config.checkout = {
+        paymentMethods: (campaign.paymentMethods as string[] | null) || ["apple_pay"],
+      };
+
       res.set('Cache-Control', 'public, max-age=300');
       res.json(config);
     } catch (error) {
