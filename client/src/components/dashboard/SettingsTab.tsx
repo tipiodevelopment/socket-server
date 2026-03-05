@@ -77,6 +77,7 @@ export function SettingsTab({ campaignId, campaign }: SettingsTabProps) {
   const [channelId, setChannelId] = useState<number | null>(campaign.channelId || null);
   const [reachuApiKey, setReachuApiKey] = useState(campaign.reachuApiKey || '');
   const [paymentMethods, setPaymentMethods] = useState<string[]>((campaign.paymentMethods as string[] | null) || ['apple_pay']);
+  const [webhookUrl, setWebhookUrl] = useState(campaign.webhookUrl || '');
 
   // Engagement config
   const [demoMode, setDemoMode] = useState(false);
@@ -215,6 +216,10 @@ export function SettingsTab({ campaignId, campaign }: SettingsTabProps) {
 
   const handleSavePaymentMethods = () => {
     updateCampaignMutation.mutate({ paymentMethods });
+  };
+
+  const handleSaveWebhookUrl = () => {
+    updateCampaignMutation.mutate({ webhookUrl: webhookUrl || null });
   };
 
   const handleSaveSegmentation = (e: React.FormEvent) => {
@@ -435,6 +440,37 @@ export function SettingsTab({ campaignId, campaign }: SettingsTabProps) {
             data-testid="button-save-payment-methods"
           >
             {updateCampaignMutation.isPending ? 'Saving...' : 'Save Payment Methods'}
+          </button>
+        </div>
+      </div>
+
+      {/* Cart Intent Webhook */}
+      <div>
+        <h2 className="text-sm font-semibold text-gray-400 uppercase mb-1">Cart Intent Webhook</h2>
+        <p className="text-xs text-gray-500 mb-4">
+          URL to call when a user adds a product to cart from Apple TV. If set, Vio forwards the intent to your server instead of sending APNs directly.
+        </p>
+        <div className="border border-white/10 rounded-lg p-6 space-y-4">
+          <div className="space-y-1.5">
+            <div className="text-xs text-gray-500 uppercase font-medium">Webhook URL</div>
+            <Input
+              value={webhookUrl}
+              onChange={(e) => setWebhookUrl(e.target.value)}
+              placeholder="https://your-server.com/webhook/cart-intent"
+              className="font-mono text-sm"
+              data-testid="input-campaign-webhook-url"
+            />
+            <p className="text-xs text-gray-600">
+              POST body: <code className="text-gray-400">{"{ userId, productId, campaignId, action: \"cart_intent\" }"}</code>
+            </p>
+          </div>
+          <button
+            onClick={handleSaveWebhookUrl}
+            disabled={updateCampaignMutation.isPending}
+            className="px-4 py-1.5 bg-white hover:bg-gray-200 text-black rounded text-xs transition font-medium disabled:opacity-50"
+            data-testid="button-save-webhook-url"
+          >
+            {updateCampaignMutation.isPending ? 'Saving...' : 'Save Webhook URL'}
           </button>
         </div>
       </div>

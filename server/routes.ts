@@ -4004,7 +4004,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
     }
   });
 
-  // POST /api/campaigns/:id/cart-intent — Apple TV adds to cart → push notification to iPhone
+  // POST /api/campaigns/:id/cart-intent — Apple TV adds to cart → webhook or APNs push
   app.post('/api/campaigns/:campaignId/cart-intent', validateApiKey, async (req, res) => {
     try {
       const campaignId = parseInt(req.params.campaignId);
@@ -4014,6 +4014,24 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
         return res.status(400).json({ error: 'productId and userId are required' });
       }
 
+      const campaign = await storage.getCampaign(campaignId);
+
+      // Webhook-first: if broadcaster has a webhookUrl, call it and skip APNs entirely
+      if (campaign?.webhookUrl) {
+        try {
+          const webhookRes = await fetch(campaign.webhookUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ userId, productId, campaignId, action: 'cart_intent' }),
+          });
+          console.log(`[CartIntent] Webhook called: ${campaign.webhookUrl} → ${webhookRes.status}`);
+        } catch (webhookErr) {
+          console.error('[CartIntent] Webhook error:', webhookErr);
+        }
+        return res.json({ success: true, mode: 'webhook' });
+      }
+
+      // Demo mode: APNs direct push
       // Look up device token for this user
       const deviceRecord = await storage.getDeviceToken(campaignId, userId);
       if (!deviceRecord) {
@@ -4025,7 +4043,6 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       let resolvedName = productName || `Product ${productId}`;
       if (!productName) {
         try {
-          const campaign = await storage.getCampaign(campaignId);
           const commerceApiKey = campaign?.reachuApiKey || process.env.COMMERCE_API_KEY || 'KCXF10Y-W5T4PCR-GG5119A-Z64SQ9S';
           const gqlQuery = `{ Channel { GetProductById(id: "${productId}", countryCode: "NO", currencyCode: "NOK") { name } } }`;
           const gqlRes = await fetch('https://graph-ql-dev.vio.live/graphql', {

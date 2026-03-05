@@ -74,6 +74,7 @@ export const campaigns = pgTable("campaigns", {
   brandIconUrl: text("brand_icon_url"),
   brandLogoUrl: text("brand_logo_url"),
   paymentMethods: json("payment_methods").$type<string[]>(),
+  webhookUrl: varchar("webhook_url", { length: 512 }),
   createdAt: timestamp("created_at").defaultNow().notNull()
 });
 
