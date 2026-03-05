@@ -4087,7 +4087,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
             keyId: apnsKeyId,
             teamId: apnsTeamId,
           },
-          production: process.env.NODE_ENV === 'production',
+          production: false, // sandbox — change to true when using production APNs certificates
         });
 
         const notification = new apn.Notification();
