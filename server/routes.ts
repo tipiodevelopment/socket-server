@@ -4,7 +4,7 @@ import { WebSocketServer, WebSocket } from "ws";
 import { createHash } from "crypto";
 import jwt from "jsonwebtoken";
 import Stripe from "stripe";
-import apn from "node-apn";
+import apn from "@parse/node-apn";
 import { storage } from "./storage";
 import { 
   webSocketEventSchema, 
@@ -4044,14 +4044,14 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       if (!productName) {
         try {
           const commerceApiKey = campaign?.reachuApiKey || process.env.COMMERCE_API_KEY || 'KCXF10Y-W5T4PCR-GG5119A-Z64SQ9S';
-          const gqlQuery = `{ Channel { GetProductById(id: "${productId}", countryCode: "NO", currencyCode: "NOK") { name } } }`;
+          const gqlQuery = `{ Channel { GetProductsByIds(product_ids: [${productId}]) { id title images { url order } price { amount amount_incl_taxes currency_code } } } }`;
           const gqlRes = await fetch('https://graph-ql-dev.vio.live/graphql', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'Authorization': commerceApiKey },
             body: JSON.stringify({ query: gqlQuery }),
           });
           const gqlData = await gqlRes.json() as any;
-          const name = gqlData?.data?.Channel?.GetProductById?.name;
+          const name = gqlData?.data?.Channel?.GetProductsByIds?.[0]?.title;
           if (name) resolvedName = name;
         } catch (err) {
           console.warn('[CartIntent] Commerce lookup failed:', err);
@@ -4059,12 +4059,12 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       }
 
       // Send APNs push notification
-      const apnsCert = process.env.APNS_CERT_P8;
-      const apnsKey = process.env.APNS_KEY_ID;
-      const apnsTeam = process.env.APNS_TEAM_ID;
+      const apnsKeyContent = process.env.APNS_KEY;
+      const apnsKeyId = process.env.APNS_KEY_ID;
+      const apnsTeamId = process.env.APNS_TEAM_ID;
       const apnsBundleId = process.env.APNS_BUNDLE_ID || 'viodev.tv2demo';
 
-      if (!apnsCert || !apnsKey || !apnsTeam) {
+      if (!apnsKeyContent || !apnsKeyId || !apnsTeamId) {
         console.log(`[CartIntent] APNs not configured — logging intent: userId=${userId} productId=${productId} productName="${resolvedName}"`);
         return res.json({ success: true, note: 'apns_not_configured' });
       }
@@ -4072,9 +4072,9 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       try {
         const apnProvider = new apn.Provider({
           token: {
-            key: Buffer.from(apnsCert, 'base64').toString('utf-8'),
-            keyId: apnsKey,
-            teamId: apnsTeam,
+            key: apnsKeyContent,
+            keyId: apnsKeyId,
+            teamId: apnsTeamId,
           },
           production: process.env.NODE_ENV === 'production',
         });
