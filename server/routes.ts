@@ -4059,7 +4059,18 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       }
 
       // Send APNs push notification
-      const apnsKeyContent = process.env.APNS_KEY;
+      const _rawApnsKey = process.env.APNS_KEY || '';
+      // Replit secrets store multiline values with spaces — reconstruct proper PEM format
+      let apnsKeyContent: string | undefined;
+      if (_rawApnsKey) {
+        const match = _rawApnsKey.replace(/\\n/g, '\n').match(/-----BEGIN PRIVATE KEY-----([\s\S]+?)-----END PRIVATE KEY-----/);
+        if (match) {
+          const b64 = match[1].replace(/\s+/g, '');
+          apnsKeyContent = `-----BEGIN PRIVATE KEY-----\n${b64}\n-----END PRIVATE KEY-----\n`;
+        } else {
+          apnsKeyContent = _rawApnsKey.replace(/\\n/g, '\n');
+        }
+      }
       const apnsKeyId = process.env.APNS_KEY_ID;
       const apnsTeamId = process.env.APNS_TEAM_ID;
       const apnsBundleId = process.env.APNS_BUNDLE_ID || 'viodev.tv2demo';
