@@ -3921,7 +3921,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       const commerceApiKey = campaign.reachuApiKey || process.env.COMMERCE_API_KEY || 'KCXF10Y-W5T4PCR-GG5119A-Z64SQ9S';
 
       // Resolve product from Commerce GraphQL
-      const gqlQuery = `{ Channel { GetProductById(id: "${productId}", countryCode: "NO", currencyCode: "NOK") { id name images { url order } price { amount amount_incl_taxes currency_code } } } }`;
+      const gqlQuery = `{ Channel { GetProductsByIds(product_ids: [${productId}]) { id title images { url order } price { amount amount_incl_taxes currency_code } } } }`;
 
       let product: any = null;
       try {
@@ -3934,12 +3934,12 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
           body: JSON.stringify({ query: gqlQuery }),
         });
         const gqlData = await gqlRes.json() as any;
-        const p = gqlData?.data?.Channel?.GetProductById;
+        const p = gqlData?.data?.Channel?.GetProductsByIds?.[0];
         if (p) {
           const image = p.images?.sort((a: any, b: any) => a.order - b.order)?.[0];
           product = {
             id: String(p.id),
-            name: p.name,
+            name: p.title,
             price: p.price?.amount_incl_taxes ?? p.price?.amount ?? null,
             currency: p.price?.currency_code ?? 'NOK',
             imageUrl: image?.url ?? null,
