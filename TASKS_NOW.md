@@ -3,7 +3,64 @@ _Actualizado: 2026-03-05 Oslo_
 
 ## 🔴 ACTIVO AHORA
 
-_Sin tareas activas pendientes._
+### TASK-B07 — APNs integration — push notification real al iPhone
+**Prioridad: CRÍTICO — último paso para flujo TV → iPhone completo**
+
+Cuando `POST /api/campaigns/:id/cart-intent` se llama y NO hay webhookUrl → mandar push real via APNs.
+
+**Instalar:**
+```bash
+npm install @parse/node-apn
+```
+
+**Secrets necesarios (Angelo los provee):**
+- `APNS_KEY` — contenido completo del archivo .p8
+- `APNS_KEY_ID` — 10 caracteres (de developer.apple.com → Keys)
+- `APNS_TEAM_ID` — 10 caracteres (Team ID de la cuenta Apple)
+- `APNS_BUNDLE_ID` — `viodev.tv2demo`
+
+**Implementación en cart-intent (modo demo — sin webhookUrl):**
+```typescript
+import apn from '@parse/node-apn';
+
+const provider = new apn.Provider({
+  token: {
+    key: process.env.APNS_KEY,      // contenido del .p8
+    keyId: process.env.APNS_KEY_ID,
+    teamId: process.env.APNS_TEAM_ID,
+  },
+  production: false  // true en producción
+});
+
+const notification = new apn.Notification();
+notification.expiry = Math.floor(Date.now() / 1000) + 3600;
+notification.badge = 1;
+notification.sound = 'default';
+notification.alert = {
+  title: 'Produkt lagt til',
+  body: `${productName} — trykk for å kjøpe`
+};
+notification.payload = {
+  productId: productId,
+  campaignId: campaignId,
+  action: 'open_product'
+};
+notification.topic = process.env.APNS_BUNDLE_ID || 'viodev.tv2demo';
+
+await provider.send(notification, deviceToken);
+```
+
+**Si secrets no están configurados → loguear y responder success (no fallar)**
+
+**Flujo completo tras esto:**
+```
+Apple TV click → POST cart-intent
+  → backend busca deviceToken del userId en device_tokens
+  → APNs push → iPhone
+  → Usuario toca notificación
+  → SDK llama VioSDK.openProduct(id: productId)
+  → VProductDetailOverlay abre con Apple Pay
+```
 
 ---
 
