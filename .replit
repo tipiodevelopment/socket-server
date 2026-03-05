@@ -60,3 +60,10 @@ author = "agent"
 task = "shell.exec"
 args = "npm run dev"
 waitForPort = 5000
+
+[userenv]
+
+[userenv.shared]
+APNS_KEY_ID = "7RCV68L77Z"
+APNS_TEAM_ID = "U4R2B2U7E"
+APNS_BUNDLE_ID = "viodev.tv2demo"
