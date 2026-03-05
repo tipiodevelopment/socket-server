@@ -1,6 +1,6 @@
-import { WebSocketEvent, Campaign, InsertCampaign, Event, InsertEvent, CampaignFormState, InsertFormState, ScheduledComponent, InsertScheduledComponent, Component, InsertComponent, CampaignComponent, InsertCampaignComponent, AppComponent, InsertAppComponent, User, InsertUser, ClientApp, InsertClientApp, Channel, InsertChannel, CampaignTranslation, InsertCampaignTranslation, CampaignEngagementConfig, InsertCampaignEngagementConfig, CampaignUiConfig, InsertCampaignUiConfig, CampaignFeatureFlags, InsertCampaignFeatureFlags, SdkTranslation, InsertSdkTranslation, Broadcast, InsertBroadcast, Poll, InsertPoll, PollOptionRecord, InsertPollOption, PollVote, InsertPollVote, Contest, InsertContest, ContestParticipation, InsertContestParticipation, Sponsor, InsertSponsor, BroadcastAd, InsertBroadcastAd, BroadcastProduct, InsertBroadcastProduct, ChatMessage, InsertChatMessage } from "@shared/schema";
+import { WebSocketEvent, Campaign, InsertCampaign, Event, InsertEvent, CampaignFormState, InsertFormState, ScheduledComponent, InsertScheduledComponent, Component, InsertComponent, CampaignComponent, InsertCampaignComponent, AppComponent, InsertAppComponent, User, InsertUser, ClientApp, InsertClientApp, Channel, InsertChannel, CampaignTranslation, InsertCampaignTranslation, CampaignEngagementConfig, InsertCampaignEngagementConfig, CampaignUiConfig, InsertCampaignUiConfig, CampaignFeatureFlags, InsertCampaignFeatureFlags, SdkTranslation, InsertSdkTranslation, Broadcast, InsertBroadcast, Poll, InsertPoll, PollOptionRecord, InsertPollOption, PollVote, InsertPollVote, Contest, InsertContest, ContestParticipation, InsertContestParticipation, Sponsor, InsertSponsor, BroadcastAd, InsertBroadcastAd, BroadcastProduct, InsertBroadcastProduct, ChatMessage, InsertChatMessage, DeviceToken, InsertDeviceToken } from "@shared/schema";
 import { db } from "./db";
-import { campaigns, events, campaignFormState, scheduledComponents, components, campaignComponents, appComponents, users, clientApps, channels, campaignTranslations, campaignEngagementConfig, campaignUiConfig, campaignFeatureFlags, sdkTranslations, broadcasts, polls, pollOptions, pollVotes, contests, contestParticipations, sponsors, broadcastAds, broadcastProducts, chatMessages } from "@shared/schema";
+import { campaigns, events, campaignFormState, scheduledComponents, components, campaignComponents, appComponents, users, clientApps, channels, campaignTranslations, campaignEngagementConfig, campaignUiConfig, campaignFeatureFlags, sdkTranslations, broadcasts, polls, pollOptions, pollVotes, contests, contestParticipations, sponsors, broadcastAds, broadcastProducts, chatMessages, deviceTokens } from "@shared/schema";
 import { eq, desc, and, or, gte, ne, isNull, sql, lte, inArray } from "drizzle-orm";
 
 export interface IStorage {
@@ -184,6 +184,10 @@ export interface IStorage {
   // Chat Messages methods
   getChatMessages(broadcastId: string, limit?: number): Promise<ChatMessage[]>;
   createChatMessage(message: InsertChatMessage): Promise<ChatMessage>;
+
+  // Device Token methods
+  upsertDeviceToken(campaignId: number, userId: string, deviceToken: string, platform: string): Promise<DeviceToken>;
+  getDeviceToken(campaignId: number, userId: string): Promise<DeviceToken | undefined>;
 }
 
 export class MemStorage implements IStorage {
@@ -1309,6 +1313,24 @@ export class MemStorage implements IStorage {
   async createChatMessage(message: InsertChatMessage): Promise<ChatMessage> {
     const [created] = await db.insert(chatMessages).values(message).returning();
     return created;
+  }
+
+  // Device Tokens (APNs push notifications)
+  async upsertDeviceToken(campaignId: number, userId: string, deviceToken: string, platform: string): Promise<DeviceToken> {
+    const [result] = await db.insert(deviceTokens)
+      .values({ campaignId, userId, deviceToken, platform, updatedAt: new Date() })
+      .onConflictDoUpdate({
+        target: [deviceTokens.campaignId, deviceTokens.userId],
+        set: { deviceToken, platform, updatedAt: new Date() },
+      })
+      .returning();
+    return result;
+  }
+
+  async getDeviceToken(campaignId: number, userId: string): Promise<DeviceToken | undefined> {
+    const [token] = await db.select().from(deviceTokens)
+      .where(and(eq(deviceTokens.campaignId, campaignId), eq(deviceTokens.userId, userId)));
+    return token;
   }
 }
 

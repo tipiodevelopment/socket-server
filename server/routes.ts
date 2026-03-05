@@ -4,6 +4,7 @@ import { WebSocketServer, WebSocket } from "ws";
 import { createHash } from "crypto";
 import jwt from "jsonwebtoken";
 import Stripe from "stripe";
+import apn from "node-apn";
 import { storage } from "./storage";
 import { 
   webSocketEventSchema, 
@@ -3897,6 +3898,201 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
         return res.status(402).json({ error: error.message, code: 'CARD_ERROR' });
       }
       res.status(500).json({ error: 'Payment confirmation failed', code: 'PAYMENT_ERROR' });
+    }
+  });
+
+  // POST /api/broadcasts/:id/shoppable-ad — Trigger shoppable ad via Commerce GraphQL + WS
+  app.post('/api/broadcasts/:broadcastId/shoppable-ad', requireBearerAuth, async (req, res) => {
+    try {
+      const { broadcastId } = req.params;
+      const { productId, sponsorId } = req.body;
+
+      if (!productId) {
+        return res.status(400).json({ error: 'productId is required' });
+      }
+
+      const broadcast = await storage.getBroadcast(broadcastId);
+      if (!broadcast) return res.status(404).json({ error: 'Broadcast not found' });
+
+      const campaign = await storage.getCampaign(broadcast.campaignId);
+      if (!campaign) return res.status(404).json({ error: 'Campaign not found' });
+
+      // Commerce API key: from campaign.reachuApiKey, fallback to env
+      const commerceApiKey = campaign.reachuApiKey || process.env.COMMERCE_API_KEY || 'KCXF10Y-W5T4PCR-GG5119A-Z64SQ9S';
+
+      // Resolve product from Commerce GraphQL
+      const gqlQuery = `{ Channel { GetProductById(id: "${productId}", countryCode: "NO", currencyCode: "NOK") { id name images { url order } price { amount amount_incl_taxes currency_code } } } }`;
+
+      let product: any = null;
+      try {
+        const gqlRes = await fetch('https://graph-ql-dev.vio.live/graphql', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': commerceApiKey,
+          },
+          body: JSON.stringify({ query: gqlQuery }),
+        });
+        const gqlData = await gqlRes.json() as any;
+        const p = gqlData?.data?.Channel?.GetProductById;
+        if (p) {
+          const image = p.images?.sort((a: any, b: any) => a.order - b.order)?.[0];
+          product = {
+            id: String(p.id),
+            name: p.name,
+            price: p.price?.amount_incl_taxes ?? p.price?.amount ?? null,
+            currency: p.price?.currency_code ?? 'NOK',
+            imageUrl: image?.url ?? null,
+          };
+        }
+      } catch (err) {
+        console.warn('[ShoppableAd] Commerce GraphQL error:', err);
+      }
+
+      if (!product) {
+        product = { id: String(productId), name: 'Product', price: null, currency: 'NOK', imageUrl: null };
+      }
+
+      // Resolve sponsor info
+      let sponsor: any = null;
+      if (sponsorId) {
+        const sp = await storage.getSponsor(sponsorId);
+        if (sp) {
+          sponsor = {
+            name: sp.name,
+            logoUrl: sp.logoUrl ? normalizeUrls(sp.logoUrl, req.protocol, req.get('host')) : null,
+            primaryColor: sp.primaryColor ?? null,
+          };
+        }
+      }
+
+      const wsEvent = {
+        type: 'shoppable_ad',
+        broadcastId,
+        product,
+        ...(sponsor ? { sponsor } : {}),
+        timestamp: Date.now(),
+      };
+
+      if (campaign.id) {
+        broadcastToCampaign(campaign.id, JSON.stringify(wsEvent));
+      }
+
+      res.json({ success: true });
+    } catch (error) {
+      console.error('[ShoppableAd] Error:', error);
+      res.status(500).json({ error: 'Failed to trigger shoppable ad' });
+    }
+  });
+
+  // POST /api/campaigns/:id/register-device — Register APNs device token for push notifications
+  app.post('/api/campaigns/:campaignId/register-device', validateApiKey, async (req, res) => {
+    try {
+      const campaignId = parseInt(req.params.campaignId);
+      const { userId, deviceToken, platform = 'ios' } = req.body;
+
+      if (!userId || !deviceToken) {
+        return res.status(400).json({ error: 'userId and deviceToken are required' });
+      }
+
+      await storage.upsertDeviceToken(campaignId, userId, deviceToken, platform);
+      console.log(`[APNs] Device registered: campaign=${campaignId} userId=${userId} platform=${platform}`);
+      res.json({ success: true });
+    } catch (error) {
+      console.error('[RegisterDevice] Error:', error);
+      res.status(500).json({ error: 'Failed to register device' });
+    }
+  });
+
+  // POST /api/campaigns/:id/cart-intent — Apple TV adds to cart → push notification to iPhone
+  app.post('/api/campaigns/:campaignId/cart-intent', validateApiKey, async (req, res) => {
+    try {
+      const campaignId = parseInt(req.params.campaignId);
+      const { productId, userId, productName } = req.body;
+
+      if (!productId || !userId) {
+        return res.status(400).json({ error: 'productId and userId are required' });
+      }
+
+      // Look up device token for this user
+      const deviceRecord = await storage.getDeviceToken(campaignId, userId);
+      if (!deviceRecord) {
+        console.warn(`[CartIntent] No device token found for userId=${userId} campaignId=${campaignId}`);
+        return res.json({ success: true, note: 'no_device_registered' });
+      }
+
+      // Resolve product name if not provided
+      let resolvedName = productName || `Product ${productId}`;
+      if (!productName) {
+        try {
+          const campaign = await storage.getCampaign(campaignId);
+          const commerceApiKey = campaign?.reachuApiKey || process.env.COMMERCE_API_KEY || 'KCXF10Y-W5T4PCR-GG5119A-Z64SQ9S';
+          const gqlQuery = `{ Channel { GetProductById(id: "${productId}", countryCode: "NO", currencyCode: "NOK") { name } } }`;
+          const gqlRes = await fetch('https://graph-ql-dev.vio.live/graphql', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': commerceApiKey },
+            body: JSON.stringify({ query: gqlQuery }),
+          });
+          const gqlData = await gqlRes.json() as any;
+          const name = gqlData?.data?.Channel?.GetProductById?.name;
+          if (name) resolvedName = name;
+        } catch (err) {
+          console.warn('[CartIntent] Commerce lookup failed:', err);
+        }
+      }
+
+      // Send APNs push notification
+      const apnsCert = process.env.APNS_CERT_P8;
+      const apnsKey = process.env.APNS_KEY_ID;
+      const apnsTeam = process.env.APNS_TEAM_ID;
+      const apnsBundleId = process.env.APNS_BUNDLE_ID || 'viodev.tv2demo';
+
+      if (!apnsCert || !apnsKey || !apnsTeam) {
+        console.log(`[CartIntent] APNs not configured — logging intent: userId=${userId} productId=${productId} productName="${resolvedName}"`);
+        return res.json({ success: true, note: 'apns_not_configured' });
+      }
+
+      try {
+        const apnProvider = new apn.Provider({
+          token: {
+            key: Buffer.from(apnsCert, 'base64').toString('utf-8'),
+            keyId: apnsKey,
+            teamId: apnsTeam,
+          },
+          production: process.env.NODE_ENV === 'production',
+        });
+
+        const notification = new apn.Notification();
+        notification.expiry = Math.floor(Date.now() / 1000) + 3600;
+        notification.badge = 1;
+        notification.sound = 'default';
+        notification.alert = {
+          title: 'Produkt lagt til',
+          body: `${resolvedName} — trykk for å kjøpe`,
+        };
+        notification.payload = {
+          productId: String(productId),
+          campaignId,
+          action: 'open_product',
+        };
+        notification.topic = apnsBundleId;
+
+        const result = await apnProvider.send(notification, deviceRecord.deviceToken);
+        apnProvider.shutdown();
+
+        if (result.failed?.length > 0) {
+          console.error('[CartIntent] APNs push failed:', result.failed[0].response);
+        } else {
+          console.log(`[CartIntent] Push sent: userId=${userId} product="${resolvedName}"`);
+        }
+      } catch (apnsErr) {
+        console.error('[CartIntent] APNs error:', apnsErr);
+      }
+
+      res.json({ success: true });
+    } catch (error) {
+      console.error('[CartIntent] Error:', error);
+      res.status(500).json({ error: 'Failed to process cart intent' });
     }
   });
 

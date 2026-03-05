@@ -356,6 +356,22 @@ export const chatMessages = pgTable("chat_messages", {
   index("idx_chat_messages_broadcast_id").on(table.broadcastId),
 ]);
 
+// Device tokens for APNs push notifications
+export const deviceTokens = pgTable("device_tokens", {
+  id: serial("id").primaryKey(),
+  campaignId: integer("campaign_id").notNull().references(() => campaigns.id, { onDelete: 'cascade' }),
+  userId: varchar("user_id", { length: 255 }).notNull(),
+  deviceToken: varchar("device_token", { length: 512 }).notNull(),
+  platform: varchar("platform", { length: 20 }).notNull().default('ios'),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => [
+  uniqueIndex("idx_device_tokens_campaign_user").on(table.campaignId, table.userId),
+]);
+
+export type DeviceToken = typeof deviceTokens.$inferSelect;
+export type InsertDeviceToken = typeof deviceTokens.$inferInsert;
+
 // Relations
 export const usersRelations = relations(users, ({ many }) => ({
   campaigns: many(campaigns),
