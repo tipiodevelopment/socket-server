@@ -98,7 +98,7 @@ Apple TV click → POST cart-intent
 
 ---
 
-## 🟠 TASK-B08 — Sportmonks Integration (replaces previous B08 draft)
+## ✅ TASK-B08 — Sportmonks Integration (COMPLETADO)
 
 **Goal:** Link real football matches to broadcasts via Sportmonks API. Dashboard gets match picker UI; broadcasts show team logos/names. Score endpoint returns team logos for SDK.
 

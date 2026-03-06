@@ -1,6 +1,6 @@
-import { WebSocketEvent, Campaign, InsertCampaign, Event, InsertEvent, CampaignFormState, InsertFormState, ScheduledComponent, InsertScheduledComponent, Component, InsertComponent, CampaignComponent, InsertCampaignComponent, AppComponent, InsertAppComponent, User, InsertUser, ClientApp, InsertClientApp, Channel, InsertChannel, CampaignTranslation, InsertCampaignTranslation, CampaignEngagementConfig, InsertCampaignEngagementConfig, CampaignUiConfig, InsertCampaignUiConfig, CampaignFeatureFlags, InsertCampaignFeatureFlags, SdkTranslation, InsertSdkTranslation, Broadcast, InsertBroadcast, Poll, InsertPoll, PollOptionRecord, InsertPollOption, PollVote, InsertPollVote, Contest, InsertContest, ContestParticipation, InsertContestParticipation, Sponsor, InsertSponsor, BroadcastAd, InsertBroadcastAd, BroadcastProduct, InsertBroadcastProduct, ChatMessage, InsertChatMessage, DeviceToken, InsertDeviceToken } from "@shared/schema";
+import { WebSocketEvent, Campaign, InsertCampaign, Event, InsertEvent, CampaignFormState, InsertFormState, ScheduledComponent, InsertScheduledComponent, Component, InsertComponent, CampaignComponent, InsertCampaignComponent, AppComponent, InsertAppComponent, User, InsertUser, ClientApp, InsertClientApp, Channel, InsertChannel, CampaignTranslation, InsertCampaignTranslation, CampaignEngagementConfig, InsertCampaignEngagementConfig, CampaignUiConfig, InsertCampaignUiConfig, CampaignFeatureFlags, InsertCampaignFeatureFlags, SdkTranslation, InsertSdkTranslation, Broadcast, InsertBroadcast, Poll, InsertPoll, PollOptionRecord, InsertPollOption, PollVote, InsertPollVote, Contest, InsertContest, ContestParticipation, InsertContestParticipation, Sponsor, InsertSponsor, BroadcastAd, InsertBroadcastAd, BroadcastProduct, InsertBroadcastProduct, ChatMessage, InsertChatMessage, DeviceToken, InsertDeviceToken, SportmonksCache } from "@shared/schema";
 import { db } from "./db";
-import { campaigns, events, campaignFormState, scheduledComponents, components, campaignComponents, appComponents, users, clientApps, channels, campaignTranslations, campaignEngagementConfig, campaignUiConfig, campaignFeatureFlags, sdkTranslations, broadcasts, polls, pollOptions, pollVotes, contests, contestParticipations, sponsors, broadcastAds, broadcastProducts, chatMessages, deviceTokens } from "@shared/schema";
+import { campaigns, events, campaignFormState, scheduledComponents, components, campaignComponents, appComponents, users, clientApps, channels, campaignTranslations, campaignEngagementConfig, campaignUiConfig, campaignFeatureFlags, sdkTranslations, broadcasts, polls, pollOptions, pollVotes, contests, contestParticipations, sponsors, broadcastAds, broadcastProducts, chatMessages, deviceTokens, sportmonksCache } from "@shared/schema";
 import { eq, desc, and, or, gte, ne, isNull, sql, lte, inArray } from "drizzle-orm";
 
 export interface IStorage {
@@ -188,6 +188,10 @@ export interface IStorage {
   // Device Token methods
   upsertDeviceToken(campaignId: number, userId: string, deviceToken: string, platform: string): Promise<DeviceToken>;
   getDeviceToken(campaignId: number, userId: string): Promise<DeviceToken | undefined>;
+
+  // Sportmonks cache methods
+  getSportmonksCache(cacheType: string, leagueId?: number | null, dateFrom?: string | null, dateTo?: string | null): Promise<SportmonksCache | undefined>;
+  upsertSportmonksCache(cacheType: string, data: any, leagueId?: number | null, dateFrom?: string | null, dateTo?: string | null): Promise<SportmonksCache>;
 }
 
 export class MemStorage implements IStorage {
@@ -1331,6 +1335,30 @@ export class MemStorage implements IStorage {
     const [token] = await db.select().from(deviceTokens)
       .where(and(eq(deviceTokens.campaignId, campaignId), eq(deviceTokens.userId, userId)));
     return token;
+  }
+
+  async getSportmonksCache(cacheType: string, leagueId?: number | null, dateFrom?: string | null, dateTo?: string | null): Promise<SportmonksCache | undefined> {
+    const conditions = [eq(sportmonksCache.cacheType, cacheType)];
+    if (leagueId != null) conditions.push(eq(sportmonksCache.leagueId, leagueId));
+    if (dateFrom != null) conditions.push(eq(sportmonksCache.dateFrom, dateFrom));
+    if (dateTo != null) conditions.push(eq(sportmonksCache.dateTo, dateTo));
+    const [row] = await db.select().from(sportmonksCache).where(and(...conditions));
+    return row;
+  }
+
+  async upsertSportmonksCache(cacheType: string, data: any, leagueId?: number | null, dateFrom?: string | null, dateTo?: string | null): Promise<SportmonksCache> {
+    const existing = await this.getSportmonksCache(cacheType, leagueId, dateFrom, dateTo);
+    if (existing) {
+      const [updated] = await db.update(sportmonksCache)
+        .set({ data, updatedAt: new Date() })
+        .where(eq(sportmonksCache.id, existing.id))
+        .returning();
+      return updated;
+    }
+    const [created] = await db.insert(sportmonksCache)
+      .values({ cacheType, leagueId: leagueId ?? null, dateFrom: dateFrom ?? null, dateTo: dateTo ?? null, data })
+      .returning();
+    return created;
   }
 }
 

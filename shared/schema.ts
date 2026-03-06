@@ -216,7 +216,14 @@ export const broadcasts = pgTable("broadcasts", {
   metadata: json("metadata"),
   createdBy: integer("created_by").references(() => users.id, { onDelete: 'set null' }),
   createdAt: timestamp("created_at").defaultNow().notNull(),
-  updatedAt: timestamp("updated_at").defaultNow().notNull()
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  sportmonksFixtureId: integer("sportmonks_fixture_id"),
+  homeTeamName: varchar("home_team_name", { length: 255 }),
+  homeTeamLogo: varchar("home_team_logo", { length: 512 }),
+  awayTeamName: varchar("away_team_name", { length: 255 }),
+  awayTeamLogo: varchar("away_team_logo", { length: 512 }),
+  matchStartingAt: timestamp("match_starting_at"),
+  leagueName: varchar("league_name", { length: 255 }),
 }, (table) => ({
   externalIdCampaignIdx: index("idx_broadcasts_external_id_campaign").on(table.externalId, table.campaignId),
 }));
@@ -372,6 +379,21 @@ export const deviceTokens = pgTable("device_tokens", {
 
 export type DeviceToken = typeof deviceTokens.$inferSelect;
 export type InsertDeviceToken = typeof deviceTokens.$inferInsert;
+
+// Sportmonks cache — stores API responses to avoid repeated calls
+export const sportmonksCache = pgTable("sportmonks_cache", {
+  id: serial("id").primaryKey(),
+  cacheType: varchar("cache_type", { length: 50 }).notNull(),
+  leagueId: integer("league_id"),
+  dateFrom: varchar("date_from", { length: 20 }),
+  dateTo: varchar("date_to", { length: 20 }),
+  data: json("data").notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const insertSportmonksCacheSchema = createInsertSchema(sportmonksCache).omit({ id: true });
+export type SportmonksCache = typeof sportmonksCache.$inferSelect;
+export type InsertSportmonksCache = z.infer<typeof insertSportmonksCacheSchema>;
 
 // Relations
 export const usersRelations = relations(users, ({ many }) => ({

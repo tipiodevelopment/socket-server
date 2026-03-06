@@ -57,8 +57,9 @@ Key tables and their extensions:
 - `broadcast_ads`: Ads linked to broadcasts (name, description, imageUrl, ctaUrl, adType, duration, isActive, displayOrder).
 - `broadcast_products`: Shoppable products per broadcast (name, subtitle, price/originalPrice as varchar, buyUrl, status, displayOrder).
 - `chat_messages`: Live chat messages per broadcast (username, message, createdAt, type, metadata).
-- `broadcasts`: Extended with `viewerCount`, `peakViewers`, and `externalId` (indexed on `(externalId, campaignId)` for SDK lookups).
+- `broadcasts`: Extended with `viewerCount`, `peakViewers`, `externalId` (indexed on `(externalId, campaignId)`), and Sportmonks match fields: `sportmonksFixtureId`, `homeTeamName`, `homeTeamLogo`, `awayTeamName`, `awayTeamLogo`, `matchStartingAt`, `leagueName`.
 - `campaign_components`: Extended with `locationId` for SDK slot identification.
+- `sportmonks_cache`: Caches Sportmonks API responses (leagues + fixtures) for 2 days. Fields: `cacheType`, `leagueId`, `dateFrom`, `dateTo`, `data` (JSONB), `updatedAt`.
 
 ### API Architecture
 

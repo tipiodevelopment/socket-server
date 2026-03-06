@@ -3215,7 +3215,8 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
 
   app.post('/api/broadcasts', async (req, res) => {
     try {
-      const { broadcastName, externalId, description, campaignId, channelId, startTime, endTime, metadata, createdBy } = req.body;
+      const { broadcastName, externalId, description, campaignId, channelId, startTime, endTime, metadata, createdBy,
+              sportmonksFixtureId, homeTeamName, homeTeamLogo, awayTeamName, awayTeamLogo, matchStartingAt, leagueName } = req.body;
 
       if (!broadcastName) {
         return res.status(400).json({ message: 'broadcastName is required' });
@@ -3240,7 +3241,14 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
         endTime: endTime ? new Date(endTime) : null,
         status: 'upcoming',
         metadata: metadata || null,
-        createdBy: createdBy || null
+        createdBy: createdBy || null,
+        sportmonksFixtureId: sportmonksFixtureId || null,
+        homeTeamName: homeTeamName || null,
+        homeTeamLogo: homeTeamLogo || null,
+        awayTeamName: awayTeamName || null,
+        awayTeamLogo: awayTeamLogo || null,
+        matchStartingAt: matchStartingAt ? new Date(matchStartingAt) : null,
+        leagueName: leagueName || null,
       });
 
       res.status(201).json(broadcast);
@@ -3252,7 +3260,8 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
 
   app.put('/api/broadcasts/:broadcastId', async (req, res) => {
     try {
-      const { broadcastName, externalId, description, campaignId, channelId, startTime, endTime, status, metadata } = req.body;
+      const { broadcastName, externalId, description, campaignId, channelId, startTime, endTime, status, metadata,
+              sportmonksFixtureId, homeTeamName, homeTeamLogo, awayTeamName, awayTeamLogo, matchStartingAt, leagueName } = req.body;
       const existing = await storage.getBroadcast(req.params.broadcastId);
       if (!existing) return res.status(404).json({ message: 'Broadcast not found' });
 
@@ -3266,6 +3275,13 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       if (endTime !== undefined) updateData.endTime = endTime ? new Date(endTime) : null;
       if (status !== undefined) updateData.status = status;
       if (metadata !== undefined) updateData.metadata = metadata;
+      if (sportmonksFixtureId !== undefined) updateData.sportmonksFixtureId = sportmonksFixtureId || null;
+      if (homeTeamName !== undefined) updateData.homeTeamName = homeTeamName || null;
+      if (homeTeamLogo !== undefined) updateData.homeTeamLogo = homeTeamLogo || null;
+      if (awayTeamName !== undefined) updateData.awayTeamName = awayTeamName || null;
+      if (awayTeamLogo !== undefined) updateData.awayTeamLogo = awayTeamLogo || null;
+      if (matchStartingAt !== undefined) updateData.matchStartingAt = matchStartingAt ? new Date(matchStartingAt) : null;
+      if (leagueName !== undefined) updateData.leagueName = leagueName || null;
 
       const updated = await storage.updateBroadcast(req.params.broadcastId, updateData);
       if (!updated) return res.status(404).json({ message: 'Broadcast not found' });
@@ -3707,6 +3723,90 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       res.json({ broadcastId, matchData, metadata: updated?.metadata });
     } catch (error) {
       res.status(500).json({ message: 'Error updating match data' });
+    }
+  });
+
+  // ========================================
+  // Sportmonks Integration Endpoints
+  // ========================================
+
+  const SPORTMONKS_BASE = 'https://api.sportmonks.com/v3/football';
+  const SPORTMONKS_TOKEN = process.env.SPORTMONKS_API_TOKEN || '';
+  const CACHE_TTL_MS = 2 * 24 * 60 * 60 * 1000; // 2 days
+
+  const sportmonksFetch = async (path: string) => {
+    const url = `${SPORTMONKS_BASE}${path}`;
+    const res = await fetch(url, { headers: { Authorization: SPORTMONKS_TOKEN } });
+    if (!res.ok) throw new Error(`Sportmonks ${res.status}: ${await res.text()}`);
+    return res.json();
+  };
+
+  const isCacheValid = (cache: { updatedAt: Date | string } | undefined) => {
+    if (!cache) return false;
+    return Date.now() - new Date(cache.updatedAt).getTime() < CACHE_TTL_MS;
+  };
+
+  // GET /api/sportmonks/leagues
+  app.get('/api/sportmonks/leagues', async (req, res) => {
+    try {
+      const cached = await storage.getSportmonksCache('leagues');
+      if (isCacheValid(cached)) {
+        return res.json(cached!.data);
+      }
+      const json = await sportmonksFetch('/leagues?per_page=150&include=country');
+      const leagues = (json.data || []).map((l: any) => ({
+        id: l.id,
+        name: l.name,
+        shortCode: l.short_code || null,
+        logoUrl: l.image_path || null,
+        countryName: l.country?.name || null,
+      }));
+      await storage.upsertSportmonksCache('leagues', leagues);
+      res.json(leagues);
+    } catch (error: any) {
+      console.error('Sportmonks leagues error:', error.message);
+      res.status(502).json({ message: 'Failed to fetch leagues from Sportmonks', error: error.message });
+    }
+  });
+
+  // GET /api/sportmonks/fixtures?leagueId=&dateFrom=YYYY-MM-DD&dateTo=YYYY-MM-DD
+  app.get('/api/sportmonks/fixtures', async (req, res) => {
+    try {
+      const leagueId = parseInt(req.query.leagueId as string);
+      const dateFrom = req.query.dateFrom as string;
+      const dateTo = req.query.dateTo as string;
+
+      if (!leagueId || !dateFrom || !dateTo) {
+        return res.status(400).json({ message: 'leagueId, dateFrom, and dateTo are required' });
+      }
+
+      const cached = await storage.getSportmonksCache('fixtures', leagueId, dateFrom, dateTo);
+      if (isCacheValid(cached)) {
+        return res.json(cached!.data);
+      }
+
+      const path = `/fixtures/between/${dateFrom}/${dateTo}?leagues=${leagueId}&per_page=50&include=participants`;
+      const json = await sportmonksFetch(path);
+
+      const fixtures = (json.data || []).map((f: any) => {
+        const participants = f.participants || [];
+        const home = participants.find((p: any) => p.meta?.location === 'home');
+        const away = participants.find((p: any) => p.meta?.location === 'away');
+        return {
+          id: f.id,
+          name: f.name,
+          startingAt: f.starting_at,
+          status: f.result_info || f.state?.name || null,
+          homeTeam: home ? { id: home.id, name: home.name, logoUrl: home.image_path || null } : null,
+          awayTeam: away ? { id: away.id, name: away.name, logoUrl: away.image_path || null } : null,
+        };
+      });
+
+      await storage.upsertSportmonksCache('fixtures', fixtures, leagueId, dateFrom, dateTo);
+      res.json(fixtures);
+    } catch (error: any) {
+      console.error('Sportmonks fixtures error:', error.message);
+      res.status(502).json({ message: 'Failed to fetch fixtures from Sportmonks', error: error.message });
     }
   });
 

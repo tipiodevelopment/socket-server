@@ -2,7 +2,7 @@ import { useParams, Link, useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useState, useMemo } from "react";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Pause, Play, MoreVertical, BarChart3, Radio, Puzzle, Settings, Activity, Eye, TrendingUp, ExternalLink, Zap, Square } from "lucide-react";
+import { ArrowLeft, Pause, Play, MoreVertical, BarChart3, Radio, Puzzle, Settings, Activity, Eye, TrendingUp, ExternalLink, Zap, Square, ChevronDown, ChevronRight, Trophy, Loader2, X } from "lucide-react";
 import { Campaign, Sponsor, Broadcast } from "@shared/schema";
 import { OverviewTab } from "@/components/dashboard/OverviewTab";
 import { EventsTab } from "@/components/dashboard/EventsTab";
@@ -365,6 +365,25 @@ function getStatusBadge(status: string) {
   }
 }
 
+type SportmonksLeague = { id: number; name: string; shortCode: string | null; logoUrl: string | null; countryName: string | null };
+type SportmonksFixture = { id: number; name: string; startingAt: string; status: string | null; homeTeam: { id: number; name: string; logoUrl: string | null } | null; awayTeam: { id: number; name: string; logoUrl: string | null } | null };
+type MatchFields = { sportmonksFixtureId: number | null; homeTeamName: string; homeTeamLogo: string; awayTeamName: string; awayTeamLogo: string; matchStartingAt: string; leagueName: string };
+
+const emptyMatch = (): MatchFields => ({ sportmonksFixtureId: null, homeTeamName: '', homeTeamLogo: '', awayTeamName: '', awayTeamLogo: '', matchStartingAt: '', leagueName: '' });
+
+function getDefaultDateRange() {
+  const now = new Date();
+  const from = new Date(now); from.setDate(from.getDate() - 1);
+  const to = new Date(now); to.setDate(to.getDate() + 3);
+  return { from: from.toISOString().split('T')[0], to: to.toISOString().split('T')[0] };
+}
+
+function TeamLogo({ url, name, size = 'sm' }: { url?: string | null; name: string; size?: 'sm' | 'md' }) {
+  const sz = size === 'md' ? 'w-8 h-8' : 'w-5 h-5';
+  if (url) return <img src={url} alt={name} className={`${sz} object-contain rounded`} />;
+  return <div className={`${sz} rounded bg-gray-600 flex items-center justify-center text-white text-xs font-bold`}>{name.slice(0, 2).toUpperCase()}</div>;
+}
+
 function BroadcastsTab({ campaignId }: { campaignId: number }) {
   const { toast } = useToast();
   const { userId } = useUser();
@@ -386,6 +405,18 @@ function BroadcastsTab({ campaignId }: { campaignId: number }) {
     metadata: '',
   });
 
+  // Link Match state — create dialog
+  const [createMatchOpen, setCreateMatchOpen] = useState(false);
+  const [createMatch, setCreateMatch] = useState<MatchFields>(emptyMatch());
+  const [createLeagueId, setCreateLeagueId] = useState<number | null>(null);
+  const [createDateRange, setCreateDateRange] = useState(getDefaultDateRange());
+
+  // Link Match state — edit dialog
+  const [editMatchOpen, setEditMatchOpen] = useState(false);
+  const [editMatch, setEditMatch] = useState<MatchFields>(emptyMatch());
+  const [editLeagueId, setEditLeagueId] = useState<number | null>(null);
+  const [editDateRange, setEditDateRange] = useState(getDefaultDateRange());
+
   const { data: broadcasts = [], isLoading } = useQuery<Broadcast[]>({
     queryKey: ['/api/broadcasts', campaignId, statusFilter],
     queryFn: async () => {
@@ -403,6 +434,40 @@ function BroadcastsTab({ campaignId }: { campaignId: number }) {
     queryClient.invalidateQueries({ queryKey: ['/api/campaigns', campaignId, 'broadcasts'] });
   };
 
+  const { data: leagues = [] } = useQuery<SportmonksLeague[]>({
+    queryKey: ['/api/sportmonks/leagues'],
+    queryFn: async () => {
+      const res = await fetch('/api/sportmonks/leagues');
+      if (!res.ok) throw new Error('Failed to fetch leagues');
+      return res.json();
+    },
+    staleTime: 2 * 24 * 60 * 60 * 1000,
+  });
+
+  const activeCreateLeagueId = createMatchOpen ? createLeagueId : null;
+  const { data: createFixtures = [], isFetching: createFixturesLoading } = useQuery<SportmonksFixture[]>({
+    queryKey: ['/api/sportmonks/fixtures', activeCreateLeagueId, createDateRange.from, createDateRange.to],
+    queryFn: async () => {
+      if (!activeCreateLeagueId) return [];
+      const res = await fetch(`/api/sportmonks/fixtures?leagueId=${activeCreateLeagueId}&dateFrom=${createDateRange.from}&dateTo=${createDateRange.to}`);
+      if (!res.ok) throw new Error('Failed to fetch fixtures');
+      return res.json();
+    },
+    enabled: !!activeCreateLeagueId,
+  });
+
+  const activeEditLeagueId = editMatchOpen ? editLeagueId : null;
+  const { data: editFixtures = [], isFetching: editFixturesLoading } = useQuery<SportmonksFixture[]>({
+    queryKey: ['/api/sportmonks/fixtures', activeEditLeagueId, editDateRange.from, editDateRange.to],
+    queryFn: async () => {
+      if (!activeEditLeagueId) return [];
+      const res = await fetch(`/api/sportmonks/fixtures?leagueId=${activeEditLeagueId}&dateFrom=${editDateRange.from}&dateTo=${editDateRange.to}`);
+      if (!res.ok) throw new Error('Failed to fetch fixtures');
+      return res.json();
+    },
+    enabled: !!activeEditLeagueId,
+  });
+
   const createMutation = useMutation({
     mutationFn: async (data: Record<string, unknown>) => {
       return await apiRequest('POST', '/api/broadcasts', data);
@@ -412,6 +477,9 @@ function BroadcastsTab({ campaignId }: { campaignId: number }) {
       toast({ title: 'Broadcast Created', description: 'The broadcast has been created.' });
       setCreateOpen(false);
       setFormData({ broadcastName: '', externalId: '', startTime: '', endTime: '', metadata: '' });
+      setCreateMatch(emptyMatch());
+      setCreateMatchOpen(false);
+      setCreateLeagueId(null);
     },
     onError: () => {
       toast({ title: 'Error', description: 'Failed to create broadcast.', variant: 'destructive' });
@@ -479,6 +547,9 @@ function BroadcastsTab({ campaignId }: { campaignId: number }) {
 
   const openEditDialog = (broadcast: Broadcast) => {
     setEditBroadcast(broadcast);
+    setEditMatchOpen(false);
+    setEditLeagueId(null);
+    setEditDateRange(getDefaultDateRange());
     const toLocalDatetime = (dt: string | Date | null | undefined) => {
       if (!dt) return '';
       const d = new Date(dt);
@@ -491,6 +562,15 @@ function BroadcastsTab({ campaignId }: { campaignId: number }) {
       startTime: toLocalDatetime(broadcast.startTime),
       endTime: toLocalDatetime(broadcast.endTime),
       status: broadcast.status,
+    });
+    setEditMatch({
+      sportmonksFixtureId: (broadcast as any).sportmonksFixtureId ?? null,
+      homeTeamName: (broadcast as any).homeTeamName ?? '',
+      homeTeamLogo: (broadcast as any).homeTeamLogo ?? '',
+      awayTeamName: (broadcast as any).awayTeamName ?? '',
+      awayTeamLogo: (broadcast as any).awayTeamLogo ?? '',
+      matchStartingAt: (broadcast as any).matchStartingAt ?? '',
+      leagueName: (broadcast as any).leagueName ?? '',
     });
   };
 
@@ -508,6 +588,13 @@ function BroadcastsTab({ campaignId }: { campaignId: number }) {
         startTime: editFormData.startTime || null,
         endTime: editFormData.endTime || null,
         status: editFormData.status,
+        sportmonksFixtureId: editMatch.sportmonksFixtureId,
+        homeTeamName: editMatch.homeTeamName || null,
+        homeTeamLogo: editMatch.homeTeamLogo || null,
+        awayTeamName: editMatch.awayTeamName || null,
+        awayTeamLogo: editMatch.awayTeamLogo || null,
+        matchStartingAt: editMatch.matchStartingAt || null,
+        leagueName: editMatch.leagueName || null,
       },
     });
   };
@@ -534,6 +621,13 @@ function BroadcastsTab({ campaignId }: { campaignId: number }) {
       endTime: formData.endTime || undefined,
       metadata,
       createdBy: userId,
+      sportmonksFixtureId: createMatch.sportmonksFixtureId,
+      homeTeamName: createMatch.homeTeamName || undefined,
+      homeTeamLogo: createMatch.homeTeamLogo || undefined,
+      awayTeamName: createMatch.awayTeamName || undefined,
+      awayTeamLogo: createMatch.awayTeamLogo || undefined,
+      matchStartingAt: createMatch.matchStartingAt || undefined,
+      leagueName: createMatch.leagueName || undefined,
     });
   };
 
@@ -573,7 +667,7 @@ function BroadcastsTab({ campaignId }: { campaignId: number }) {
               New Broadcast
             </Button>
           </DialogTrigger>
-          <DialogContent className="sm:max-w-[500px]">
+          <DialogContent className="sm:max-w-[520px] max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>Create Broadcast</DialogTitle>
               <DialogDescription>Create a new broadcast for this campaign.</DialogDescription>
@@ -632,6 +726,106 @@ function BroadcastsTab({ campaignId }: { campaignId: number }) {
                   rows={3}
                 />
               </div>
+
+              {/* Link Match section */}
+              <div className="border border-white/10 rounded-lg overflow-hidden">
+                <button
+                  type="button"
+                  onClick={() => setCreateMatchOpen(v => !v)}
+                  className="w-full flex items-center justify-between px-3 py-2.5 text-sm font-medium text-white/70 hover:text-white hover:bg-white/5 transition"
+                  data-testid="button-toggle-create-link-match"
+                >
+                  <span className="flex items-center gap-2">
+                    <Trophy className="w-3.5 h-3.5" />
+                    Link Match
+                    {createMatch.sportmonksFixtureId && (
+                      <span className="text-xs text-green-400 font-normal">— {createMatch.homeTeamName} vs {createMatch.awayTeamName}</span>
+                    )}
+                  </span>
+                  {createMatchOpen ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
+                </button>
+                {createMatchOpen && (
+                  <div className="px-3 pb-3 pt-1 border-t border-white/10 space-y-3">
+                    {createMatch.sportmonksFixtureId ? (
+                      <div className="flex items-center justify-between bg-white/5 rounded-lg p-3">
+                        <div className="flex items-center gap-3">
+                          <TeamLogo url={createMatch.homeTeamLogo} name={createMatch.homeTeamName} size="md" />
+                          <div className="text-sm font-semibold text-white">{createMatch.homeTeamName}</div>
+                          <span className="text-xs text-white/40">vs</span>
+                          <div className="text-sm font-semibold text-white">{createMatch.awayTeamName}</div>
+                          <TeamLogo url={createMatch.awayTeamLogo} name={createMatch.awayTeamName} size="md" />
+                        </div>
+                        <button type="button" onClick={() => setCreateMatch(emptyMatch())} className="p-1 text-white/40 hover:text-red-400 transition" title="Unlink match">
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="grid grid-cols-2 gap-2">
+                          <div className="space-y-1">
+                            <label className="text-xs text-white/50">League</label>
+                            <select
+                              className="w-full h-8 px-2 rounded border border-white/10 bg-background text-xs text-white"
+                              value={createLeagueId ?? ''}
+                              onChange={(e) => setCreateLeagueId(e.target.value ? Number(e.target.value) : null)}
+                              data-testid="select-create-league"
+                            >
+                              <option value="">Select league...</option>
+                              {leagues.map(l => <option key={l.id} value={l.id}>{l.name}{l.countryName ? ` (${l.countryName})` : ''}</option>)}
+                            </select>
+                          </div>
+                          <div className="space-y-1">
+                            <label className="text-xs text-white/50">From</label>
+                            <input type="date" className="w-full h-8 px-2 rounded border border-white/10 bg-background text-xs text-white" value={createDateRange.from} onChange={e => setCreateDateRange(p => ({ ...p, from: e.target.value }))} data-testid="input-create-date-from" />
+                          </div>
+                          <div className="space-y-1">
+                            <label className="text-xs text-white/50">To</label>
+                            <input type="date" className="w-full h-8 px-2 rounded border border-white/10 bg-background text-xs text-white" value={createDateRange.to} onChange={e => setCreateDateRange(p => ({ ...p, to: e.target.value }))} data-testid="input-create-date-to" />
+                          </div>
+                        </div>
+                        {createFixturesLoading && (
+                          <div className="flex items-center gap-2 text-xs text-white/40 py-2"><Loader2 className="w-3 h-3 animate-spin" /> Loading fixtures...</div>
+                        )}
+                        {!createFixturesLoading && createLeagueId && createFixtures.length === 0 && (
+                          <p className="text-xs text-white/40 py-2 text-center">No fixtures found for this date range.</p>
+                        )}
+                        {createFixtures.length > 0 && (
+                          <div className="space-y-1.5 max-h-48 overflow-y-auto">
+                            {createFixtures.map(f => (
+                              <button
+                                key={f.id}
+                                type="button"
+                                className="w-full flex items-center gap-2 px-3 py-2 rounded-lg bg-white/5 hover:bg-white/10 transition text-left"
+                                data-testid={`fixture-create-${f.id}`}
+                                onClick={() => {
+                                  const leagueName = leagues.find(l => l.id === createLeagueId)?.name ?? '';
+                                  setCreateMatch({
+                                    sportmonksFixtureId: f.id,
+                                    homeTeamName: f.homeTeam?.name ?? '',
+                                    homeTeamLogo: f.homeTeam?.logoUrl ?? '',
+                                    awayTeamName: f.awayTeam?.name ?? '',
+                                    awayTeamLogo: f.awayTeam?.logoUrl ?? '',
+                                    matchStartingAt: f.startingAt,
+                                    leagueName,
+                                  });
+                                  if (!formData.broadcastName.trim()) {
+                                    setFormData(prev => ({ ...prev, broadcastName: `${f.homeTeam?.name ?? ''} vs ${f.awayTeam?.name ?? ''}` }));
+                                  }
+                                }}
+                              >
+                                <TeamLogo url={f.homeTeam?.logoUrl} name={f.homeTeam?.name ?? '?'} />
+                                <span className="text-xs text-white/80 flex-1">{f.homeTeam?.name} vs {f.awayTeam?.name}</span>
+                                <TeamLogo url={f.awayTeam?.logoUrl} name={f.awayTeam?.name ?? '?'} />
+                                <span className="text-xs text-white/30 shrink-0">{new Date(f.startingAt).toLocaleDateString()}</span>
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
             <DialogFooter>
               <Button variant="outline" onClick={() => setCreateOpen(false)} data-testid="button-cancel-create">Cancel</Button>
@@ -670,7 +864,15 @@ function BroadcastsTab({ campaignId }: { campaignId: number }) {
               <div className="flex justify-between items-start">
                 <div className="flex-1">
                   <div className="flex items-center gap-3 mb-2">
-                    <h3 className="text-base font-semibold text-gray-900 dark:text-white">{broadcast.broadcastName}</h3>
+                    {(broadcast as any).homeTeamName && (broadcast as any).awayTeamName ? (
+                      <div className="flex items-center gap-2">
+                        <TeamLogo url={(broadcast as any).homeTeamLogo} name={(broadcast as any).homeTeamName} size="md" />
+                        <h3 className="text-base font-semibold text-gray-900 dark:text-white">{broadcast.broadcastName}</h3>
+                        <TeamLogo url={(broadcast as any).awayTeamLogo} name={(broadcast as any).awayTeamName} size="md" />
+                      </div>
+                    ) : (
+                      <h3 className="text-base font-semibold text-gray-900 dark:text-white">{broadcast.broadcastName}</h3>
+                    )}
                     {getStatusBadge(broadcast.status)}
                   </div>
                   <div className="flex items-center gap-4 text-xs text-gray-500 dark:text-gray-500">
@@ -678,6 +880,12 @@ function BroadcastsTab({ campaignId }: { campaignId: number }) {
                     {broadcast.externalId && (
                       <span className="font-mono text-gray-400 dark:text-gray-500" data-testid={`text-external-id-${broadcast.broadcastId}`}>
                         ext: <span className="text-gray-600 dark:text-gray-400">{broadcast.externalId}</span>
+                      </span>
+                    )}
+                    {(broadcast as any).leagueName && (
+                      <span className="flex items-center gap-1 text-white/40">
+                        <Trophy className="w-3 h-3" />
+                        {(broadcast as any).leagueName}
                       </span>
                     )}
                     {broadcast.startTime && (
@@ -765,7 +973,7 @@ function BroadcastsTab({ campaignId }: { campaignId: number }) {
 
       {/* Edit Broadcast Dialog */}
       <Dialog open={!!editBroadcast} onOpenChange={(open) => !open && setEditBroadcast(null)}>
-        <DialogContent className="sm:max-w-[500px]">
+        <DialogContent className="sm:max-w-[520px] max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Edit Broadcast</DialogTitle>
             <DialogDescription>Update broadcast details. Status changes trigger real-time WebSocket events.</DialogDescription>
@@ -825,6 +1033,106 @@ function BroadcastsTab({ campaignId }: { campaignId: number }) {
                   data-testid="input-edit-broadcast-end-time"
                 />
               </div>
+            </div>
+
+            {/* Link Match section */}
+            <div className="border border-white/10 rounded-lg overflow-hidden">
+              <button
+                type="button"
+                onClick={() => setEditMatchOpen(v => !v)}
+                className="w-full flex items-center justify-between px-3 py-2.5 text-sm font-medium text-white/70 hover:text-white hover:bg-white/5 transition"
+                data-testid="button-toggle-edit-link-match"
+              >
+                <span className="flex items-center gap-2">
+                  <Trophy className="w-3.5 h-3.5" />
+                  Link Match
+                  {editMatch.sportmonksFixtureId && (
+                    <span className="text-xs text-green-400 font-normal">— {editMatch.homeTeamName} vs {editMatch.awayTeamName}</span>
+                  )}
+                </span>
+                {editMatchOpen ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
+              </button>
+              {editMatchOpen && (
+                <div className="px-3 pb-3 pt-1 border-t border-white/10 space-y-3">
+                  {editMatch.sportmonksFixtureId ? (
+                    <div className="flex items-center justify-between bg-white/5 rounded-lg p-3">
+                      <div className="flex items-center gap-3">
+                        <TeamLogo url={editMatch.homeTeamLogo} name={editMatch.homeTeamName} size="md" />
+                        <div className="text-sm font-semibold text-white">{editMatch.homeTeamName}</div>
+                        <span className="text-xs text-white/40">vs</span>
+                        <div className="text-sm font-semibold text-white">{editMatch.awayTeamName}</div>
+                        <TeamLogo url={editMatch.awayTeamLogo} name={editMatch.awayTeamName} size="md" />
+                      </div>
+                      <button type="button" onClick={() => setEditMatch(emptyMatch())} className="p-1 text-white/40 hover:text-red-400 transition" title="Unlink match">
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="grid grid-cols-2 gap-2">
+                        <div className="space-y-1">
+                          <label className="text-xs text-white/50">League</label>
+                          <select
+                            className="w-full h-8 px-2 rounded border border-white/10 bg-background text-xs text-white"
+                            value={editLeagueId ?? ''}
+                            onChange={(e) => setEditLeagueId(e.target.value ? Number(e.target.value) : null)}
+                            data-testid="select-edit-league"
+                          >
+                            <option value="">Select league...</option>
+                            {leagues.map(l => <option key={l.id} value={l.id}>{l.name}{l.countryName ? ` (${l.countryName})` : ''}</option>)}
+                          </select>
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-xs text-white/50">From</label>
+                          <input type="date" className="w-full h-8 px-2 rounded border border-white/10 bg-background text-xs text-white" value={editDateRange.from} onChange={e => setEditDateRange(p => ({ ...p, from: e.target.value }))} data-testid="input-edit-date-from" />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-xs text-white/50">To</label>
+                          <input type="date" className="w-full h-8 px-2 rounded border border-white/10 bg-background text-xs text-white" value={editDateRange.to} onChange={e => setEditDateRange(p => ({ ...p, to: e.target.value }))} data-testid="input-edit-date-to" />
+                        </div>
+                      </div>
+                      {editFixturesLoading && (
+                        <div className="flex items-center gap-2 text-xs text-white/40 py-2"><Loader2 className="w-3 h-3 animate-spin" /> Loading fixtures...</div>
+                      )}
+                      {!editFixturesLoading && editLeagueId && editFixtures.length === 0 && (
+                        <p className="text-xs text-white/40 py-2 text-center">No fixtures found for this date range.</p>
+                      )}
+                      {editFixtures.length > 0 && (
+                        <div className="space-y-1.5 max-h-48 overflow-y-auto">
+                          {editFixtures.map(f => (
+                            <button
+                              key={f.id}
+                              type="button"
+                              className="w-full flex items-center gap-2 px-3 py-2 rounded-lg bg-white/5 hover:bg-white/10 transition text-left"
+                              data-testid={`fixture-edit-${f.id}`}
+                              onClick={() => {
+                                const leagueName = leagues.find(l => l.id === editLeagueId)?.name ?? '';
+                                setEditMatch({
+                                  sportmonksFixtureId: f.id,
+                                  homeTeamName: f.homeTeam?.name ?? '',
+                                  homeTeamLogo: f.homeTeam?.logoUrl ?? '',
+                                  awayTeamName: f.awayTeam?.name ?? '',
+                                  awayTeamLogo: f.awayTeam?.logoUrl ?? '',
+                                  matchStartingAt: f.startingAt,
+                                  leagueName,
+                                });
+                                if (!editFormData.broadcastName.trim()) {
+                                  setEditFormData(prev => ({ ...prev, broadcastName: `${f.homeTeam?.name ?? ''} vs ${f.awayTeam?.name ?? ''}` }));
+                                }
+                              }}
+                            >
+                              <TeamLogo url={f.homeTeam?.logoUrl} name={f.homeTeam?.name ?? '?'} />
+                              <span className="text-xs text-white/80 flex-1">{f.homeTeam?.name} vs {f.awayTeam?.name}</span>
+                              <TeamLogo url={f.awayTeam?.logoUrl} name={f.awayTeam?.name ?? '?'} />
+                              <span className="text-xs text-white/30 shrink-0">{new Date(f.startingAt).toLocaleDateString()}</span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+              )}
             </div>
           </div>
           <DialogFooter>
