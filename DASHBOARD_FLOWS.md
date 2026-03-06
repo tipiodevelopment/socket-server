@@ -241,20 +241,30 @@ const [editBroadcast, setEditBroadcast] = useState<Broadcast | null>(null);
 - `externalId` — "External Content ID" — mapea contentId del partner (Viaplay stream ID, etc.)
 - `status` — upcoming / live / ended
 - `startTime`, `endTime`
+- Panel colapsable **"Link Match"** — vincula un partido de Sportmonks al broadcast:
+  - Selector de liga → `GET /api/sportmonks/leagues` (cache 2 días)
+  - Date pickers: dateFrom / dateTo
+  - Lista de fixtures → `GET /api/sportmonks/fixtures?leagueId=X&dateFrom=Y&dateTo=Z` (cache 2 días)
+  - Al seleccionar fixture: auto-rellena el nombre del broadcast con "HomeTeam vs AwayTeam"
+  - Guarda: `sportmonksFixtureId`, `homeTeamName`, `homeTeamLogo`, `awayTeamName`, `awayTeamLogo`, `matchStartingAt`, `leagueName`
 
 **Data flow crear:**
 ```
-Usuario llena form → POST /api/broadcasts { campaignId, name, externalId, ... }
+Usuario llena form → POST /api/broadcasts { campaignId, name, externalId, ..., sportmonksFixtureId?, homeTeamName?, ... }
   → servidor crea broadcast
   → si status === 'live' → emite WS event broadcast_started a /ws/:campaignId
   → invalida ['/api/broadcasts', campaignId] + ['/api/campaigns', campaignId, 'broadcasts']
 ```
 
 **Editar broadcast (lapicero icon en card):**
-- Abre `EditBroadcastDialog` con campos: name, externalId, status, startTime, endTime
+- Abre `EditBroadcastDialog` con campos: name, externalId, status, startTime, endTime + panel Link Match
 - Submit: `PUT /api/broadcasts/:broadcastId`
 - Si status cambia a 'live' → WS `broadcast_started`
 - Si status cambia a 'ended' → WS `broadcast_ended`
+
+**Broadcast cards con match vinculado:**
+- Muestran logos de ambos equipos (componente `TeamLogo`) flanqueando el nombre del broadcast
+- Muestran el nombre de la liga con icono Trophy debajo del nombre
 
 **Eliminar broadcast:**
 - `DELETE /api/broadcasts/:broadcastId`
@@ -694,12 +704,18 @@ Eliminar (Danger Zone)
 Crear broadcast (tab Broadcasts en campaign dashboard)
   → POST /api/broadcasts {
       campaignId, name, status: 'upcoming',
-      externalId?,    ← mapea contentId del partner (e.g. Viaplay)
-      startTime?, endTime?
+      externalId?,            ← mapea contentId del partner (e.g. Viaplay)
+      startTime?, endTime?,
+      sportmonksFixtureId?,   ← ID del partido en Sportmonks (opcional)
+      homeTeamName?, homeTeamLogo?,
+      awayTeamName?, awayTeamLogo?,
+      matchStartingAt?, leagueName?
     }
 
 Editar (dialog con lapicero icon)
-  → PUT /api/broadcasts/:id { name, externalId, status, startTime, endTime }
+  → PUT /api/broadcasts/:id { name, externalId, status, startTime, endTime,
+                               sportmonksFixtureId, homeTeamName, homeTeamLogo,
+                               awayTeamName, awayTeamLogo, matchStartingAt, leagueName }
   → Si status → 'live': WS broadcast_started emitido
   → Si status → 'ended': WS broadcast_ended emitido
 

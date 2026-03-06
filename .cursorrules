@@ -64,6 +64,12 @@ Schema additions (Mar 2026):
 - `campaign_components.locationId` (varchar 100, nullable) — SDK slot identifier (e.g. `"sport-detail-banner"`, `"sport-detail-carousel"`). Used by SDK to query `GET /v1/sdk/components?locationId=`. Set by operator in dashboard when adding a component to a campaign.
 - `polls.broadcastId` / `contests.broadcastId` (added to event schema) — included in WS events so SDK can filter by broadcast
 - `sponsors.badgeText` — localized badge text object `{ no, en, sv }` returned in config endpoint as `sponsor.badgeText`
+- `broadcasts.sportmonksFixtureId` (integer, nullable) — Sportmonks fixture ID linked to this broadcast
+- `broadcasts.homeTeamName`, `broadcasts.awayTeamName` (varchar 255, nullable) — team display names
+- `broadcasts.homeTeamLogo`, `broadcasts.awayTeamLogo` (varchar 500, nullable) — CDN URLs of team logo images
+- `broadcasts.matchStartingAt` (timestamp, nullable) — official match start time from Sportmonks
+- `broadcasts.leagueName` (varchar 255, nullable) — league/competition name (e.g. "Scottish Premiership")
+- `sportmonks_cache` — caches Sportmonks API responses for 2 days. Fields: `cacheType` (varchar), `leagueId` (integer nullable), `dateFrom`/`dateTo` (varchar nullable), `data` (JSONB), `updatedAt` (timestamp)
 
 All schemas, insert schemas, and types are exported from `shared/schema.ts`.
 
@@ -86,6 +92,9 @@ Internal CRUD for all entities. Used by the React frontend.
   - `/api/broadcasts/:broadcastId/chat` — GET / POST live chat messages
   - `/api/broadcasts/:broadcastId/analytics` — GET real analytics (polls, contests, viewers, votes)
   - `/api/seed-demo` (POST) — Seeds ads, products, and chat messages into a broadcast for demo purposes
+- Sportmonks proxy (with 2-day server-side cache):
+  - `GET /api/sportmonks/leagues` — All leagues available in Sportmonks account
+  - `GET /api/sportmonks/fixtures?leagueId=X&dateFrom=YYYY-MM-DD&dateTo=YYYY-MM-DD` — Fixtures filtered by league and date range
 
 ### Admin APIs (`/v1/*`) — JWT Bearer Auth (`requireBearerAuth`)
 External admin access for broadcasts, polls, contests.
