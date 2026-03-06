@@ -294,6 +294,10 @@ Dashboard → Apps → Campaigns → Sponsors → Broadcasts → Components → 
 - Session: `SESSION_SECRET` env var
 - Auth: JWT tokens use `SESSION_SECRET` for signing
 
+## Fixes & Features (Mar 2026)
+
+- **Login demo user renamed:** Quick Access button `reachu-admin` → `vio-admin`. DB updated: `users.reachu_user_id = 'vio-admin'` (was `'reachu-admin'`, user ID 2). Use `vio-admin` to log in as admin in dev and production.
+
 ## Fixes & Features (Feb 2026)
 
 - **admin.tsx:** `productForms`, `pollForms`, `contestForms` now initialize empty (single blank entry). No Apple/PSG hardcoded demo data. Forms still persist to DB via `/api/form-state`.
