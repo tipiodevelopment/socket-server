@@ -384,6 +384,53 @@ function TeamLogo({ url, name, size = 'sm' }: { url?: string | null; name: strin
   return <div className={`${sz} rounded bg-gray-600 flex items-center justify-center text-white text-xs font-bold`}>{name.slice(0, 2).toUpperCase()}</div>;
 }
 
+function LeagueSelector({ leagues, value, onChange, testId }: { leagues: SportmonksLeague[]; value: number | null; onChange: (id: number | null) => void; testId?: string }) {
+  const [open, setOpen] = useState(false);
+  const selected = leagues.find(l => l.id === value);
+  return (
+    <div className="relative">
+      {open && <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />}
+      <button
+        type="button"
+        onClick={() => setOpen(o => !o)}
+        className="w-full h-8 px-2 rounded border border-white/10 bg-background text-xs text-white flex items-center gap-2"
+        data-testid={testId}
+      >
+        {selected ? (
+          <>
+            {selected.logoUrl
+              ? <img src={selected.logoUrl} alt={selected.name} className="w-4 h-4 object-contain shrink-0" onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+              : <div className="w-4 h-4 rounded bg-white/10 shrink-0" />}
+            <span className="flex-1 text-left truncate">{selected.name}</span>
+          </>
+        ) : (
+          <span className="text-white/40 flex-1 text-left">Select league...</span>
+        )}
+        <ChevronDown className="w-3 h-3 text-white/40 shrink-0" />
+      </button>
+      {open && (
+        <div className="absolute top-full left-0 right-0 mt-1 bg-[#141824] border border-white/10 rounded-lg shadow-xl z-50 max-h-52 overflow-y-auto">
+          <button type="button" onClick={() => { onChange(null); setOpen(false); }} className="w-full px-3 py-2 text-xs text-white/40 hover:text-white hover:bg-white/5 text-left transition">Select league...</button>
+          {leagues.map(l => (
+            <button
+              key={l.id}
+              type="button"
+              onClick={() => { onChange(l.id); setOpen(false); }}
+              className={`w-full px-3 py-2 flex items-center gap-2 text-xs hover:bg-white/5 text-left transition ${value === l.id ? 'bg-white/10 text-white' : 'text-white/70'}`}
+            >
+              {l.logoUrl
+                ? <img src={l.logoUrl} alt={l.name} className="w-4 h-4 object-contain shrink-0" onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+                : <div className="w-4 h-4 rounded bg-white/10 shrink-0" />}
+              <span className="flex-1 truncate">{l.name}</span>
+              {l.countryName && <span className="text-white/30 shrink-0">{l.countryName}</span>}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function BroadcastsTab({ campaignId }: { campaignId: number }) {
   const { toast } = useToast();
   const { userId } = useUser();
@@ -764,15 +811,7 @@ function BroadcastsTab({ campaignId }: { campaignId: number }) {
                         <div className="grid grid-cols-2 gap-2">
                           <div className="space-y-1">
                             <label className="text-xs text-white/50">League</label>
-                            <select
-                              className="w-full h-8 px-2 rounded border border-white/10 bg-background text-xs text-white"
-                              value={createLeagueId ?? ''}
-                              onChange={(e) => setCreateLeagueId(e.target.value ? Number(e.target.value) : null)}
-                              data-testid="select-create-league"
-                            >
-                              <option value="">Select league...</option>
-                              {leagues.map(l => <option key={l.id} value={l.id}>{l.name}{l.countryName ? ` (${l.countryName})` : ''}</option>)}
-                            </select>
+                            <LeagueSelector leagues={leagues} value={createLeagueId} onChange={setCreateLeagueId} testId="select-create-league" />
                           </div>
                           <div className="space-y-1">
                             <label className="text-xs text-white/50">From</label>
@@ -1072,15 +1111,7 @@ function BroadcastsTab({ campaignId }: { campaignId: number }) {
                       <div className="grid grid-cols-2 gap-2">
                         <div className="space-y-1">
                           <label className="text-xs text-white/50">League</label>
-                          <select
-                            className="w-full h-8 px-2 rounded border border-white/10 bg-background text-xs text-white"
-                            value={editLeagueId ?? ''}
-                            onChange={(e) => setEditLeagueId(e.target.value ? Number(e.target.value) : null)}
-                            data-testid="select-edit-league"
-                          >
-                            <option value="">Select league...</option>
-                            {leagues.map(l => <option key={l.id} value={l.id}>{l.name}{l.countryName ? ` (${l.countryName})` : ''}</option>)}
-                          </select>
+                          <LeagueSelector leagues={leagues} value={editLeagueId} onChange={setEditLeagueId} testId="select-edit-league" />
                         </div>
                         <div className="space-y-1">
                           <label className="text-xs text-white/50">From</label>
