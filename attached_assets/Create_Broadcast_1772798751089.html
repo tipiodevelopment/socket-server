@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Create Broadcast</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script> window.FontAwesomeConfig = { autoReplaceSvg: 'nest'};</script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/js/all.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        ::-webkit-scrollbar { display: none;}
+        * { font-family: 'Inter', sans-serif; }
+        
+        /* Custom scrollbar for the modal content if needed */
+        .custom-scrollbar::-webkit-scrollbar {
+            display: block;
+            width: 6px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: rgba(255, 255, 255, 0.05);
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 3px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+            background: rgba(255, 255, 255, 0.3);
+        }
+    </style>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        dark: {
+                            950: '#05070a',
+                            900: '#0a0e1a',
+                            800: '#141824',
+                            700: '#1e2433',
+                            600: '#2a3142',
+                            500: '#4b5563',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-black text-gray-100 font-sans antialiased selection:bg-white selection:text-black">
+
+<div class="relative flex h-screen overflow-hidden">
+    
+    <!-- Sidebar (Blurred in background context) -->
+    <aside id="sidebar" class="w-16 bg-black border-r border-white/10 flex flex-col items-center py-6 opacity-30 pointer-events-none filter blur-[1px]">
+        <div class="mb-8">
+            <div class="w-8 h-8 bg-white rounded flex items-center justify-center">
+                <i class="fa-solid fa-tower-broadcast text-black text-sm"></i>
+            </div>
+        </div>
+        
+        <nav class="flex flex-col items-center space-y-4 flex-grow">
+            <a href="#" class="w-10 h-10 flex items-center justify-center rounded hover:bg-white/10 text-gray-400 hover:text-white transition">
+                <i class="fa-solid fa-house text-sm"></i>
+            </a>
+            <a href="#" class="w-10 h-10 flex items-center justify-center rounded hover:bg-white/10 text-gray-400 hover:text-white transition">
+                <i class="fa-solid fa-mobile-screen text-sm"></i>
+            </a>
+            <a href="#" class="w-10 h-10 flex items-center justify-center rounded hover:bg-white/10 text-gray-400 hover:text-white transition">
+                <i class="fa-solid fa-bullhorn text-sm"></i>
+            </a>
+            <a href="#" class="w-10 h-10 flex items-center justify-center rounded bg-white text-black">
+                <i class="fa-solid fa-signal text-sm"></i>
+            </a>
+            <a href="#" class="w-10 h-10 flex items-center justify-center rounded hover:bg-white/10 text-gray-400 hover:text-white transition">
+                <i class="fa-solid fa-puzzle-piece text-sm"></i>
+            </a>
+        </nav>
+        
+        <div class="mt-auto space-y-4">
+            <a href="#" class="w-10 h-10 flex items-center justify-center rounded hover:bg-white/10 text-gray-400 hover:text-white transition">
+                <i class="fa-solid fa-gear text-sm"></i>
+            </a>
+            <div class="w-8 h-8 rounded overflow-hidden border border-white/20">
+                <img src="https://storage.googleapis.com/uxpilot-auth.appspot.com/avatars/avatar-3.jpg" alt="User" class="w-full h-full object-cover">
+            </div>
+        </div>
+    </aside>
+
+    <!-- Main Content (Blurred in background context) -->
+    <div class="flex-1 flex flex-col overflow-hidden bg-black opacity-30 pointer-events-none filter blur-[1px]">
+        <header id="header" class="h-24 flex items-center justify-between px-8 bg-black border-b border-white/10">
+            <div class="flex items-center space-x-4">
+                <div>
+                    <h1 class="text-2xl font-bold text-white mb-1">Broadcasts</h1>
+                    <div class="flex items-center text-xs text-gray-500 space-x-2">
+                        <span class="text-gray-300">All broadcasts across campaigns</span>
+                    </div>
+                </div>
+            </div>
+        </header>
+        <main class="flex-1 p-8"></main>
+    </div>
+
+    <!-- Modal Overlay -->
+    <div class="absolute inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+        
+        <!-- Modal Card -->
+        <div class="w-full max-w-5xl bg-[#0F1115] border border-white/10 rounded-xl shadow-2xl flex flex-col max-h-[90vh] overflow-hidden animate-fade-in-up">
+            
+            <!-- Modal Header -->
+            <div class="px-6 py-5 border-b border-white/10 flex items-center justify-between bg-[#0F1115]">
+                <div>
+                    <h2 class="text-lg font-semibold text-white">Create Broadcast</h2>
+                    <p class="text-xs text-gray-400 mt-1">Configure a new live broadcast for your campaign.</p>
+                </div>
+                <button class="w-8 h-8 flex items-center justify-center rounded-full hover:bg-white/10 text-gray-400 hover:text-white transition">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+
+            <!-- Modal Body -->
+            <div class="flex-1 overflow-y-auto custom-scrollbar p-6 space-y-6">
+                
+                <!-- Link Match Section (Primary Action) -->
+                <div class="bg-[#161B26] rounded-lg border border-white/10 overflow-hidden">
+                    <div class="px-4 py-3 bg-white/5 border-b border-white/10">
+                        <div class="flex items-center space-x-2 text-white font-medium text-sm">
+                            <span>Link Match Context</span>
+                        </div>
+                    </div>
+                    
+                    <div class="p-5 space-y-4">
+                        <div class="grid grid-cols-4 gap-4">
+                            <div>
+                                <label class="block text-xs font-medium text-gray-400 mb-2">League / Competition</label>
+                                <div class="relative">
+                                    <select class="w-full h-11 pl-10 pr-8 bg-[#0a0e1a] border border-white/10 rounded-lg text-sm text-white appearance-none focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 transition-colors">
+                                        <option>Champions League</option>
+                                        <option>Premier League</option>
+                                        <option>La Liga</option>
+                                        <option>NBA</option>
+                                    </select>
+                                    <div class="absolute left-3 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full bg-blue-600 flex items-center justify-center">
+                                        <i class="fa-solid fa-trophy text-white text-[10px]"></i>
+                                    </div>
+                                    <i class="fa-solid fa-chevron-down absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-500 pointer-events-none"></i>
+                                </div>
+                            </div>
+                            <div>
+                                <label class="block text-xs font-medium text-gray-400 mb-2">Date</label>
+                                <div class="relative">
+                                    <input type="date" value="2026-03-05" class="w-full h-11 px-3 bg-[#0a0e1a] border border-white/10 rounded-lg text-sm text-white focus:border-blue-500 focus:outline-none transition-colors [color-scheme:dark]">
+                                </div>
+                            </div>
+                            <div class="col-span-2">
+                                <label class="block text-xs font-medium text-gray-400 mb-2">Filter</label>
+                                <div class="relative">
+                                    <input type="text" placeholder="Search matches..." class="w-full h-11 px-3 bg-[#0a0e1a] border border-white/10 rounded-lg text-sm text-white placeholder-gray-600 focus:border-blue-500 focus:outline-none transition-colors">
+                                    <i class="fa-solid fa-magnifying-glass absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-500"></i>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Match Selection List -->
+                        <div class="space-y-2 mt-3">
+                            <label class="block text-xs font-medium text-gray-400 mb-1">Select Match</label>
+                            
+                            <!-- Match Item 1 -->
+                            <div class="group flex items-center justify-between p-4 rounded-lg bg-[#0a0e1a] border border-white/10 hover:border-blue-500/50 hover:bg-blue-500/5 cursor-pointer transition-all">
+                                <div class="flex items-center space-x-4 flex-1">
+                                    <div class="flex -space-x-2 flex-shrink-0">
+                                        <div class="w-10 h-10 rounded-full bg-white flex items-center justify-center border-2 border-[#0a0e1a] z-10">
+                                            <i class="fa-solid fa-shield-cat text-base text-black"></i>
+                                        </div>
+                                        <div class="w-10 h-10 rounded-full bg-white flex items-center justify-center border-2 border-[#0a0e1a]">
+                                            <i class="fa-solid fa-shield-dog text-base text-black"></i>
+                                        </div>
+                                    </div>
+                                    <div class="flex-1">
+                                        <div class="text-sm text-white font-medium mb-1">
+                                            <span>Istanbul</span> <span class="text-gray-500 font-normal">vs</span> <span>Göztepe</span>
+                                        </div>
+                                        <div class="flex items-center space-x-4 text-xs text-gray-500">
+                                            <span class="flex items-center space-x-1.5">
+                                                <i class="fa-solid fa-clock text-[10px]"></i>
+                                                <span>20:00</span>
+                                            </span>
+                                            <span class="flex items-center space-x-1.5">
+                                                <i class="fa-solid fa-location-dot text-[10px]"></i>
+                                                <span>Başakşehir Stadium</span>
+                                            </span>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="w-5 h-5 rounded-full border border-white/30 flex items-center justify-center group-hover:border-blue-500 transition-colors flex-shrink-0">
+                                    <i class="fa-solid fa-check text-[10px] text-blue-500 opacity-0 group-hover:opacity-100"></i>
+                                </div>
+                            </div>
+
+                            <!-- Match Item 2 (Selected) -->
+                            <div class="group flex items-center justify-between p-4 rounded-lg bg-blue-500/10 border border-blue-500/50 cursor-pointer transition-all">
+                                <div class="flex items-center space-x-4 flex-1">
+                                    <div class="flex -space-x-2 flex-shrink-0">
+                                        <div class="w-10 h-10 rounded-full bg-white flex items-center justify-center border-2 border-[#0a0e1a] z-10">
+                                            <i class="fa-solid fa-shield-virus text-base text-black"></i>
+                                        </div>
+                                        <div class="w-10 h-10 rounded-full bg-white flex items-center justify-center border-2 border-[#0a0e1a]">
+                                            <i class="fa-solid fa-shield-heart text-base text-black"></i>
+                                        </div>
+                                    </div>
+                                    <div class="flex-1">
+                                        <div class="text-sm text-white font-medium mb-1">
+                                            <span>Korona Kielce</span> <span class="text-gray-400 font-normal">vs</span> <span>Nieciecza</span>
+                                        </div>
+                                        <div class="flex items-center space-x-4 text-xs text-gray-400">
+                                            <span class="flex items-center space-x-1.5">
+                                                <i class="fa-solid fa-clock text-[10px]"></i>
+                                                <span>20:00</span>
+                                            </span>
+                                            <span class="flex items-center space-x-1.5">
+                                                <i class="fa-solid fa-location-dot text-[10px]"></i>
+                                                <span>Stadion Suzuki Arena</span>
+                                            </span>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="w-5 h-5 rounded-full border border-blue-500 bg-blue-500 flex items-center justify-center flex-shrink-0">
+                                    <i class="fa-solid fa-check text-[10px] text-white"></i>
+                                </div>
+                            </div>
+
+                            <!-- Match Item 3 -->
+                            <div class="group flex items-center justify-between p-4 rounded-lg bg-[#0a0e1a] border border-white/10 hover:border-blue-500/50 hover:bg-blue-500/5 cursor-pointer transition-all">
+                                <div class="flex items-center space-x-4 flex-1">
+                                    <div class="flex -space-x-2 flex-shrink-0">
+                                        <div class="w-10 h-10 rounded-full bg-white flex items-center justify-center border-2 border-[#0a0e1a] z-10">
+                                            <i class="fa-solid fa-shield text-base text-black"></i>
+                                        </div>
+                                        <div class="w-10 h-10 rounded-full bg-white flex items-center justify-center border-2 border-[#0a0e1a]">
+                                            <i class="fa-solid fa-shield-halved text-base text-black"></i>
+                                        </div>
+                                    </div>
+                                    <div class="flex-1">
+                                        <div class="text-sm text-white font-medium mb-1">
+                                            <span>Rostov</span> <span class="text-gray-500 font-normal">vs</span> <span>Baltika</span>
+                                        </div>
+                                        <div class="flex items-center space-x-4 text-xs text-gray-500">
+                                            <span class="flex items-center space-x-1.5">
+                                                <i class="fa-solid fa-clock text-[10px]"></i>
+                                                <span>20:00</span>
+                                            </span>
+                                            <span class="flex items-center space-x-1.5">
+                                                <i class="fa-solid fa-location-dot text-[10px]"></i>
+                                                <span>Olimp-2 Stadium</span>
+                                            </span>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="w-5 h-5 rounded-full border border-white/30 flex items-center justify-center group-hover:border-blue-500 transition-colors flex-shrink-0">
+                                    <i class="fa-solid fa-check text-[10px] text-blue-500 opacity-0 group-hover:opacity-100"></i>
+                                </div>
+                            </div>
+
+                            <!-- Match Item 4 -->
+                            <div class="group flex items-center justify-between p-4 rounded-lg bg-[#0a0e1a] border border-white/10 hover:border-blue-500/50 hover:bg-blue-500/5 cursor-pointer transition-all">
+                                <div class="flex items-center space-x-4 flex-1">
+                                    <div class="flex -space-x-2 flex-shrink-0">
+                                        <div class="w-10 h-10 rounded-full bg-white flex items-center justify-center border-2 border-[#0a0e1a] z-10">
+                                            <i class="fa-solid fa-shield-alt text-base text-black"></i>
+                                        </div>
+                                        <div class="w-10 h-10 rounded-full bg-white flex items-center justify-center border-2 border-[#0a0e1a]">
+                                            <i class="fa-solid fa-shield text-base text-black"></i>
+                                        </div>
+                                    </div>
+                                    <div class="flex-1">
+                                        <div class="text-sm text-white font-medium mb-1">
+                                            <span>Dynamo Moscow</span> <span class="text-gray-500 font-normal">vs</span> <span>Spartak</span>
+                                        </div>
+                                        <div class="flex items-center space-x-4 text-xs text-gray-500">
+                                            <span class="flex items-center space-x-1.5">
+                                                <i class="fa-solid fa-clock text-[10px]"></i>
+                                                <span>18:30</span>
+                                            </span>
+                                            <span class="flex items-center space-x-1.5">
+                                                <i class="fa-solid fa-location-dot text-[10px]"></i>
+                                                <span>VTB Arena</span>
+                                            </span>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="w-5 h-5 rounded-full border border-white/30 flex items-center justify-center group-hover:border-blue-500 transition-colors flex-shrink-0">
+                                    <i class="fa-solid fa-check text-[10px] text-blue-500 opacity-0 group-hover:opacity-100"></i>
+                                </div>
+                            </div>
+
+                            <!-- Match Item 5 -->
+                            <div class="group flex items-center justify-between p-4 rounded-lg bg-[#0a0e1a] border border-white/10 hover:border-blue-500/50 hover:bg-blue-500/5 cursor-pointer transition-all">
+                                <div class="flex items-center space-x-4 flex-1">
+                                    <div class="flex -space-x-2 flex-shrink-0">
+                                        <div class="w-10 h-10 rounded-full bg-white flex items-center justify-center border-2 border-[#0a0e1a] z-10">
+                                            <i class="fa-solid fa-futbol text-base text-black"></i>
+                                        </div>
+                                        <div class="w-10 h-10 rounded-full bg-white flex items-center justify-center border-2 border-[#0a0e1a]">
+                                            <i class="fa-solid fa-shield-dog text-base text-black"></i>
+                                        </div>
+                                    </div>
+                                    <div class="flex-1">
+                                        <div class="text-sm text-white font-medium mb-1">
+                                            <span>Zenit</span> <span class="text-gray-500 font-normal">vs</span> <span>CSKA Moscow</span>
+                                        </div>
+                                        <div class="flex items-center space-x-4 text-xs text-gray-500">
+                                            <span class="flex items-center space-x-1.5">
+                                                <i class="fa-solid fa-clock text-[10px]"></i>
+                                                <span>21:00</span>
+                                            </span>
+                                            <span class="flex items-center space-x-1.5">
+                                                <i class="fa-solid fa-location-dot text-[10px]"></i>
+                                                <span>Gazprom Arena</span>
+                                            </span>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="w-5 h-5 rounded-full border border-white/30 flex items-center justify-center group-hover:border-blue-500 transition-colors flex-shrink-0">
+                                    <i class="fa-solid fa-check text-[10px] text-blue-500 opacity-0 group-hover:opacity-100"></i>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Basic Info -->
+                <div class="grid grid-cols-2 gap-5">
+                    <div class="col-span-2">
+                        <label for="broadcastName" class="block text-xs font-medium text-gray-300 mb-2">Broadcast Name <span class="text-red-500">*</span></label>
+                        <input type="text" id="broadcastName" value="Korona Kielce vs Nieciecza - Live Stream" class="w-full p-3 bg-[#0a0e1a] border border-white/10 rounded-lg text-sm text-white placeholder-gray-600 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 transition-colors" placeholder="Enter broadcast name">
+                    </div>
+
+                    <div class="col-span-2">
+                        <label for="externalId" class="block text-xs font-medium text-gray-300 mb-2">External Content ID</label>
+                        <input type="text" id="externalId" value="match-29384-pl" class="w-full p-3 bg-[#0a0e1a] border border-white/10 rounded-lg text-sm text-white placeholder-gray-600 focus:border-blue-500 focus:outline-none transition-colors" placeholder="e.g. match-12345 (used by SDK)">
+                        <p class="text-[10px] text-gray-500 mt-1.5">Used to map this broadcast to your video player content ID.</p>
+                    </div>
+
+                    <div>
+                        <label class="block text-xs font-medium text-gray-300 mb-2">Start Time</label>
+                        <div class="relative">
+                            <input type="datetime-local" value="2026-03-07T20:00" class="w-full p-3 bg-[#0a0e1a] border border-white/10 rounded-lg text-sm text-white placeholder-gray-600 focus:border-blue-500 focus:outline-none transition-colors [color-scheme:dark]">
+                        </div>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-gray-300 mb-2">End Time</label>
+                        <div class="relative">
+                            <input type="datetime-local" value="2026-03-07T22:30" class="w-full p-3 bg-[#0a0e1a] border border-white/10 rounded-lg text-sm text-white placeholder-gray-600 focus:border-blue-500 focus:outline-none transition-colors [color-scheme:dark]">
+                        </div>
+                    </div>
+
+                    <div class="col-span-2">
+                        <label for="metadata" class="block text-xs font-medium text-gray-300 mb-2">Metadata (JSON)</label>
+                        <textarea id="metadata" rows="3" class="w-full p-3 bg-[#0a0e1a] border border-white/10 rounded-lg text-sm text-white font-mono placeholder-gray-600 focus:border-blue-500 focus:outline-none transition-colors resize-none" placeholder='{"key": "value"}'></textarea>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Modal Footer -->
+            <div class="px-6 py-4 border-t border-white/10 bg-[#0F1115] flex items-center justify-end space-x-3">
+                <button class="px-4 py-2 bg-transparent hover:bg-white/5 text-gray-300 rounded text-sm font-medium transition">
+                    Cancel
+                </button>
+                <button class="px-6 py-2 bg-white hover:bg-gray-200 text-black rounded text-sm font-semibold transition shadow-lg shadow-white/5">
+                    Create Broadcast
+                </button>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+</body>
+</html>
