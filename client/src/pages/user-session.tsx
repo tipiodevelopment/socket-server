@@ -178,11 +178,11 @@ export default function UserSessionPage() {
                 </p>
                 <div className="flex flex-wrap gap-2">
                   <button
-                    onClick={() => setReachuUserId("reachu-admin")}
+                    onClick={() => setReachuUserId("vio-admin")}
                     className="px-3 py-1.5 rounded-lg bg-gray-100 dark:bg-white/5 text-xs font-medium text-gray-600 dark:text-white/50 hover:bg-gray-200 dark:hover:bg-white/10 transition-colors border border-gray-200 dark:border-white/10"
                     data-testid="button-demo-admin"
                   >
-                    reachu-admin
+                    vio-admin
                   </button>
                   <button
                     onClick={() => setReachuUserId("user-test")}
