@@ -71,9 +71,6 @@ export default function UserSessionPage() {
             <div className="w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4">
               <VioLogo className="h-10" />
             </div>
-            <h1 className="text-2xl font-bold text-gray-900 dark:text-white" data-testid="text-login-title">
-              Vio
-            </h1>
             <p className="text-sm text-gray-500 dark:text-white/40 mt-1">
               Real-time event management platform
             </p>
