@@ -351,7 +351,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { Plus, Trash2, Clock, Filter, Calendar, Pencil } from 'lucide-react';
+import { Plus, Trash2, Filter, Calendar, Pencil } from 'lucide-react';
 
 function getStatusBadge(status: string) {
   switch (status) {
