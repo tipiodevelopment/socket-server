@@ -1012,7 +1012,13 @@ export default function BroadcastDetailPage() {
               </button>
               <div>
                 <div className="flex items-center space-x-3 mb-1">
+                  {(broadcast as any).homeTeamLogo && (
+                    <img src={(broadcast as any).homeTeamLogo} alt={(broadcast as any).homeTeamName ?? ''} className="w-8 h-8 object-contain" onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+                  )}
                   <h1 className="text-xl font-bold text-gray-900 dark:text-white" data-testid="text-broadcast-name">{broadcast.broadcastName}</h1>
+                  {(broadcast as any).awayTeamLogo && (
+                    <img src={(broadcast as any).awayTeamLogo} alt={(broadcast as any).awayTeamName ?? ''} className="w-8 h-8 object-contain" onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+                  )}
                   <StatusBadge status={broadcast.status} />
                 </div>
                 <div className="flex items-center text-xs text-gray-400 dark:text-gray-500 space-x-2">
