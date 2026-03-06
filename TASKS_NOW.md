@@ -95,82 +95,122 @@ Apple TV click → POST cart-intent
 - APNs en producción: añadir `APNS_CERT_P8`, `APNS_KEY_ID`, `APNS_TEAM_ID` (Angelo provee cert)
 - Stripe en producción: añadir `STRIPE_SECRET_KEY`
 
+
 ---
 
-## 🟠 SIGUIENTE — TASK-B08: Sportmonks Integration
+## 🟠 TASK-B08 — Sportmonks Integration (replaces previous B08 draft)
 
-**Objetivo:** Al crear/editar un broadcast en el dashboard, poder buscar partidos de fútbol via Sportmonks y autocompletar datos del equipo.
+**Goal:** Link real football matches to broadcasts via Sportmonks API. Dashboard gets match picker UI; broadcasts show team logos/names. Score endpoint returns team logos for SDK.
 
-**API:** 
-- Token secret: `SPORTMONKS_API_TOKEN` = `hTAp0XE1x7CsBh1yi8g47OQh1dLhGPfygQTf08MnCbCY38dLFc73HuxxYBcJ`
-- Base URL: `https://api.sportmonks.com/v3/football`
+**API Token secret:** `SPORTMONKS_API_TOKEN` = already set
+**Base URL:** `https://api.sportmonks.com/v3/football`
 
-### DB — Migraciones necesarias
+---
 
-**Tabla nueva: `sportmonks_cache`**
+### DB Migrations
+
 ```sql
-CREATE TABLE sportmonks_cache (
+-- Cache table
+CREATE TABLE IF NOT EXISTS sportmonks_cache (
   id SERIAL PRIMARY KEY,
-  type VARCHAR(50) NOT NULL,  -- 'leagues' o 'fixtures'
-  league_id INT,              -- null para leagues, filled para fixtures
+  type VARCHAR(50) NOT NULL,       -- 'leagues' or 'fixtures'
+  league_id INT,
   date_from DATE,
   date_to DATE,
   data JSONB NOT NULL,
   updated_at TIMESTAMP DEFAULT NOW()
 );
-```
 
-**Columnas a añadir en `broadcasts`:**
-```sql
+-- Add to broadcasts table
 ALTER TABLE broadcasts ADD COLUMN IF NOT EXISTS sportmonks_fixture_id INT;
 ALTER TABLE broadcasts ADD COLUMN IF NOT EXISTS home_team_name VARCHAR(255);
 ALTER TABLE broadcasts ADD COLUMN IF NOT EXISTS home_team_logo VARCHAR(512);
 ALTER TABLE broadcasts ADD COLUMN IF NOT EXISTS away_team_name VARCHAR(255);
 ALTER TABLE broadcasts ADD COLUMN IF NOT EXISTS away_team_logo VARCHAR(512);
+ALTER TABLE broadcasts ADD COLUMN IF NOT EXISTS league_name VARCHAR(255);
 ALTER TABLE broadcasts ADD COLUMN IF NOT EXISTS match_starting_at TIMESTAMP;
 ```
 
-### Backend — 2 endpoints nuevos
+---
+
+### Backend — New Endpoints
 
 **GET /api/sportmonks/leagues**
-- Buscar en caché (tabla sportmonks_cache tipo 'leagues')
-- Si caché tiene menos de 2 días → devolver caché
-- Si no → fetch `https://api.sportmonks.com/v3/football/leagues?api_token=TOKEN&per_page=150`
-- Guardar en caché y devolver `[{id, name}]`
+- Check cache (type='leagues', updated_at < 2 days) → return cached data
+- If stale/missing → fetch Sportmonks:
+  `GET /football/leagues?api_token=TOKEN&per_page=150`
+- Save to cache, return `[{id, name}]`
+- If Sportmonks down → return stale cache (never fail)
 
 **GET /api/sportmonks/fixtures?leagueId=501&from=2026-03-06&to=2026-03-13**
-- Buscar en caché para esa leagueId + rango fechas
-- Si caché < 2 días → devolver caché
-- Si no → fetch `https://api.sportmonks.com/v3/football/fixtures/between/{from}/{to}?api_token=TOKEN&include=participants;league&per_page=50`
-- Filtrar por leagueId en el resultado (Sportmonks no soporta filter directo en este endpoint)
-- Guardar en caché
-- Devolver:
+- Check cache for (leagueId, from, to) → return if < 2 days old
+- If stale → fetch:
+  `GET /football/fixtures/between/{from}/{to}?api_token=TOKEN&include=participants;league&per_page=50`
+- Filter results by leagueId client-side (Sportmonks doesn't filter by league in this endpoint)
+- Map participants: meta.location='home' → homeTeam, 'away' → awayTeam
+- Save to cache
+- Return:
 ```json
 [{
   "fixtureId": 12345,
-  "startingAt": "2026-03-08T20:00:00",
+  "startingAt": "2026-03-08T20:00:00Z",
   "leagueName": "Premier League",
   "homeTeam": { "id": 1, "name": "Arsenal", "imagePath": "https://cdn.sportmonks.com/..." },
   "awayTeam": { "id": 2, "name": "Chelsea", "imagePath": "https://cdn.sportmonks.com/..." }
 }]
 ```
+- If Sportmonks down → return stale cache, never fail
 
-### Dashboard — BroadcastForm
+**Update existing: GET /v1/sdk/broadcasts/:id/score**
+- Add `homeTeamLogo` and `awayTeamLogo` to response (from broadcast row)
+- Existing score fields stay the same
 
-En el formulario de crear/editar broadcast añadir sección "Partido":
+---
 
-1. Dropdown **"Competición"** → `GET /api/sportmonks/leagues`
-2. Date pickers: **Desde** / **Hasta** (default: hoy → hoy+7 días)
-3. Botón **"Buscar partidos"** → `GET /api/sportmonks/fixtures?leagueId=&from=&to=`
-4. Lista de partidos con escudos de equipos + fecha/hora
-5. Al seleccionar → autocompleta en el form:
-   - homeTeamName, homeTeamLogo
-   - awayTeamName, awayTeamLogo
-   - matchStartingAt
-   - sportmonksFixtureId
-6. Campo manual **"External ID"** (contentId de Viaplay/TV2, ej: `barcelona-psg-2026-03-03`)
+### Dashboard — BroadcastForm (create + edit)
 
-### Caché importante
-- NO hacer request a Sportmonks en cada render
-- Refresh solo: al abrir la página de broadcasts + si caché > 2 días
-- Sportmonks tiene rate limits — respetar la caché siempre
+**"Link Match" collapsible section** — appears in both create and edit forms.
+
+**If no match linked:** Show button `🔗 Link Match` → expands section  
+**If match linked:** Show match card (logos + teams + date) with `Change` button
+
+**Expanded section flow:**
+1. Dropdown **"League / Competition"** → `GET /api/sportmonks/leagues`
+2. Date range: **From** / **To** (default: today → today+7 days)
+3. Button **"Search Fixtures"** → `GET /api/sportmonks/fixtures?leagueId=&from=&to=`
+4. Results list: mini logos + "Arsenal vs Chelsea · Sat Mar 8 · 20:00 CET"
+5. Click a fixture → auto-fills:
+   - `Broadcast Name` field: `"Arsenal vs Chelsea"` (only if name is empty)
+   - homeTeamName, homeTeamLogo, awayTeamName, awayTeamLogo, leagueName, matchStartingAt, sportmonksFixtureId
+6. Manual field: **External ID** (Viaplay/TV2 contentId, e.g. `barcelona-psg-2026-03-03`)
+
+**Notes:**
+- All times displayed in Europe/Oslo timezone
+- `matchStartingAt` ≠ `startTime` — they are separate fields. startTime = when Vio stream starts
+- All text in English
+
+---
+
+### Broadcast Card (list view)
+
+If broadcast has match linked, show:
+- Home + Away team logos (small, ~24px)
+- `"Arsenal vs Chelsea"`
+- `"Premier League · Mar 8 · 20:00"`
+- Badge `FINISHED` (grey) if matchStartingAt + 2h is in the past
+
+---
+
+### Broadcast Detail View
+
+Show match info section:
+- Large logos side by side
+- League name + date/time (Oslo tz)
+- External ID shown as tag
+
+---
+
+### Cache Strategy
+- Fetch on page load if cache > 2 days old
+- Never block UI on Sportmonks — show "Loading..." then render
+- On Sportmonks error → log warning, serve stale cache silently
