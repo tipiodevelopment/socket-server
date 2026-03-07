@@ -79,15 +79,13 @@ function EventTimeline({ polls, contests }: { polls: (Poll & { options?: PollOpt
   ].sort((a, b) => a.position - b.position);
 
   const colorMap: Record<string, string> = { poll: 'bg-blue-500', contest: 'bg-purple-500' };
-  const topValues = [16, 48, 32, 16, 24, 40, 8, 56];
+  const activeEventCount = allEvents.filter(e => e.isActive).length;
+  const progressPct = allEvents.length > 0 ? Math.round((activeEventCount / allEvents.length) * 100) : 0;
 
   return (
     <div className="mb-6" data-testid="section-timeline">
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-sm font-semibold text-gray-900 dark:text-white">Event Timeline</h2>
-        <button className="w-8 h-8 flex items-center justify-center rounded border border-gray-200 dark:border-white/20 hover:border-gray-300 dark:hover:border-white/40 text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition" data-testid="button-expand-timeline">
-          <Maximize2 className="w-3.5 h-3.5" />
-        </button>
       </div>
 
       <div className="bg-transparent border border-gray-200 dark:border-white/10 rounded-lg p-6">
@@ -96,16 +94,15 @@ function EventTimeline({ polls, contests }: { polls: (Poll & { options?: PollOpt
             <div className="text-xs text-gray-400 dark:text-gray-500">Scheduled Events</div>
             <div className="text-2xl font-bold text-gray-900 dark:text-white">{allEvents.length}</div>
           </div>
-          <div className="flex items-center space-x-2">
-            <button className="w-8 h-8 flex items-center justify-center rounded border border-gray-200 dark:border-white/20 hover:border-gray-300 dark:hover:border-white/40 text-gray-900 dark:text-white transition" data-testid="button-backward">
-              <SkipBack className="w-3.5 h-3.5" />
-            </button>
-            <button className="w-8 h-8 flex items-center justify-center rounded border border-gray-200 dark:border-white/20 hover:border-gray-300 dark:hover:border-white/40 text-gray-900 dark:text-white transition" data-testid="button-play">
-              <Play className="w-3.5 h-3.5" />
-            </button>
-            <button className="w-8 h-8 flex items-center justify-center rounded border border-gray-200 dark:border-white/20 hover:border-gray-300 dark:hover:border-white/40 text-gray-900 dark:text-white transition" data-testid="button-forward">
-              <SkipForward className="w-3.5 h-3.5" />
-            </button>
+          <div className="flex items-center space-x-4">
+            <div className="flex items-center space-x-2">
+              <div className="w-3 h-3 bg-blue-500 rounded-full"></div>
+              <span className="text-xs text-gray-500 dark:text-gray-400">Polls</span>
+            </div>
+            <div className="flex items-center space-x-2">
+              <div className="w-3 h-3 bg-purple-500 rounded-full"></div>
+              <span className="text-xs text-gray-500 dark:text-gray-400">Contests</span>
+            </div>
           </div>
         </div>
 
@@ -116,7 +113,7 @@ function EventTimeline({ polls, contests }: { polls: (Poll & { options?: PollOpt
         ) : (
           <div className="relative">
             <div className="h-2 bg-gray-100 dark:bg-white/5 rounded-full overflow-hidden mb-8">
-              <div className="h-full bg-[#3d8b7a] dark:bg-white rounded-full" style={{ width: '50%' }}></div>
+              <div className="h-full bg-[#3d8b7a] dark:bg-white rounded-full" style={{ width: `${progressPct}%` }}></div>
             </div>
 
             <div className="relative h-32">
@@ -130,7 +127,7 @@ function EventTimeline({ polls, contests }: { polls: (Poll & { options?: PollOpt
                 <div
                   key={event.id}
                   className="absolute group cursor-pointer"
-                  style={{ left: `${event.position}%`, top: `${topValues[i % topValues.length]}px` }}
+                  style={{ left: `${event.position}%`, top: `${(i % 4) * 22}px` }}
                   data-testid={`timeline-event-${event.id}`}
                 >
                   <div className={`w-3 h-3 ${colorMap[event.type]} rounded-full border-2 border-white dark:border-black ${!event.isActive ? 'opacity-50' : ''}`}></div>
@@ -143,17 +140,10 @@ function EventTimeline({ polls, contests }: { polls: (Poll & { options?: PollOpt
             </div>
 
             <div className="flex items-center justify-between mt-6 pt-4 border-t border-gray-200 dark:border-white/10">
-              <div className="flex items-center space-x-4">
-                <div className="flex items-center space-x-2">
-                  <div className="w-3 h-3 bg-blue-500 rounded-full"></div>
-                  <span className="text-xs text-gray-500 dark:text-gray-400">Polls</span>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <div className="w-3 h-3 bg-purple-500 rounded-full"></div>
-                  <span className="text-xs text-gray-500 dark:text-gray-400">Contests</span>
-                </div>
+              <div className="text-xs text-gray-400 dark:text-gray-500">
+                {activeEventCount} of {allEvents.length} events active
               </div>
-              <div className="text-xs text-gray-400 dark:text-gray-500">{allEvents.length} scheduled events</div>
+              <div className="text-xs text-gray-400 dark:text-gray-500">{progressPct}% complete</div>
             </div>
           </div>
         )}
@@ -553,7 +543,7 @@ function ShoppableProductsSection({ broadcastId }: { broadcastId: string }) {
   );
 }
 
-function LiveChatSidebar({ broadcastId, analytics, reachuUserId }: { broadcastId: string; analytics?: BroadcastAnalytics; reachuUserId: string | null }) {
+function LiveChatSidebar({ broadcastId, analytics, reachuUserId, broadcastStatus }: { broadcastId: string; analytics?: BroadcastAnalytics; reachuUserId: string | null; broadcastStatus?: string }) {
   const [activeTab, setActiveTab] = useState<'chat' | 'analytics'>('chat');
   const [chatInput, setChatInput] = useState('');
   const [tweetMode, setTweetMode] = useState(false);
@@ -675,40 +665,48 @@ function LiveChatSidebar({ broadcastId, analytics, reachuUserId }: { broadcastId
       </div>
 
       <div className="p-4 border-t border-gray-200 dark:border-white/10">
-        <div className="flex items-center justify-between mb-2">
-          {reachuUserId && (
-            <div className="flex items-center gap-1.5">
-              <Users className="w-2.5 h-2.5 text-gray-400 dark:text-gray-500" />
-              <span className="text-[10px] text-gray-400 dark:text-gray-500">As <span className="font-semibold text-gray-600 dark:text-gray-300">{reachuUserId}</span></span>
+        {broadcastStatus === 'ended' ? (
+          <div className="text-center py-3 px-4 bg-gray-50 dark:bg-white/5 rounded-lg border border-gray-200 dark:border-white/10">
+            <p className="text-xs text-gray-400 dark:text-gray-500">This broadcast has ended — chat is read-only</p>
+          </div>
+        ) : (
+          <>
+            <div className="flex items-center justify-between mb-2">
+              {reachuUserId && (
+                <div className="flex items-center gap-1.5">
+                  <Users className="w-2.5 h-2.5 text-gray-400 dark:text-gray-500" />
+                  <span className="text-[10px] text-gray-400 dark:text-gray-500">As <span className="font-semibold text-gray-600 dark:text-gray-300">{reachuUserId}</span></span>
+                </div>
+              )}
+              <button
+                onClick={() => setTweetMode(t => !t)}
+                className={`flex items-center gap-1 px-2 py-1 rounded text-[10px] font-semibold transition ${tweetMode ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400' : 'text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300'}`}
+                data-testid="button-toggle-tweet-mode"
+              >
+                <AtSign className="w-2.5 h-2.5" /> {tweetMode ? 'Tweet mode' : 'Tweet'}
+              </button>
             </div>
-          )}
-          <button
-            onClick={() => setTweetMode(t => !t)}
-            className={`flex items-center gap-1 px-2 py-1 rounded text-[10px] font-semibold transition ${tweetMode ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400' : 'text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300'}`}
-            data-testid="button-toggle-tweet-mode"
-          >
-            <AtSign className="w-2.5 h-2.5" /> {tweetMode ? 'Tweet mode' : 'Tweet'}
-          </button>
-        </div>
-        <div className="flex items-center space-x-2">
-          <input
-            type="text"
-            value={chatInput}
-            onChange={(e) => setChatInput(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder={tweetMode ? 'Send a tweet...' : 'Type a message...'}
-            className={`flex-1 px-3 py-2 bg-gray-50 dark:bg-white/5 border rounded text-xs text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none transition ${tweetMode ? 'border-blue-300 dark:border-blue-700 focus:border-blue-400 dark:focus:border-blue-500' : 'border-gray-200 dark:border-white/10 focus:border-gray-300 dark:focus:border-white/30'}`}
-            data-testid="input-chat-message"
-          />
-          <button
-            onClick={handleSend}
-            disabled={sendMessageMutation.isPending || !chatInput.trim()}
-            className={`w-9 h-9 flex items-center justify-center rounded transition disabled:opacity-50 ${tweetMode ? 'bg-blue-500 hover:bg-blue-600 text-white' : 'bg-[#3d8b7a] text-white dark:bg-white dark:text-black hover:bg-[#2f7365] dark:hover:bg-gray-200'}`}
-            data-testid="button-send-message"
-          >
-            {tweetMode ? <AtSign className="w-3.5 h-3.5" /> : <Send className="w-3.5 h-3.5" />}
-          </button>
-        </div>
+            <div className="flex items-center space-x-2">
+              <input
+                type="text"
+                value={chatInput}
+                onChange={(e) => setChatInput(e.target.value)}
+                onKeyDown={handleKeyDown}
+                placeholder={tweetMode ? 'Send a tweet...' : 'Type a message...'}
+                className={`flex-1 px-3 py-2 bg-gray-50 dark:bg-white/5 border rounded text-xs text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none transition ${tweetMode ? 'border-blue-300 dark:border-blue-700 focus:border-blue-400 dark:focus:border-blue-500' : 'border-gray-200 dark:border-white/10 focus:border-gray-300 dark:focus:border-white/30'}`}
+                data-testid="input-chat-message"
+              />
+              <button
+                onClick={handleSend}
+                disabled={sendMessageMutation.isPending || !chatInput.trim()}
+                className={`w-9 h-9 flex items-center justify-center rounded transition disabled:opacity-50 ${tweetMode ? 'bg-blue-500 hover:bg-blue-600 text-white' : 'bg-[#3d8b7a] text-white dark:bg-white dark:text-black hover:bg-[#2f7365] dark:hover:bg-gray-200'}`}
+                data-testid="button-send-message"
+              >
+                {tweetMode ? <AtSign className="w-3.5 h-3.5" /> : <Send className="w-3.5 h-3.5" />}
+              </button>
+            </div>
+          </>
+        )}
       </div>
     </aside>
   );
@@ -1348,7 +1346,7 @@ export default function BroadcastDetailPage() {
           <ShoppableProductsSection broadcastId={broadcastId!} />
         </main>
 
-        <LiveChatSidebar broadcastId={broadcastId!} analytics={analytics} reachuUserId={reachuUserId} />
+        <LiveChatSidebar broadcastId={broadcastId!} analytics={analytics} reachuUserId={reachuUserId} broadcastStatus={broadcast?.status} />
       </div>
     </AppLayout>
   );

@@ -14,7 +14,7 @@ import { queryClient, apiRequest } from '@/lib/queryClient';
 import { useUser } from '@/contexts/UserContext';
 import { AppLayout } from '@/components/AppLayout';
 import type { Broadcast, Campaign } from '@shared/schema';
-import { Plus, Clock, BarChart3, Trophy, Radio, Search, Filter, ChartNoAxesColumn } from 'lucide-react';
+import { Plus, Clock, BarChart3, Trophy, Radio, Search, Filter, ChartNoAxesColumn, Users } from 'lucide-react';
 
 type EnrichedBroadcast = Broadcast & {
   pollCount: number;
@@ -65,9 +65,10 @@ function CampaignAppLabel({ campaignName, clientAppName }: { campaignName: strin
 }
 
 function LiveBroadcastCard({ broadcast }: { broadcast: EnrichedBroadcast }) {
-  const viewers = broadcast.metadata && typeof broadcast.metadata === 'object' && 'viewers' in broadcast.metadata
+  const metaViewers = broadcast.metadata && typeof broadcast.metadata === 'object' && 'viewers' in broadcast.metadata
     ? Number((broadcast.metadata as Record<string, unknown>).viewers) || 0
     : 0;
+  const viewers = (broadcast.viewerCount ?? 0) > 0 ? (broadcast.viewerCount ?? 0) : metaViewers;
   const engagement = broadcast.metadata && typeof broadcast.metadata === 'object' && 'engagement' in broadcast.metadata
     ? Number((broadcast.metadata as Record<string, unknown>).engagement) || 0
     : 0;
@@ -170,14 +171,15 @@ function UpcomingBroadcastCard({ broadcast }: { broadcast: EnrichedBroadcast }) 
 }
 
 function EndedBroadcastCard({ broadcast }: { broadcast: EnrichedBroadcast }) {
-  const viewers = broadcast.metadata && typeof broadcast.metadata === 'object' && 'viewers' in broadcast.metadata
+  const metaViewers = broadcast.metadata && typeof broadcast.metadata === 'object' && 'viewers' in broadcast.metadata
     ? Number((broadcast.metadata as Record<string, unknown>).viewers) || 0
     : 0;
+  const viewers = (broadcast.viewerCount ?? 0) > 0 ? (broadcast.viewerCount ?? 0) : metaViewers;
 
   return (
     <Link href={`/broadcasts/${broadcast.broadcastId}`}>
       <div
-        className="bg-white dark:bg-transparent border border-gray-200 dark:border-white/10 rounded-lg p-5 hover:border-gray-300 dark:hover:border-white/30 transition-all cursor-pointer opacity-60"
+        className="bg-white dark:bg-transparent border border-gray-200 dark:border-white/10 rounded-lg p-5 hover:border-gray-300 dark:hover:border-white/30 transition-all cursor-pointer opacity-80"
         data-testid={`card-broadcast-${broadcast.broadcastId}`}
       >
         <div className="flex justify-between items-start">
@@ -193,7 +195,7 @@ function EndedBroadcastCard({ broadcast }: { broadcast: EnrichedBroadcast }) {
             <div className="flex items-center space-x-4 text-xs text-gray-400 dark:text-gray-500">
               {viewers > 0 && (
                 <div className="flex items-center space-x-1.5">
-                  <BarChart3 className="w-3 h-3" />
+                  <Users className="w-3 h-3" />
                   <span>{formatViewers(viewers)} viewers</span>
                 </div>
               )}

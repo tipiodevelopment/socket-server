@@ -115,7 +115,7 @@ export default function DashboardPage() {
       headerBreadcrumb="All Client Apps"
       headerBreadcrumbHref="/apps"
       actions={
-        <Link href="/campaigns">
+        <Link href="/campaigns/new">
           <Button size="sm" className="gap-1.5 bg-[#3d8b7a] hover:bg-[#2f7365] text-white dark:bg-white dark:hover:bg-gray-200 dark:text-[#0a0e1a] h-9 px-4" data-testid="button-new-campaign">
             <Plus className="w-4 h-4" /> New Campaign
           </Button>
@@ -344,8 +344,14 @@ export default function DashboardPage() {
         <div>
           <div className="flex items-center justify-between mb-4">
             <div>
-              <h2 className="text-lg font-semibold text-gray-900 dark:text-white" data-testid="text-upcoming-campaigns-title">Upcoming Campaigns</h2>
-              <p className="text-sm text-gray-400 dark:text-white/40">Scheduled campaigns for the next 7 days</p>
+              <h2 className="text-lg font-semibold text-gray-900 dark:text-white" data-testid="text-upcoming-campaigns-title">
+                {upcomingCampaigns.length > 0 ? 'Upcoming Campaigns' : 'Recent Campaigns'}
+              </h2>
+              {upcomingCampaigns.length === 0 ? (
+                <p className="text-sm text-gray-400 dark:text-white/40">No upcoming campaigns scheduled</p>
+              ) : (
+                <p className="text-sm text-gray-400 dark:text-white/40">Scheduled campaigns for the next 7 days</p>
+              )}
             </div>
             <Link href="/campaigns">
               <Button variant="ghost" size="sm" className="gap-1 text-gray-500 dark:text-gray-300 hover:text-gray-700 dark:hover:text-gray-200 text-xs" data-testid="link-view-all-campaigns">

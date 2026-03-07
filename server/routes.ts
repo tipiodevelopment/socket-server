@@ -1046,7 +1046,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
         );
 
         const activeBroadcasts = appBroadcasts.filter(b => b.status === 'live').length;
-        const totalViewers = appCampaigns.length * 8500 + appBroadcasts.length * 3200 + app.id * 1234;
+        const totalViewers = appBroadcasts.reduce((sum, b) => sum + (b.viewerCount || 0), 0);
 
         return {
           ...app,
@@ -1055,7 +1055,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
             activeBroadcasts,
             totalViewers,
             channelCount: appChannels.length,
-            engagementPercent: Math.min(95, 45 + appCampaigns.length * 8 + activeBroadcasts * 5),
+            engagementPercent: 0,
           },
         };
       });
@@ -1374,7 +1374,9 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       const appCampaigns = allCampaigns.filter(c =>
         c.clientAppId === appId || (c.channelId && appChannelIds.has(c.channelId))
       );
-      res.json(appCampaigns);
+      const countMap = await storage.getBroadcastCountsForCampaigns(appCampaigns.map(c => c.id));
+      const enriched = appCampaigns.map(c => ({ ...c, broadcastCount: countMap.get(c.id) || 0 }));
+      res.json(enriched);
     } catch (error) {
       console.error('Error fetching app campaigns:', error);
       res.status(500).json({ message: 'Error fetching app campaigns' });

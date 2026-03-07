@@ -15,7 +15,7 @@ import { useUser } from '@/contexts/UserContext';
 import { AppLayout } from '@/components/AppLayout';
 import type { ClientApp, Campaign, Component as ComponentType } from '@shared/schema';
 import { ImageUploadWithPreview } from '@/components/ImageUploadWithPreview';
-import { ArrowLeft, Plus, Key, Copy, RefreshCw, Eye, EyeOff, Settings, ChevronRight, Megaphone, Puzzle, BarChart3, Users, Radio, Palette, Shield, Bell, Plug, X } from 'lucide-react';
+import { ArrowLeft, Plus, Key, Copy, RefreshCw, Eye, EyeOff, Settings, ChevronRight, Megaphone, Puzzle, BarChart3, Users, Radio, Palette, Shield, Bell, Plug, X, Calendar } from 'lucide-react';
 
 function formatViewers(num: number): string {
   if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M';
@@ -32,7 +32,12 @@ function getCampaignStatus(campaign: Campaign): { label: string } {
 
 function getStatusBadge(status: string) {
   const labels: Record<string, string> = { active: 'Active', paused: 'Paused', archived: 'Archived' };
-  return { label: labels[status] || status };
+  const colors: Record<string, string> = {
+    active: 'bg-[#3d8b7a]/15 text-[#3d8b7a] border border-[#3d8b7a]/30',
+    paused: 'bg-yellow-500/15 text-yellow-400 border border-yellow-500/30',
+    archived: 'bg-white/10 text-gray-400 border border-white/20',
+  };
+  return { label: labels[status] || status, colorClass: colors[status] || 'bg-white/10 text-gray-400 border border-white/20' };
 }
 
 export default function AppDetailPage() {
@@ -194,9 +199,9 @@ export default function AppDetailPage() {
     return status.label === 'Active' || status.label === 'Upcoming';
   }).length;
 
-  const liveBroadcastsCount = currentAppStats?.broadcastCount || 0;
-  const totalViewers = currentAppStats?.totalViewers || 0;
-  const engagementRate = currentAppStats?.engagementRate || 75;
+  const liveBroadcastsCount = currentAppStats?.stats?.activeBroadcasts ?? 0;
+  const totalViewers = currentAppStats?.stats?.totalViewers ?? 0;
+  const engagementRate = currentAppStats?.stats?.engagementPercent ?? 0;
 
   const assignedComponentIds = new Set(appComponentsData.map((ac: any) => ac.componentId));
   const availableComponents = allComponents.filter(c => !assignedComponentIds.has(c.id));
@@ -249,7 +254,7 @@ export default function AppDetailPage() {
           <h1 className="text-2xl font-bold text-white" data-testid="text-app-name">{app.name}</h1>
           <span
             data-testid="badge-app-status"
-            className="px-2 py-0.5 bg-white text-black text-[10px] uppercase font-bold rounded-full"
+            className={`px-2 py-0.5 text-[10px] uppercase font-bold rounded-full ${statusBadge.colorClass}`}
           >
             {statusBadge.label}
           </span>
@@ -444,10 +449,10 @@ export default function AppDetailPage() {
                           <div className="flex items-center gap-4">
                             <span className="flex items-center gap-1">
                               <Radio className="w-3 h-3" />
-                              0 broadcasts
+                              {(campaign as any).broadcastCount ?? 0} broadcast{((campaign as any).broadcastCount ?? 0) !== 1 ? 's' : ''}
                             </span>
                             <span className="flex items-center gap-1">
-                              <Users className="w-3 h-3" />
+                              <Calendar className="w-3 h-3" />
                               {campaign.startDate
                                 ? new Date(campaign.startDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
                                 : '—'}
