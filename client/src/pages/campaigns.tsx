@@ -41,6 +41,23 @@ const STATUS_CONFIG: Record<CampaignStatus, { label: string; className: string }
   },
 };
 
+const COUNTRY_NAMES: Record<string, string> = {
+  AF: 'Afghanistan', AL: 'Albania', DZ: 'Algeria', AR: 'Argentina', AU: 'Australia',
+  AT: 'Austria', BE: 'Belgium', BR: 'Brazil', CA: 'Canada', CL: 'Chile',
+  CN: 'China', CO: 'Colombia', HR: 'Croatia', CZ: 'Czech Republic', DK: 'Denmark',
+  EG: 'Egypt', FI: 'Finland', FR: 'France', DE: 'Germany', GR: 'Greece',
+  HU: 'Hungary', IN: 'India', ID: 'Indonesia', IE: 'Ireland', IL: 'Israel',
+  IT: 'Italy', JP: 'Japan', KR: 'South Korea', MX: 'Mexico', NL: 'Netherlands',
+  NZ: 'New Zealand', NG: 'Nigeria', NO: 'Norway', PL: 'Poland', PT: 'Portugal',
+  RO: 'Romania', RU: 'Russia', SA: 'Saudi Arabia', ZA: 'South Africa', ES: 'Spain',
+  SE: 'Sweden', CH: 'Switzerland', TR: 'Turkey', UA: 'Ukraine', GB: 'United Kingdom',
+  US: 'United States', UY: 'Uruguay', VE: 'Venezuela',
+};
+
+function getCountryLabel(code: string): string {
+  return COUNTRY_NAMES[code.toUpperCase()] || code;
+}
+
 const TABS: { value: string; label: string }[] = [
   { value: 'all', label: 'All' },
   { value: 'active', label: 'Active' },
@@ -166,20 +183,30 @@ export default function CampaignsPage() {
     >
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
         <div className="flex gap-1 flex-wrap">
-          {TABS.map(tab => (
-            <button
-              key={tab.value}
-              onClick={() => handleFilterChange(tab.value)}
-              data-testid={`filter-${tab.value}`}
-              className={`px-3.5 py-1.5 text-sm rounded-md transition-all ${
-                statusFilter === tab.value
-                  ? 'bg-[#3d8b7a] text-white dark:bg-white/10 dark:text-white font-medium shadow-sm'
-                  : 'text-gray-500 dark:text-white/40 hover:text-gray-700 dark:hover:text-white/60 hover:bg-gray-100 dark:hover:bg-white/5'
-              }`}
-            >
-              {tab.label}
-            </button>
-          ))}
+          {TABS.map(tab => {
+            const count = tab.value === 'all'
+              ? campaigns.length
+              : campaigns.filter(c => getCampaignStatus(c) === tab.value).length;
+            return (
+              <button
+                key={tab.value}
+                onClick={() => handleFilterChange(tab.value)}
+                data-testid={`filter-${tab.value}`}
+                className={`px-3.5 py-1.5 text-sm rounded-md transition-all flex items-center gap-1.5 ${
+                  statusFilter === tab.value
+                    ? 'bg-[#3d8b7a] text-white dark:bg-white/10 dark:text-white font-medium shadow-sm'
+                    : 'text-gray-500 dark:text-white/40 hover:text-gray-700 dark:hover:text-white/60 hover:bg-gray-100 dark:hover:bg-white/5'
+                }`}
+              >
+                {tab.label}
+                <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${
+                  statusFilter === tab.value
+                    ? 'bg-white/20 text-white dark:bg-white/20'
+                    : 'bg-gray-100 dark:bg-white/10 text-gray-400 dark:text-white/30'
+                }`}>{count}</span>
+              </button>
+            );
+          })}
         </div>
 
         <div className="relative w-full sm:w-72">
@@ -232,13 +259,22 @@ export default function CampaignsPage() {
                     className="flex items-start gap-4 p-5 bg-white dark:bg-white/[0.02] border border-gray-200 dark:border-white/[0.06] rounded-lg hover:border-gray-300 dark:hover:border-white/[0.12] transition-all cursor-pointer group"
                     data-testid={`card-campaign-${campaign.id}`}
                   >
-                    {sponsor?.avatarUrl && (
-                      <img
-                        src={sponsor.avatarUrl}
-                        alt={sponsor.name}
-                        className="w-10 h-10 rounded-full object-cover border border-gray-200 dark:border-white/10 shrink-0 mt-0.5"
-                        data-testid={`img-sponsor-avatar-${campaign.id}`}
-                      />
+                    {sponsor && (
+                      <div className="flex flex-col items-center gap-1 shrink-0 mt-0.5" data-testid={`sponsor-info-${campaign.id}`}>
+                        {sponsor.avatarUrl ? (
+                          <img
+                            src={sponsor.avatarUrl}
+                            alt={sponsor.name}
+                            className="w-9 h-9 rounded-full object-cover border border-gray-200 dark:border-white/10"
+                            data-testid={`img-sponsor-avatar-${campaign.id}`}
+                          />
+                        ) : (
+                          <div className="w-9 h-9 rounded-full bg-gray-100 dark:bg-white/10 flex items-center justify-center border border-gray-200 dark:border-white/10">
+                            <span className="text-xs font-bold text-gray-500 dark:text-white/40">{sponsor.name.charAt(0)}</span>
+                          </div>
+                        )}
+                        <span className="text-[9px] text-gray-400 dark:text-white/30 text-center max-w-[52px] truncate" data-testid={`text-sponsor-name-${campaign.id}`}>{sponsor.name}</span>
+                      </div>
                     )}
 
                     <div className="flex-1 min-w-0">
@@ -287,7 +323,7 @@ export default function CampaignsPage() {
                       {countries && countries.length > 0 && (
                         <span className="flex items-center gap-1.5" data-testid={`text-campaign-countries-${campaign.id}`}>
                           <Globe className="w-3.5 h-3.5" />
-                          {countries.join(', ')}
+                          {countries.map(getCountryLabel).join(', ')}
                         </span>
                       )}
                     </div>

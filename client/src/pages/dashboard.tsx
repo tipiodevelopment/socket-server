@@ -13,8 +13,6 @@ import {
   Users,
   TrendingUp,
   Activity,
-  Filter,
-  ArrowUpDown,
   MoreVertical,
 } from 'lucide-react';
 
@@ -129,7 +127,7 @@ export default function DashboardPage() {
           iconColor="text-[#3d8b7a] dark:text-gray-300"
           value={liveBroadcasts.length}
           label="Live Broadcasts"
-          change={12}
+          change={0}
           testId="stat-live-broadcasts"
         />
         <StatCard
@@ -138,13 +136,13 @@ export default function DashboardPage() {
           iconColor="text-[#3d8b7a] dark:text-gray-300"
           value={activeCampaigns.length}
           label="Active Campaigns"
-          change={8}
+          change={0}
           testId="stat-active-campaigns"
         />
         <StatCard
           icon={<Users className="w-5 h-5" />}
-          iconBg="bg-emerald-500/20"
-          iconColor="text-emerald-400"
+          iconBg="bg-[#3d8b7a]/10 dark:bg-white/10"
+          iconColor="text-[#3d8b7a] dark:text-gray-300"
           value={0}
           formattedValue="--"
           label="Active Viewers"
@@ -153,8 +151,8 @@ export default function DashboardPage() {
         />
         <StatCard
           icon={<BarChart3 className="w-5 h-5" />}
-          iconBg="bg-orange-500/20"
-          iconColor="text-orange-400"
+          iconBg="bg-[#3d8b7a]/10 dark:bg-white/10"
+          iconColor="text-[#3d8b7a] dark:text-gray-300"
           value={0}
           formattedValue="--"
           label="Engagement Rate"
@@ -246,14 +244,6 @@ export default function DashboardPage() {
           <div>
             <h2 className="text-lg font-semibold text-gray-900 dark:text-white" data-testid="text-live-broadcasts-title">Live Broadcasts</h2>
             <p className="text-sm text-gray-400 dark:text-white/40">Currently streaming events</p>
-          </div>
-          <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" className="gap-1.5 border-gray-200 dark:border-white/10 text-gray-500 dark:text-white/50 hover:text-gray-900 dark:hover:text-white text-xs h-8" data-testid="button-filter-broadcasts">
-              <Filter className="w-3.5 h-3.5" /> Filter
-            </Button>
-            <Button variant="outline" size="sm" className="gap-1.5 border-gray-200 dark:border-white/10 text-gray-500 dark:text-white/50 hover:text-gray-900 dark:hover:text-white text-xs h-8" data-testid="button-sort-broadcasts">
-              <ArrowUpDown className="w-3.5 h-3.5" /> Sort
-            </Button>
           </div>
         </div>
 

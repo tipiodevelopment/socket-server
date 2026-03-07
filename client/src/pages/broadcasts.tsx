@@ -14,7 +14,7 @@ import { queryClient, apiRequest } from '@/lib/queryClient';
 import { useUser } from '@/contexts/UserContext';
 import { AppLayout } from '@/components/AppLayout';
 import type { Broadcast, Campaign } from '@shared/schema';
-import { Plus, Clock, BarChart3, Trophy, Radio, Search, Filter, ChartNoAxesColumn, Users } from 'lucide-react';
+import { Plus, Clock, BarChart3, Trophy, Radio, Search, ChartNoAxesColumn, Users } from 'lucide-react';
 
 type EnrichedBroadcast = Broadcast & {
   pollCount: number;
@@ -445,9 +445,6 @@ export default function BroadcastsPage() {
             />
             <Search className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500 w-3.5 h-3.5" />
           </div>
-          <button className="w-8 h-8 flex items-center justify-center rounded border border-gray-200 dark:border-white/20 hover:border-[#3d8b7a] dark:hover:border-white/40 text-gray-400 hover:text-[#3d8b7a] dark:hover:text-white transition" data-testid="button-filter">
-            <Filter className="w-3.5 h-3.5" />
-          </button>
         </div>
       </div>
 

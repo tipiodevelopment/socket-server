@@ -25,7 +25,7 @@ const componentTypes: { value: ComponentType; label: string }[] = [
   { value: 'product_store', label: 'Product Store' },
 ];
 
-const filterOptions = ['All', 'Banner', 'Countdown', 'Carousel', 'Spotlight', 'Badge'];
+const filterOptions = ['All', 'Banner', 'Countdown', 'Carousel', 'Spotlight', 'Badge', 'Products'];
 
 function getComponentIcon(type: string) {
   switch (type) {
@@ -58,11 +58,12 @@ function matchesFilter(type: string, filter: string): boolean {
   if (filter === 'All') return true;
   const lowerFilter = filter.toLowerCase();
   const lowerType = type.toLowerCase();
-  if (lowerFilter === 'banner') return lowerType.includes('banner');
+  if (lowerFilter === 'banner') return lowerType === 'banner' || lowerType === 'offer_banner' || lowerType === 'product_banner';
   if (lowerFilter === 'countdown') return lowerType === 'countdown';
   if (lowerFilter === 'carousel') return lowerType.includes('carousel');
   if (lowerFilter === 'spotlight') return lowerType.includes('spotlight');
   if (lowerFilter === 'badge') return lowerType.includes('badge');
+  if (lowerFilter === 'products') return lowerType.startsWith('product_') || lowerType === 'offer_badge' || lowerType === 'offer_banner';
   return false;
 }
 
@@ -100,7 +101,7 @@ export default function ComponentsPage() {
   const filteredComponents = useMemo(() => {
     return components.filter(c => {
       if (!matchesFilter(c.type, activeFilter)) return false;
-      if (templatesOnly && c.isTemplate !== 'true') return false;
+      if (templatesOnly && c.isTemplate !== 'true' && c.isTemplate !== true) return false;
       if (searchQuery && !c.name.toLowerCase().includes(searchQuery.toLowerCase())) return false;
       return true;
     });
@@ -109,23 +110,19 @@ export default function ComponentsPage() {
   return (
     <AppLayout
       breadcrumbs={[{ label: 'Components' }]}
-    >
-      <div>
-        <div className="flex items-center justify-between mb-1">
-          <div>
-            <h1 className="text-xl font-bold text-foreground" data-testid="text-page-title">Component Library</h1>
-            <p className="text-xs text-muted-foreground mt-1">Reusable components for campaigns: banners, carousels, countdowns and more</p>
-          </div>
-          <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
-            <DialogTrigger asChild>
-              <button
-                className="flex items-center space-x-2 px-4 py-2 bg-[#3d8b7a] text-white dark:bg-white dark:text-black rounded hover:bg-[#2f7365] dark:hover:bg-gray-200 transition text-sm font-medium"
-                data-testid="button-create-component"
-              >
-                <Plus className="w-3.5 h-3.5" />
-                <span>New Component</span>
-              </button>
-            </DialogTrigger>
+      title="Component Library"
+      subtitle="Reusable components for campaigns: banners, carousels, countdowns and more"
+      actions={
+        <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
+          <DialogTrigger asChild>
+            <Button
+              className="gap-2 bg-[#3d8b7a] hover:bg-[#2f7365] dark:bg-white dark:hover:bg-gray-200 text-white dark:text-black"
+              data-testid="button-create-component"
+            >
+              <Plus className="w-4 h-4" />
+              New Component
+            </Button>
+          </DialogTrigger>
             <DialogContent
               className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto"
               onInteractOutside={(e) => e.preventDefault()}
@@ -141,9 +138,9 @@ export default function ComponentsPage() {
               />
             </DialogContent>
           </Dialog>
-        </div>
-
-        <div className="flex items-center justify-between mb-8 mt-6">
+      }
+    >
+      <div className="flex items-center justify-between mb-8 mt-0">
           <div className="flex items-center space-x-2">
             <div className="bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/10 p-1 rounded-lg flex items-center">
               {filterOptions.map(filter => (
@@ -248,7 +245,6 @@ export default function ComponentsPage() {
             })}
           </div>
         )}
-      </div>
     </AppLayout>
   );
 }

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { AppLayout } from '@/components/AppLayout';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -47,7 +47,18 @@ function SectionHeader({ title, action }: { title: string; action?: React.ReactN
 }
 
 function useChartTheme() {
-  const isDark = document.documentElement.classList.contains('dark');
+  const [isDark, setIsDark] = useState(() =>
+    typeof document !== 'undefined' && document.documentElement.classList.contains('dark')
+  );
+
+  useEffect(() => {
+    const observer = new MutationObserver(() => {
+      setIsDark(document.documentElement.classList.contains('dark'));
+    });
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
+    return () => observer.disconnect();
+  }, []);
+
   return {
     grid: isDark ? '#2a3142' : '#e5e7eb',
     tick: isDark ? '#6b7280' : '#9ca3af',
@@ -104,8 +115,8 @@ function GlobalDashboard({ onDrill }: { onDrill: (view: DrillView) => void }) {
         <StatCard label="Engaged Users" value={o.engagement?.uniqueUsers ?? 0} icon={Users} sub={`${o.engagement?.uniqueVoters ?? 0} voters · ${o.engagement?.uniqueParticipants ?? 0} participants`} testId="stat-engaged-users" />
         <StatCard label="Total Votes" value={o.engagement?.totalVotes ?? 0} icon={Vote} sub={`Across ${o.totals?.polls ?? 0} polls`} testId="stat-total-votes" />
         <StatCard label="Participations" value={o.engagement?.totalParticipations ?? 0} icon={Trophy} sub={`Across ${o.totals?.contests ?? 0} contests`} testId="stat-total-participations" />
-        <StatCard label="Components" value={o.totals?.components ?? 0} icon={Package} testId="stat-components" />
-        <StatCard label="Sponsors" value={o.totals?.sponsors ?? 0} icon={Award} testId="stat-sponsors" />
+        <StatCard label="Components" value={o.totals?.components ?? 0} icon={Package} sub="in component library" testId="stat-components" />
+        <StatCard label="Sponsors" value={o.totals?.sponsors ?? 0} icon={Award} sub="configured sponsors" testId="stat-sponsors" />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -113,6 +124,8 @@ function GlobalDashboard({ onDrill }: { onDrill: (view: DrillView) => void }) {
           <SectionHeader title="Broadcast Activity (30 days)" />
           {loadingEngagement ? (
             <Skeleton className="h-48 bg-gray-100 dark:bg-[#1c2030]" />
+          ) : (engagement?.broadcastActivity?.length ?? 0) === 0 ? (
+            <div className="h-48 flex items-center justify-center text-gray-400 dark:text-gray-500 text-sm">No broadcast activity in the last 30 days</div>
           ) : (
             <ResponsiveContainer width="100%" height={200}>
               <BarChart data={engagement?.broadcastActivity || []}>
@@ -359,7 +372,7 @@ function CampaignAnalytics({ campaignId, onDrill, onBack }: { campaignId: number
   return (
     <div className="space-y-6">
       <button onClick={onBack} className="flex items-center gap-2 text-gray-400 hover:text-gray-900 dark:hover:text-white text-sm transition" data-testid="button-back-campaign">
-        <ArrowLeft className="w-4 h-4" /> Back
+        <ArrowLeft className="w-4 h-4" /> Back to Overview
       </button>
 
       <div className="flex items-center justify-between">
@@ -506,7 +519,7 @@ function BroadcastAnalytics({ broadcastId, onBack }: { broadcastId: string; onBa
   return (
     <div className="space-y-6">
       <button onClick={onBack} className="flex items-center gap-2 text-gray-400 hover:text-gray-900 dark:hover:text-white text-sm transition" data-testid="button-back-broadcast">
-        <ArrowLeft className="w-4 h-4" /> Back
+        <ArrowLeft className="w-4 h-4" /> {b.campaignName ? `Back to ${b.campaignName}` : 'Back to Campaign'}
       </button>
 
       <div>
@@ -597,7 +610,7 @@ export default function AnalyticsPage() {
   }
 
   return (
-    <AppLayout breadcrumbs={breadcrumbs} title="Analytics">
+    <AppLayout breadcrumbs={breadcrumbs} title="Analytics" subtitle="Platform metrics across apps, campaigns and broadcasts">
       <div className="max-w-7xl mx-auto" data-testid="page-analytics">
         {view.type === 'global' && <GlobalDashboard onDrill={handleDrill} />}
         {view.type === 'app' && <AppAnalytics appId={view.id} onDrill={handleDrill} onBack={handleBack} />}

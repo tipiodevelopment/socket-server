@@ -45,8 +45,8 @@ const defaultFormData: SponsorFormData = {
   description: '',
   logoUrl: '',
   avatarUrl: '',
-  primaryColor: '#3B82F6',
-  secondaryColor: '#8B5CF6',
+  primaryColor: '#3d8b7a',
+  secondaryColor: '#666666',
 };
 
 export default function SponsorsPage() {
@@ -205,7 +205,7 @@ export default function SponsorsPage() {
           <Input
             value={formData.secondaryColor}
             onChange={(e) => setFormData((prev) => ({ ...prev, secondaryColor: e.target.value }))}
-            placeholder="#8B5CF6"
+            placeholder="#666666"
             data-testid="input-secondary-color"
           />
         </div>
@@ -348,20 +348,21 @@ export default function SponsorsPage() {
                   )}
                 </div>
 
-                <div className="flex items-center gap-2 mb-4">
-                  <span className="text-[10px] uppercase tracking-wider text-gray-400 dark:text-white/30">Colors</span>
-                  <div
-                    className="w-6 h-6 rounded-full border border-gray-200 dark:border-white/10"
-                    style={{ backgroundColor: sponsor.primaryColor || '#3B82F6' }}
-                    title={`Primary: ${sponsor.primaryColor || '#3B82F6'}`}
-                    data-testid={`swatch-primary-${sponsor.id}`}
-                  />
-                  <div
-                    className="w-6 h-6 rounded-full border border-gray-200 dark:border-white/10"
-                    style={{ backgroundColor: sponsor.secondaryColor || '#8B5CF6' }}
-                    title={`Secondary: ${sponsor.secondaryColor || '#8B5CF6'}`}
-                    data-testid={`swatch-secondary-${sponsor.id}`}
-                  />
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="flex items-center gap-1.5" data-testid={`swatch-primary-${sponsor.id}`}>
+                    <div
+                      className="w-5 h-5 rounded border border-gray-200 dark:border-white/10 shrink-0"
+                      style={{ backgroundColor: sponsor.primaryColor || '#3d8b7a' }}
+                    />
+                    <span className="text-[10px] text-gray-400 dark:text-white/30 font-mono">{sponsor.primaryColor || '#3d8b7a'}</span>
+                  </div>
+                  <div className="flex items-center gap-1.5" data-testid={`swatch-secondary-${sponsor.id}`}>
+                    <div
+                      className="w-5 h-5 rounded border border-gray-200 dark:border-white/10 shrink-0"
+                      style={{ backgroundColor: sponsor.secondaryColor || '#666666' }}
+                    />
+                    <span className="text-[10px] text-gray-400 dark:text-white/30 font-mono">{sponsor.secondaryColor || '#666666'}</span>
+                  </div>
                 </div>
 
                 <div className="flex items-center gap-2 pt-3 border-t border-gray-100 dark:border-white/5">

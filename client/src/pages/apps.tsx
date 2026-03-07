@@ -44,7 +44,7 @@ import { useUser } from '@/contexts/UserContext';
 import { AppLayout } from '@/components/AppLayout';
 import type { ClientApp } from '@shared/schema';
 import { ImageUploadWithPreview } from '@/components/ImageUploadWithPreview';
-import { Plus, Smartphone, Pencil, Settings, MoreVertical, Trash2 } from 'lucide-react';
+import { Plus, Smartphone, Pencil, MoreVertical, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 
 interface ClientAppWithStats extends ClientApp {
@@ -379,17 +379,6 @@ export default function AppsPage() {
                       >
                         <Pencil className="w-3.5 h-3.5" />
                         Edit
-                      </Button>
-                    </Link>
-                    <Link href={`/apps/${app.id}`}>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="gap-1.5 text-xs text-gray-500 dark:text-white/50 hover:text-gray-700 dark:hover:text-white/80 h-8"
-                        data-testid={`button-settings-app-${app.id}`}
-                      >
-                        <Settings className="w-3.5 h-3.5" />
-                        Settings
                       </Button>
                     </Link>
                     <div className="ml-auto">
