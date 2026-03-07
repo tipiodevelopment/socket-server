@@ -140,7 +140,7 @@ function GlobalDashboard({ onDrill }: { onDrill: (view: DrillView) => void }) {
         </div>
 
         <div className="bg-white dark:bg-[#141824] border border-gray-200 dark:border-white/10 rounded-lg p-5" data-testid="section-geographic">
-          <SectionHeader title="Geographic Distribution" />
+          <SectionHeader title="Campaigns by Target Country" />
           {loadingGeo ? (
             <Skeleton className="h-48 bg-gray-100 dark:bg-[#1c2030]" />
           ) : (geo?.countries?.length ?? 0) === 0 ? (
@@ -254,7 +254,7 @@ function GlobalDashboard({ onDrill }: { onDrill: (view: DrillView) => void }) {
                   </div>
                   <div className="text-right">
                     <div className="text-sm text-gray-900 dark:text-white font-medium">{formatNum(s.totalEngagement)}</div>
-                    <div className="text-xs text-gray-400 dark:text-gray-500">engagement</div>
+                    <div className="text-xs text-gray-400 dark:text-gray-500" title="Total engagement = votes + contest participations">engagement</div>
                   </div>
                 </div>
               ))}

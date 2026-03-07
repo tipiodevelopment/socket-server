@@ -4,7 +4,6 @@ import { useState, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger,
@@ -91,6 +90,7 @@ function LiveBroadcastCard({ broadcast }: { broadcast: EnrichedBroadcast }) {
                 </span>
               )}
             </div>
+            <TeamLogos broadcast={broadcast} />
             {broadcast.description && (
               <div className="text-sm text-gray-500 dark:text-gray-400 mb-3" data-testid={`text-broadcast-desc-${broadcast.broadcastId}`}>{broadcast.description}</div>
             )}
@@ -127,6 +127,24 @@ function LiveBroadcastCard({ broadcast }: { broadcast: EnrichedBroadcast }) {
   );
 }
 
+function TeamLogos({ broadcast }: { broadcast: EnrichedBroadcast }) {
+  const home = (broadcast as any).homeTeamLogo;
+  const away = (broadcast as any).awayTeamLogo;
+  const homeName = (broadcast as any).homeTeamName;
+  const awayName = (broadcast as any).awayTeamName;
+  if (!home && !away) return null;
+  return (
+    <div className="flex items-center gap-1.5 mt-1.5">
+      {home && <img src={home} alt={homeName ?? ''} className="w-5 h-5 object-contain rounded" onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} />}
+      {home && away && <span className="text-[10px] text-gray-400 dark:text-gray-500">vs</span>}
+      {away && <img src={away} alt={awayName ?? ''} className="w-5 h-5 object-contain rounded" onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} />}
+      {homeName && awayName && (
+        <span className="text-[10px] text-gray-500 dark:text-gray-400 truncate">{homeName} vs {awayName}</span>
+      )}
+    </div>
+  );
+}
+
 function UpcomingBroadcastCard({ broadcast }: { broadcast: EnrichedBroadcast }) {
   return (
     <Link href={`/broadcasts/${broadcast.broadcastId}`}>
@@ -140,6 +158,7 @@ function UpcomingBroadcastCard({ broadcast }: { broadcast: EnrichedBroadcast }) 
               <h3 className="text-base font-semibold text-gray-900 dark:text-white" data-testid={`text-broadcast-name-${broadcast.broadcastId}`}>{broadcast.broadcastName}</h3>
               <span className="px-2 py-0.5 bg-gray-100 text-gray-600 dark:bg-white/10 dark:text-gray-300 text-[10px] uppercase font-bold rounded-full border border-gray-200 dark:border-white/20" data-testid={`badge-status-${broadcast.broadcastId}`}>Upcoming</span>
             </div>
+            <TeamLogos broadcast={broadcast} />
             {broadcast.description && (
               <div className="text-sm text-gray-500 dark:text-gray-400 mb-3" data-testid={`text-broadcast-desc-${broadcast.broadcastId}`}>{broadcast.description}</div>
             )}
@@ -188,6 +207,7 @@ function EndedBroadcastCard({ broadcast }: { broadcast: EnrichedBroadcast }) {
               <h3 className="text-base font-semibold text-gray-900 dark:text-white" data-testid={`text-broadcast-name-${broadcast.broadcastId}`}>{broadcast.broadcastName}</h3>
               <span className="px-2 py-0.5 bg-gray-100 text-gray-400 dark:bg-white/10 dark:text-gray-400 text-[10px] uppercase font-bold rounded-full border border-gray-200 dark:border-white/10" data-testid={`badge-status-${broadcast.broadcastId}`}>Ended</span>
             </div>
+            <TeamLogos broadcast={broadcast} />
             {broadcast.description && (
               <div className="text-sm text-gray-500 dark:text-gray-400 mb-3" data-testid={`text-broadcast-desc-${broadcast.broadcastId}`}>{broadcast.description}</div>
             )}
@@ -236,7 +256,6 @@ export default function BroadcastsPage() {
     campaignId: '',
     startTime: '',
     endTime: '',
-    metadata: '',
   });
 
   const { data: broadcasts = [], isLoading } = useQuery<EnrichedBroadcast[]>({
@@ -289,7 +308,7 @@ export default function BroadcastsPage() {
       queryClient.invalidateQueries({ queryKey: ['/api/broadcasts'] });
       toast({ title: 'Broadcast Created' });
       setCreateOpen(false);
-      setFormData({ broadcastName: '', description: '', campaignId: '', startTime: '', endTime: '', metadata: '' });
+      setFormData({ broadcastName: '', description: '', campaignId: '', startTime: '', endTime: '' });
     },
     onError: () => {
       toast({ title: 'Error', description: 'Failed to create broadcast', variant: 'destructive' });
@@ -301,18 +320,12 @@ export default function BroadcastsPage() {
       toast({ title: 'Required', description: 'Name and campaign are required.', variant: 'destructive' });
       return;
     }
-    let metadata = undefined;
-    if (formData.metadata.trim()) {
-      try { metadata = JSON.parse(formData.metadata); }
-      catch { toast({ title: 'Error', description: 'Metadata must be valid JSON.', variant: 'destructive' }); return; }
-    }
     createMutation.mutate({
       broadcastName: formData.broadcastName,
       description: formData.description || undefined,
       campaignId: parseInt(formData.campaignId),
       startTime: formData.startTime || undefined,
       endTime: formData.endTime || undefined,
-      metadata,
       createdBy: userId,
     });
   };
@@ -394,16 +407,6 @@ export default function BroadcastsPage() {
                     onChange={(e) => setFormData(prev => ({ ...prev, endTime: e.target.value }))}
                   />
                 </div>
-              </div>
-              <div className="grid gap-2">
-                <Label>Metadata (JSON)</Label>
-                <Textarea
-                  data-testid="input-metadata"
-                  value={formData.metadata}
-                  onChange={(e) => setFormData(prev => ({ ...prev, metadata: e.target.value }))}
-                  placeholder='{"key": "value"}'
-                  rows={3}
-                />
               </div>
             </div>
             <DialogFooter>

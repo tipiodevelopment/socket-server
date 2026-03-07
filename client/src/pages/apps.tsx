@@ -81,11 +81,11 @@ const APP_GRADIENTS = [
   'from-gray-600 to-gray-800',
 ];
 
-function AppBanner({ bannerUrl, gradient, appId, appName }: { bannerUrl: string | null | undefined; gradient: string; appId: number; appName: string }) {
+function AppBanner({ bannerUrl, appId, appName }: { bannerUrl: string | null | undefined; appId: number; appName: string }) {
   const [bannerError, setBannerError] = useState(false);
   const showImage = bannerUrl && !bannerError;
   return (
-    <div className={`h-24 w-full overflow-hidden ${!showImage ? `bg-gradient-to-br ${gradient}` : ''}`}>
+    <div className={`h-24 w-full overflow-hidden ${!showImage ? 'bg-[#0d1119] dark:bg-[#0d1119]' : ''}`}>
       {showImage && (
         <img
           src={bannerUrl}
@@ -303,9 +303,7 @@ export default function AppsPage() {
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {clientApps.map((app, index) => {
-            const gradient = APP_GRADIENTS[index % APP_GRADIENTS.length];
-
+          {clientApps.map((app) => {
             return (
               <div
                 key={app.id}
@@ -316,7 +314,6 @@ export default function AppsPage() {
                 <div className="relative">
                   <AppBanner
                     bannerUrl={app.bannerUrl}
-                    gradient={gradient}
                     appId={app.id}
                     appName={app.name}
                   />
@@ -345,7 +342,9 @@ export default function AppsPage() {
                         {app.name}
                       </h3>
                     </Link>
-                    <p className="text-xs text-gray-400 dark:text-white/30 font-mono truncate" data-testid={`text-bundle-id-${app.id}`}>{app.bundleId}</p>
+                    <p className="text-[10px] text-gray-400 dark:text-white/30 font-mono truncate mt-0.5" data-testid={`text-api-key-${app.id}`}>
+                      {app.apiKey ? `${app.apiKey.slice(0, 10)}••••` : '—'}
+                    </p>
                   </div>
 
                   <div className="grid grid-cols-2 gap-4 mb-4">
@@ -357,16 +356,6 @@ export default function AppsPage() {
                       <p className="text-[10px] uppercase tracking-wider text-gray-400 dark:text-white/30 mb-0.5">Total Viewers</p>
                       <p className="text-xl font-bold text-gray-900 dark:text-white" data-testid={`text-viewers-${app.id}`}>{formatViewers(app.stats.totalViewers)}</p>
                     </div>
-                  </div>
-
-                  <div className="mb-4">
-                    <div className="w-full bg-gray-200 dark:bg-white/10 rounded-full h-1.5">
-                      <div
-                        className="bg-gray-800 dark:bg-white h-1.5 rounded-full transition-all"
-                        style={{ width: `${app.stats.engagementPercent}%` }}
-                      />
-                    </div>
-                    <p className="text-right text-[10px] text-gray-400 dark:text-white/30 mt-1">{app.stats.engagementPercent}%</p>
                   </div>
 
                   <div className="flex items-center gap-2 pt-3 border-t border-gray-100 dark:border-white/5">

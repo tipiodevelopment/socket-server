@@ -16,7 +16,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { Trash2, X } from "lucide-react";
+import { Trash2, X, ChevronDown, ChevronRight } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Campaign, UpdateCampaign, Channel, CampaignEngagementConfig, CampaignFeatureFlags } from "@shared/schema";
@@ -713,10 +713,27 @@ export function SettingsTab({ campaignId, campaign }: SettingsTabProps) {
       </div>
 
       {/* Danger Zone */}
-      <div>
-        <h2 className="text-sm font-semibold text-red-400/80 uppercase mb-1">Danger Zone</h2>
-        <p className="text-xs text-gray-500 mb-4">Permanent and irreversible actions</p>
-        <div className="border border-red-500/20 bg-red-500/5 rounded-lg p-6">
+      <DangerZone campaign={campaign} deleteCampaignMutation={deleteCampaignMutation} />
+
+    </div>
+  );
+}
+
+function DangerZone({ campaign, deleteCampaignMutation }: { campaign: Campaign; deleteCampaignMutation: any }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div>
+      <button
+        className="flex items-center gap-2 text-sm font-semibold text-red-400/70 uppercase hover:text-red-400 transition mb-1"
+        onClick={() => setOpen(v => !v)}
+        data-testid="button-toggle-danger-zone"
+        type="button"
+      >
+        {open ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
+        Danger Zone
+      </button>
+      {open && (
+        <div className="mt-3 border border-red-500/20 bg-red-500/5 rounded-lg p-6">
           <div className="flex items-center justify-between">
             <div>
               <div className="text-sm text-gray-200">Delete Campaign</div>
@@ -737,7 +754,7 @@ export function SettingsTab({ campaignId, campaign }: SettingsTabProps) {
                   <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
                   <AlertDialogDescription>
                     This action cannot be undone. This will permanently delete the campaign
-                    "<strong>{campaign.name}</strong>" and all associated data including:
+                    &ldquo;<strong>{campaign.name}</strong>&rdquo; and all associated data including:
                     <ul className="list-disc list-inside mt-2 space-y-1">
                       <li>All campaign components</li>
                       <li>Scheduled components</li>
@@ -761,8 +778,7 @@ export function SettingsTab({ campaignId, campaign }: SettingsTabProps) {
             </AlertDialog>
           </div>
         </div>
-      </div>
-
+      )}
     </div>
   );
 }

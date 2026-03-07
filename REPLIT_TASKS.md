@@ -23,10 +23,10 @@
 
 - [ ] **"Total Viewers"**: Implement real data from DB with demo data seeded. No more 0.
 - [ ] **"Edit" + "Settings" buttons**: Remove one, keep only "Manage".
-- [ ] **Bundle ID in card**: Remove from list view — move to detail page only.
-- [ ] **Progress bar**: Remove it entirely.
-- [ ] **APP_GRADIENTS**: Remove gradients entirely. Use flat dark backgrounds.
-- [ ] **API key**: Show masked API key in card (e.g. viaplay_api_*****).
+- [x] **Bundle ID in card**: Remove from list view — move to detail page only.
+- [x] **Progress bar**: Remove it entirely.
+- [x] **APP_GRADIENTS**: Remove gradients entirely. Use flat dark backgrounds.
+- [x] **API key**: Show masked API key in card (e.g. viaplay_api_*****).
 
 ---
 
@@ -55,13 +55,13 @@
 
 ## CAMPAIGN DETAIL `/campaigns/:id`
 
-- [ ] **locationId visible**: Show locationId in components list without entering edit mode.
+- [x] **locationId visible**: Show locationId in components list without entering edit mode.
 - [ ] **Broadcast filter counters**: Show count per state: All (6) · Live (1) · Upcoming (3) · Ended (2).
 - [ ] **Sportmonks consistency**: Add Sportmonks fixture selector to "New Broadcast" in /broadcasts global page too.
 - [ ] **"Go Live" button**: Rename to "Start Broadcast".
 - [ ] **Poll results**: Show absolute count alongside percentage: "45% (234 votes)".
 - [ ] **Analytics lazy load**: Pre-fetch analytics when campaign page opens.
-- [ ] **"Danger Zone" collapse**: Collapse by default, expand on click.
+- [x] **"Danger Zone" collapse**: Collapse by default, expand on click.
 - [ ] **Commerce API key save**: Unify into same save pattern as rest of form.
 
 ---
@@ -69,9 +69,9 @@
 ## BROADCASTS `/broadcasts`
 
 - [ ] **Viewers field**: Read from broadcast.viewerCount, not from metadata JSON.
-- [ ] **"Metadata JSON" field**: Remove from Create Broadcast modal.
+- [x] **"Metadata JSON" field**: Remove from Create Broadcast modal.
 - [ ] **Sportmonks in Create Broadcast**: Add fixture selector same as Campaign Detail.
-- [ ] **Team logos in list**: Show home/away team logos from Sportmonks in broadcast list row.
+- [x] **Team logos in list**: Show home/away team logos from Sportmonks in broadcast list row.
 - [ ] **Start time in upcoming**: Show date + time of broadcast start in upcoming rows.
 - [ ] **Ended opacity**: Remove opacity-60 from Ended broadcast cards.
 - [ ] **BarChart3 icon**: Use Users for viewers, BarChart3 for polls — differentiate.
@@ -90,7 +90,7 @@
 - [ ] **Shoppable Ads section**: Add section with product selector, sponsor selector, "Trigger Ad" button (POST /api/broadcasts/:id/shoppable-ad), and session log of triggered ads with timestamps.
 - [ ] **Shoppable Ads without Commerce**: Show warning "Commerce not configured for this campaign" if integrations.commerce.enabled is false.
 - [ ] **ENDED state**: Replace "No polls yet" with post-broadcast summary (total votes, participations, duration).
-- [ ] **viewerCount / peakViewers = 0**: Show N/A instead of 0.
+- [x] **viewerCount / peakViewers = 0**: Show N/A instead of 0.
 - [ ] **"Load Demo" CTA**: Keep but deprioritize — not the primary CTA when status is Ended.
 
 ---
@@ -101,7 +101,7 @@
 - [ ] **Default colors on create**: Change from blue/purple to neutral or Vio accent.
 - [ ] **Color swatch labels**: Add "Primary" and "Secondary" text labels.
 - [ ] **SDK badge preview**: Add small preview of sponsor badge as it appears in SDK overlay.
-- [ ] **Active campaigns count**: Show "X active campaigns" on each card.
+- [x] **Active campaigns count**: Show "X active campaigns" on each card.
 - [ ] **Description read mode**: Allow expanding without entering edit mode.
 
 ---
@@ -119,8 +119,8 @@
 
 ## ANALYTICS `/analytics`
 
-- [ ] **Sponsor Performance "engagement"**: Add tooltip defining what engagement means (votes + contest participations).
-- [ ] **Geographic Distribution**: Clarify metric — rename to "Campaigns by target country".
+- [x] **Sponsor Performance "engagement"**: Add tooltip defining what engagement means (votes + contest participations).
+- [x] **Geographic Distribution**: Clarify metric — rename to "Campaigns by target country".
 - [ ] **"Top Campaigns" table**: Sort by total engagement descending. Move zero-engagement to bottom.
 - [ ] **useChartTheme()**: Refactor to use React state for theme detection.
 - [ ] **Drill-down "Back" button**: Show destination name — "← TV2 Demo App" not just "Back".

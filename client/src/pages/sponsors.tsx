@@ -27,7 +27,7 @@ import { queryClient, apiRequest } from '@/lib/queryClient';
 import { useUser } from '@/contexts/UserContext';
 import { AppLayout } from '@/components/AppLayout';
 import { ImageUploadWithPreview } from '@/components/ImageUploadWithPreview';
-import type { Sponsor } from '@shared/schema';
+import type { Sponsor, Campaign } from '@shared/schema';
 import { Plus, Pencil, Trash2, Users } from 'lucide-react';
 import { useState } from 'react';
 
@@ -64,6 +64,16 @@ export default function SponsorsPage() {
     queryFn: async () => {
       const res = await fetch(`/api/sponsors?userId=${userId}`);
       if (!res.ok) throw new Error('Failed to fetch sponsors');
+      return res.json();
+    },
+    enabled: !!userId,
+  });
+
+  const { data: campaigns = [] } = useQuery<Campaign[]>({
+    queryKey: ['/api/campaigns', userId],
+    queryFn: async () => {
+      const res = await fetch(`/api/campaigns?userId=${userId}`);
+      if (!res.ok) throw new Error('Failed to fetch campaigns');
       return res.json();
     },
     enabled: !!userId,
@@ -347,6 +357,17 @@ export default function SponsorsPage() {
                     />
                   )}
                 </div>
+
+                {(() => {
+                  const activeCampaignCount = campaigns.filter(c => (c as any).sponsorId === sponsor.id && (c as any).isPaused !== 'true').length;
+                  return activeCampaignCount > 0 ? (
+                    <div className="mb-3">
+                      <span className="text-[10px] text-[#3d8b7a] dark:text-[#3d8b7a] font-medium" data-testid={`text-active-campaigns-${sponsor.id}`}>
+                        {activeCampaignCount} active campaign{activeCampaignCount !== 1 ? 's' : ''}
+                      </span>
+                    </div>
+                  ) : null;
+                })()}
 
                 <div className="flex items-center gap-3 mb-4">
                   <div className="flex items-center gap-1.5" data-testid={`swatch-primary-${sponsor.id}`}>

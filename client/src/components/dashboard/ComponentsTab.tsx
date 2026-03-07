@@ -300,6 +300,11 @@ export function ComponentsTab({ campaignId }: ComponentsTabProps) {
                           Customized
                         </Badge>
                       )}
+                      {(cc as any).locationId && (
+                        <Badge variant="outline" className="text-[10px] font-mono text-gray-400 dark:text-white/40 border-gray-300 dark:border-white/20" data-testid={`badge-location-${cc.id}`}>
+                          {(cc as any).locationId}
+                        </Badge>
+                      )}
                     </div>
                     <div className="text-sm text-muted-foreground">
                       {(() => {

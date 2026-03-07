@@ -641,8 +641,8 @@ function LiveChatSidebar({ broadcastId, analytics, reachuUserId, broadcastStatus
         ) : (
           <div className="space-y-2 pt-2">
             {[
-              { icon: Eye, label: 'Live Viewers', value: formatViewers(analytics?.viewerCount ?? 0) },
-              { icon: TrendingUp, label: 'Peak Viewers', value: formatViewers(analytics?.peakViewers ?? 0) },
+              { icon: Eye, label: 'Live Viewers', value: (analytics?.viewerCount ?? 0) > 0 ? formatViewers(analytics!.viewerCount) : 'N/A' },
+              { icon: TrendingUp, label: 'Peak Viewers', value: (analytics?.peakViewers ?? 0) > 0 ? formatViewers(analytics!.peakViewers) : 'N/A' },
               { icon: Vote, label: 'Total Votes', value: (analytics?.totalVotes ?? 0).toLocaleString() },
               { icon: BarChart3, label: 'Active Polls', value: String(analytics?.activePolls ?? 0) },
               { icon: Trophy, label: 'Active Contests', value: String(analytics?.activeContests ?? 0) },
