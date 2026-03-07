@@ -1,7 +1,7 @@
 
 ---
 
-## TASK B09 — Añadir `campaignId` al payload WS `shoppable_ad`
+## ✅ TASK B09 — Añadir `campaignId` al payload WS `shoppable_ad` (COMPLETADO)
 
 **Contexto:**
 Estamos refactorizando InteractiveAds-vio (Apple TV) hacia un SDK real (`VioTVSDK`). La arquitectura nueva requiere que cada evento `shoppable_ad` sea **autosuficiente** — el SDK no almacena campaignId globalmente porque puede haber múltiples campañas activas en un mismo broadcast (ej. Elkjøp + Torshov Sport disparando anuncios distintos).

@@ -4069,6 +4069,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       const wsEvent = {
         type: 'shoppable_ad',
         broadcastId,
+        campaignId: campaign.id,
         product,
         ...(sponsor ? { sponsor } : {}),
         timestamp: Date.now(),
