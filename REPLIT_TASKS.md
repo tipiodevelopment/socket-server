@@ -7,14 +7,14 @@
 ## DASHBOARD HOME `/`
 
 - [ ] **Stats ↑12%/↑8%**: Replace hardcoded values with real calculated deltas from DB. Create demo data in DB so numbers look meaningful.
-- [ ] **Active Viewers / Engagement Rate `--`**: Implement real data. Use demo data in DB to populate these values.
+- [x] **Active Viewers / Engagement Rate `--`**: Implement real data. Use demo data in DB to populate these values.
 - [ ] **"New Campaign" button**: Navigate directly to campaign creation form, not to the list.
 - [ ] **"Upcoming Campaigns" section**: Only show campaigns with startDate within next 7 days. If none, show empty state "No upcoming campaigns".
 - [ ] **App cards without images** (VG, Pregnancy): Add a random placeholder image/gradient so all cards are visually balanced.
 - [ ] **Progress bar label**: Keep current logic but add a visible label explaining what the percentage represents.
 - [ ] **Filter/Sort buttons**: Make them functional (filter by status, sort by name/date).
-- [ ] **"Components" in campaign cards**: Implement the real count from DB.
-- [ ] **Gap between KPI cards and "Client Apps"**: Increase spacing between sections.
+- [x] **"Components" in campaign cards**: Implement the real count from DB.
+- [x] **Gap between KPI cards and "Client Apps"**: Increase spacing between sections.
 - [ ] **Empty state "Live Broadcasts"**: Make it more compact.
 
 ---
@@ -48,8 +48,8 @@
 - [ ] **Sponsor label**: Show sponsor name as text next to the logo.
 - [ ] **Add columns**: Add "Sponsor" and "Total Engagement" to list view.
 - [ ] **Badge differentiation**: Active=green, Ended=dark gray, Upcoming=blue, Paused=yellow.
-- [ ] **Sort list**: Add sorting controls (by date, name, status).
-- [ ] **Pause/Resume inline**: Add toggle button in the list row.
+- [x] **Sort list**: Add sorting controls (by date, name, status).
+- [x] **Pause/Resume inline**: Add toggle button in the list row.
 
 ---
 
@@ -58,7 +58,7 @@
 - [x] **locationId visible**: Show locationId in components list without entering edit mode.
 - [ ] **Broadcast filter counters**: Show count per state: All (6) · Live (1) · Upcoming (3) · Ended (2).
 - [ ] **Sportmonks consistency**: Add Sportmonks fixture selector to "New Broadcast" in /broadcasts global page too.
-- [ ] **"Go Live" button**: Rename to "Start Broadcast".
+- [x] **"Go Live" button**: Rename to "Start Broadcast".
 - [ ] **Poll results**: Show absolute count alongside percentage: "45% (234 votes)".
 - [ ] **Analytics lazy load**: Pre-fetch analytics when campaign page opens.
 - [x] **"Danger Zone" collapse**: Collapse by default, expand on click.
@@ -86,10 +86,10 @@
 - [ ] **Timeline buttons** (Play/Skip/Maximize): Implement — Play simulates event sequence, Skip jumps to next, Maximize expands view.
 - [ ] **topValues array**: Remove the decorative hardcoded array.
 - [ ] **Live Chat on Ended**: Disable input/send. Show banner "This broadcast has ended — chat is read-only".
-- [ ] **ext: ID in header**: Remove from header. Move to collapsed "Developer" section.
+- [x] **ext: ID in header**: Remove from header. Move to collapsed "Developer" section.
 - [ ] **Shoppable Ads section**: Add section with product selector, sponsor selector, "Trigger Ad" button (POST /api/broadcasts/:id/shoppable-ad), and session log of triggered ads with timestamps.
 - [ ] **Shoppable Ads without Commerce**: Show warning "Commerce not configured for this campaign" if integrations.commerce.enabled is false.
-- [ ] **ENDED state**: Replace "No polls yet" with post-broadcast summary (total votes, participations, duration).
+- [x] **ENDED state**: Replace "No polls yet" with post-broadcast summary (total votes, participations, duration).
 - [x] **viewerCount / peakViewers = 0**: Show N/A instead of 0.
 - [ ] **"Load Demo" CTA**: Keep but deprioritize — not the primary CTA when status is Ended.
 
@@ -121,7 +121,7 @@
 
 - [x] **Sponsor Performance "engagement"**: Add tooltip defining what engagement means (votes + contest participations).
 - [x] **Geographic Distribution**: Clarify metric — rename to "Campaigns by target country".
-- [ ] **"Top Campaigns" table**: Sort by total engagement descending. Move zero-engagement to bottom.
+- [x] **"Top Campaigns" table**: Sort by total engagement descending. Move zero-engagement to bottom.
 - [ ] **useChartTheme()**: Refactor to use React state for theme detection.
 - [ ] **Drill-down "Back" button**: Show destination name — "← TV2 Demo App" not just "Back".
 - [ ] **Empty chart**: Show "No broadcast activity in the last 30 days" message.

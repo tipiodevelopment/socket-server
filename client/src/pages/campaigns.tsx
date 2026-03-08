@@ -1,12 +1,14 @@
-import { Link } from 'wouter';
-import { useQuery } from '@tanstack/react-query';
+import { Link, useLocation } from 'wouter';
+import { useQuery, useMutation } from '@tanstack/react-query';
 import { useState, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useUser } from '@/contexts/UserContext';
 import { AppLayout } from '@/components/AppLayout';
+import { queryClient, apiRequest } from '@/lib/queryClient';
+import { useToast } from '@/hooks/use-toast';
 import type { Campaign, ClientApp, Channel, Sponsor } from '@shared/schema';
-import { Plus, Calendar, BarChart3, Globe, Search, Megaphone, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Plus, Calendar, BarChart3, Globe, Search, Megaphone, ChevronLeft, ChevronRight, ArrowUpDown, Pause, Play } from 'lucide-react';
 
 type CampaignWithCount = Campaign & { broadcastCount?: number };
 
@@ -66,11 +68,16 @@ const TABS: { value: string; label: string }[] = [
   { value: 'paused', label: 'Paused' },
 ];
 
+type SortKey = 'name' | 'date' | 'status';
+
 export default function CampaignsPage() {
   const { userId } = useUser();
+  const { toast } = useToast();
+  const [, navigate] = useLocation();
   const [statusFilter, setStatusFilter] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
+  const [sortBy, setSortBy] = useState<SortKey>('date');
 
   const { data: campaigns = [], isLoading } = useQuery<CampaignWithCount[]>({
     queryKey: ['/api/campaigns', userId],
@@ -130,6 +137,20 @@ export default function CampaignsPage() {
     return undefined;
   };
 
+  const togglePauseMutation = useMutation({
+    mutationFn: async (campaignId: number) => {
+      return apiRequest('PATCH', `/api/campaigns/${campaignId}/toggle-pause`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/campaigns', userId] });
+    },
+    onError: () => {
+      toast({ title: 'Error', description: 'Failed to update campaign status', variant: 'destructive' });
+    },
+  });
+
+  const STATUS_ORDER: Record<CampaignStatus, number> = { active: 0, upcoming: 1, paused: 2, ended: 3 };
+
   const filteredCampaigns = useMemo(() => {
     let result = campaigns;
     if (statusFilter !== 'all') {
@@ -142,8 +163,20 @@ export default function CampaignsPage() {
         (c.description && c.description.toLowerCase().includes(q))
       );
     }
-    return result;
-  }, [campaigns, statusFilter, searchQuery]);
+    const sorted = [...result];
+    if (sortBy === 'name') {
+      sorted.sort((a, b) => a.name.localeCompare(b.name));
+    } else if (sortBy === 'date') {
+      sorted.sort((a, b) => {
+        const da = a.startDate ? new Date(a.startDate).getTime() : 0;
+        const db = b.startDate ? new Date(b.startDate).getTime() : 0;
+        return db - da;
+      });
+    } else if (sortBy === 'status') {
+      sorted.sort((a, b) => STATUS_ORDER[getCampaignStatus(a)] - STATUS_ORDER[getCampaignStatus(b)]);
+    }
+    return sorted;
+  }, [campaigns, statusFilter, searchQuery, sortBy]);
 
   const totalPages = Math.max(1, Math.ceil(filteredCampaigns.length / PAGE_SIZE));
   const safeCurrentPage = Math.min(currentPage, totalPages);
@@ -209,15 +242,34 @@ export default function CampaignsPage() {
           })}
         </div>
 
-        <div className="relative w-full sm:w-72">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 dark:text-white/30" />
-          <Input
-            placeholder="Search campaigns..."
-            value={searchQuery}
-            onChange={(e) => handleSearchChange(e.target.value)}
-            data-testid="input-search-campaigns"
-            className="pl-9 bg-gray-50 dark:bg-white/5 border-gray-200 dark:border-white/10 text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-white/30"
-          />
+        <div className="flex items-center gap-2">
+          <div className="relative w-full sm:w-64">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 dark:text-white/30" />
+            <Input
+              placeholder="Search campaigns..."
+              value={searchQuery}
+              onChange={(e) => handleSearchChange(e.target.value)}
+              data-testid="input-search-campaigns"
+              className="pl-9 bg-gray-50 dark:bg-white/5 border-gray-200 dark:border-white/10 text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-white/30"
+            />
+          </div>
+          <div className="flex items-center gap-1 border border-gray-200 dark:border-white/10 rounded-md px-1 py-1 bg-gray-50 dark:bg-white/5">
+            <ArrowUpDown className="w-3 h-3 text-gray-400 dark:text-white/30 ml-1" />
+            {(['name', 'date', 'status'] as SortKey[]).map(key => (
+              <button
+                key={key}
+                onClick={() => setSortBy(key)}
+                data-testid={`sort-${key}`}
+                className={`px-2.5 py-1 text-xs rounded transition-all ${
+                  sortBy === key
+                    ? 'bg-white dark:bg-white/10 text-gray-900 dark:text-white font-medium shadow-sm'
+                    : 'text-gray-400 dark:text-white/30 hover:text-gray-700 dark:hover:text-white/60'
+                }`}
+              >
+                {key.charAt(0).toUpperCase() + key.slice(1)}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
@@ -253,12 +305,16 @@ export default function CampaignsPage() {
               const countries = campaign.targetCountries?.filter(Boolean);
               const sponsor = campaign.sponsorId ? sponsorMap.get(campaign.sponsorId) : undefined;
 
+              const isPaused = campaign.isPaused === 'true';
+              const canTogglePause = status === 'active' || status === 'paused';
+
               return (
-                <Link key={campaign.id} href={`/campaigns/${campaign.id}`}>
-                  <div
-                    className="flex items-start gap-4 p-5 bg-white dark:bg-white/[0.02] border border-gray-200 dark:border-white/[0.06] rounded-lg hover:border-gray-300 dark:hover:border-white/[0.12] transition-all cursor-pointer group"
-                    data-testid={`card-campaign-${campaign.id}`}
-                  >
+                <div
+                  key={campaign.id}
+                  className="flex items-start gap-4 p-5 bg-white dark:bg-white/[0.02] border border-gray-200 dark:border-white/[0.06] rounded-lg hover:border-gray-300 dark:hover:border-white/[0.12] transition-all cursor-pointer group"
+                  data-testid={`card-campaign-${campaign.id}`}
+                  onClick={() => navigate(`/campaigns/${campaign.id}`)}
+                >
                     {sponsor && (
                       <div className="flex flex-col items-center gap-1 shrink-0 mt-0.5" data-testid={`sponsor-info-${campaign.id}`}>
                         {sponsor.avatarUrl ? (
@@ -309,26 +365,42 @@ export default function CampaignsPage() {
                       </div>
                     </div>
 
-                    <div className="flex flex-col items-end gap-1 text-xs text-gray-400 dark:text-white/40 shrink-0">
-                      {campaign.startDate && (
-                        <span className="flex items-center gap-1.5" data-testid={`text-campaign-date-${campaign.id}`}>
-                          <Calendar className="w-3.5 h-3.5" />
-                          {formatDate(campaign.startDate)}
+                    <div className="flex items-start gap-3 shrink-0">
+                      <div className="flex flex-col items-end gap-1 text-xs text-gray-400 dark:text-white/40">
+                        {campaign.startDate && (
+                          <span className="flex items-center gap-1.5" data-testid={`text-campaign-date-${campaign.id}`}>
+                            <Calendar className="w-3.5 h-3.5" />
+                            {formatDate(campaign.startDate)}
+                          </span>
+                        )}
+                        <span className="flex items-center gap-1.5" data-testid={`text-campaign-broadcasts-${campaign.id}`}>
+                          <BarChart3 className="w-3.5 h-3.5" />
+                          {campaign.broadcastCount || 0} broadcast{(campaign.broadcastCount || 0) !== 1 ? 's' : ''}
                         </span>
-                      )}
-                      <span className="flex items-center gap-1.5" data-testid={`text-campaign-broadcasts-${campaign.id}`}>
-                        <BarChart3 className="w-3.5 h-3.5" />
-                        {campaign.broadcastCount || 0} broadcast{(campaign.broadcastCount || 0) !== 1 ? 's' : ''}
-                      </span>
-                      {countries && countries.length > 0 && (
-                        <span className="flex items-center gap-1.5" data-testid={`text-campaign-countries-${campaign.id}`}>
-                          <Globe className="w-3.5 h-3.5" />
-                          {countries.map(getCountryLabel).join(', ')}
-                        </span>
+                        {countries && countries.length > 0 && (
+                          <span className="flex items-center gap-1.5" data-testid={`text-campaign-countries-${campaign.id}`}>
+                            <Globe className="w-3.5 h-3.5" />
+                            {countries.map(getCountryLabel).join(', ')}
+                          </span>
+                        )}
+                      </div>
+                      {canTogglePause && (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); togglePauseMutation.mutate(campaign.id); }}
+                          disabled={togglePauseMutation.isPending}
+                          title={isPaused ? 'Resume campaign' : 'Pause campaign'}
+                          data-testid={`button-toggle-pause-${campaign.id}`}
+                          className={`mt-0.5 p-1.5 rounded border transition flex items-center gap-1 text-xs font-medium disabled:opacity-50 ${
+                            isPaused
+                              ? 'border-green-500/30 text-green-400 hover:bg-green-500/10'
+                              : 'border-amber-500/30 text-amber-400 hover:bg-amber-500/10'
+                          }`}
+                        >
+                          {isPaused ? <Play className="w-3 h-3" /> : <Pause className="w-3 h-3" />}
+                        </button>
                       )}
                     </div>
-                  </div>
-                </Link>
+                </div>
               );
             })}
           </div>

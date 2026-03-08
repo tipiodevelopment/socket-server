@@ -77,6 +77,7 @@ export interface IStorage {
   
   // Campaign component methods
   getCampaignComponents(campaignId: number): Promise<Array<CampaignComponent & { component: Component }>>;
+  getComponentCountsForCampaigns(campaignIds: number[]): Promise<Map<number, number>>;
   addComponentToCampaign(campaignComponent: InsertCampaignComponent): Promise<CampaignComponent>;
   updateCampaignComponentStatus(campaignId: number, componentId: string, status: 'active' | 'inactive'): Promise<CampaignComponent | undefined>;
   updateCampaignComponentLocationId(campaignId: number, componentId: string, locationId: string | null): Promise<CampaignComponent | undefined>;
@@ -578,6 +579,16 @@ export class MemStorage implements IStorage {
       ...row.campaign_components,
       component: row.components!
     }));
+  }
+
+  async getComponentCountsForCampaigns(campaignIds: number[]): Promise<Map<number, number>> {
+    if (campaignIds.length === 0) return new Map();
+    const rows = await db
+      .select({ campaignId: campaignComponents.campaignId, count: sql<number>`count(*)::int` })
+      .from(campaignComponents)
+      .where(inArray(campaignComponents.campaignId, campaignIds))
+      .groupBy(campaignComponents.campaignId);
+    return new Map(rows.map(r => [r.campaignId!, r.count]));
   }
 
   async addComponentToCampaign(campaignComponent: InsertCampaignComponent): Promise<CampaignComponent> {

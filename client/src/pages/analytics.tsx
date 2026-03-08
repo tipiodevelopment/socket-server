@@ -180,7 +180,7 @@ function GlobalDashboard({ onDrill }: { onDrill: (view: DrillView) => void }) {
                 </tr>
               </thead>
               <tbody>
-                {(engagement?.topCampaigns || []).map((c: any) => (
+                {[...(engagement?.topCampaigns || [])].sort((a: any, b: any) => (b.totalEngagement || 0) - (a.totalEngagement || 0)).map((c: any) => (
                   <tr
                     key={c.id}
                     className="border-b border-gray-100 dark:border-white/5 hover:bg-gray-50 dark:hover:bg-white/5 cursor-pointer transition"

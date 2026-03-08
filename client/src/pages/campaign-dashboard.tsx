@@ -960,10 +960,10 @@ function BroadcastsTab({ campaignId }: { campaignId: number }) {
                       disabled={pendingStatusId === broadcast.broadcastId}
                       className="px-2.5 py-1 text-xs font-medium bg-green-500/15 hover:bg-green-500/25 text-green-400 rounded border border-green-500/30 transition flex items-center gap-1 disabled:opacity-50"
                       data-testid={`button-go-live-${broadcast.broadcastId}`}
-                      title="Mark as Live"
+                      title="Start Broadcast"
                     >
                       <Play className="w-3 h-3" />
-                      Go Live
+                      Start Broadcast
                     </button>
                   )}
                   {broadcast.status === 'live' && (

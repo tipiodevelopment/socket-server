@@ -86,6 +86,7 @@ export default function DashboardPage() {
 
   const activeCampaigns = campaigns.filter(c => c.isPaused !== 'true');
   const liveBroadcasts = broadcasts.filter(b => b.status === 'live');
+  const activeViewers = liveBroadcasts.reduce((sum, b) => sum + ((b as any).viewerCount || 0), 0);
   const upcomingCampaigns = campaigns.filter(c => {
     if (!c.startDate) return false;
     const start = new Date(c.startDate);
@@ -120,7 +121,7 @@ export default function DashboardPage() {
         </Link>
       }
     >
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-12">
         <StatCard
           icon={<Radio className="w-5 h-5" />}
           iconBg="bg-[#3d8b7a]/10 dark:bg-white/10"
@@ -143,8 +144,8 @@ export default function DashboardPage() {
           icon={<Users className="w-5 h-5" />}
           iconBg="bg-[#3d8b7a]/10 dark:bg-white/10"
           iconColor="text-[#3d8b7a] dark:text-gray-300"
-          value={0}
-          formattedValue="--"
+          value={activeViewers}
+          formattedValue={activeViewers > 0 ? activeViewers.toLocaleString() : (liveBroadcasts.length === 0 ? '--' : '0')}
           label="Active Viewers"
           change={0}
           testId="stat-active-viewers"
@@ -399,7 +400,7 @@ export default function DashboardPage() {
                       </div>
                       <div>
                         <p className="text-[10px] text-gray-400 dark:text-white/30 uppercase tracking-wider">Components</p>
-                        <p className="text-xs text-gray-600 dark:text-white/70 mt-0.5">--</p>
+                        <p className="text-xs text-gray-600 dark:text-white/70 mt-0.5">{(campaign as any).componentCount ?? '--'}</p>
                       </div>
                     </div>
                   </div>

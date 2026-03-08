@@ -1483,11 +1483,16 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       }
       
       const userCampaigns = await storage.getUserCampaigns(userId);
-      const countMap = await storage.getBroadcastCountsForCampaigns(userCampaigns.map(c => c.id));
+      const campaignIds = userCampaigns.map(c => c.id);
+      const [countMap, componentCountMap] = await Promise.all([
+        storage.getBroadcastCountsForCampaigns(campaignIds),
+        storage.getComponentCountsForCampaigns(campaignIds),
+      ]);
 
       const enriched = userCampaigns.map(c => ({
         ...c,
         broadcastCount: countMap.get(c.id) || 0,
+        componentCount: componentCountMap.get(c.id) || 0,
       }));
 
       res.json(enriched);

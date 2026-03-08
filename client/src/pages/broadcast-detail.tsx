@@ -13,7 +13,7 @@ import { queryClient, apiRequest } from '@/lib/queryClient';
 import { AppLayout } from '@/components/AppLayout';
 import { ImageUploadWithPreview } from '@/components/ImageUploadWithPreview';
 import type { Broadcast, Poll, PollOptionRecord, Contest, Campaign, BroadcastAd, BroadcastProduct, ChatMessage } from '@shared/schema';
-import { ArrowLeft, Plus, Trash2, BarChart3, Trophy, X, MoreVertical, CheckCircle, Play, SkipBack, SkipForward, Maximize2, Send, Megaphone, ShoppingBag, ExternalLink, Eye, TrendingUp, Vote, MessageSquare, RefreshCw, Users, Radio, Pencil, Check, AtSign, Swords } from 'lucide-react';
+import { ArrowLeft, Plus, Trash2, BarChart3, Trophy, X, MoreVertical, CheckCircle, Play, SkipBack, SkipForward, Maximize2, Send, Megaphone, ShoppingBag, ExternalLink, Eye, TrendingUp, Vote, MessageSquare, RefreshCw, Users, Radio, Pencil, Check, AtSign, Swords, ChevronDown, ChevronRight, Code2 } from 'lucide-react';
 import { useState, useRef, useEffect } from 'react';
 import { useUser } from '@/contexts/UserContext';
 
@@ -802,6 +802,7 @@ export default function BroadcastDetailPage() {
   const [contestForm, setContestForm] = useState({ title: '', description: '', prize: '', contestType: 'giveaway', imageUrl: '', isActive: true });
   const [editingExternalId, setEditingExternalId] = useState(false);
   const [externalIdValue, setExternalIdValue] = useState('');
+  const [showDeveloper, setShowDeveloper] = useState(false);
 
   const { data: broadcast, isLoading } = useQuery<BroadcastWithRelations>({
     queryKey: ['/api/broadcasts', broadcastId],
@@ -1025,59 +1026,7 @@ export default function BroadcastDetailPage() {
                       <Link href={`/campaigns/${campaignData.id}`}>
                         <span className="text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white cursor-pointer" data-testid="link-campaign">{campaignData.name}</span>
                       </Link>
-                      <span className="text-gray-300 dark:text-gray-700">/</span>
                     </>
-                  )}
-                  <span className="text-gray-600 dark:text-gray-300" data-testid="text-broadcast-id">{broadcast.broadcastId}</span>
-                </div>
-                <div className="flex items-center gap-2 mt-1">
-                  {editingExternalId ? (
-                    <div className="flex items-center gap-1.5">
-                      <Input
-                        value={externalIdValue}
-                        onChange={(e) => setExternalIdValue(e.target.value)}
-                        placeholder="e.g. match-12345"
-                        className="h-6 text-xs px-2 py-0 w-44 bg-white dark:bg-white/5"
-                        data-testid="input-external-id-inline"
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') updateExternalIdMutation.mutate(externalIdValue);
-                          if (e.key === 'Escape') setEditingExternalId(false);
-                        }}
-                        autoFocus
-                      />
-                      <button
-                        onClick={() => updateExternalIdMutation.mutate(externalIdValue)}
-                        disabled={updateExternalIdMutation.isPending}
-                        className="text-green-600 dark:text-green-400 hover:text-green-700 dark:hover:text-green-300"
-                        data-testid="button-save-external-id"
-                      >
-                        <Check className="w-3.5 h-3.5" />
-                      </button>
-                      <button
-                        onClick={() => setEditingExternalId(false)}
-                        className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
-                        data-testid="button-cancel-external-id"
-                      >
-                        <X className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                  ) : (
-                    <button
-                      onClick={() => {
-                        setExternalIdValue(broadcast.externalId || '');
-                        setEditingExternalId(true);
-                      }}
-                      className="flex items-center gap-1 text-xs text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 transition group"
-                      data-testid="button-edit-external-id"
-                    >
-                      <span className="font-mono">
-                        {broadcast.externalId
-                          ? <span className="text-gray-500 dark:text-gray-400">ext: <span className="text-gray-700 dark:text-gray-300">{broadcast.externalId}</span></span>
-                          : <span className="text-gray-300 dark:text-gray-600 italic">+ add external ID</span>
-                        }
-                      </span>
-                      <Pencil className="w-3 h-3 opacity-0 group-hover:opacity-100 transition" />
-                    </button>
                   )}
                 </div>
               </div>
@@ -1119,6 +1068,63 @@ export default function BroadcastDetailPage() {
                 <MoreVertical className="w-4 h-4" />
               </button>
             </div>
+          </div>
+
+          <div className="mb-4">
+            <button
+              onClick={() => setShowDeveloper(v => !v)}
+              className="flex items-center gap-1.5 text-xs text-gray-400 dark:text-gray-600 hover:text-gray-600 dark:hover:text-gray-400 transition"
+              data-testid="button-toggle-developer"
+            >
+              {showDeveloper ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+              <Code2 className="w-3 h-3" />
+              Developer
+            </button>
+            {showDeveloper && (
+              <div className="mt-2 p-3 bg-gray-50 dark:bg-white/[0.02] border border-gray-200 dark:border-white/10 rounded-lg flex flex-col gap-2" data-testid="section-developer">
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] text-gray-400 dark:text-gray-600 uppercase tracking-wider w-20">Broadcast ID</span>
+                  <span className="font-mono text-xs text-gray-600 dark:text-gray-400" data-testid="text-broadcast-id">{broadcast.broadcastId}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] text-gray-400 dark:text-gray-600 uppercase tracking-wider w-20">External ID</span>
+                  {editingExternalId ? (
+                    <div className="flex items-center gap-1.5">
+                      <Input
+                        value={externalIdValue}
+                        onChange={(e) => setExternalIdValue(e.target.value)}
+                        placeholder="e.g. match-12345"
+                        className="h-6 text-xs px-2 py-0 w-44 bg-white dark:bg-white/5"
+                        data-testid="input-external-id-inline"
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') updateExternalIdMutation.mutate(externalIdValue);
+                          if (e.key === 'Escape') setEditingExternalId(false);
+                        }}
+                        autoFocus
+                      />
+                      <button onClick={() => updateExternalIdMutation.mutate(externalIdValue)} disabled={updateExternalIdMutation.isPending} className="text-green-600 dark:text-green-400 hover:text-green-700" data-testid="button-save-external-id">
+                        <Check className="w-3.5 h-3.5" />
+                      </button>
+                      <button onClick={() => setEditingExternalId(false)} className="text-gray-400 hover:text-gray-600" data-testid="button-cancel-external-id">
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => { setExternalIdValue(broadcast.externalId || ''); setEditingExternalId(true); }}
+                      className="flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 transition group font-mono"
+                      data-testid="button-edit-external-id"
+                    >
+                      {broadcast.externalId
+                        ? <span>{broadcast.externalId}</span>
+                        : <span className="italic text-gray-300 dark:text-gray-600">+ add external ID</span>
+                      }
+                      <Pencil className="w-3 h-3 ml-1 opacity-0 group-hover:opacity-100 transition" />
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
 
           <EventTimeline polls={polls} contests={contests} />
@@ -1203,11 +1209,42 @@ export default function BroadcastDetailPage() {
             </div>
 
             {polls.length === 0 ? (
+              broadcast.status === 'ended' ? (
+                <div className="bg-gray-50 dark:bg-white/[0.02] border border-gray-200 dark:border-white/10 rounded-lg p-6" data-testid="section-ended-summary">
+                  <h3 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-4">Broadcast Summary</h3>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                    <div className="text-center">
+                      <div className="text-2xl font-bold text-gray-900 dark:text-white">{formatViewers(analytics?.viewerCount ?? broadcast.viewerCount ?? 0)}</div>
+                      <div className="text-xs text-gray-400 dark:text-gray-500 mt-1">Total Viewers</div>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-2xl font-bold text-gray-900 dark:text-white">{(analytics?.totalVotes ?? 0).toLocaleString()}</div>
+                      <div className="text-xs text-gray-400 dark:text-gray-500 mt-1">Total Votes</div>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-2xl font-bold text-gray-900 dark:text-white">{analytics?.pollCount ?? 0}</div>
+                      <div className="text-xs text-gray-400 dark:text-gray-500 mt-1">Polls Run</div>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-2xl font-bold text-gray-900 dark:text-white">
+                        {broadcast.startTime && broadcast.endTime
+                          ? (() => {
+                              const mins = Math.round((new Date(broadcast.endTime).getTime() - new Date(broadcast.startTime).getTime()) / 60000);
+                              return mins > 0 ? `${mins}m` : '—';
+                            })()
+                          : '—'}
+                      </div>
+                      <div className="text-xs text-gray-400 dark:text-gray-500 mt-1">Duration</div>
+                    </div>
+                  </div>
+                </div>
+              ) : (
               <div className="bg-transparent border border-gray-200 dark:border-white/10 rounded-lg p-8 text-center">
                 <BarChart3 className="w-10 h-10 text-gray-400 dark:text-gray-500 mx-auto mb-3" />
                 <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-1">No polls yet</h3>
                 <p className="text-xs text-gray-500 dark:text-gray-400">Create a poll to engage your audience</p>
               </div>
+              )
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {activePolls.map(poll => (
