@@ -336,13 +336,13 @@ export function OverviewTab({ campaignId, campaign, onNavigateTab }: OverviewTab
             <p className="text-sm text-gray-500">No broadcasts created yet</p>
           </div>
         ) : (
-          <div className="space-y-3">
+          <div className="flex flex-col gap-3">
             {broadcasts.map((broadcast) => {
               const viewers = broadcast.metadata && typeof broadcast.metadata === 'object' && 'viewers' in broadcast.metadata
                 ? Number((broadcast.metadata as Record<string, unknown>).viewers) || 0
                 : 0;
               return (
-                <Link key={broadcast.broadcastId} href={`/broadcasts/${broadcast.broadcastId}`}>
+                <Link key={broadcast.broadcastId} href={`/broadcasts/${broadcast.broadcastId}`} className="block">
                   <div
                     className="bg-transparent border border-white/10 rounded-lg p-5 hover:border-white/30 transition-all cursor-pointer"
                     data-testid={`overview-broadcast-${broadcast.broadcastId}`}
