@@ -150,7 +150,7 @@
 
 ---
 
-## TASK UI-01 — Redesign "Create Broadcast" modal
+## TASK UI-01 — Redesign "Create Broadcast" modal ✅ COMPLETADO
 
 Redesign the Create Broadcast modal to match the following spec. Reference mockup: see HTML file shared by Angelo (Create Broadcast mockup).
 

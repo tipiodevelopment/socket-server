@@ -13,23 +13,28 @@ import { queryClient, apiRequest } from '@/lib/queryClient';
 import { useUser } from '@/contexts/UserContext';
 import { AppLayout } from '@/components/AppLayout';
 import type { Broadcast, Campaign } from '@shared/schema';
-import { Plus, Clock, BarChart3, Trophy, Radio, Search, ChartNoAxesColumn, Users, ChevronDown, ChevronRight, Swords } from 'lucide-react';
+import { Plus, Clock, BarChart3, Trophy, Radio, Search, ChartNoAxesColumn, Users, Check } from 'lucide-react';
 
-interface SportmonksLeague { id: number; name: string; country?: string; }
+interface SportmonksLeague { id: number; name: string; shortCode?: string | null; logoUrl?: string | null; countryName?: string | null; }
 interface SportmonksFixture {
-  id: number; name: string; starting_at: string;
-  participants?: Array<{ location: string; name: string; image_path?: string; }>;
+  id: number;
+  name: string;
+  startingAt: string;
+  status?: string | null;
+  homeTeam?: { id: number; name: string; logoUrl?: string | null } | null;
+  awayTeam?: { id: number; name: string; logoUrl?: string | null } | null;
 }
 
-function getDefaultDateRange() {
-  const from = new Date();
-  from.setDate(from.getDate() - 1);
-  const to = new Date();
-  to.setDate(to.getDate() + 7);
-  return {
-    from: from.toISOString().split('T')[0],
-    to: to.toISOString().split('T')[0],
-  };
+function getTodayStr() {
+  return new Date().toISOString().split('T')[0];
+}
+
+function toDatetimeLocal(iso: string) {
+  try {
+    const d = new Date(iso);
+    const pad = (n: number) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  } catch { return ''; }
 }
 
 type EnrichedBroadcast = Broadcast & {
@@ -272,10 +277,10 @@ export default function BroadcastsPage() {
     campaignId: '',
     startTime: '',
     endTime: '',
+    externalId: '',
   });
-  const [showMatchSection, setShowMatchSection] = useState(false);
   const [selectedLeagueId, setSelectedLeagueId] = useState<number | null>(null);
-  const [dateRange] = useState(getDefaultDateRange());
+  const [fixtureDate, setFixtureDate] = useState(getTodayStr());
   const [fixtureSearch, setFixtureSearch] = useState('');
   const [selectedFixture, setSelectedFixture] = useState<SportmonksFixture | null>(null);
 
@@ -307,24 +312,27 @@ export default function BroadcastsPage() {
       return res.json();
     },
     staleTime: 2 * 24 * 60 * 60 * 1000,
-    enabled: showMatchSection,
   });
 
   const { data: fixtures = [], isFetching: fixturesLoading } = useQuery<SportmonksFixture[]>({
-    queryKey: ['/api/sportmonks/fixtures', selectedLeagueId, dateRange.from, dateRange.to],
+    queryKey: ['/api/sportmonks/fixtures', selectedLeagueId, fixtureDate],
     queryFn: async () => {
       if (!selectedLeagueId) return [];
-      const res = await fetch(`/api/sportmonks/fixtures?leagueId=${selectedLeagueId}&dateFrom=${dateRange.from}&dateTo=${dateRange.to}`);
+      const res = await fetch(`/api/sportmonks/fixtures?leagueId=${selectedLeagueId}&dateFrom=${fixtureDate}&dateTo=${fixtureDate}`);
       if (!res.ok) return [];
       return res.json();
     },
-    enabled: !!selectedLeagueId && showMatchSection,
+    enabled: !!selectedLeagueId,
   });
 
   const filteredFixtures = useMemo(() => {
     if (!fixtureSearch.trim()) return fixtures;
     const q = fixtureSearch.toLowerCase();
-    return fixtures.filter(f => f.name?.toLowerCase().includes(q));
+    return fixtures.filter(f =>
+      f.homeTeam?.name?.toLowerCase().includes(q) ||
+      f.awayTeam?.name?.toLowerCase().includes(q) ||
+      f.name?.toLowerCase().includes(q)
+    );
   }, [fixtures, fixtureSearch]);
 
   const filtered = useMemo(() => {
@@ -355,9 +363,12 @@ export default function BroadcastsPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/broadcasts'] });
-      toast({ title: 'Broadcast Created' });
+      toast({ title: 'Broadcast creado' });
       setCreateOpen(false);
-      setFormData({ broadcastName: '', description: '', campaignId: '', startTime: '', endTime: '' });
+      setFormData({ broadcastName: '', description: '', campaignId: '', startTime: '', endTime: '', externalId: '' });
+      setSelectedFixture(null);
+      setSelectedLeagueId(null);
+      setFixtureSearch('');
     },
     onError: () => {
       toast({ title: 'Error', description: 'Failed to create broadcast', variant: 'destructive' });
@@ -366,27 +377,43 @@ export default function BroadcastsPage() {
 
   const handleCreate = () => {
     if (!formData.broadcastName.trim() || !formData.campaignId) {
-      toast({ title: 'Required', description: 'Name and campaign are required.', variant: 'destructive' });
+      toast({ title: 'Requerido', description: 'El nombre y la campaña son obligatorios.', variant: 'destructive' });
       return;
     }
-    const home = selectedFixture?.participants?.find(p => p.location === 'home');
-    const away = selectedFixture?.participants?.find(p => p.location === 'away');
     createMutation.mutate({
       broadcastName: formData.broadcastName,
       description: formData.description || undefined,
       campaignId: parseInt(formData.campaignId),
-      startTime: formData.startTime || (selectedFixture?.starting_at ? new Date(selectedFixture.starting_at).toISOString() : undefined),
-      endTime: formData.endTime || undefined,
+      startTime: formData.startTime ? new Date(formData.startTime).toISOString() : undefined,
+      endTime: formData.endTime ? new Date(formData.endTime).toISOString() : undefined,
+      externalId: formData.externalId || undefined,
       createdBy: userId,
       ...(selectedFixture ? {
         sportmonksFixtureId: selectedFixture.id,
-        homeTeamName: home?.name,
-        homeTeamLogo: home?.image_path,
-        awayTeamName: away?.name,
-        awayTeamLogo: away?.image_path,
-        matchStartingAt: selectedFixture.starting_at,
+        homeTeamName: selectedFixture.homeTeam?.name,
+        homeTeamLogo: selectedFixture.homeTeam?.logoUrl,
+        awayTeamName: selectedFixture.awayTeam?.name,
+        awayTeamLogo: selectedFixture.awayTeam?.logoUrl,
+        matchStartingAt: selectedFixture.startingAt,
+        leagueName: leagues.find(l => l.id === selectedLeagueId)?.name,
       } : {}),
     });
+  };
+
+  const handleFixtureSelect = (fixture: SportmonksFixture) => {
+    if (selectedFixture?.id === fixture.id) {
+      setSelectedFixture(null);
+      return;
+    }
+    setSelectedFixture(fixture);
+    const autoName = fixture.homeTeam && fixture.awayTeam
+      ? `${fixture.homeTeam.name} vs ${fixture.awayTeam.name}`
+      : fixture.name;
+    setFormData(prev => ({
+      ...prev,
+      broadcastName: prev.broadcastName || autoName,
+      startTime: prev.startTime || toDatetimeLocal(fixture.startingAt),
+    }));
   };
 
   const statusOptions = [
@@ -411,153 +438,254 @@ export default function BroadcastsPage() {
               <Plus className="w-4 h-4" /> New Broadcast
             </Button>
           </DialogTrigger>
-          <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto">
-            <DialogHeader>
-              <DialogTitle>Create Broadcast</DialogTitle>
-              <DialogDescription>Create a new broadcast and assign it to a campaign.</DialogDescription>
+          <DialogContent className="sm:max-w-5xl max-h-[90vh] overflow-y-auto bg-[#0F1115] border border-white/10">
+            <DialogHeader className="pb-2">
+              <DialogTitle className="text-white text-lg">Create Broadcast</DialogTitle>
+              <DialogDescription className="text-white/40 text-sm">Selecciona un partido para autocompletar el formulario.</DialogDescription>
             </DialogHeader>
-            <div className="grid gap-4 py-4">
-              <div className="grid gap-2">
-                <Label>Broadcast Name *</Label>
-                <Input
-                  data-testid="input-broadcast-name"
-                  value={formData.broadcastName}
-                  onChange={(e) => setFormData(prev => ({ ...prev, broadcastName: e.target.value }))}
-                  placeholder="Enter broadcast name"
-                />
-              </div>
-              <div className="grid gap-2">
-                <Label>Description</Label>
-                <Input
-                  data-testid="input-broadcast-description"
-                  value={formData.description}
-                  onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
-                  placeholder="Brief description of the broadcast"
-                />
-              </div>
-              <div className="grid gap-2">
-                <Label>Campaign *</Label>
-                <Select value={formData.campaignId} onValueChange={(v) => setFormData(prev => ({ ...prev, campaignId: v }))}>
-                  <SelectTrigger data-testid="select-campaign">
-                    <SelectValue placeholder="Select a campaign" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {campaigns.map((c) => (
-                      <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="grid gap-2">
-                  <Label>Start Time</Label>
-                  <Input
-                    type="datetime-local"
-                    data-testid="input-start-time"
-                    value={formData.startTime}
-                    onChange={(e) => setFormData(prev => ({ ...prev, startTime: e.target.value }))}
-                  />
+
+            <div className="space-y-5 py-2">
+              {/* ── SECTION 1: Link Match Context ── */}
+              <div className="rounded-xl border border-white/10 overflow-hidden bg-[#161B26]">
+                <div className="px-5 py-3 border-b border-white/10 flex items-center gap-2">
+                  <Radio className="w-4 h-4 text-white/40" />
+                  <span className="text-sm font-semibold text-white">Link Match Context</span>
+                  {selectedFixture && (
+                    <span className="ml-auto text-xs text-[#3d8b7a] flex items-center gap-1.5">
+                      <Check className="w-3 h-3" />
+                      {selectedFixture.homeTeam?.name} vs {selectedFixture.awayTeam?.name}
+                      <button
+                        type="button"
+                        onClick={() => setSelectedFixture(null)}
+                        className="ml-1 text-white/30 hover:text-red-400 transition"
+                        data-testid="button-unlink-fixture"
+                      >×</button>
+                    </span>
+                  )}
                 </div>
-                <div className="grid gap-2">
-                  <Label>End Time</Label>
-                  <Input
-                    type="datetime-local"
-                    data-testid="input-end-time"
-                    value={formData.endTime}
-                    onChange={(e) => setFormData(prev => ({ ...prev, endTime: e.target.value }))}
-                  />
-                </div>
-              </div>
-              {/* Sportmonks Match Selector */}
-              <div className="border border-gray-200 dark:border-white/10 rounded-lg overflow-hidden">
-                <button
-                  type="button"
-                  onClick={() => setShowMatchSection(prev => !prev)}
-                  className="w-full flex items-center justify-between px-4 py-3 bg-gray-50 dark:bg-white/5 hover:bg-gray-100 dark:hover:bg-white/[0.08] transition text-sm text-gray-700 dark:text-gray-300"
-                  data-testid="button-toggle-match-section"
-                >
-                  <div className="flex items-center gap-2">
-                    <Swords className="w-4 h-4 text-gray-400" />
-                    <span className="font-medium">Link to a Match</span>
-                    {selectedFixture && (
-                      <span className="text-xs text-[#3d8b7a] dark:text-[#5eff9e] ml-2 truncate max-w-[180px]">{selectedFixture.name}</span>
-                    )}
-                  </div>
-                  {showMatchSection ? <ChevronDown className="w-4 h-4 text-gray-400" /> : <ChevronRight className="w-4 h-4 text-gray-400" />}
-                </button>
-                {showMatchSection && (
-                  <div className="p-4 space-y-3 border-t border-gray-100 dark:border-white/5">
-                    <div className="grid gap-2">
-                      <Label>League</Label>
-                      <Select
+
+                <div className="p-4 space-y-4">
+                  {/* Controls row */}
+                  <div className="grid grid-cols-3 gap-3">
+                    {/* League selector */}
+                    <div className="space-y-1.5">
+                      <label className="text-xs text-white/50 font-medium">Liga / Competición</label>
+                      <select
+                        data-testid="select-league"
                         value={selectedLeagueId?.toString() || ''}
-                        onValueChange={(v) => { setSelectedLeagueId(parseInt(v)); setSelectedFixture(null); setFixtureSearch(''); }}
+                        onChange={(e) => {
+                          setSelectedLeagueId(e.target.value ? parseInt(e.target.value) : null);
+                          setSelectedFixture(null);
+                          setFixtureSearch('');
+                        }}
+                        className="w-full h-9 px-3 rounded-lg border border-white/10 bg-[#0a0e1a] text-sm text-white focus:border-white/30 focus:outline-none transition [color-scheme:dark]"
                       >
-                        <SelectTrigger data-testid="select-league">
-                          <SelectValue placeholder="Select league" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {leagues.map(l => (
-                            <SelectItem key={l.id} value={String(l.id)}>{l.name}{l.country ? ` · ${l.country}` : ''}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                        <option value="">Seleccionar liga...</option>
+                        {leagues.map(l => (
+                          <option key={l.id} value={String(l.id)}>
+                            {l.name}{l.countryName ? ` · ${l.countryName}` : ''}
+                          </option>
+                        ))}
+                      </select>
                     </div>
-                    {selectedLeagueId && (
-                      <div className="grid gap-2">
-                        <Label>Match</Label>
-                        <div className="relative">
-                          <Search className="absolute left-2.5 top-2.5 w-3.5 h-3.5 text-gray-400" />
-                          <Input
-                            className="pl-8 text-sm"
-                            placeholder="Search matches..."
-                            value={fixtureSearch}
-                            onChange={e => setFixtureSearch(e.target.value)}
-                            data-testid="input-fixture-search"
-                          />
-                        </div>
-                        <div className="max-h-40 overflow-y-auto space-y-1 border border-gray-100 dark:border-white/10 rounded-md p-1">
-                          {fixturesLoading ? (
-                            <div className="text-center text-xs text-gray-400 py-4">Loading matches...</div>
-                          ) : filteredFixtures.length === 0 ? (
-                            <div className="text-center text-xs text-gray-400 py-4">No matches found</div>
-                          ) : filteredFixtures.map(f => {
-                            const home = f.participants?.find(p => p.location === 'home');
-                            const away = f.participants?.find(p => p.location === 'away');
-                            const isSelected = selectedFixture?.id === f.id;
-                            return (
-                              <div
-                                key={f.id}
-                                onClick={() => setSelectedFixture(isSelected ? null : f)}
-                                className={`flex items-center justify-between px-2 py-1.5 rounded cursor-pointer text-xs transition ${
-                                  isSelected ? 'bg-[#3d8b7a]/15 border border-[#3d8b7a]/30' : 'hover:bg-gray-50 dark:hover:bg-white/5'
-                                }`}
-                                data-testid={`fixture-option-${f.id}`}
-                              >
-                                <div className="flex items-center gap-1.5 flex-1 min-w-0">
-                                  {home?.image_path && <img src={home.image_path} className="w-4 h-4 object-contain" alt="" />}
-                                  <span className="text-gray-700 dark:text-gray-200 truncate">{home?.name || '?'}</span>
-                                  <span className="text-gray-400 mx-1">vs</span>
-                                  {away?.image_path && <img src={away.image_path} className="w-4 h-4 object-contain" alt="" />}
-                                  <span className="text-gray-700 dark:text-gray-200 truncate">{away?.name || '?'}</span>
-                                </div>
-                                <span className="text-gray-400 ml-2 shrink-0">
-                                  {new Date(f.starting_at).toLocaleDateString('en', { month: 'short', day: 'numeric' })}
-                                </span>
-                              </div>
-                            );
-                          })}
-                        </div>
+
+                    {/* Date picker */}
+                    <div className="space-y-1.5">
+                      <label className="text-xs text-white/50 font-medium">Fecha del partido</label>
+                      <input
+                        type="date"
+                        data-testid="input-fixture-date"
+                        value={fixtureDate}
+                        onChange={(e) => { setFixtureDate(e.target.value); setSelectedFixture(null); }}
+                        className="w-full h-9 px-3 rounded-lg border border-white/10 bg-[#0a0e1a] text-sm text-white focus:border-white/30 focus:outline-none transition [color-scheme:dark]"
+                      />
+                    </div>
+
+                    {/* Search filter */}
+                    <div className="space-y-1.5">
+                      <label className="text-xs text-white/50 font-medium">Buscar equipo</label>
+                      <div className="relative">
+                        <Search className="absolute left-3 top-2.5 w-3.5 h-3.5 text-white/30" />
+                        <input
+                          type="text"
+                          data-testid="input-fixture-search"
+                          value={fixtureSearch}
+                          onChange={e => setFixtureSearch(e.target.value)}
+                          placeholder="Nombre del equipo..."
+                          className="w-full h-9 pl-9 pr-3 rounded-lg border border-white/10 bg-[#0a0e1a] text-sm text-white placeholder-white/20 focus:border-white/30 focus:outline-none transition"
+                        />
                       </div>
-                    )}
+                    </div>
                   </div>
-                )}
+
+                  {/* Match list */}
+                  {!selectedLeagueId ? (
+                    <div className="border border-white/5 rounded-lg py-8 text-center text-sm text-white/30">
+                      Selecciona una liga para ver los partidos disponibles
+                    </div>
+                  ) : fixturesLoading ? (
+                    <div className="border border-white/5 rounded-lg py-8 text-center text-sm text-white/30 animate-pulse">
+                      Cargando partidos...
+                    </div>
+                  ) : filteredFixtures.length === 0 ? (
+                    <div className="border border-white/5 rounded-lg py-8 text-center text-sm text-white/30">
+                      No hay partidos disponibles para esta fecha
+                    </div>
+                  ) : (
+                    <div className="max-h-56 overflow-y-auto space-y-1.5 pr-1" data-testid="fixture-list">
+                      {filteredFixtures.map(f => {
+                        const isSelected = selectedFixture?.id === f.id;
+                        const kickoff = f.startingAt ? new Date(f.startingAt).toLocaleTimeString('es', { hour: '2-digit', minute: '2-digit' }) : '';
+                        return (
+                          <div
+                            key={f.id}
+                            onClick={() => handleFixtureSelect(f)}
+                            data-testid={`fixture-option-${f.id}`}
+                            className={`flex items-center gap-3 px-4 py-3 rounded-lg cursor-pointer transition-all ${
+                              isSelected
+                                ? 'bg-blue-500/10 border border-blue-500/40 text-white'
+                                : 'bg-[#0a0e1a] border border-white/5 hover:border-white/20 hover:bg-white/[0.03] text-white/80'
+                            }`}
+                          >
+                            {/* Home team */}
+                            <div className="flex items-center gap-2 flex-1 min-w-0">
+                              {f.homeTeam?.logoUrl ? (
+                                <img src={f.homeTeam.logoUrl} className="w-7 h-7 object-contain rounded-full bg-white/5 p-0.5 shrink-0" alt="" />
+                              ) : (
+                                <div className="w-7 h-7 rounded-full bg-white/10 flex items-center justify-center text-xs font-bold text-white/50 shrink-0">
+                                  {f.homeTeam?.name?.[0] ?? '?'}
+                                </div>
+                              )}
+                              <span className="text-sm font-medium truncate">{f.homeTeam?.name ?? '?'}</span>
+                            </div>
+
+                            {/* vs + kick-off */}
+                            <div className="text-center shrink-0">
+                              <div className="text-xs text-white/30 font-medium">vs</div>
+                              {kickoff && <div className="text-xs text-white/50 mt-0.5">{kickoff}</div>}
+                            </div>
+
+                            {/* Away team */}
+                            <div className="flex items-center gap-2 flex-1 min-w-0 justify-end">
+                              <span className="text-sm font-medium truncate text-right">{f.awayTeam?.name ?? '?'}</span>
+                              {f.awayTeam?.logoUrl ? (
+                                <img src={f.awayTeam.logoUrl} className="w-7 h-7 object-contain rounded-full bg-white/5 p-0.5 shrink-0" alt="" />
+                              ) : (
+                                <div className="w-7 h-7 rounded-full bg-white/10 flex items-center justify-center text-xs font-bold text-white/50 shrink-0">
+                                  {f.awayTeam?.name?.[0] ?? '?'}
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Checkmark */}
+                            <div className={`w-5 h-5 rounded-full border flex items-center justify-center shrink-0 transition ${
+                              isSelected ? 'bg-blue-500 border-blue-500' : 'border-white/20'
+                            }`}>
+                              {isSelected && <Check className="w-3 h-3 text-white" />}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* ── SECTION 2: Basic Info ── */}
+              <div className="rounded-xl border border-white/10 overflow-hidden bg-[#161B26]">
+                <div className="px-5 py-3 border-b border-white/10">
+                  <span className="text-sm font-semibold text-white">Información del Broadcast</span>
+                </div>
+                <div className="p-4 space-y-4">
+                  {/* Broadcast Name */}
+                  <div className="space-y-1.5">
+                    <label className="text-xs text-white/50 font-medium">Nombre del Broadcast *</label>
+                    <input
+                      data-testid="input-broadcast-name"
+                      value={formData.broadcastName}
+                      onChange={(e) => setFormData(prev => ({ ...prev, broadcastName: e.target.value }))}
+                      placeholder="Ej: Atlético Madrid vs PSG"
+                      className="w-full h-9 px-3 rounded-lg border border-white/10 bg-[#0a0e1a] text-sm text-white placeholder-white/20 focus:border-white/30 focus:outline-none transition"
+                    />
+                  </div>
+
+                  {/* Campaign */}
+                  <div className="space-y-1.5">
+                    <label className="text-xs text-white/50 font-medium">Campaña *</label>
+                    <select
+                      data-testid="select-campaign"
+                      value={formData.campaignId}
+                      onChange={(e) => setFormData(prev => ({ ...prev, campaignId: e.target.value }))}
+                      className="w-full h-9 px-3 rounded-lg border border-white/10 bg-[#0a0e1a] text-sm text-white focus:border-white/30 focus:outline-none transition [color-scheme:dark]"
+                    >
+                      <option value="">Seleccionar campaña...</option>
+                      {campaigns.map(c => (
+                        <option key={c.id} value={String(c.id)}>{c.name}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Description */}
+                  <div className="space-y-1.5">
+                    <label className="text-xs text-white/50 font-medium">Descripción</label>
+                    <input
+                      data-testid="input-broadcast-description"
+                      value={formData.description}
+                      onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
+                      placeholder="Descripción opcional del broadcast"
+                      className="w-full h-9 px-3 rounded-lg border border-white/10 bg-[#0a0e1a] text-sm text-white placeholder-white/20 focus:border-white/30 focus:outline-none transition"
+                    />
+                  </div>
+
+                  {/* External Content ID */}
+                  <div className="space-y-1.5">
+                    <label className="text-xs text-white/50 font-medium">External Content ID</label>
+                    <input
+                      data-testid="input-external-id"
+                      value={formData.externalId}
+                      onChange={(e) => setFormData(prev => ({ ...prev, externalId: e.target.value }))}
+                      placeholder="ej: viaplay-atletico-psg-2026-03-08"
+                      className="w-full h-9 px-3 rounded-lg border border-white/10 bg-[#0a0e1a] text-sm text-white placeholder-white/20 focus:border-white/30 focus:outline-none transition"
+                    />
+                    <p className="text-xs text-white/30">Vincula este broadcast al ID de contenido de tu reproductor de vídeo (ej: stream ID de Viaplay o TV2).</p>
+                  </div>
+
+                  {/* Start + End Time */}
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1.5">
+                      <label className="text-xs text-white/50 font-medium">Inicio</label>
+                      <input
+                        type="datetime-local"
+                        data-testid="input-start-time"
+                        value={formData.startTime}
+                        onChange={(e) => setFormData(prev => ({ ...prev, startTime: e.target.value }))}
+                        className="w-full h-9 px-3 rounded-lg border border-white/10 bg-[#0a0e1a] text-sm text-white focus:border-white/30 focus:outline-none transition [color-scheme:dark]"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-xs text-white/50 font-medium">Fin</label>
+                      <input
+                        type="datetime-local"
+                        data-testid="input-end-time"
+                        value={formData.endTime}
+                        onChange={(e) => setFormData(prev => ({ ...prev, endTime: e.target.value }))}
+                        className="w-full h-9 px-3 rounded-lg border border-white/10 bg-[#0a0e1a] text-sm text-white focus:border-white/30 focus:outline-none transition [color-scheme:dark]"
+                      />
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setCreateOpen(false)}>Cancel</Button>
-              <Button onClick={handleCreate} disabled={createMutation.isPending} data-testid="button-submit-broadcast">
-                {createMutation.isPending ? 'Creating...' : 'Create Broadcast'}
+
+            <DialogFooter className="pt-2">
+              <Button variant="outline" onClick={() => setCreateOpen(false)} data-testid="button-cancel-broadcast">Cancelar</Button>
+              <Button
+                onClick={handleCreate}
+                disabled={createMutation.isPending || !formData.broadcastName.trim() || !formData.campaignId}
+                data-testid="button-submit-broadcast"
+                className="bg-[#3d8b7a] hover:bg-[#2f7365] text-white"
+              >
+                {createMutation.isPending ? 'Creando...' : 'Crear Broadcast'}
               </Button>
             </DialogFooter>
           </DialogContent>

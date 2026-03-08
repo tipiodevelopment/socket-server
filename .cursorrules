@@ -366,6 +366,14 @@ Dashboard → Apps → Campaigns → Sponsors → Broadcasts → Components → 
 **AppLayout:**
 - Nueva prop `hideSearch: boolean` — oculta el search bar global del header en páginas con su propio search contextual (ej: `/broadcasts`).
 
+**Create Broadcast modal (UI-01 — Mar 2026):**
+- Modal rediseñado a `max-w-5xl` con dos secciones explícitas.
+- **Sección 1 — Link Match Context** (top, prominente): grid de 3 columnas (liga, fecha, búsqueda) + lista scrollable de fixtures de Sportmonks. Cada fixture muestra logos de equipos (home/away), nombres y hora de kick-off. Estado seleccionado: borde azul + fondo tintado + checkmark. Al seleccionar → auto-rellena Broadcast Name y Start Time.
+- **Sección 2 — Información del Broadcast**: Broadcast Name (auto-filled), Campaign, Description, External Content ID (con helper text), Start/End Time side-by-side.
+- Interfaces actualizadas para usar el formato del servidor: `startingAt`, `homeTeam.logoUrl`, `awayTeam.logoUrl` (no `participants`).
+- `handleFixtureSelect` auto-rellena nombre y start time, respetando valores ya escritos por el operador.
+- `externalId` incluido en el form y enviado al crear el broadcast.
+
 **Demo Data (NO MODIFICAR):**
 - TV2 app (campaign 36): `tv2-eliteserien-live-2026-03-08` (Brann vs Molde, ~18.7K viewers). Polls: ~8.4K votos.
 - Viaplay app (campaigns 35/33/31): `viaplay-atletico-psg-2026-03-08` (Atlético Madrid vs PSG, ~19.6K viewers). Polls: ~19.4K votos.
