@@ -13,7 +13,24 @@ import { queryClient, apiRequest } from '@/lib/queryClient';
 import { useUser } from '@/contexts/UserContext';
 import { AppLayout } from '@/components/AppLayout';
 import type { Broadcast, Campaign } from '@shared/schema';
-import { Plus, Clock, BarChart3, Trophy, Radio, Search, ChartNoAxesColumn, Users } from 'lucide-react';
+import { Plus, Clock, BarChart3, Trophy, Radio, Search, ChartNoAxesColumn, Users, ChevronDown, ChevronRight, Swords } from 'lucide-react';
+
+interface SportmonksLeague { id: number; name: string; country?: string; }
+interface SportmonksFixture {
+  id: number; name: string; starting_at: string;
+  participants?: Array<{ location: string; name: string; image_path?: string; }>;
+}
+
+function getDefaultDateRange() {
+  const from = new Date();
+  from.setDate(from.getDate() - 1);
+  const to = new Date();
+  to.setDate(to.getDate() + 7);
+  return {
+    from: from.toISOString().split('T')[0],
+    to: to.toISOString().split('T')[0],
+  };
+}
 
 type EnrichedBroadcast = Broadcast & {
   pollCount: number;
@@ -198,7 +215,7 @@ function EndedBroadcastCard({ broadcast }: { broadcast: EnrichedBroadcast }) {
   return (
     <Link href={`/broadcasts/${broadcast.broadcastId}`}>
       <div
-        className="bg-white dark:bg-transparent border border-gray-200 dark:border-white/10 rounded-lg p-5 hover:border-gray-300 dark:hover:border-white/30 transition-all cursor-pointer opacity-80"
+        className="bg-white dark:bg-transparent border border-gray-200 dark:border-white/10 rounded-lg p-5 hover:border-gray-300 dark:hover:border-white/30 transition-all cursor-pointer"
         data-testid={`card-broadcast-${broadcast.broadcastId}`}
       >
         <div className="flex justify-between items-start">
@@ -257,6 +274,11 @@ export default function BroadcastsPage() {
     startTime: '',
     endTime: '',
   });
+  const [showMatchSection, setShowMatchSection] = useState(false);
+  const [selectedLeagueId, setSelectedLeagueId] = useState<number | null>(null);
+  const [dateRange] = useState(getDefaultDateRange());
+  const [fixtureSearch, setFixtureSearch] = useState('');
+  const [selectedFixture, setSelectedFixture] = useState<SportmonksFixture | null>(null);
 
   const { data: broadcasts = [], isLoading } = useQuery<EnrichedBroadcast[]>({
     queryKey: ['/api/broadcasts', 'all'],
@@ -277,6 +299,34 @@ export default function BroadcastsPage() {
     },
     enabled: !!userId,
   });
+
+  const { data: leagues = [] } = useQuery<SportmonksLeague[]>({
+    queryKey: ['/api/sportmonks/leagues'],
+    queryFn: async () => {
+      const res = await fetch('/api/sportmonks/leagues');
+      if (!res.ok) return [];
+      return res.json();
+    },
+    staleTime: 2 * 24 * 60 * 60 * 1000,
+    enabled: showMatchSection,
+  });
+
+  const { data: fixtures = [], isFetching: fixturesLoading } = useQuery<SportmonksFixture[]>({
+    queryKey: ['/api/sportmonks/fixtures', selectedLeagueId, dateRange.from, dateRange.to],
+    queryFn: async () => {
+      if (!selectedLeagueId) return [];
+      const res = await fetch(`/api/sportmonks/fixtures?leagueId=${selectedLeagueId}&dateFrom=${dateRange.from}&dateTo=${dateRange.to}`);
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: !!selectedLeagueId && showMatchSection,
+  });
+
+  const filteredFixtures = useMemo(() => {
+    if (!fixtureSearch.trim()) return fixtures;
+    const q = fixtureSearch.toLowerCase();
+    return fixtures.filter(f => f.name?.toLowerCase().includes(q));
+  }, [fixtures, fixtureSearch]);
 
   const filtered = useMemo(() => {
     let list = broadcasts;
@@ -320,13 +370,23 @@ export default function BroadcastsPage() {
       toast({ title: 'Required', description: 'Name and campaign are required.', variant: 'destructive' });
       return;
     }
+    const home = selectedFixture?.participants?.find(p => p.location === 'home');
+    const away = selectedFixture?.participants?.find(p => p.location === 'away');
     createMutation.mutate({
       broadcastName: formData.broadcastName,
       description: formData.description || undefined,
       campaignId: parseInt(formData.campaignId),
-      startTime: formData.startTime || undefined,
+      startTime: formData.startTime || (selectedFixture?.starting_at ? new Date(selectedFixture.starting_at).toISOString() : undefined),
       endTime: formData.endTime || undefined,
       createdBy: userId,
+      ...(selectedFixture ? {
+        sportmonksFixtureId: selectedFixture.id,
+        homeTeamName: home?.name,
+        homeTeamLogo: home?.image_path,
+        awayTeamName: away?.name,
+        awayTeamLogo: away?.image_path,
+        matchStartingAt: selectedFixture.starting_at,
+      } : {}),
     });
   };
 
@@ -351,7 +411,7 @@ export default function BroadcastsPage() {
               <Plus className="w-4 h-4" /> New Broadcast
             </Button>
           </DialogTrigger>
-          <DialogContent className="sm:max-w-[500px]">
+          <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>Create Broadcast</DialogTitle>
               <DialogDescription>Create a new broadcast and assign it to a campaign.</DialogDescription>
@@ -407,6 +467,91 @@ export default function BroadcastsPage() {
                     onChange={(e) => setFormData(prev => ({ ...prev, endTime: e.target.value }))}
                   />
                 </div>
+              </div>
+              {/* Sportmonks Match Selector */}
+              <div className="border border-gray-200 dark:border-white/10 rounded-lg overflow-hidden">
+                <button
+                  type="button"
+                  onClick={() => setShowMatchSection(prev => !prev)}
+                  className="w-full flex items-center justify-between px-4 py-3 bg-gray-50 dark:bg-white/5 hover:bg-gray-100 dark:hover:bg-white/[0.08] transition text-sm text-gray-700 dark:text-gray-300"
+                  data-testid="button-toggle-match-section"
+                >
+                  <div className="flex items-center gap-2">
+                    <Swords className="w-4 h-4 text-gray-400" />
+                    <span className="font-medium">Link to a Match</span>
+                    {selectedFixture && (
+                      <span className="text-xs text-[#3d8b7a] dark:text-[#5eff9e] ml-2 truncate max-w-[180px]">{selectedFixture.name}</span>
+                    )}
+                  </div>
+                  {showMatchSection ? <ChevronDown className="w-4 h-4 text-gray-400" /> : <ChevronRight className="w-4 h-4 text-gray-400" />}
+                </button>
+                {showMatchSection && (
+                  <div className="p-4 space-y-3 border-t border-gray-100 dark:border-white/5">
+                    <div className="grid gap-2">
+                      <Label>League</Label>
+                      <Select
+                        value={selectedLeagueId?.toString() || ''}
+                        onValueChange={(v) => { setSelectedLeagueId(parseInt(v)); setSelectedFixture(null); setFixtureSearch(''); }}
+                      >
+                        <SelectTrigger data-testid="select-league">
+                          <SelectValue placeholder="Select league" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {leagues.map(l => (
+                            <SelectItem key={l.id} value={String(l.id)}>{l.name}{l.country ? ` · ${l.country}` : ''}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    {selectedLeagueId && (
+                      <div className="grid gap-2">
+                        <Label>Match</Label>
+                        <div className="relative">
+                          <Search className="absolute left-2.5 top-2.5 w-3.5 h-3.5 text-gray-400" />
+                          <Input
+                            className="pl-8 text-sm"
+                            placeholder="Search matches..."
+                            value={fixtureSearch}
+                            onChange={e => setFixtureSearch(e.target.value)}
+                            data-testid="input-fixture-search"
+                          />
+                        </div>
+                        <div className="max-h-40 overflow-y-auto space-y-1 border border-gray-100 dark:border-white/10 rounded-md p-1">
+                          {fixturesLoading ? (
+                            <div className="text-center text-xs text-gray-400 py-4">Loading matches...</div>
+                          ) : filteredFixtures.length === 0 ? (
+                            <div className="text-center text-xs text-gray-400 py-4">No matches found</div>
+                          ) : filteredFixtures.map(f => {
+                            const home = f.participants?.find(p => p.location === 'home');
+                            const away = f.participants?.find(p => p.location === 'away');
+                            const isSelected = selectedFixture?.id === f.id;
+                            return (
+                              <div
+                                key={f.id}
+                                onClick={() => setSelectedFixture(isSelected ? null : f)}
+                                className={`flex items-center justify-between px-2 py-1.5 rounded cursor-pointer text-xs transition ${
+                                  isSelected ? 'bg-[#3d8b7a]/15 border border-[#3d8b7a]/30' : 'hover:bg-gray-50 dark:hover:bg-white/5'
+                                }`}
+                                data-testid={`fixture-option-${f.id}`}
+                              >
+                                <div className="flex items-center gap-1.5 flex-1 min-w-0">
+                                  {home?.image_path && <img src={home.image_path} className="w-4 h-4 object-contain" alt="" />}
+                                  <span className="text-gray-700 dark:text-gray-200 truncate">{home?.name || '?'}</span>
+                                  <span className="text-gray-400 mx-1">vs</span>
+                                  {away?.image_path && <img src={away.image_path} className="w-4 h-4 object-contain" alt="" />}
+                                  <span className="text-gray-700 dark:text-gray-200 truncate">{away?.name || '?'}</span>
+                                </div>
+                                <span className="text-gray-400 ml-2 shrink-0">
+                                  {new Date(f.starting_at).toLocaleDateString('en', { month: 'short', day: 'numeric' })}
+                                </span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
             <DialogFooter>

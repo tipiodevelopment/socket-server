@@ -12,7 +12,7 @@ import { useToast } from '@/hooks/use-toast';
 import { queryClient, apiRequest } from '@/lib/queryClient';
 import { AppLayout } from '@/components/AppLayout';
 import { ImageUploadWithPreview } from '@/components/ImageUploadWithPreview';
-import type { Broadcast, Poll, PollOptionRecord, Contest, Campaign, BroadcastAd, BroadcastProduct, ChatMessage } from '@shared/schema';
+import type { Broadcast, Poll, PollOptionRecord, Contest, Campaign, BroadcastAd, BroadcastProduct, ChatMessage, Sponsor } from '@shared/schema';
 import { ArrowLeft, Plus, Trash2, BarChart3, Trophy, X, MoreVertical, CheckCircle, Play, SkipBack, SkipForward, Maximize2, Send, Megaphone, ShoppingBag, ExternalLink, Eye, TrendingUp, Vote, MessageSquare, RefreshCw, Users, Radio, Pencil, Check, AtSign, Swords, ChevronDown, ChevronRight, Code2 } from 'lucide-react';
 import { useState, useRef, useEffect } from 'react';
 import { useUser } from '@/contexts/UserContext';
@@ -543,6 +543,166 @@ function ShoppableProductsSection({ broadcastId }: { broadcastId: string }) {
             </div>
           </div>
         </>
+      )}
+    </div>
+  );
+}
+
+type TriggeredAdEntry = {
+  id: string;
+  productId: string;
+  productName: string;
+  productPrice: string | null;
+  productImage: string | null;
+  sponsorName: string | null;
+  triggeredAt: Date;
+};
+
+function ShoppableAdTriggerSection({ broadcastId, campaignId }: { broadcastId: string; campaignId: number | null }) {
+  const { toast } = useToast();
+  const [productId, setProductId] = useState('');
+  const [selectedSponsorId, setSelectedSponsorId] = useState('');
+  const [log, setLog] = useState<TriggeredAdEntry[]>([]);
+
+  const { data: sponsors = [] } = useQuery<Sponsor[]>({
+    queryKey: ['/api/sponsors'],
+  });
+
+  const { data: campaignData2 } = useQuery<Campaign>({
+    queryKey: ['/api/campaigns', campaignId],
+    enabled: !!campaignId,
+  });
+
+  const commerceEnabled = (campaignData2 as any)?.integrations?.commerce?.enabled !== false;
+
+  const triggerMutation = useMutation({
+    mutationFn: async () => {
+      const res = await fetch(`/api/broadcasts/${broadcastId}/trigger-shoppable-ad`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          productId: productId.trim(),
+          sponsorId: (selectedSponsorId && selectedSponsorId !== 'none') ? selectedSponsorId : undefined,
+        }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      return res.json();
+    },
+    onSuccess: (data) => {
+      const sponsor = selectedSponsorId && selectedSponsorId !== 'none' ? sponsors.find(s => String(s.id) === selectedSponsorId) : undefined;
+      const entry: TriggeredAdEntry = {
+        id: `${Date.now()}-${productId}`,
+        productId: productId.trim(),
+        productName: data.product?.name ?? `Product #${productId}`,
+        productPrice: data.product?.price != null ? `${data.product.price} ${data.product.currency ?? ''}`.trim() : null,
+        productImage: data.product?.imageUrl ?? null,
+        sponsorName: sponsor?.name ?? null,
+        triggeredAt: new Date(),
+      };
+      setLog(prev => [entry, ...prev]);
+      toast({ title: 'Shoppable Ad triggered', description: `"${entry.productName}" sent to viewers` });
+    },
+    onError: (err: any) => {
+      toast({ title: 'Error', description: err.message || 'Failed to trigger ad', variant: 'destructive' });
+    },
+  });
+
+  const handleTrigger = () => {
+    if (!productId.trim()) {
+      toast({ title: 'Product ID required', description: 'Enter a Commerce product ID to trigger', variant: 'destructive' });
+      return;
+    }
+    triggerMutation.mutate();
+  };
+
+  return (
+    <div className="mb-6" data-testid="section-shoppable-ads">
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="text-sm font-semibold text-gray-900 dark:text-white">Shoppable Ads</h2>
+      </div>
+
+      {!commerceEnabled ? (
+        <div className="bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-500/30 rounded-lg p-4 flex items-start gap-3">
+          <ShoppingBag className="w-4 h-4 text-amber-500 mt-0.5 flex-shrink-0" />
+          <div>
+            <p className="text-sm font-medium text-amber-700 dark:text-amber-400">Commerce not configured</p>
+            <p className="text-xs text-amber-600 dark:text-amber-500 mt-0.5">Enable the Commerce integration in Campaign Settings to trigger shoppable ads.</p>
+          </div>
+        </div>
+      ) : (
+        <div className="bg-transparent border border-gray-200 dark:border-white/10 rounded-lg p-5 space-y-4">
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-1.5">
+              <Label className="text-xs text-gray-500 dark:text-gray-400">Commerce Product ID</Label>
+              <Input
+                data-testid="input-shoppable-product-id"
+                value={productId}
+                onChange={e => setProductId(e.target.value)}
+                placeholder="e.g. 12345"
+                className="text-sm"
+                onKeyDown={e => e.key === 'Enter' && handleTrigger()}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs text-gray-500 dark:text-gray-400">Sponsor (optional)</Label>
+              <Select value={selectedSponsorId} onValueChange={setSelectedSponsorId}>
+                <SelectTrigger data-testid="select-shoppable-sponsor" className="text-sm">
+                  <SelectValue placeholder="No sponsor" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">No sponsor</SelectItem>
+                  {sponsors.map(s => (
+                    <SelectItem key={s.id} value={String(s.id)}>{s.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <button
+            onClick={handleTrigger}
+            disabled={triggerMutation.isPending}
+            data-testid="button-trigger-shoppable-ad"
+            className={`w-full flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm font-medium transition ${
+              triggerMutation.isPending
+                ? 'bg-gray-100 dark:bg-white/5 text-gray-400 cursor-not-allowed'
+                : 'bg-green-600 hover:bg-green-700 dark:bg-green-500 dark:hover:bg-green-600 text-white'
+            }`}
+          >
+            <Radio className="w-4 h-4" />
+            {triggerMutation.isPending ? 'Sending...' : 'Trigger Shoppable Ad'}
+          </button>
+
+          {log.length > 0 && (
+            <div className="border-t border-gray-100 dark:border-white/10 pt-4">
+              <p className="text-[11px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wide mb-2">Session Log</p>
+              <div className="space-y-2 max-h-48 overflow-y-auto">
+                {log.map(entry => (
+                  <div key={entry.id} className="flex items-center gap-3 text-xs" data-testid={`log-shoppable-ad-${entry.id}`}>
+                    {entry.productImage ? (
+                      <img src={entry.productImage} className="w-8 h-8 rounded object-cover flex-shrink-0 border border-gray-100 dark:border-white/10" alt="" />
+                    ) : (
+                      <div className="w-8 h-8 rounded bg-gray-100 dark:bg-white/10 flex items-center justify-center flex-shrink-0">
+                        <ShoppingBag className="w-3.5 h-3.5 text-gray-400" />
+                      </div>
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium text-gray-900 dark:text-white truncate">{entry.productName}</span>
+                        {entry.productPrice && <span className="text-green-500 dark:text-green-400 shrink-0">{entry.productPrice}</span>}
+                      </div>
+                      <div className="text-gray-400 dark:text-gray-500 flex items-center gap-1.5">
+                        {entry.sponsorName && <span className="text-gray-500">{entry.sponsorName} ·</span>}
+                        <span>{entry.triggeredAt.toLocaleTimeString('en', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</span>
+                      </div>
+                    </div>
+                    <CheckCircle className="w-3.5 h-3.5 text-green-500 flex-shrink-0" />
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
       )}
     </div>
   );
@@ -1386,6 +1546,7 @@ export default function BroadcastDetailPage() {
           <MatchDataSection broadcastId={broadcastId!} />
           <ScheduledAdsSection broadcastId={broadcastId!} />
           <ShoppableProductsSection broadcastId={broadcastId!} />
+          <ShoppableAdTriggerSection broadcastId={broadcastId!} campaignId={broadcast.campaignId ?? null} />
         </main>
 
         <LiveChatSidebar broadcastId={broadcastId!} analytics={analytics} reachuUserId={reachuUserId} broadcastStatus={broadcast?.status} />

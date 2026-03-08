@@ -477,6 +477,27 @@ function BroadcastsTab({ campaignId }: { campaignId: number }) {
     },
   });
 
+  const { data: allBroadcastsForCount = [] } = useQuery<Broadcast[]>({
+    queryKey: ['/api/broadcasts', campaignId, 'all-for-count'],
+    queryFn: async () => {
+      const params = new URLSearchParams();
+      params.set('campaignId', String(campaignId));
+      const res = await fetch(`/api/broadcasts?${params.toString()}`);
+      if (!res.ok) throw new Error('Failed to fetch broadcasts');
+      return res.json();
+    },
+    staleTime: 30000,
+  });
+
+  const broadcastCounts = useMemo(() => {
+    const counts: Record<string, number> = { all: allBroadcastsForCount.length };
+    for (const b of allBroadcastsForCount) {
+      const s = (b as any).status || 'ended';
+      counts[s] = (counts[s] || 0) + 1;
+    }
+    return counts;
+  }, [allBroadcastsForCount]);
+
   const invalidateBroadcasts = () => {
     queryClient.invalidateQueries({ queryKey: ['/api/broadcasts', campaignId] });
     queryClient.invalidateQueries({ queryKey: ['/api/campaigns', campaignId, 'broadcasts'] });
@@ -700,20 +721,32 @@ function BroadcastsTab({ campaignId }: { campaignId: number }) {
     <div>
       <div className="flex items-center justify-between mb-4">
         <div className="flex gap-2 flex-wrap">
-          {filterOptions.map((option) => (
-            <button
-              key={option.value}
-              onClick={() => setStatusFilter(option.value)}
-              data-testid={`filter-broadcast-${option.value}`}
-              className={`px-3.5 py-1.5 text-sm rounded-md transition-all ${
-                statusFilter === option.value
-                  ? 'bg-white dark:bg-white/10 text-gray-900 dark:text-white font-medium shadow-sm'
-                  : 'text-gray-500 dark:text-white/40 hover:text-gray-700 dark:hover:text-white/60 hover:bg-gray-100 dark:hover:bg-white/5'
-              }`}
-            >
-              {option.label}
-            </button>
-          ))}
+          {filterOptions.map((option) => {
+            const count = broadcastCounts[option.value] ?? 0;
+            return (
+              <button
+                key={option.value}
+                onClick={() => setStatusFilter(option.value)}
+                data-testid={`filter-broadcast-${option.value}`}
+                className={`px-3.5 py-1.5 text-sm rounded-md transition-all flex items-center gap-1.5 ${
+                  statusFilter === option.value
+                    ? 'bg-white dark:bg-white/10 text-gray-900 dark:text-white font-medium shadow-sm'
+                    : 'text-gray-500 dark:text-white/40 hover:text-gray-700 dark:hover:text-white/60 hover:bg-gray-100 dark:hover:bg-white/5'
+                }`}
+              >
+                {option.label}
+                {count > 0 && (
+                  <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${
+                    statusFilter === option.value
+                      ? 'bg-gray-100 dark:bg-white/20 text-gray-600 dark:text-gray-300'
+                      : 'bg-gray-100 dark:bg-white/10 text-gray-500 dark:text-gray-400'
+                  }`}>
+                    {count}
+                  </span>
+                )}
+              </button>
+            );
+          })}
         </div>
 
         <Dialog open={createOpen} onOpenChange={setCreateOpen}>

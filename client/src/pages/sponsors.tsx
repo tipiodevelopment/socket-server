@@ -54,6 +54,7 @@ export default function SponsorsPage() {
   const { toast } = useToast();
   const { userId } = useUser();
   const [, setLocation] = useLocation();
+  const [expandedDescs, setExpandedDescs] = useState<Set<number>>(new Set());
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -342,12 +343,31 @@ export default function SponsorsPage() {
                       {sponsor.name}
                     </h3>
                     {sponsor.description && (
-                      <p
-                        className="text-xs text-gray-500 dark:text-white/40 line-clamp-2"
-                        data-testid={`text-sponsor-description-${sponsor.id}`}
-                      >
-                        {sponsor.description}
-                      </p>
+                      <div>
+                        <p
+                          className={`text-xs text-gray-500 dark:text-white/40 ${expandedDescs.has(sponsor.id) ? '' : 'line-clamp-2'}`}
+                          data-testid={`text-sponsor-description-${sponsor.id}`}
+                        >
+                          {sponsor.description}
+                        </p>
+                        {sponsor.description.length > 80 && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setExpandedDescs(prev => {
+                                const next = new Set(prev);
+                                if (next.has(sponsor.id)) next.delete(sponsor.id);
+                                else next.add(sponsor.id);
+                                return next;
+                              });
+                            }}
+                            className="text-[10px] text-gray-400 dark:text-white/30 hover:text-gray-600 dark:hover:text-white/50 mt-0.5"
+                            data-testid={`button-expand-desc-${sponsor.id}`}
+                          >
+                            {expandedDescs.has(sponsor.id) ? 'show less' : 'show more'}
+                          </button>
+                        )}
+                      </div>
                     )}
                   </div>
                   {sponsor.avatarUrl && (

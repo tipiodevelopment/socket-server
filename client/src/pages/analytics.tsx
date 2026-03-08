@@ -75,12 +75,26 @@ function useChartTheme() {
   };
 }
 
+const PERIOD_OPTIONS = [
+  { label: 'Today', days: 1 },
+  { label: '7d', days: 7 },
+  { label: '30d', days: 30 },
+];
+
 function GlobalDashboard({ onDrill }: { onDrill: (view: DrillView) => void }) {
+  const [periodDays, setPeriodDays] = useState(30);
   const { data: overview, isLoading: loadingOverview, isError: errorOverview } = useQuery<any>({ queryKey: ['/api/analytics/overview'] });
   const { data: engagement, isLoading: loadingEngagement } = useQuery<any>({ queryKey: ['/api/analytics/engagement'] });
   const { data: geo, isLoading: loadingGeo } = useQuery<any>({ queryKey: ['/api/analytics/geographic'] });
   const { data: sponsorData, isLoading: loadingSponsors } = useQuery<any>({ queryKey: ['/api/analytics/sponsors'] });
   const chart = useChartTheme();
+
+  const filteredActivity = engagement?.broadcastActivity?.filter((item: any) => {
+    const itemDate = new Date(item.date);
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - periodDays);
+    return itemDate >= cutoff;
+  }) || [];
 
   if (errorOverview) {
     return (
@@ -121,14 +135,34 @@ function GlobalDashboard({ onDrill }: { onDrill: (view: DrillView) => void }) {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <div className="bg-white dark:bg-[#141824] border border-gray-200 dark:border-white/10 rounded-lg p-5" data-testid="section-broadcast-activity">
-          <SectionHeader title="Broadcast Activity (30 days)" />
+          <div className="flex items-center justify-between mb-3">
+            <SectionHeader title={`Broadcast Activity`} />
+            <div className="flex gap-1">
+              {PERIOD_OPTIONS.map(opt => (
+                <button
+                  key={opt.days}
+                  onClick={() => setPeriodDays(opt.days)}
+                  data-testid={`button-period-${opt.days}`}
+                  className={`px-2.5 py-1 text-xs rounded transition-all ${
+                    periodDays === opt.days
+                      ? 'bg-white dark:bg-white/15 text-gray-900 dark:text-white font-medium shadow-sm border border-gray-200 dark:border-white/20'
+                      : 'text-gray-400 dark:text-white/40 hover:text-gray-700 dark:hover:text-white/60'
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </div>
           {loadingEngagement ? (
             <Skeleton className="h-48 bg-gray-100 dark:bg-[#1c2030]" />
-          ) : (engagement?.broadcastActivity?.length ?? 0) === 0 ? (
-            <div className="h-48 flex items-center justify-center text-gray-400 dark:text-gray-500 text-sm">No broadcast activity in the last 30 days</div>
+          ) : filteredActivity.length === 0 ? (
+            <div className="h-48 flex items-center justify-center text-gray-400 dark:text-gray-500 text-sm">
+              {`No broadcast activity in the last ${periodDays === 1 ? 'day' : `${periodDays} days`}`}
+            </div>
           ) : (
             <ResponsiveContainer width="100%" height={200}>
-              <BarChart data={engagement?.broadcastActivity || []}>
+              <BarChart data={filteredActivity}>
                 <CartesianGrid strokeDasharray="3 3" stroke={chart.grid} />
                 <XAxis dataKey="date" tick={{ fill: chart.tick, fontSize: 10 }} tickFormatter={(v) => new Date(v).toLocaleDateString('en', { month: 'short', day: 'numeric' })} />
                 <YAxis tick={{ fill: chart.tick, fontSize: 10 }} />
@@ -278,7 +312,7 @@ function AppAnalytics({ appId, onDrill, onBack }: { appId: number; onDrill: (vie
   return (
     <div className="space-y-6">
       <button onClick={onBack} className="flex items-center gap-2 text-gray-400 hover:text-gray-900 dark:hover:text-white text-sm transition" data-testid="button-back-app">
-        <ArrowLeft className="w-4 h-4" /> Back to Overview
+        <ArrowLeft className="w-4 h-4" /> ← Analytics Overview
       </button>
       <div className="flex items-center gap-3 mb-2">
         <Smartphone className="w-5 h-5 text-[#3d8b7a] dark:text-white" />
@@ -372,7 +406,7 @@ function CampaignAnalytics({ campaignId, onDrill, onBack }: { campaignId: number
   return (
     <div className="space-y-6">
       <button onClick={onBack} className="flex items-center gap-2 text-gray-400 hover:text-gray-900 dark:hover:text-white text-sm transition" data-testid="button-back-campaign">
-        <ArrowLeft className="w-4 h-4" /> Back to Overview
+        <ArrowLeft className="w-4 h-4" /> {c.clientAppName ? `← ${c.clientAppName}` : '← Overview'}
       </button>
 
       <div className="flex items-center justify-between">
@@ -598,10 +632,11 @@ function BroadcastAnalytics({ broadcastId, onBack }: { broadcastId: string; onBa
 }
 
 export default function AnalyticsPage() {
-  const [view, setView] = useState<DrillView>({ type: 'global' });
+  const [history, setHistory] = useState<DrillView[]>([{ type: 'global' }]);
+  const view = history[history.length - 1];
 
-  const handleDrill = (newView: DrillView) => setView(newView);
-  const handleBack = () => setView({ type: 'global' });
+  const handleDrill = (newView: DrillView) => setHistory(prev => [...prev, newView]);
+  const handleBack = () => setHistory(prev => prev.length > 1 ? prev.slice(0, -1) : prev);
 
   const breadcrumbs: { label: string; href?: string }[] = [{ label: 'Analytics', href: '/analytics' }];
   if (view.type !== 'global') {

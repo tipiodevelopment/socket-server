@@ -4093,6 +4093,84 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
     }
   });
 
+  // POST /api/broadcasts/:broadcastId/trigger-shoppable-ad — Dashboard trigger (no Bearer required)
+  app.post('/api/broadcasts/:broadcastId/trigger-shoppable-ad', async (req, res) => {
+    try {
+      const { broadcastId } = req.params;
+      const { productId, sponsorId } = req.body;
+
+      if (!productId) {
+        return res.status(400).json({ error: 'productId is required' });
+      }
+
+      const broadcast = await storage.getBroadcast(broadcastId);
+      if (!broadcast) return res.status(404).json({ error: 'Broadcast not found' });
+
+      const campaign = await storage.getCampaign(broadcast.campaignId);
+      if (!campaign) return res.status(404).json({ error: 'Campaign not found' });
+
+      const commerceApiKey = campaign.reachuApiKey || process.env.COMMERCE_API_KEY || 'KCXF10Y-W5T4PCR-GG5119A-Z64SQ9S';
+
+      let product: any = null;
+      try {
+        const gqlQuery = `{ Channel { GetProductsByIds(product_ids: [${productId}]) { id title images { url order } price { amount amount_incl_taxes currency_code } } } }`;
+        const gqlRes = await fetch('https://graph-ql-dev.vio.live/graphql', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': commerceApiKey },
+          body: JSON.stringify({ query: gqlQuery }),
+        });
+        const gqlData = await gqlRes.json() as any;
+        const p = gqlData?.data?.Channel?.GetProductsByIds?.[0];
+        if (p) {
+          const image = p.images?.sort((a: any, b: any) => a.order - b.order)?.[0];
+          product = {
+            id: String(p.id),
+            name: p.title,
+            price: p.price?.amount_incl_taxes ?? p.price?.amount ?? null,
+            currency: p.price?.currency_code ?? 'NOK',
+            imageUrl: image?.url ?? null,
+          };
+        }
+      } catch (err) {
+        console.warn('[TriggerShoppableAd] Commerce GraphQL error:', err);
+      }
+
+      if (!product) {
+        product = { id: String(productId), name: `Product #${productId}`, price: null, currency: 'NOK', imageUrl: null };
+      }
+
+      let sponsor: any = null;
+      if (sponsorId) {
+        const sp = await storage.getSponsor(parseInt(sponsorId));
+        if (sp) {
+          sponsor = {
+            name: sp.name,
+            logoUrl: sp.logoUrl ? normalizeUrls(sp.logoUrl, req.protocol, req.get('host')) : null,
+            primaryColor: sp.primaryColor ?? null,
+          };
+        }
+      }
+
+      const wsEvent = {
+        type: 'shoppable_ad',
+        broadcastId,
+        campaignId: campaign.id,
+        product,
+        ...(sponsor ? { sponsor } : {}),
+        timestamp: Date.now(),
+      };
+
+      if (campaign.id) {
+        broadcastToCampaign(campaign.id, JSON.stringify(wsEvent));
+      }
+
+      res.json({ success: true, product, sponsor });
+    } catch (error) {
+      console.error('[TriggerShoppableAd] Error:', error);
+      res.status(500).json({ error: 'Failed to trigger shoppable ad' });
+    }
+  });
+
   // POST /api/campaigns/:id/register-device — Register APNs device token for push notifications
   app.post('/api/campaigns/:campaignId/register-device', validateApiKey, async (req, res) => {
     try {

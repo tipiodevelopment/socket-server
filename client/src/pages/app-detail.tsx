@@ -23,11 +23,11 @@ function formatViewers(num: number): string {
   return num.toString();
 }
 
-function getCampaignStatus(campaign: Campaign): { label: string } {
-  if (campaign.isPaused === 'true') return { label: 'Paused' };
-  if (campaign.startDate && new Date(campaign.startDate) > new Date()) return { label: 'Upcoming' };
-  if (campaign.endDate && new Date(campaign.endDate) < new Date()) return { label: 'Ended' };
-  return { label: 'Active' };
+function getCampaignStatus(campaign: Campaign): { label: string; colorClass: string } {
+  if (campaign.isPaused === 'true') return { label: 'Paused', colorClass: 'bg-amber-500/15 text-amber-400 border-amber-500/30' };
+  if (campaign.startDate && new Date(campaign.startDate) > new Date()) return { label: 'Upcoming', colorClass: 'bg-white/10 text-gray-300 border-white/20' };
+  if (campaign.endDate && new Date(campaign.endDate) < new Date()) return { label: 'Ended', colorClass: 'bg-gray-500/20 text-gray-400 border-gray-500/30' };
+  return { label: 'Active', colorClass: 'bg-[#3d8b7a]/15 text-[#3d8b7a] border-[#3d8b7a]/30' };
 }
 
 function getStatusBadge(status: string) {
@@ -441,7 +441,7 @@ export default function AppDetailPage() {
                               )}
                             </div>
                           </div>
-                          <span className="px-2 py-0.5 bg-white/10 text-gray-300 text-[10px] uppercase font-medium rounded border border-white/10">
+                          <span className={`px-2 py-0.5 text-[10px] uppercase font-medium rounded border ${status.colorClass}`}>
                             {status.label}
                           </span>
                         </div>

@@ -265,14 +265,14 @@ export default function DashboardPage() {
               <tbody>
                 {liveBroadcasts.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="text-center py-10">
-                      <Radio className="w-8 h-8 text-gray-300 dark:text-white/20 mx-auto mb-2" />
-                      <p className="text-sm text-gray-400 dark:text-white/30">No live broadcasts right now</p>
-                      <Link href="/broadcasts">
-                        <Button size="sm" variant="outline" className="mt-3 gap-1.5 border-gray-200 dark:border-white/10 text-gray-500 dark:text-white/50 text-xs">
-                          <Plus className="w-3.5 h-3.5" /> Create Broadcast
-                        </Button>
-                      </Link>
+                    <td colSpan={7} className="text-center py-5">
+                      <div className="flex items-center justify-center gap-2 text-gray-400 dark:text-white/30">
+                        <Radio className="w-4 h-4" />
+                        <span className="text-sm">No live broadcasts right now</span>
+                        <Link href="/broadcasts">
+                          <span className="text-xs text-gray-400 dark:text-white/30 hover:text-gray-600 dark:hover:text-white/50 underline underline-offset-2 cursor-pointer ml-1">Start one</span>
+                        </Link>
+                      </div>
                     </td>
                   </tr>
                 ) : (

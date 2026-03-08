@@ -39,7 +39,7 @@ The platform is built with a full-stack TypeScript environment.
 
 ### Feature Specifications
 
-- **Broadcast Detail Page:** Displays real-time data for ads, products, chat, and analytics. Includes a live chat sidebar and a "Load Demo" button for seeding data. Poll options show percentage + absolute vote count per option.
+- **Broadcast Detail Page:** Displays real-time data for ads, products, chat, and analytics. Includes a live chat sidebar and a "Load Demo" button for seeding data. Poll options show percentage + absolute vote count per option. Includes a **Shoppable Ads** section with product ID input, sponsor selector, "Trigger Shoppable Ad" button (POST `/api/broadcasts/:id/trigger-shoppable-ad`), and a session log of triggered ads with timestamps. Shows a Commerce warning if not configured.
 - **Sponsor Detail Page:** `/sponsors/:id` — shows sponsor profile (logo, colors, description), stats (total/active campaigns), and a list of linked campaigns. Accessible via "View" button on sponsor cards.
 - **Component Library:** A grid-based library for reusable UI components with filtering and integration code snippets (e.g., iOS Swift). Components can be instanced multiple times per campaign.
 - **Campaign Dashboard:** Tabs include Overview, Broadcasts, Components, Live, Analytics, and Settings. The "Live" tab manages real-time event triggers, and "Settings" configures campaign details. Forms auto-save to the database.
@@ -47,6 +47,8 @@ The platform is built with a full-stack TypeScript environment.
 - **Geographic Targeting & User Segmentation:** Server-side features for user segmentation based on location and other criteria using deterministic hashing.
 - **Admin Panel:** Forms for polls, products, and contests start empty and load data from the database.
 - **Broadcast Edit Dialog:** Allows editing broadcast name, externalId, status, startTime, and endTime. Status changes trigger WebSocket events.
+- **Create Broadcast (global):** The "New Broadcast" dialog in `/broadcasts` includes an optional "Link to a Match" section with Sportmonks league + fixture selector. Selected fixture populates `sportmonksFixtureId`, team names/logos, and `matchStartingAt` on creation.
+- **Demo Data:** TV2 app (campaign 36) has 3 broadcasts (~34K viewers peak). Viaplay app (campaigns 35/33/31) has 6+ broadcasts (~72K viewers peak). Live broadcasts: `tv2-eliteserien-live-2026-03-08` (Brann vs Molde), `viaplay-atletico-psg-2026-03-08` (Atlético Madrid vs PSG).
 - **Channel and Client App Architecture:** Channels are standalone entities. SDK discovery resolves campaigns directly via `campaigns.client_app_id`.
 - **Commerce Integration:** The ecommerce module is named "Commerce" in all public interfaces. The Commerce API key is delivered dynamically via config endpoints. Supports `product_carousel` and `product_banner` components linked to Commerce product IDs.
 - **API Key Architecture:** The SDK uses a single Vio App API Key (`client_apps.api_key`) for all Vio backend endpoints. The Commerce module key is campaign-level, delivered via `integrations.commerce.apiKey` in the config response.
