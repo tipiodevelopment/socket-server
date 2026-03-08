@@ -225,7 +225,12 @@ function ActivePollCard({ poll, onToggle, onDelete, campaignId }: {
                 <div key={option.id} data-testid={`poll-option-${option.id}`}>
                   <div className="flex justify-between text-xs mb-1">
                     <span className="text-gray-600 dark:text-gray-300">{option.text}</span>
-                    <span className="text-gray-900 dark:text-white font-semibold">{percentage}%</span>
+                    <span className="text-gray-900 dark:text-white font-semibold">
+                      {percentage}%
+                      {totalVotes > 0 && (
+                        <span className="text-gray-400 dark:text-gray-500 font-normal ml-1">({(option.voteCount || 0).toLocaleString()})</span>
+                      )}
+                    </span>
                   </div>
                   <div className="h-1.5 bg-gray-100 dark:bg-white/10 rounded-full overflow-hidden">
                     <div className="h-full bg-blue-500 rounded-full transition-all" style={{ width: `${percentage}%` }} data-testid={`poll-option-bar-${option.id}`}></div>

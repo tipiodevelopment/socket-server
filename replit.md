@@ -39,7 +39,8 @@ The platform is built with a full-stack TypeScript environment.
 
 ### Feature Specifications
 
-- **Broadcast Detail Page:** Displays real-time data for ads, products, chat, and analytics. Includes a live chat sidebar and a "Load Demo" button for seeding data.
+- **Broadcast Detail Page:** Displays real-time data for ads, products, chat, and analytics. Includes a live chat sidebar and a "Load Demo" button for seeding data. Poll options show percentage + absolute vote count per option.
+- **Sponsor Detail Page:** `/sponsors/:id` — shows sponsor profile (logo, colors, description), stats (total/active campaigns), and a list of linked campaigns. Accessible via "View" button on sponsor cards.
 - **Component Library:** A grid-based library for reusable UI components with filtering and integration code snippets (e.g., iOS Swift). Components can be instanced multiple times per campaign.
 - **Campaign Dashboard:** Tabs include Overview, Broadcasts, Components, Live, Analytics, and Settings. The "Live" tab manages real-time event triggers, and "Settings" configures campaign details. Forms auto-save to the database.
 - **Sponsor Management:** CRUD operations for sponsors, including logo/avatar uploads and color configuration, linked to campaign branding.

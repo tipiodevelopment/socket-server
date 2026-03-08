@@ -290,7 +290,7 @@ export default function AppDetailPage() {
                   className="px-4 py-1.5 bg-white hover:bg-gray-200 text-black rounded text-xs font-medium flex items-center gap-2 transition"
                 >
                   <Settings className="w-3 h-3" />
-                  Edit Details
+                  Manage
                 </button>
               </div>
 
@@ -480,21 +480,6 @@ export default function AppDetailPage() {
               <h2 className="text-sm font-semibold text-gray-400 uppercase mb-4">Quick Actions</h2>
 
               <div className="space-y-1">
-                <button
-                  data-testid="button-settings"
-                  onClick={() => openSettingsModal('general')}
-                  className="w-full flex items-center gap-3 px-3 py-3 rounded hover:bg-white/5 transition text-left"
-                >
-                  <div className="w-9 h-9 bg-white/10 rounded flex items-center justify-center flex-shrink-0">
-                    <Settings className="w-4 h-4 text-white" />
-                  </div>
-                  <div className="flex-1">
-                    <div className="text-sm font-medium text-white">App Settings</div>
-                    <div className="text-xs text-gray-500">Configuration & preferences</div>
-                  </div>
-                  <ChevronRight className="w-3 h-3 text-gray-500" />
-                </button>
-
                 <button
                   data-testid="button-api-keys"
                   onClick={() => openSettingsModal('api-keys')}

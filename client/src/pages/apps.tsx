@@ -81,11 +81,12 @@ const APP_GRADIENTS = [
   'from-gray-600 to-gray-800',
 ];
 
-function AppBanner({ bannerUrl, appId, appName }: { bannerUrl: string | null | undefined; appId: number; appName: string }) {
+function AppBanner({ bannerUrl, appId, appName, index = 0 }: { bannerUrl: string | null | undefined; appId: number; appName: string; index?: number }) {
   const [bannerError, setBannerError] = useState(false);
   const showImage = bannerUrl && !bannerError;
+  const gradient = APP_GRADIENTS[index % APP_GRADIENTS.length];
   return (
-    <div className={`h-24 w-full overflow-hidden ${!showImage ? 'bg-[#0d1119] dark:bg-[#0d1119]' : ''}`}>
+    <div className={`h-24 w-full overflow-hidden ${!showImage ? `bg-gradient-to-br ${gradient}` : ''}`}>
       {showImage && (
         <img
           src={bannerUrl}
@@ -94,6 +95,11 @@ function AppBanner({ bannerUrl, appId, appName }: { bannerUrl: string | null | u
           data-testid={`img-banner-${appId}`}
           onError={() => setBannerError(true)}
         />
+      )}
+      {!showImage && (
+        <div className="w-full h-full flex items-center justify-center opacity-20">
+          <Smartphone className="w-8 h-8 text-white" />
+        </div>
       )}
     </div>
   );
@@ -303,7 +309,7 @@ export default function AppsPage() {
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {clientApps.map((app) => {
+          {clientApps.map((app, idx) => {
             return (
               <div
                 key={app.id}
@@ -316,6 +322,7 @@ export default function AppsPage() {
                     bannerUrl={app.bannerUrl}
                     appId={app.id}
                     appName={app.name}
+                    index={idx}
                   />
 
                   {/* Avatar overlapping bottom of banner */}

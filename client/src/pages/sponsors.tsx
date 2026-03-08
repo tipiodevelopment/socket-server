@@ -28,8 +28,9 @@ import { useUser } from '@/contexts/UserContext';
 import { AppLayout } from '@/components/AppLayout';
 import { ImageUploadWithPreview } from '@/components/ImageUploadWithPreview';
 import type { Sponsor, Campaign } from '@shared/schema';
-import { Plus, Pencil, Trash2, Users } from 'lucide-react';
+import { Plus, Pencil, Trash2, Users, ExternalLink } from 'lucide-react';
 import { useState } from 'react';
+import { useLocation } from 'wouter';
 
 interface SponsorFormData {
   name: string;
@@ -52,6 +53,7 @@ const defaultFormData: SponsorFormData = {
 export default function SponsorsPage() {
   const { toast } = useToast();
   const { userId } = useUser();
+  const [, setLocation] = useLocation();
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -387,6 +389,16 @@ export default function SponsorsPage() {
                 </div>
 
                 <div className="flex items-center gap-2 pt-3 border-t border-gray-100 dark:border-white/5">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="gap-1.5 text-xs text-gray-500 dark:text-white/50 hover:text-gray-700 dark:hover:text-white/80 h-8"
+                    onClick={() => setLocation(`/sponsors/${sponsor.id}`)}
+                    data-testid={`button-view-sponsor-${sponsor.id}`}
+                  >
+                    <ExternalLink className="w-3.5 h-3.5" />
+                    View
+                  </Button>
                   <Button
                     variant="ghost"
                     size="sm"

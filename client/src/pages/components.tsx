@@ -25,7 +25,7 @@ const componentTypes: { value: ComponentType; label: string }[] = [
   { value: 'product_store', label: 'Product Store' },
 ];
 
-const filterOptions = ['All', 'Banner', 'Countdown', 'Carousel', 'Spotlight', 'Badge', 'Products'];
+const filterOptions = ['All', 'Banner', 'Countdown', 'Carousel', 'Spotlight', 'Badge', 'Products', 'Offer'];
 
 function getComponentIcon(type: string) {
   switch (type) {
@@ -64,6 +64,7 @@ function matchesFilter(type: string, filter: string): boolean {
   if (lowerFilter === 'spotlight') return lowerType.includes('spotlight');
   if (lowerFilter === 'badge') return lowerType.includes('badge');
   if (lowerFilter === 'products') return lowerType.startsWith('product_') || lowerType === 'offer_badge' || lowerType === 'offer_banner';
+  if (lowerFilter === 'offer') return lowerType.startsWith('offer_');
   return false;
 }
 
@@ -219,7 +220,7 @@ export default function ComponentsPage() {
                 <div
                   key={component.id}
                   onClick={() => setLocation(`/components/${component.id}`)}
-                  className="group bg-white dark:bg-transparent border border-gray-200 dark:border-white/10 rounded-xl p-5 hover:border-gray-300 dark:hover:border-white/30 hover:bg-gray-50 dark:hover:bg-white/[0.02] transition cursor-pointer flex flex-col h-48"
+                  className="group bg-white dark:bg-transparent border border-gray-200 dark:border-white/10 rounded-xl p-5 hover:border-gray-300 dark:hover:border-white/30 hover:bg-gray-50 dark:hover:bg-white/[0.02] transition cursor-pointer flex flex-col min-h-[10rem]"
                   data-testid={`card-component-${component.id}`}
                 >
                   <div className="flex items-start justify-between mb-4">
