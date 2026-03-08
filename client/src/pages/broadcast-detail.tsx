@@ -501,100 +501,102 @@ function ScheduledAdsSection({ broadcastId }: { broadcastId: string }) {
   );
 }
 
-function ShoppableProductsSection({ broadcastId }: { broadcastId: string }) {
+function ShoppableProductsSection({ broadcastId, campaignId }: { broadcastId: string; campaignId: number | null }) {
   const { toast } = useToast();
-  const { data: products = [], isLoading } = useQuery<BroadcastProduct[]>({
-    queryKey: ['/api/broadcasts', broadcastId, 'products'],
+  const [firingId, setFiringId] = useState<number | null>(null);
+
+  const { data: products = [], isLoading } = useQuery<CommerceProduct[]>({
+    queryKey: ['/api/commerce/products', campaignId],
+    queryFn: async () => {
+      if (!campaignId) return [];
+      const res = await fetch(`/api/commerce/products?campaignId=${campaignId}`);
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: !!campaignId,
   });
 
-  const deleteProductMutation = useMutation({
-    mutationFn: (id: number) => apiRequest('DELETE', `/api/broadcasts/products/${id}`),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/broadcasts', broadcastId, 'products'] });
-      toast({ title: 'Product removed' });
+  const fireAdMutation = useMutation({
+    mutationFn: async (productId: number) => {
+      setFiringId(productId);
+      const res = await fetch(`/api/broadcasts/${broadcastId}/trigger-shoppable-ad`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ productId: String(productId) }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      return res.json();
+    },
+    onSuccess: (data, productId) => {
+      const product = products.find(p => p.id === productId);
+      toast({ title: 'Ad triggered', description: `"${product?.name ?? 'Product'}" sent to viewers` });
+      setFiringId(null);
+    },
+    onError: (err: any) => {
+      toast({ title: 'Error', description: err.message || 'Failed to trigger ad', variant: 'destructive' });
+      setFiringId(null);
     },
   });
-
-  const activeCount = products.filter(p => p.status === 'available').length;
 
   return (
     <div className="mb-6" data-testid="section-products">
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-sm font-semibold text-gray-900 dark:text-white">Shoppable Products</h2>
+        {products.length > 0 && (
+          <span className="text-[11px] text-white/30">{products.length} product{products.length !== 1 ? 's' : ''} from Commerce</span>
+        )}
       </div>
 
-      {isLoading ? (
-        <div className="bg-transparent border border-gray-200 dark:border-white/10 rounded-lg p-6 text-center text-xs text-gray-400 dark:text-gray-500">Loading products...</div>
+      {!campaignId ? (
+        <div className="bg-transparent border border-gray-200 dark:border-white/10 rounded-lg p-8 text-center">
+          <ShoppingBag className="w-10 h-10 text-gray-400 dark:text-gray-500 mx-auto mb-3" />
+          <p className="text-xs text-gray-500 dark:text-gray-400">Link this broadcast to a campaign to see Commerce products</p>
+        </div>
+      ) : isLoading ? (
+        <div className="grid grid-cols-4 gap-4">
+          {[1,2,3,4].map(i => <div key={i} className="h-56 bg-white/5 rounded-lg animate-pulse" />)}
+        </div>
       ) : products.length === 0 ? (
         <div className="bg-transparent border border-gray-200 dark:border-white/10 rounded-lg p-8 text-center">
           <ShoppingBag className="w-10 h-10 text-gray-400 dark:text-gray-500 mx-auto mb-3" />
-          <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-1">No products yet</h3>
-          <p className="text-xs text-gray-500 dark:text-gray-400">Add shoppable products to monetize this broadcast</p>
+          <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-1">No Commerce products</h3>
+          <p className="text-xs text-gray-500 dark:text-gray-400">Configure the Commerce integration in campaign settings to list products here</p>
         </div>
       ) : (
-        <>
-          <div className="grid grid-cols-4 gap-4">
-            {products.map((product) => (
-              <div key={product.id} className="bg-transparent border border-gray-200 dark:border-white/10 rounded-lg overflow-hidden hover:border-gray-300 dark:hover:border-white/30 transition group" data-testid={`card-product-${product.id}`}>
-                <div className="h-40 bg-gray-50 dark:bg-white/5 overflow-hidden flex items-center justify-center p-4 relative">
-                  {product.imageUrl ? (
-                    <img className="w-full h-full object-contain" src={product.imageUrl} alt={product.name} />
-                  ) : (
-                    <ShoppingBag className="w-12 h-12 text-gray-300 dark:text-gray-600" />
-                  )}
-                  <button
-                    onClick={() => deleteProductMutation.mutate(product.id)}
-                    className="absolute top-2 right-2 w-6 h-6 flex items-center justify-center rounded bg-red-500/80 text-white opacity-0 group-hover:opacity-100 transition"
-                    data-testid={`button-delete-product-${product.id}`}
-                  >
-                    <X className="w-3 h-3" />
-                  </button>
-                </div>
-                <div className="p-3">
-                  <h3 className="text-xs font-semibold text-gray-900 dark:text-white mb-1">{product.name}</h3>
-                  {product.subtitle && <p className="text-[10px] text-gray-500 dark:text-gray-400 mb-2">{product.subtitle}</p>}
-                  <div className="flex items-center justify-between">
-                    <div>
-                      {product.price && <span className="text-sm font-bold text-gray-900 dark:text-white">${product.price}</span>}
-                      {product.originalPrice && (
-                        <span className="text-[10px] text-gray-400 dark:text-gray-500 line-through ml-1">${product.originalPrice}</span>
-                      )}
-                    </div>
-                    <span className={`px-2 py-0.5 text-[10px] font-semibold rounded ${
-                      product.status === 'available'
-                        ? 'bg-green-500/20 text-green-400'
-                        : product.status === 'limited'
-                        ? 'bg-yellow-500/20 text-yellow-400'
-                        : 'bg-gray-500/20 text-gray-400'
-                    }`}>
-                      {product.status === 'available' ? 'Available' : product.status === 'limited' ? 'Limited' : 'Sold Out'}
-                    </span>
-                  </div>
-                  {product.buyUrl && (
-                    <a href={product.buyUrl} target="_blank" rel="noopener noreferrer" className="mt-2 flex items-center justify-center gap-1 w-full py-1 bg-gray-100 dark:bg-white/10 hover:bg-gray-200 dark:hover:bg-white/20 rounded text-[10px] font-medium text-gray-700 dark:text-gray-300 transition" data-testid={`button-buy-product-${product.id}`}>
-                      <ExternalLink className="w-2.5 h-2.5" />
-                      Buy Now
-                    </a>
-                  )}
-                </div>
+        <div className="grid grid-cols-4 gap-4">
+          {products.map((product) => (
+            <div key={product.id} className="bg-transparent border border-gray-200 dark:border-white/10 rounded-lg overflow-hidden hover:border-gray-300 dark:hover:border-white/30 transition flex flex-col" data-testid={`card-product-${product.id}`}>
+              <div className="h-40 bg-gray-50 dark:bg-white/5 flex items-center justify-center p-4">
+                {product.imageUrl ? (
+                  <img className="w-full h-full object-contain" src={product.imageUrl} alt={product.name} />
+                ) : (
+                  <ShoppingBag className="w-12 h-12 text-gray-300 dark:text-gray-600" />
+                )}
               </div>
-            ))}
-          </div>
-
-          <div className="mt-4 p-4 bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-lg">
-            <div className="flex items-center space-x-6">
-              <div>
-                <div className="text-xs text-gray-400 dark:text-gray-500 mb-1">Products Active</div>
-                <div className="text-lg font-bold text-gray-900 dark:text-white">{activeCount}</div>
-              </div>
-              <div className="w-px h-10 bg-gray-200 dark:bg-white/10"></div>
-              <div>
-                <div className="text-xs text-gray-400 dark:text-gray-500 mb-1">Total Listed</div>
-                <div className="text-lg font-bold text-gray-900 dark:text-white">{products.length}</div>
+              <div className="p-3 flex flex-col flex-1">
+                <h3 className="text-xs font-semibold text-gray-900 dark:text-white mb-1 line-clamp-2 flex-1">{product.name}</h3>
+                {product.price != null && (
+                  <p className="text-sm font-bold text-green-500 dark:text-green-400 mb-2">
+                    {product.price} <span className="text-[10px] font-normal text-gray-400">{product.currency}</span>
+                  </p>
+                )}
+                <button
+                  onClick={() => fireAdMutation.mutate(product.id)}
+                  disabled={firingId === product.id || fireAdMutation.isPending}
+                  data-testid={`button-fire-ad-product-${product.id}`}
+                  className={`w-full flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-[11px] font-medium transition ${
+                    firingId === product.id
+                      ? 'bg-white/5 text-white/30 cursor-not-allowed'
+                      : 'bg-green-500/20 hover:bg-green-500/30 text-green-400'
+                  }`}
+                >
+                  <Radio className="w-3 h-3" />
+                  {firingId === product.id ? 'Sending...' : 'Fire Ad'}
+                </button>
               </div>
             </div>
-          </div>
-        </>
+          ))}
+        </div>
       )}
     </div>
   );
@@ -1901,7 +1903,7 @@ export default function BroadcastDetailPage() {
 
           <MatchDataSection broadcastId={broadcastId!} />
           <ScheduledAdsSection broadcastId={broadcastId!} />
-          <ShoppableProductsSection broadcastId={broadcastId!} />
+          <ShoppableProductsSection broadcastId={broadcastId!} campaignId={broadcast.campaignId ?? null} />
           <ShoppableAdTriggerSection broadcastId={broadcastId!} campaignId={broadcast.campaignId ?? null} />
         </main>
 
