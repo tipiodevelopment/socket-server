@@ -82,12 +82,26 @@ export default function AppDetailPage() {
 
   const currentAppStats = appStats?.find((s: any) => s.id === appIdNum);
 
-  const { data: appCampaigns = [], isLoading: campaignsLoading } = useQuery<Campaign[]>({
-    queryKey: ['/api/client-apps', appIdNum, 'campaigns'],
+  const { data: appCampaigns = [], isLoading: campaignsLoading } = useQuery<any[]>({
+    queryKey: ['/api/client-apps', appIdNum, 'campaigns', 'enriched'],
     queryFn: async () => {
       const res = await fetch(`/api/client-apps/${appIdNum}/campaigns`);
       if (!res.ok) throw new Error('Failed to fetch campaigns');
-      return res.json();
+      const campaigns = await res.json();
+      
+      // Enrich with broadcast counts
+      const campaignIds = campaigns.map((c: any) => c.id);
+      if (campaignIds.length === 0) return [];
+      
+      const countsRes = await fetch(`/api/campaigns/broadcast-counts?ids=${campaignIds.join(',')}`);
+      if (countsRes.ok) {
+        const countsMap = await countsRes.json();
+        return campaigns.map((c: any) => ({
+          ...c,
+          broadcastCount: countsMap[c.id] || 0
+        }));
+      }
+      return campaigns;
     },
     enabled: !!appIdNum
   });
@@ -449,7 +463,7 @@ export default function AppDetailPage() {
                           <div className="flex items-center gap-4">
                             <span className="flex items-center gap-1">
                               <Radio className="w-3 h-3" />
-                              {(campaign as any).broadcastCount ?? 0} broadcast{((campaign as any).broadcastCount ?? 0) !== 1 ? 's' : ''}
+                              {campaign.broadcastCount ?? 0} broadcast{(campaign.broadcastCount ?? 0) !== 1 ? 's' : ''}
                             </span>
                             <span className="flex items-center gap-1">
                               <Calendar className="w-3 h-3" />

@@ -1031,7 +1031,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       const allCampaigns = await storage.getUserCampaigns(userId);
       const allBroadcasts = await storage.getAllBroadcasts();
 
-      const result = apps.map((app) => {
+      const result = await Promise.all(apps.map(async (app) => {
         const appChannels = allChannels.filter(ch => ch.clientAppId === app.id);
         const appChannelIds = new Set(appChannels.map(ch => ch.id));
 
@@ -1048,6 +1048,21 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
         const activeBroadcasts = appBroadcasts.filter(b => b.status === 'live').length;
         const totalViewers = appBroadcasts.reduce((sum, b) => sum + (b.viewerCount || 0), 0);
 
+        // Calculate engagement
+        let totalEngagement = 0;
+        if (appBroadcasts.length > 0) {
+          const broadcastIds = appBroadcasts.map(b => b.broadcastId);
+          const engagementCounts = await storage.getBroadcastEngagementCounts(broadcastIds);
+          Array.from(engagementCounts.values()).forEach((count: any) => {
+            totalEngagement += count.pollCount || 0; // The schema says pollCount/activePollCount/contestCount
+            totalEngagement += count.contestCount || 0;
+          });
+        }
+
+        const engagementPercent = totalViewers > 0 
+          ? Number(((totalEngagement / totalViewers) * 100).toFixed(1))
+          : 0;
+
         return {
           ...app,
           stats: {
@@ -1055,10 +1070,10 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
             activeBroadcasts,
             totalViewers,
             channelCount: appChannels.length,
-            engagementPercent: 0,
+            engagementPercent,
           },
         };
-      });
+      }));
 
       res.json(result);
     } catch (error) {
@@ -1484,16 +1499,26 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       
       const userCampaigns = await storage.getUserCampaigns(userId);
       const campaignIds = userCampaigns.map(c => c.id);
-      const [countMap, componentCountMap] = await Promise.all([
+      const [countMap, componentCountMap, engagementMap, sponsors] = await Promise.all([
         storage.getBroadcastCountsForCampaigns(campaignIds),
         storage.getComponentCountsForCampaigns(campaignIds),
+        storage.getCampaignEngagementTotals(campaignIds),
+        storage.getUserSponsors(userId),
       ]);
 
-      const enriched = userCampaigns.map(c => ({
-        ...c,
-        broadcastCount: countMap.get(c.id) || 0,
-        componentCount: componentCountMap.get(c.id) || 0,
-      }));
+      const sponsorMap = new Map(sponsors.map(s => [s.id, s]));
+
+      const enriched = userCampaigns.map(c => {
+        const sponsor = c.sponsorId ? sponsorMap.get(c.sponsorId) : undefined;
+        return {
+          ...c,
+          broadcastCount: countMap.get(c.id) || 0,
+          componentCount: componentCountMap.get(c.id) || 0,
+          totalEngagement: engagementMap.get(c.id) || 0,
+          sponsorName: sponsor?.name,
+          sponsorAvatarUrl: sponsor?.avatarUrl,
+        };
+      });
 
       res.json(enriched);
     } catch (error) {

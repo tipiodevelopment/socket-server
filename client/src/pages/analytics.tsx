@@ -65,8 +65,8 @@ function useChartTheme() {
     tooltipBg: isDark ? '#141824' : '#ffffff',
     tooltipBorder: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)',
     tooltipColor: isDark ? '#fff' : '#1f2937',
-    barFill: isDark ? '#ffffff' : '#3d8b7a',
-    linePrimary: isDark ? '#ffffff' : '#3d8b7a',
+    barFill: isDark ? '#5eff9e' : '#3d8b7a',
+    linePrimary: isDark ? '#5eff9e' : '#3d8b7a',
     lineSecondary: isDark ? '#6b7280' : '#8fd8d0',
     progressBg: isDark ? 'bg-white/5' : 'bg-gray-100',
     progressFill: isDark ? 'bg-white/60' : 'bg-[#3d8b7a]/60',
@@ -129,8 +129,8 @@ function GlobalDashboard({ onDrill }: { onDrill: (view: DrillView) => void }) {
         <StatCard label="Engaged Users" value={o.engagement?.uniqueUsers ?? 0} icon={Users} sub={`${o.engagement?.uniqueVoters ?? 0} voters · ${o.engagement?.uniqueParticipants ?? 0} participants`} testId="stat-engaged-users" />
         <StatCard label="Total Votes" value={o.engagement?.totalVotes ?? 0} icon={Vote} sub={`Across ${o.totals?.polls ?? 0} polls`} testId="stat-total-votes" />
         <StatCard label="Participations" value={o.engagement?.totalParticipations ?? 0} icon={Trophy} sub={`Across ${o.totals?.contests ?? 0} contests`} testId="stat-total-participations" />
-        <StatCard label="Components" value={o.totals?.components ?? 0} icon={Package} sub="in component library" testId="stat-components" />
-        <StatCard label="Sponsors" value={o.totals?.sponsors ?? 0} icon={Award} sub="configured sponsors" testId="stat-sponsors" />
+        <StatCard label="Components" value={o.totals?.components ?? 0} icon={Package} sub={`${o.totals?.componentTemplates ?? 0} templates`} testId="stat-components" />
+        <StatCard label="Sponsors" value={o.totals?.sponsors ?? 0} icon={Award} sub={`${o.totals?.activeSponsors ?? 0} active`} testId="stat-sponsors" />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -312,7 +312,7 @@ function AppAnalytics({ appId, onDrill, onBack }: { appId: number; onDrill: (vie
   return (
     <div className="space-y-6">
       <button onClick={onBack} className="flex items-center gap-2 text-gray-400 hover:text-gray-900 dark:hover:text-white text-sm transition" data-testid="button-back-app">
-        <ArrowLeft className="w-4 h-4" /> ← Analytics Overview
+        <ArrowLeft className="w-4 h-4" /> {data.app?.name ? `← ${data.app.name}` : '← Analytics Overview'}
       </button>
       <div className="flex items-center gap-3 mb-2">
         <Smartphone className="w-5 h-5 text-[#3d8b7a] dark:text-white" />

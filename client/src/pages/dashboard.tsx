@@ -31,15 +31,38 @@ function getDaysUntil(date: Date): string {
   return `In ${days} days`;
 }
 
-const APP_GRADIENTS = [
-  'from-gray-700 to-gray-800',
-  'from-gray-600 to-gray-800',
-  'from-gray-600 to-gray-700',
-  'from-gray-500 to-gray-700',
-  'from-gray-600 to-gray-800',
-  'from-gray-500 to-gray-800',
-];
-
+function getAppPlaceholder(name: string) {
+  const initials = name
+    .split(' ')
+    .map(n => n[0])
+    .join('')
+    .toUpperCase()
+    .slice(0, 2);
+  
+  // Deterministic background color based on name
+  const colors = [
+    'bg-blue-500',
+    'bg-emerald-500',
+    'bg-indigo-500',
+    'bg-violet-500',
+    'bg-amber-500',
+    'bg-rose-500',
+    'bg-cyan-500',
+    'bg-teal-500',
+  ];
+  
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) {
+    hash = name.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  const colorIndex = Math.abs(hash) % colors.length;
+  
+  return (
+    <div className={`w-full h-full ${colors[colorIndex]} flex items-center justify-center text-white text-2xl font-bold`}>
+      {initials}
+    </div>
+  );
+}
 
 export default function DashboardPage() {
   const { userId } = useUser();
@@ -78,6 +101,16 @@ export default function DashboardPage() {
     queryKey: ['/api/channels', userId],
     queryFn: async () => {
       const res = await fetch(`/api/channels?userId=${userId}`);
+      if (!res.ok) throw new Error('Failed');
+      return res.json();
+    },
+    enabled: !!userId,
+  });
+
+  const { data: analyticsDeltas = { viewersDelta: 0, engagementDelta: 0 } } = useQuery<{ viewersDelta: number, engagementDelta: number }>({
+    queryKey: ['/api/analytics/deltas'],
+    queryFn: async () => {
+      const res = await fetch('/api/analytics/deltas');
       if (!res.ok) throw new Error('Failed');
       return res.json();
     },
@@ -147,7 +180,7 @@ export default function DashboardPage() {
           value={activeViewers}
           formattedValue={activeViewers > 0 ? activeViewers.toLocaleString() : (liveBroadcasts.length === 0 ? '--' : '0')}
           label="Active Viewers"
-          change={0}
+          change={analyticsDeltas.viewersDelta}
           testId="stat-active-viewers"
         />
         <StatCard
@@ -157,7 +190,7 @@ export default function DashboardPage() {
           value={0}
           formattedValue="--"
           label="Engagement Rate"
-          change={0}
+          change={analyticsDeltas.engagementDelta}
           suffix="%"
           testId="stat-engagement-rate"
         />
@@ -190,11 +223,11 @@ export default function DashboardPage() {
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {clientApps.map((app, index) => {
+            {clientApps.map((app) => {
               const appCampaigns = getCampaignsForApp(app.id);
               const appBroadcasts = getBroadcastsForApp(app.id);
               const activeBroadcasts = appBroadcasts.filter(b => b.status === 'live');
-              const gradient = APP_GRADIENTS[index % APP_GRADIENTS.length];
+              const totalViewers = appBroadcasts.reduce((sum, b) => sum + ((b as any).viewerCount || 0), 0);
 
               return (
                 <Link key={app.id} href={`/apps/${app.id}`}>
@@ -202,17 +235,25 @@ export default function DashboardPage() {
                     className="rounded-xl overflow-hidden cursor-pointer group transition-all hover:scale-[1.02] hover:shadow-xl"
                     data-testid={`card-app-${app.id}`}
                   >
-                    <div className={`bg-gradient-to-br ${gradient} p-5 relative`}>
+                    <div className="h-32 relative">
+                      {(app.iconUrl || app.bannerUrl) ? (
+                        <img 
+                          src={(app.bannerUrl || app.iconUrl) as string} 
+                          alt={app.name} 
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        getAppPlaceholder(app.name)
+                      )}
                       <div className="absolute top-3 right-3">
-                        <span className="px-2.5 py-1 rounded-full bg-white/20 text-xs font-medium text-white backdrop-blur-sm">
+                        <span className="px-2.5 py-1 rounded-full bg-black/40 text-xs font-medium text-white backdrop-blur-sm border border-white/10">
                           {appCampaigns.length} Campaign{appCampaigns.length !== 1 ? 's' : ''}
                         </span>
                       </div>
-                      <div className="w-12 h-12 rounded-xl bg-white/20 backdrop-blur-sm flex items-center justify-center mb-3">
-                        <Radio className="w-5 h-5 text-white" />
+                      <div className="absolute inset-x-0 bottom-0 p-4 bg-gradient-to-t from-black/80 to-transparent">
+                        <h3 className="text-white font-semibold text-base leading-tight">{app.name}</h3>
+                        <p className="text-white/60 text-[10px] mt-0.5">{app.bundleId}</p>
                       </div>
-                      <h3 className="text-white font-semibold text-base">{app.name}</h3>
-                      <p className="text-white/60 text-xs mt-0.5">{app.bundleId}</p>
                     </div>
                     <div className="bg-white dark:bg-[#141824] p-4 border border-gray-200 dark:border-white/5 border-t-0 rounded-b-xl">
                       <div className="flex items-center justify-between">
@@ -222,14 +263,20 @@ export default function DashboardPage() {
                         </div>
                         <div className="text-right">
                           <p className="text-[10px] text-gray-400 dark:text-white/30 uppercase tracking-wider">Total Viewers</p>
-                          <p className="text-lg font-bold text-gray-900 dark:text-white">--</p>
+                          <p className="text-lg font-bold text-gray-900 dark:text-white">{totalViewers > 0 ? formatNumber(totalViewers) : '--'}</p>
                         </div>
                       </div>
-                      <div className="mt-3 w-full bg-gray-200 dark:bg-white/10 rounded-full h-1.5">
-                        <div
-                          className="bg-[#3d8b7a] dark:bg-white h-1.5 rounded-full transition-all"
-                          style={{ width: `${Math.min(appCampaigns.length * 15, 100)}%` }}
-                        />
+                      <div className="mt-3">
+                        <div className="flex justify-between items-center mb-1">
+                           <span className="text-[10px] text-gray-400 dark:text-white/30">Completion</span>
+                           <span className="text-[10px] text-gray-400 dark:text-white/30">{Math.min(appCampaigns.length * 15, 100)}%</span>
+                        </div>
+                        <div className="w-full bg-gray-200 dark:bg-white/10 rounded-full h-1.5">
+                          <div
+                            className="bg-[#3d8b7a] dark:bg-white h-1.5 rounded-full transition-all"
+                            style={{ width: `${Math.min(appCampaigns.length * 15, 100)}%` }}
+                          />
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -263,14 +310,16 @@ export default function DashboardPage() {
                 </tr>
               </thead>
               <tbody>
-                {liveBroadcasts.length === 0 ? (
+            {liveBroadcasts.length === 0 ? (
                   <tr>
                     <td colSpan={7} className="text-center py-5">
-                      <div className="flex items-center justify-center gap-2 text-gray-400 dark:text-white/30">
-                        <Radio className="w-4 h-4" />
+                      <div className="flex flex-col items-center justify-center gap-2 text-gray-400 dark:text-white/30">
+                        <Radio className="w-6 h-6 mb-1 opacity-50" />
                         <span className="text-sm">No live broadcasts right now</span>
                         <Link href="/broadcasts">
-                          <span className="text-xs text-gray-400 dark:text-white/30 hover:text-gray-600 dark:hover:text-white/50 underline underline-offset-2 cursor-pointer ml-1">Start one</span>
+                          <Button variant="link" size="sm" className="text-xs text-[#3d8b7a] dark:text-[#5eff9e] p-0 h-auto">
+                            Start one
+                          </Button>
                         </Link>
                       </div>
                     </td>
@@ -352,11 +401,17 @@ export default function DashboardPage() {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {(upcomingCampaigns.length > 0 ? upcomingCampaigns : campaigns.slice(0, 3)).map((campaign, index) => {
+            {(upcomingCampaigns.length > 0 ? upcomingCampaigns : campaigns.slice(0, 3)).map((campaign) => {
               const channel = campaign.channelId ? channelMap.get(campaign.channelId) : null;
               const app = channel ? clientApps.find(a => a.id === channel.clientAppId) : null;
               const campaignBroadcasts = broadcasts.filter(b => b.campaignId === campaign.id);
-              const gradient = APP_GRADIENTS[index % APP_GRADIENTS.length];
+              
+              const initials = campaign.name
+                .split(' ')
+                .map(n => n[0])
+                .join('')
+                .toUpperCase()
+                .slice(0, 2);
 
               return (
                 <div
@@ -367,8 +422,10 @@ export default function DashboardPage() {
                   <div className="p-4">
                     <div className="flex items-start justify-between mb-3">
                       <div className="flex items-center gap-3">
-                        <div className={`w-10 h-10 rounded-lg bg-gradient-to-br ${gradient} flex items-center justify-center`}>
-                          <Megaphone className="w-5 h-5 text-white" />
+                        <div className="w-10 h-10 rounded-lg bg-[#3d8b7a]/10 flex items-center justify-center text-[#3d8b7a] font-bold text-xs">
+                          {campaign.logo ? (
+                            <img src={campaign.logo} alt="" className="w-full h-full object-cover rounded-lg" />
+                          ) : initials}
                         </div>
                         <div>
                           <h3 className="text-sm font-semibold text-gray-900 dark:text-white">{campaign.name}</h3>

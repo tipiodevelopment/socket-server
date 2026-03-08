@@ -47,7 +47,7 @@ const defaultFormData: SponsorFormData = {
   logoUrl: '',
   avatarUrl: '',
   primaryColor: '#3d8b7a',
-  secondaryColor: '#666666',
+  secondaryColor: '#141824',
 };
 
 export default function SponsorsPage() {
@@ -200,7 +200,7 @@ export default function SponsorsPage() {
           <Input
             value={formData.primaryColor}
             onChange={(e) => setFormData((prev) => ({ ...prev, primaryColor: e.target.value }))}
-            placeholder="#3B82F6"
+            placeholder="#3d8b7a"
             data-testid="input-primary-color"
           />
         </div>
@@ -218,7 +218,7 @@ export default function SponsorsPage() {
           <Input
             value={formData.secondaryColor}
             onChange={(e) => setFormData((prev) => ({ ...prev, secondaryColor: e.target.value }))}
-            placeholder="#666666"
+            placeholder="#141824"
             data-testid="input-secondary-color"
           />
         </div>
@@ -392,19 +392,45 @@ export default function SponsorsPage() {
                 })()}
 
                 <div className="flex items-center gap-3 mb-4">
-                  <div className="flex items-center gap-1.5" data-testid={`swatch-primary-${sponsor.id}`}>
-                    <div
-                      className="w-5 h-5 rounded border border-gray-200 dark:border-white/10 shrink-0"
-                      style={{ backgroundColor: sponsor.primaryColor || '#3d8b7a' }}
-                    />
-                    <span className="text-[10px] text-gray-400 dark:text-white/30 font-mono">{sponsor.primaryColor || '#3d8b7a'}</span>
+                  <div className="flex flex-col gap-1">
+                    <span className="text-[10px] text-gray-400 font-medium">Primary</span>
+                    <div className="flex items-center gap-1.5" data-testid={`swatch-primary-${sponsor.id}`}>
+                      <div
+                        className="w-5 h-5 rounded border border-gray-200 dark:border-white/10 shrink-0"
+                        style={{ backgroundColor: sponsor.primaryColor || '#3d8b7a' }}
+                      />
+                      <span className="text-[10px] text-gray-400 dark:text-white/30 font-mono">{sponsor.primaryColor || '#3d8b7a'}</span>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-1.5" data-testid={`swatch-secondary-${sponsor.id}`}>
-                    <div
-                      className="w-5 h-5 rounded border border-gray-200 dark:border-white/10 shrink-0"
-                      style={{ backgroundColor: sponsor.secondaryColor || '#666666' }}
-                    />
-                    <span className="text-[10px] text-gray-400 dark:text-white/30 font-mono">{sponsor.secondaryColor || '#666666'}</span>
+                  <div className="flex flex-col gap-1">
+                    <span className="text-[10px] text-gray-400 font-medium">Secondary</span>
+                    <div className="flex items-center gap-1.5" data-testid={`swatch-secondary-${sponsor.id}`}>
+                      <div
+                        className="w-5 h-5 rounded border border-gray-200 dark:border-white/10 shrink-0"
+                        style={{ backgroundColor: sponsor.secondaryColor || '#141824' }}
+                      />
+                      <span className="text-[10px] text-gray-400 dark:text-white/30 font-mono">{sponsor.secondaryColor || '#141824'}</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mb-4">
+                  <span className="text-[10px] text-gray-400 font-medium block mb-1.5">SDK Badge Preview</span>
+                  <div 
+                    className="h-8 rounded-full px-3 flex items-center gap-2 w-fit"
+                    style={{ backgroundColor: sponsor.primaryColor || '#3d8b7a' }}
+                    data-testid={`sdk-badge-preview-${sponsor.id}`}
+                  >
+                    {sponsor.logoUrl ? (
+                      <img src={sponsor.logoUrl} className="w-4 h-4 object-contain" alt="" />
+                    ) : (
+                      <div className="w-4 h-4 rounded-full bg-white/20 flex items-center justify-center text-[8px] text-white font-bold">
+                        {sponsor.name.substring(0, 1)}
+                      </div>
+                    )}
+                    <span className="text-[10px] font-bold text-white whitespace-nowrap">
+                      {sponsor.name}
+                    </span>
                   </div>
                 </div>
 

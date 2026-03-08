@@ -25,7 +25,40 @@ const componentTypes: { value: ComponentType; label: string }[] = [
   { value: 'product_store', label: 'Product Store' },
 ];
 
-const filterOptions = ['All', 'Banner', 'Countdown', 'Carousel', 'Spotlight', 'Badge', 'Products', 'Offer'];
+const filterOptions = ['All', 'Banner', 'Countdown', 'Carousel', 'Spotlight', 'Badge', 'Products', 'Offer', 'Offer Banner', 'Product Store', 'Product Banner'];
+
+function getComponentPreview(component: Component) {
+  const config = component.config as any;
+  const isTest = component.name.toLowerCase().includes('test');
+
+  return (
+    <div className="relative w-full aspect-video bg-gray-100 dark:bg-white/5 rounded-lg overflow-hidden mb-4 flex items-center justify-center border border-gray-200 dark:border-white/10">
+      {isTest && (
+        <span className="absolute top-2 right-2 px-1.5 py-0.5 bg-amber-500 text-white text-[10px] font-bold rounded z-10">TEST</span>
+      )}
+      
+      {component.type.includes('banner') && config?.imageUrl ? (
+        <img src={config.imageUrl} className="w-full h-full object-cover" alt="Preview" />
+      ) : component.type === 'countdown' && config?.endDate ? (
+        <div className="flex flex-col items-center">
+          <Timer className="w-6 h-6 mb-1 text-[#3d8b7a]" />
+          <span className="text-[10px] font-mono text-gray-500">
+            {new Date(config.endDate).toLocaleDateString()}
+          </span>
+        </div>
+      ) : (component.type === 'product_carousel' || component.type === 'carousel_manual') && config?.productIds ? (
+        <div className="flex flex-col items-center">
+          <Layers className="w-6 h-6 mb-1 text-[#3d8b7a]" />
+          <span className="text-[10px] text-gray-500">{config.productIds.length} Products</span>
+        </div>
+      ) : (
+        <div className="text-[#3d8b7a]/50">
+          {getComponentIcon(component.type)}
+        </div>
+      )}
+    </div>
+  );
+}
 
 function getComponentIcon(type: string) {
   switch (type) {
@@ -65,6 +98,9 @@ function matchesFilter(type: string, filter: string): boolean {
   if (lowerFilter === 'badge') return lowerType.includes('badge');
   if (lowerFilter === 'products') return lowerType.startsWith('product_') || lowerType === 'offer_badge' || lowerType === 'offer_banner';
   if (lowerFilter === 'offer') return lowerType.startsWith('offer_');
+  if (lowerFilter === 'offer banner') return lowerType === 'offer_banner';
+  if (lowerFilter === 'product store') return lowerType === 'product_store';
+  if (lowerFilter === 'product banner') return lowerType === 'product_banner';
   return false;
 }
 
@@ -102,7 +138,7 @@ export default function ComponentsPage() {
   const filteredComponents = useMemo(() => {
     return components.filter(c => {
       if (!matchesFilter(c.type, activeFilter)) return false;
-      if (templatesOnly && c.isTemplate !== 'true' && c.isTemplate !== true) return false;
+      if (templatesOnly && c.isTemplate !== true) return false;
       if (searchQuery && !c.name.toLowerCase().includes(searchQuery.toLowerCase())) return false;
       return true;
     });
@@ -115,15 +151,16 @@ export default function ComponentsPage() {
       subtitle="Reusable components for campaigns: banners, carousels, countdowns and more"
       actions={
         <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
-          <DialogTrigger asChild>
             <Button
               className="gap-2 bg-[#3d8b7a] hover:bg-[#2f7365] dark:bg-white dark:hover:bg-gray-200 text-white dark:text-black"
               data-testid="button-create-component"
+              asChild
             >
-              <Plus className="w-4 h-4" />
-              New Component
+              <DialogTrigger>
+                <Plus className="w-4 h-4" />
+                New Component
+              </DialogTrigger>
             </Button>
-          </DialogTrigger>
             <DialogContent
               className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto"
               onInteractOutside={(e) => e.preventDefault()}
@@ -215,14 +252,15 @@ export default function ComponentsPage() {
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
             {filteredComponents.map((component) => {
               const usage = componentUsage[component.id] || [];
-              const isTemplate = component.isTemplate === true || component.isTemplate === 'true';
+              const isTemplate = component.isTemplate === true;
               return (
                 <div
                   key={component.id}
                   onClick={() => setLocation(`/components/${component.id}`)}
-                  className="group bg-white dark:bg-transparent border border-gray-200 dark:border-white/10 rounded-xl p-5 hover:border-gray-300 dark:hover:border-white/30 hover:bg-gray-50 dark:hover:bg-white/[0.02] transition cursor-pointer flex flex-col min-h-[10rem]"
+                  className="group bg-white dark:bg-transparent border border-gray-200 dark:border-white/10 rounded-xl p-5 hover:border-gray-300 dark:hover:border-white/30 hover:bg-gray-50 dark:hover:bg-white/[0.02] transition cursor-pointer flex flex-col min-h-[12rem] h-auto"
                   data-testid={`card-component-${component.id}`}
                 >
+                  {getComponentPreview(component)}
                   <div className="flex items-start justify-between mb-4">
                     <div className="w-10 h-10 bg-gray-100 dark:bg-white/5 rounded-lg flex items-center justify-center text-muted-foreground group-hover:text-foreground transition">
                       {getComponentIcon(component.type)}

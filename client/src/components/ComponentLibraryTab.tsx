@@ -189,6 +189,11 @@ export function ComponentLibraryTab() {
                       <div className="inline-block px-2 py-1 rounded text-xs font-medium bg-primary/20 text-primary mb-2">
                         {componentTypes.find((t) => t.value === component.type)?.label}
                       </div>
+                      {component.name.toLowerCase().includes('test') && (
+                        <span className="inline-block px-2 py-1 rounded text-xs font-medium bg-amber-500/20 text-amber-500 mb-2 ml-2">
+                          Test
+                        </span>
+                      )}
                       <CardTitle className="text-lg mb-1 text-white">{component.name}</CardTitle>
                       <CardDescription className="font-mono text-xs mb-2">
                         ID: {component.id.substring(0, 8)}...

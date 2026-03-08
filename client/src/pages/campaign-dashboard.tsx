@@ -62,7 +62,7 @@ export default function CampaignDashboard() {
       if (!res.ok) throw new Error('Failed');
       return res.json();
     },
-    enabled: !!campaignId && activeTab === 'analytics',
+    enabled: !!campaignId,
   });
 
   const { data: sponsors = [] } = useQuery<Sponsor[]>({

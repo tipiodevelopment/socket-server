@@ -371,10 +371,10 @@ export default function AppsPage() {
                         variant="ghost"
                         size="sm"
                         className="gap-1.5 text-xs text-gray-500 dark:text-white/50 hover:text-gray-700 dark:hover:text-white/80 h-8"
-                        data-testid={`button-edit-app-${app.id}`}
+                        data-testid={`button-manage-app-${app.id}`}
                       >
                         <Pencil className="w-3.5 h-3.5" />
-                        Edit
+                        Manage
                       </Button>
                     </Link>
                     <div className="ml-auto">

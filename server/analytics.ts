@@ -17,9 +17,63 @@ import {
   sponsors,
   campaignFeatureFlags,
 } from "@shared/schema";
-import { eq, sql, count, countDistinct, sum, and, inArray, desc, asc } from "drizzle-orm";
+import { eq, sql, count, countDistinct, sum, and, inArray, desc, asc, gte, lte } from "drizzle-orm";
 
 export function registerAnalyticsRoutes(app: Express) {
+
+
+  // Get analytics deltas for the dashboard
+  app.get("/api/analytics/deltas", async (_req, res) => {
+    try {
+      const now = new Date();
+      const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+      const fourteenDaysAgo = new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000);
+
+      // Current period stats
+      const [currentViewers] = await db.select({ total: sql<number>`coalesce(sum(${broadcasts.viewerCount}), 0)` })
+        .from(broadcasts)
+        .where(and(gte(broadcasts.createdAt, sevenDaysAgo), lte(broadcasts.createdAt, now)));
+
+      const [currentVotes] = await db.select({ total: count() })
+        .from(pollVotes)
+        .where(and(gte(pollVotes.createdAt, sevenDaysAgo), lte(pollVotes.createdAt, now)));
+
+      const [currentParticipations] = await db.select({ total: count() })
+        .from(contestParticipations)
+        .where(and(gte(contestParticipations.createdAt, sevenDaysAgo), lte(contestParticipations.createdAt, now)));
+
+      // Previous period stats
+      const [prevViewers] = await db.select({ total: sql<number>`coalesce(sum(${broadcasts.viewerCount}), 0)` })
+        .from(broadcasts)
+        .where(and(gte(broadcasts.createdAt, fourteenDaysAgo), lte(broadcasts.createdAt, sevenDaysAgo)));
+
+      const [prevVotes] = await db.select({ total: count() })
+        .from(pollVotes)
+        .where(and(gte(pollVotes.createdAt, fourteenDaysAgo), lte(pollVotes.createdAt, sevenDaysAgo)));
+
+      const [prevParticipations] = await db.select({ total: count() })
+        .from(contestParticipations)
+        .where(and(gte(contestParticipations.createdAt, fourteenDaysAgo), lte(contestParticipations.createdAt, sevenDaysAgo)));
+
+      const currentEngagement = Number(currentVotes.total) + Number(currentParticipations.total);
+      const prevEngagement = Number(prevVotes.total) + Number(prevParticipations.total);
+      const currentViewersVal = Number(currentViewers.total);
+      const prevViewersVal = Number(prevViewers.total);
+
+      const calculateDelta = (current: number, previous: number) => {
+        if (previous === 0) return current > 0 ? 100 : 0;
+        return Math.round(((current - previous) / previous) * 100);
+      };
+
+      res.json({
+        viewersDelta: calculateDelta(currentViewersVal, prevViewersVal),
+        engagementDelta: calculateDelta(currentEngagement, prevEngagement),
+      });
+    } catch (error) {
+      console.error('Error fetching analytics deltas:', error);
+      res.status(500).json({ message: 'Error fetching analytics deltas' });
+    }
+  });
 
   app.get('/api/analytics/overview', async (_req, res) => {
     try {

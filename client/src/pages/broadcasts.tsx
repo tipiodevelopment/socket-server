@@ -81,10 +81,7 @@ function CampaignAppLabel({ campaignName, clientAppName }: { campaignName: strin
 }
 
 function LiveBroadcastCard({ broadcast }: { broadcast: EnrichedBroadcast }) {
-  const metaViewers = broadcast.metadata && typeof broadcast.metadata === 'object' && 'viewers' in broadcast.metadata
-    ? Number((broadcast.metadata as Record<string, unknown>).viewers) || 0
-    : 0;
-  const viewers = (broadcast.viewerCount ?? 0) > 0 ? (broadcast.viewerCount ?? 0) : metaViewers;
+  const viewers = broadcast.viewerCount ?? 0;
   const engagement = broadcast.metadata && typeof broadcast.metadata === 'object' && 'engagement' in broadcast.metadata
     ? Number((broadcast.metadata as Record<string, unknown>).engagement) || 0
     : 0;
@@ -174,6 +171,11 @@ function UpcomingBroadcastCard({ broadcast }: { broadcast: EnrichedBroadcast }) 
             <div className="flex items-center space-x-3 mb-2">
               <h3 className="text-base font-semibold text-gray-900 dark:text-white" data-testid={`text-broadcast-name-${broadcast.broadcastId}`}>{broadcast.broadcastName}</h3>
               <span className="px-2 py-0.5 bg-gray-100 text-gray-600 dark:bg-white/10 dark:text-gray-300 text-[10px] uppercase font-bold rounded-full border border-gray-200 dark:border-white/20" data-testid={`badge-status-${broadcast.broadcastId}`}>Upcoming</span>
+              {broadcast.startTime && (
+                <span className="text-[10px] text-gray-400 dark:text-gray-500 font-medium">
+                  Starts {new Date(broadcast.startTime).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} · {new Date(broadcast.startTime).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false })}
+                </span>
+              )}
             </div>
             <TeamLogos broadcast={broadcast} />
             {broadcast.description && (
@@ -207,10 +209,7 @@ function UpcomingBroadcastCard({ broadcast }: { broadcast: EnrichedBroadcast }) 
 }
 
 function EndedBroadcastCard({ broadcast }: { broadcast: EnrichedBroadcast }) {
-  const metaViewers = broadcast.metadata && typeof broadcast.metadata === 'object' && 'viewers' in broadcast.metadata
-    ? Number((broadcast.metadata as Record<string, unknown>).viewers) || 0
-    : 0;
-  const viewers = (broadcast.viewerCount ?? 0) > 0 ? (broadcast.viewerCount ?? 0) : metaViewers;
+  const viewers = broadcast.viewerCount ?? 0;
 
   return (
     <Link href={`/broadcasts/${broadcast.broadcastId}`}>
@@ -404,6 +403,7 @@ export default function BroadcastsPage() {
       breadcrumbs={[{ label: 'Broadcasts' }]}
       title="Broadcasts"
       subtitle="All broadcasts across campaigns"
+      hideSearch
       actions={
         <Dialog open={createOpen} onOpenChange={setCreateOpen}>
           <DialogTrigger asChild>

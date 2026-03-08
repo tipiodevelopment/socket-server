@@ -45,6 +45,7 @@ interface AppLayoutProps {
   actions?: React.ReactNode;
   headerBreadcrumb?: string;
   headerBreadcrumbHref?: string;
+  hideSearch?: boolean;
 }
 
 function HeaderBreadcrumbs({ breadcrumbs }: { breadcrumbs: BreadcrumbItem[] }) {
@@ -90,7 +91,7 @@ function isActiveRoute(itemHref: string, location: string, exact?: boolean) {
   return location.startsWith(itemHref);
 }
 
-export function AppLayout({ children, breadcrumbs = [], title, subtitle, actions, headerBreadcrumb, headerBreadcrumbHref }: AppLayoutProps) {
+export function AppLayout({ children, breadcrumbs = [], title, subtitle, actions, headerBreadcrumb, headerBreadcrumbHref, hideSearch = false }: AppLayoutProps) {
   const { reachuUserId, logout } = useUser();
   const { theme, toggleTheme } = useTheme();
   const [location] = useLocation();
@@ -190,14 +191,16 @@ export function AppLayout({ children, breadcrumbs = [], title, subtitle, actions
             </div>
 
             <div className="flex items-center gap-3">
-              <div className="hidden sm:flex items-center relative">
-                <Search className="w-4 h-4 text-gray-400 dark:text-white/30 absolute left-3" />
-                <Input
-                  placeholder="Search..."
-                  className="w-48 lg:w-64 pl-9 h-9 bg-gray-100 dark:bg-[#1e2433] border-gray-200 dark:border-[#2a3142] text-sm text-gray-900 dark:text-gray-100 placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:border-gray-400 dark:focus:border-gray-500"
-                  data-testid="input-search"
-                />
-              </div>
+              {!hideSearch && (
+                <div className="hidden sm:flex items-center relative">
+                  <Search className="w-4 h-4 text-gray-400 dark:text-white/30 absolute left-3" />
+                  <Input
+                    placeholder="Search..."
+                    className="w-48 lg:w-64 pl-9 h-9 bg-gray-100 dark:bg-[#1e2433] border-gray-200 dark:border-[#2a3142] text-sm text-gray-900 dark:text-gray-100 placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:border-gray-400 dark:focus:border-gray-500"
+                    data-testid="input-search"
+                  />
+                </div>
+              )}
               <button className="w-9 h-9 rounded-lg flex items-center justify-center text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-[#1e2433] transition-all relative" data-testid="button-notifications">
                 <Bell className="w-5 h-5" />
               </button>

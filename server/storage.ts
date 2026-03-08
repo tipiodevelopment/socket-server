@@ -169,6 +169,7 @@ export interface IStorage {
 
   // Enrichment: poll/contest counts for multiple broadcasts
   getBroadcastEngagementCounts(broadcastIds: string[]): Promise<Map<string, { pollCount: number; activePollCount: number; contestCount: number }>>;
+  getCampaignEngagementTotals(campaignIds: number[]): Promise<Map<number, number>>;
 
   // Broadcast Ads methods
   getBroadcastAds(broadcastId: string): Promise<BroadcastAd[]>;
@@ -1269,6 +1270,43 @@ export class MemStorage implements IStorage {
         activePollCount: pollRow?.active ?? 0,
         contestCount: contestMap.get(id) ?? 0,
       });
+    }
+
+    return result;
+  }
+
+  async getCampaignEngagementTotals(campaignIds: number[]): Promise<Map<number, number>> {
+    const result = new Map<number, number>();
+    if (campaignIds.length === 0) return result;
+
+    // Get votes per campaign (via broadcasts and polls)
+    const votesCount = await db
+      .select({
+        campaignId: broadcasts.campaignId,
+        total: sql<number>`count(${pollVotes.id})::int`,
+      })
+      .from(pollVotes)
+      .innerJoin(polls, eq(pollVotes.pollId, polls.id))
+      .innerJoin(broadcasts, eq(polls.broadcastId, broadcasts.broadcastId))
+      .where(inArray(broadcasts.campaignId, campaignIds))
+      .groupBy(broadcasts.campaignId);
+
+    // Get participations per campaign (via broadcasts and contests)
+    const participationCount = await db
+      .select({
+        campaignId: broadcasts.campaignId,
+        total: sql<number>`count(${contestParticipations.id})::int`,
+      })
+      .from(contestParticipations)
+      .innerJoin(contests, eq(contestParticipations.contestId, contests.id))
+      .innerJoin(broadcasts, eq(contests.broadcastId, broadcasts.broadcastId))
+      .where(inArray(broadcasts.campaignId, campaignIds))
+      .groupBy(broadcasts.campaignId);
+
+    for (const id of campaignIds) {
+      const v = votesCount.find(r => r.campaignId === id)?.total ?? 0;
+      const p = participationCount.find(r => r.campaignId === id)?.total ?? 0;
+      result.set(id, v + p);
     }
 
     return result;

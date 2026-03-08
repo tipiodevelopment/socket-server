@@ -8,9 +8,14 @@ import { AppLayout } from '@/components/AppLayout';
 import { queryClient, apiRequest } from '@/lib/queryClient';
 import { useToast } from '@/hooks/use-toast';
 import type { Campaign, ClientApp, Channel, Sponsor } from '@shared/schema';
-import { Plus, Calendar, BarChart3, Globe, Search, Megaphone, ChevronLeft, ChevronRight, ArrowUpDown, Pause, Play } from 'lucide-react';
+import { Plus, Calendar, BarChart3, Globe, Search, Megaphone, ChevronLeft, ChevronRight, ArrowUpDown, Pause, Play, Activity } from 'lucide-react';
 
-type CampaignWithCount = Campaign & { broadcastCount?: number };
+type CampaignWithCount = Campaign & { 
+  broadcastCount?: number; 
+  totalEngagement?: number;
+  sponsorName?: string;
+  sponsorAvatarUrl?: string;
+};
 
 type CampaignStatus = 'active' | 'upcoming' | 'ended' | 'paused';
 
@@ -35,7 +40,7 @@ const STATUS_CONFIG: Record<CampaignStatus, { label: string; className: string }
   },
   ended: {
     label: 'ENDED',
-    className: 'bg-gray-100 text-gray-400 border-gray-200 dark:bg-gray-500/20 dark:text-gray-400 dark:border-gray-500/30',
+    className: 'bg-gray-500/10 text-gray-500 border-gray-500/20 dark:bg-gray-500/20 dark:text-gray-400 dark:border-gray-500/30',
   },
   paused: {
     label: 'PAUSED',
@@ -57,7 +62,12 @@ const COUNTRY_NAMES: Record<string, string> = {
 };
 
 function getCountryLabel(code: string): string {
-  return COUNTRY_NAMES[code.toUpperCase()] || code;
+  try {
+    const regionNames = new Intl.DisplayNames(['en'], { type: 'region' });
+    return regionNames.of(code.toUpperCase()) || code;
+  } catch (e) {
+    return COUNTRY_NAMES[code.toUpperCase()] || code;
+  }
 }
 
 const TABS: { value: string; label: string }[] = [
@@ -304,6 +314,8 @@ export default function CampaignsPage() {
               const channel = getChannelForCampaign(campaign);
               const countries = campaign.targetCountries?.filter(Boolean);
               const sponsor = campaign.sponsorId ? sponsorMap.get(campaign.sponsorId) : undefined;
+              const sponsorName = campaign.sponsorName || sponsor?.name;
+              const sponsorAvatarUrl = campaign.sponsorAvatarUrl || sponsor?.avatarUrl;
 
               const isPaused = campaign.isPaused === 'true';
               const canTogglePause = status === 'active' || status === 'paused';
@@ -315,25 +327,25 @@ export default function CampaignsPage() {
                   data-testid={`card-campaign-${campaign.id}`}
                   onClick={() => navigate(`/campaigns/${campaign.id}`)}
                 >
-                    {sponsor && (
-                      <div className="flex flex-col items-center gap-1 shrink-0 mt-0.5" data-testid={`sponsor-info-${campaign.id}`}>
-                        {sponsor.avatarUrl ? (
-                          <img
-                            src={sponsor.avatarUrl}
-                            alt={sponsor.name}
-                            className="w-9 h-9 rounded-full object-cover border border-gray-200 dark:border-white/10"
-                            data-testid={`img-sponsor-avatar-${campaign.id}`}
-                          />
-                        ) : (
-                          <div className="w-9 h-9 rounded-full bg-gray-100 dark:bg-white/10 flex items-center justify-center border border-gray-200 dark:border-white/10">
-                            <span className="text-xs font-bold text-gray-500 dark:text-white/40">{sponsor.name.charAt(0)}</span>
-                          </div>
-                        )}
-                        <span className="text-[9px] text-gray-400 dark:text-white/30 text-center max-w-[52px] truncate" data-testid={`text-sponsor-name-${campaign.id}`}>{sponsor.name}</span>
-                      </div>
-                    )}
+                    <div className="flex flex-col items-center gap-1 shrink-0 mt-0.5" data-testid={`sponsor-info-${campaign.id}`}>
+                      {sponsorAvatarUrl ? (
+                        <img
+                          src={sponsorAvatarUrl}
+                          alt={sponsorName}
+                          className="w-10 h-10 rounded-full object-cover border border-gray-200 dark:border-white/10"
+                          data-testid={`img-sponsor-avatar-${campaign.id}`}
+                        />
+                      ) : (
+                        <div className="w-10 h-10 rounded-full bg-gray-100 dark:bg-white/10 flex items-center justify-center border border-gray-200 dark:border-white/10">
+                          <span className="text-xs font-bold text-gray-500 dark:text-white/40">{sponsorName ? sponsorName.charAt(0) : 'S'}</span>
+                        </div>
+                      )}
+                      <span className="text-[10px] font-medium text-gray-500 dark:text-white/50 text-center max-w-[64px] truncate" data-testid={`text-sponsor-name-${campaign.id}`}>
+                        {sponsorName}
+                      </span>
+                    </div>
 
-                    <div className="flex-1 min-w-0">
+                    <div className="flex-1 min-w-0 ml-1">
                       <div className="flex items-center gap-2.5 mb-1">
                         <h3 className="font-semibold text-gray-900 dark:text-white text-[15px] truncate" data-testid={`text-campaign-name-${campaign.id}`}>
                           {campaign.name}
@@ -377,6 +389,12 @@ export default function CampaignsPage() {
                           <BarChart3 className="w-3.5 h-3.5" />
                           {campaign.broadcastCount || 0} broadcast{(campaign.broadcastCount || 0) !== 1 ? 's' : ''}
                         </span>
+                        {campaign.totalEngagement !== undefined && (
+                          <span className="flex items-center gap-1.5" data-testid={`text-campaign-engagement-${campaign.id}`}>
+                            <Activity className="w-3.5 h-3.5" />
+                            {campaign.totalEngagement} engagement
+                          </span>
+                        )}
                         {countries && countries.length > 0 && (
                           <span className="flex items-center gap-1.5" data-testid={`text-campaign-countries-${campaign.id}`}>
                             <Globe className="w-3.5 h-3.5" />

@@ -72,7 +72,14 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
-function EventTimeline({ polls, contests }: { polls: (Poll & { options?: PollOptionRecord[] })[]; contests: Contest[] }) {
+function EventTimeline({ polls, contests, onTogglePoll, onToggleContest }: { 
+  polls: (Poll & { options?: PollOptionRecord[] })[]; 
+  contests: Contest[];
+  onTogglePoll: (id: number, active: boolean) => void;
+  onToggleContest: (id: number, active: boolean) => void;
+}) {
+  const { toast } = useToast();
+  const [timelineHeight, setTimelineHeight] = useState(128);
   const allEvents = [
     ...polls.map((p, i) => ({ id: `poll-${p.id}`, type: 'poll' as const, label: p.question, isActive: p.isActive, position: Math.min(10 + i * 15, 90) })),
     ...contests.map((c, i) => ({ id: `contest-${c.id}`, type: 'contest' as const, label: c.title, isActive: c.isActive, position: Math.min(25 + i * 20, 90) })),
@@ -104,6 +111,51 @@ function EventTimeline({ polls, contests }: { polls: (Poll & { options?: PollOpt
               <span className="text-xs text-gray-500 dark:text-gray-400">Contests</span>
             </div>
           </div>
+          <div className="flex items-center space-x-2">
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8 w-8 p-0"
+              onClick={() => {
+                const nextInactivePoll = polls.find(p => !p.isActive);
+                if (nextInactivePoll) onTogglePoll(nextInactivePoll.id, true);
+                else {
+                  const nextInactiveContest = contests.find(c => !c.isActive);
+                  if (nextInactiveContest) onToggleContest(nextInactiveContest.id, true);
+                }
+              }}
+              data-testid="button-timeline-play"
+            >
+              <Play className="w-4 h-4" />
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8 w-8 p-0"
+              onClick={() => {
+                const allEvents = [
+                  ...polls.map(p => ({ id: p.id, type: 'poll' as const })),
+                  ...contests.map(c => ({ id: c.id, type: 'contest' as const })),
+                ];
+                if (allEvents.length > 0) {
+                  // Just a visual skip simulation for now
+                  toast({ title: 'Event skipped' });
+                }
+              }}
+              data-testid="button-timeline-skip"
+            >
+              <SkipForward className="w-4 h-4" />
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8 w-8 p-0"
+              onClick={() => setTimelineHeight(timelineHeight === 128 ? 200 : 128)}
+              data-testid="button-timeline-maximize"
+            >
+              <Maximize2 className="w-4 h-4" />
+            </Button>
+          </div>
         </div>
 
         {allEvents.length === 0 ? (
@@ -116,7 +168,7 @@ function EventTimeline({ polls, contests }: { polls: (Poll & { options?: PollOpt
               <div className="h-full bg-[#3d8b7a] dark:bg-white rounded-full" style={{ width: `${progressPct}%` }}></div>
             </div>
 
-            <div className="relative h-32">
+            <div className="relative overflow-y-auto transition-all" style={{ height: `${timelineHeight}px` }}>
               <div className="absolute left-0 top-0 bottom-0 w-px bg-gray-200 dark:bg-white/20"></div>
               <div className="absolute left-1/4 top-0 bottom-0 w-px bg-gray-100 dark:bg-white/10"></div>
               <div className="absolute left-1/2 top-0 bottom-0 w-px bg-gray-200 dark:bg-white/20"></div>
@@ -228,7 +280,7 @@ function ActivePollCard({ poll, onToggle, onDelete, campaignId }: {
                     <span className="text-gray-900 dark:text-white font-semibold">
                       {percentage}%
                       {totalVotes > 0 && (
-                        <span className="text-gray-400 dark:text-gray-500 font-normal ml-1">({(option.voteCount || 0).toLocaleString()})</span>
+                        <span className="text-gray-400 dark:text-gray-500 font-normal ml-1">({(option.voteCount || 0).toLocaleString()} votos)</span>
                       )}
                     </span>
                   </div>
@@ -831,8 +883,16 @@ function LiveChatSidebar({ broadcastId, analytics, reachuUserId, broadcastStatus
 
       <div className="p-4 border-t border-gray-200 dark:border-white/10">
         {broadcastStatus === 'ended' ? (
-          <div className="text-center py-3 px-4 bg-gray-50 dark:bg-white/5 rounded-lg border border-gray-200 dark:border-white/10">
-            <p className="text-xs text-gray-400 dark:text-gray-500">This broadcast has ended — chat is read-only</p>
+          <div className="flex flex-col gap-2">
+            <div className="text-center py-3 px-4 bg-gray-50 dark:bg-white/5 rounded-lg border border-gray-200 dark:border-white/10">
+              <p className="text-xs text-gray-400 dark:text-gray-500">Este broadcast ha terminado — el chat es de solo lectura</p>
+            </div>
+            <input
+              type="text"
+              disabled
+              placeholder="Chat deshabilitado"
+              className="w-full px-3 py-2 bg-gray-100 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded text-xs text-gray-400 cursor-not-allowed"
+            />
           </div>
         ) : (
           <>
@@ -1009,7 +1069,7 @@ export default function BroadcastDetailPage() {
   });
 
   const createPollMutation = useMutation({
-    mutationFn: async (data: { question: string; options: string[] }) => {
+    mutationFn: async (data: { question: string; options: string[]; duration?: number }) => {
       return await apiRequest('POST', `/api/broadcasts/${broadcastId}/polls`, data);
     },
     onSuccess: () => {
@@ -1223,7 +1283,11 @@ export default function BroadcastDetailPage() {
               <button
                 onClick={() => seedDemoMutation.mutate()}
                 disabled={seedDemoMutation.isPending}
-                className="px-3 py-2 bg-transparent border border-gray-200 dark:border-white/20 hover:border-gray-300 dark:hover:border-white/40 text-gray-900 dark:text-white rounded text-xs font-medium transition disabled:opacity-50"
+                className={`px-3 py-2 border rounded text-xs font-medium transition disabled:opacity-50 ${
+                  broadcast.status === 'ended'
+                    ? 'bg-transparent border-gray-200 dark:border-white/20 hover:border-gray-300 dark:hover:border-white/40 text-gray-500 dark:text-gray-400'
+                    : 'bg-[#3d8b7a] hover:bg-[#2f7365] dark:bg-white dark:hover:bg-gray-200 text-white dark:text-black border-transparent'
+                }`}
                 data-testid="button-seed-demo"
                 title="Load demo data"
               >
@@ -1292,7 +1356,12 @@ export default function BroadcastDetailPage() {
             )}
           </div>
 
-          <EventTimeline polls={polls} contests={contests} />
+          <EventTimeline
+            polls={polls}
+            contests={contests}
+            onTogglePoll={(id, active) => togglePollMutation.mutate({ pollId: id, isActive: active })}
+            onToggleContest={(id, active) => toggleContestMutation.mutate({ contestId: id, isActive: active })}
+          />
 
           <div className="mb-6" data-testid="section-engagement">
             <div className="flex items-center justify-between mb-4">
