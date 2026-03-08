@@ -147,3 +147,57 @@
 - Naming de test campaigns/components: tarea del operador, fuera de scope
 - ext: field en DB: mantener en DB, solo removido de UI visible
 - Demo data de TV2 y Viaplay: NO modificar viewers, votes, ni IDs de broadcasts
+
+---
+
+## TASK UI-01 — Redesign "Create Broadcast" modal
+
+Redesign the Create Broadcast modal to match the following spec. Reference mockup: see HTML file shared by Angelo (Create Broadcast mockup).
+
+### Layout
+- Modal width: `max-w-5xl` (wider than current)
+- Two sections: 1) Link Match Context (top), 2) Basic Info (bottom)
+
+### Section 1 — Link Match Context (top, prominent)
+This is the primary action. The operator picks the match first, and the form auto-fills.
+
+**Controls (in a 4-column grid):**
+- League/Competition selector (dropdown) — show league logo from Sportmonks CDN next to league name
+- Date picker — defaults to today
+- Search filter — text input to filter matches by team name
+
+**Match list:**
+- Scrollable list of fixtures from Sportmonks API filtered by league + date
+- Each match item shows:
+  - Home team logo (circular, from Sportmonks CDN) + Away team logo (overlapping)
+  - "Home Team vs Away Team" name
+  - Kick-off time
+  - Stadium/venue name
+- Selected state: blue border + blue background tint + checkmark icon filled blue
+- Unselected hover: blue border subtle + hover bg
+
+**On match select → auto-fill:**
+- Broadcast Name → "{HomeTeam} vs {AwayTeam}"
+- Start Time → kick-off datetime from Sportmonks
+
+### Section 2 — Basic Info (below match section)
+- **Broadcast Name** (full width) — auto-filled from match, editable. Required.
+- **Campaign** (full width) — dropdown, required. Keep existing logic.
+- **Description** (full width) — textarea
+- **External Content ID** (full width) — text input, empty by default. Operator enters Viaplay/TV2 content ID. Helper text: "Used to map this broadcast to your video player content ID (e.g. Viaplay or TV2 stream ID)"
+- **Start Time** / **End Time** — side by side, auto-filled start from match kick-off, editable
+- **Metadata (JSON)** — textarea, keep as-is
+
+### Visual style
+- Follow the mockup: dark bg `#0F1115`, cards `#161B26`, inputs `#0a0e1a`
+- Section headers with subtle top bar and label
+- Same style as existing dashboard components
+
+### Data source
+- Leagues and fixtures from existing `/api/sportmonks/leagues` and `/api/sportmonks/fixtures` endpoints
+- Team logos and league logos from `cdn.sportmonks.com` (already used in broadcasts list)
+
+### Important
+- All existing functionality must keep working (campaign assignment, broadcast creation POST)
+- The match linking (sportmonks fixture ID stored in broadcast) must work same as current
+- This modal is used from both `/broadcasts` and campaign detail — both must use the new design
