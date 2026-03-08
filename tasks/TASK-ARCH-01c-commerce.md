@@ -1,19 +1,44 @@
-# TASK ARCH-01c — Commerce integration (real products)
+# TASK ARCH-01c — Commerce integration (real products, per-sponsor channel)
 
 **Status: TODO — Do after ARCH-01b**
 
-## Goal
-Replace all hardcoded fake products in the dashboard with real products from Commerce GraphQL.
+## Model
+Each sponsor has their own Commerce channel with their own API key.
+One campaign can have multiple sponsors → multiple Commerce channels.
 
-## Commerce API
-- URL: `https://graph-ql-dev.vio.live/graphql`
-- Auth: `Authorization: KCXF10Y-W5T4PCR-GG5119A-Z64SQ9S`
-- Store key as `COMMERCE_API_KEY` in Replit Secrets — NEVER hardcode
+```
+Campaign
+  └── Sponsor: Elkjøp
+        └── commerce_api_key: "KCXF10Y-..."
+        └── commerce_channel_id: "elkjop-channel" (or null if default)
+        └── Products: fetched from Commerce with Elkjøp's key
 
-## Query
+  └── Sponsor: Torshov Sport
+        └── commerce_api_key: "XXXXX-..."
+        └── commerce_channel_id: "torshov-channel"
+        └── Products: fetched from Commerce with Torshov's key
+```
+
+## DB changes
+Add Commerce fields to `sponsors` table:
+```sql
+ALTER TABLE sponsors ADD COLUMN IF NOT EXISTS commerce_api_key TEXT;
+ALTER TABLE sponsors ADD COLUMN IF NOT EXISTS commerce_channel_id TEXT;
+```
+
+## Backend endpoint
+```
+GET /api/commerce/products?sponsorId=:id
+```
+1. Read `commerce_api_key` and `commerce_channel_id` from sponsor record
+2. If no api_key → return empty array (Commerce not configured for this sponsor)
+3. Query `https://graph-ql-dev.vio.live/graphql` with sponsor's own API key
+4. Return normalized product list
+
+## Commerce GraphQL query
 ```graphql
-query GetProductsByIds($product_ids: [Int]!) {
-  GetProductsByIds(product_ids: $product_ids) {
+query GetProducts {
+  GetProducts {
     id
     title
     images { url order }
@@ -21,19 +46,36 @@ query GetProductsByIds($product_ids: [Int]!) {
   }
 }
 ```
-
-## New backend endpoint
+Or if channel supports filtering by IDs:
+```graphql
+query GetProductsByIds($product_ids: [Int]!) {
+  GetProductsByIds(product_ids: $product_ids) {
+    id title
+    images { url order }
+    price { amount amount_incl_taxes currency_code }
+  }
+}
 ```
-GET /api/commerce/products?campaignId=:id
-```
-1. Read product IDs from `broadcast_sponsor_slots.product_ids` for this campaign's broadcasts
-2. Fallback: use known demo product IDs [408841, 408874, 408895, 408896, 408898]
-3. Query Commerce GraphQL
-4. Return normalized product list
 
-## Dashboard changes
-In broadcast detail "Shoppable Products" section:
-- Remove ALL hardcoded fake products (Official Team Jersey, Match Day Scarf, etc.)
-- Replace with real products from `GET /api/commerce/products?campaignId=:id`
-- Show: product image, title, price in NOK, sponsor logo, "Fire Ad" button
-- Remove hardcoded "Products Active: 3 / Total Listed: 4" counters
+## Sponsors page — add Commerce config
+In sponsor create/edit form add:
+- "Commerce API Key" field (password input, masked)
+- "Commerce Channel ID" field (text input, optional)
+
+## Demo data (seed)
+```sql
+UPDATE sponsors SET 
+  commerce_api_key = 'KCXF10Y-W5T4PCR-GG5119A-Z64SQ9S',
+  commerce_channel_id = NULL
+WHERE id = 3; -- Elkjøp
+
+UPDATE sponsors SET
+  commerce_api_key = 'KCXF10Y-W5T4PCR-GG5119A-Z64SQ9S',
+  commerce_channel_id = NULL  
+WHERE id = 4; -- Torshov Sport (same key for now, different channel when available)
+```
+
+## IMPORTANT
+- Commerce API keys are stored in DB per sponsor — NOT in Replit Secrets
+- Never log or expose API keys in responses
+- The dashboard Commerce product selector fetches products using the selected sponsor's key
