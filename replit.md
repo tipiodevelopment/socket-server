@@ -39,26 +39,49 @@ The platform is built with a full-stack TypeScript environment.
 
 ### Feature Specifications
 
-- **Broadcast Detail Page:** Displays real-time data for ads, products, chat, and analytics. Includes a live chat sidebar and a "Load Demo" button for seeding data (secondary/outline for ended broadcasts). Poll options show percentage + absolute vote count per option ("45% (234 votos)"). Includes a **Shoppable Ads** section with product ID input, sponsor selector, "Trigger Shoppable Ad" button (POST `/api/broadcasts/:id/trigger-shoppable-ad`), and a session log of triggered ads with timestamps. Shows a Commerce warning if not configured. Event timeline uses real `activeEvents / totalEvents * 100` progress, with Play/Skip/Maximize buttons. Live chat is disabled (read-only) when broadcast status is `ended`.
-- **Sponsor Detail Page:** `/sponsors/:id` — shows sponsor profile (logo, colors, description), stats (total/active campaigns), and a list of linked campaigns. Accessible via "View" button on sponsor cards.
-- **Component Library:** A grid-based library for reusable UI components with filtering and integration code snippets (e.g., iOS Swift). Components can be instanced multiple times per campaign.
-- **Campaign Dashboard:** Tabs include Overview, Broadcasts, Components, Live, Analytics, and Settings. The "Live" tab manages real-time event triggers, and "Settings" configures campaign details. Forms auto-save to the database. Analytics tab is pre-fetched on page load (not lazy-loaded).
-- **AppLayout:** Accepts `hideSearch` prop to hide the global header search bar on pages that have their own contextual search (e.g., /broadcasts, /components).
-- **App Detail (`/apps/:id`):** Shows real viewer counts (sum from broadcast.viewerCount), broadcast counts per campaign, live broadcast count (status='live' only). Status badges: Active=teal, Paused=amber, Archived/Ended=gray.
-- **Campaigns List (`/campaigns`):** Shows full country names via `Intl.DisplayNames`. Sponsor name + avatar displayed on cards. Engagement column shows sum of poll votes + contest participations. Badge colors: Active=teal, Paused=amber, Upcoming=gray, Ended=dark gray.
-- **Dashboard (`/`):** "New Campaign" button navigates to /campaigns/new. App cards without logo show deterministic initials placeholder. Stats deltas via `GET /api/analytics/deltas`.
-- **Sponsors (`/sponsors`):** Default colors on create: primaryColor `#3d8b7a`, secondaryColor `#141824`. Color swatch labels (Primary/Secondary) visible. SDK badge preview in sponsor cards.
-- **Components (`/components`):** Config preview per type (banner→image, countdown→date, carousel→count). "Test" badge if name contains "test". Dynamic card height (min-h). isTemplate stored as boolean.
-- **Sponsor Management:** CRUD operations for sponsors, including logo/avatar uploads and color configuration, linked to campaign branding.
-- **Geographic Targeting & User Segmentation:** Server-side features for user segmentation based on location and other criteria using deterministic hashing.
-- **Admin Panel:** Forms for polls, products, and contests start empty and load data from the database.
-- **Broadcast Edit Dialog:** Allows editing broadcast name, externalId, status, startTime, and endTime. Status changes trigger WebSocket events.
-- **Create Broadcast (global):** The "New Broadcast" dialog in `/broadcasts` includes an optional "Link to a Match" section with Sportmonks league + fixture selector. Selected fixture populates `sportmonksFixtureId`, team names/logos, and `matchStartingAt` on creation.
-- **Demo Data:** TV2 app (campaign 36) has 3 broadcasts (~34K viewers peak). Viaplay app (campaigns 35/33/31) has 6+ broadcasts (~72K viewers peak). Live broadcasts: `tv2-eliteserien-live-2026-03-08` (Brann vs Molde), `viaplay-atletico-psg-2026-03-08` (Atlético Madrid vs PSG).
-- **Channel and Client App Architecture:** Channels are standalone entities. SDK discovery resolves campaigns directly via `campaigns.client_app_id`.
-- **Commerce Integration:** The ecommerce module is named "Commerce" in all public interfaces. The Commerce API key is delivered dynamically via config endpoints. Supports `product_carousel` and `product_banner` components linked to Commerce product IDs.
-- **API Key Architecture:** The SDK uses a single Vio App API Key (`client_apps.api_key`) for all Vio backend endpoints. The Commerce module key is campaign-level, delivered via `integrations.commerce.apiKey` in the config response.
-- **Location Slot System:** Campaign components can be assigned a `locationId` (e.g. `sport-detail-banner`, `sport-detail-carousel`). The SDK queries `GET /v1/sdk/components?locationId=` to resolve which component is active for each UI slot. Operators assign slots in the dashboard when adding components to a campaign.
+- **Dashboard (`/`):** "New Campaign" button navigates to /campaigns/new. App cards without logo show deterministic initials placeholder (color based on app name hash). Stats deltas (↑/↓ %) calculados via `GET /api/analytics/deltas` comparando últimos 7 días vs los 7 anteriores. Sección "Upcoming Campaigns" filtra por `startDate` dentro de los próximos 7 días con empty state si no hay ninguna.
+
+- **Apps List (`/apps`):** Viewer count real sumado de `viewerCount` de todos los broadcasts de campañas de esa app. Un solo botón "Manage" por app (sin duplicados Edit/Settings).
+
+- **App Detail (`/apps/:id`):** Viewer count total real desde broadcasts. Broadcast count por campaña real. "Live Broadcasts" cuenta solo `status='live'`. Icono `Calendar` junto a fechas (no `Users`). Status badges: Active=teal, Paused=amber, Archived/Ended=gray. Stat cards con `border border-gray-200 dark:border-white/10 rounded-lg`.
+
+- **Campaigns List (`/campaigns`):** Nombres de país completos via `Intl.DisplayNames` (ej: "NO" → "Norway"). Nombre + avatar del sponsor visible en tarjetas. Columna "Engagement" muestra suma de votos de polls + participaciones en contests. Badge colors: Active=teal, Paused=amber, Upcoming=gray, Ended=dark gray.
+
+- **Campaign Dashboard:** Tabs: Overview, Broadcasts, Components, Live, Analytics, Settings. Analytics tab se pre-fetcha al cargar la página (`enabled: true`, no lazy). "Save API Key" de Commerce funciona igual que otros campos del formulario. Poll results muestran porcentaje + votos absolutos: "45% (234 votos)".
+
+- **Broadcasts List (`/broadcasts`):** Viewer count desde `broadcast.viewerCount` directamente. Upcoming broadcasts muestran "Starts Mar 10 · 19:00". Icono `Users` para viewers, `BarChart3` para polls. Una sola barra de búsqueda contextual (header search oculto via `hideSearch` prop en AppLayout). Sin botón "Filter" dummy.
+
+- **Broadcast Detail (`/broadcast/:id`):** Poll options muestran "45% (234 votos)". Shoppable Ads section con selector de producto/sponsor, botón "Trigger Shoppable Ad" (`POST /api/broadcasts/:id/trigger-shoppable-ad`) y log de sesión con timestamps. Event timeline con progreso real `activeEvents / totalEvents * 100`, botones Play/Skip/Maximize. Live chat deshabilitado (read-only) cuando `status='ended'` con banner informativo. "Load Demo" en outline/secondary cuando ended, más visible en live/upcoming. Sin array `topValues` hardcodeado.
+
+- **Sponsors (`/sponsors`):** Default colors al crear: `primaryColor: '#3d8b7a'`, `secondaryColor: '#141824'`. Labels "Primary" / "Secondary" visibles junto a los color pickers. SDK badge preview en tarjeta del sponsor (rect redondeado con primaryColor, logo/iniciales y nombre). `GET /sponsors/:id` muestra perfil completo, stats y campañas vinculadas.
+
+- **Components (`/components`):** Config preview por tipo: banner→thumbnail de imagen, countdown→fecha target, carousel→cantidad de productos. Badge "Test" si el nombre contiene "test". Altura dinámica con `min-h` (no `h-48` fijo). isTemplate almacenado y comparado como boolean (no string). Filtros incluyen: `offer_banner`, `product_store`, `product_banner`. Botón "New Component" usa `<Button>` de shadcn/ui.
+
+- **Analytics (`/analytics`):** `useChartTheme()` usa `useState` + `useEffect` con `MutationObserver` para detectar cambios de tema sin recargar. Empty state cuando no hay datos en el período: "No hay actividad de broadcasts en los últimos X días". Barras del chart con mayor contraste en dark mode (`#3d8b7a`). KPI cards con subtexto explicativo (ej: "X templates", "X activos"). Back button en drill-down muestra nombre del destino (ej: "← TV2 Demo App"). Selector de período: Today / 7d / 30d.
+
+- **AppLayout:** Acepta prop `hideSearch` para ocultar el search bar global del header en páginas con su propio search contextual (ej: /broadcasts).
+
+- **Commerce Integration:** Módulo de ecommerce llamado "Commerce" en todas las interfaces públicas. API key de Commerce es a nivel de campaña, entregada via `integrations.commerce.apiKey` en la respuesta de config. Soporta componentes `product_carousel` y `product_banner`.
+
+- **API Key Architecture:** SDK usa una sola Vio App API Key (`client_apps.api_key`). Commerce key es campaign-level.
+
+- **Location Slot System:** `locationId` en `campaign_components` (ej: `sport-detail-banner`). SDK consulta `GET /v1/sdk/components?locationId=` para resolver el componente activo por slot.
+
+- **Create Broadcast (global):** Dialog en `/broadcasts` incluye sección opcional "Link to a Match" con selector de liga + fixture de Sportmonks. Popula `sportmonksFixtureId`, nombres/logos de equipos y `matchStartingAt`.
+
+- **Broadcast Edit Dialog:** Edita nombre, externalId, status, startTime, endTime. Cambios de status disparan eventos WebSocket.
+
+- **Admin Panel:** Forms de polls, productos y contests arrancan vacíos y cargan datos de DB.
+
+- **Geographic Targeting & User Segmentation:** Segmentación server-side por ubicación con hashing determinístico.
+
+### Demo Data (NO MODIFICAR)
+
+- **TV2 app** (campaign 36): 3 broadcasts, ~34K viewers peak. Live: `tv2-eliteserien-live-2026-03-08` (Brann vs Molde, ~18.7K viewers).
+- **Viaplay app** (campaigns 35/33/31): 6+ broadcasts, ~72K viewers peak. Live: `viaplay-atletico-psg-2026-03-08` (Atlético Madrid vs PSG, ~19.6K viewers).
+- Viaplay apiKey: `viaplay_api_key_0c611e983b314ff8` → campaign 35. Commerce key: `KCXF10Y-W5T4PCR-GG5119A-Z64SQ9S`.
+- Polls seeded con votos reales: TV2 ~8.4K votos, Viaplay ~19.4K votos.
+- Broadcasts con `created_at` distribuidos en los últimos 30 días para chart de analytics.
 
 ### Database Tables
 
@@ -69,12 +92,17 @@ Key tables and their extensions:
 - `broadcasts`: Extended with `viewerCount`, `peakViewers`, `externalId` (indexed on `(externalId, campaignId)`), and Sportmonks match fields: `sportmonksFixtureId`, `homeTeamName`, `homeTeamLogo`, `awayTeamName`, `awayTeamLogo`, `matchStartingAt`, `leagueName`.
 - `campaign_components`: Extended with `locationId` for SDK slot identification.
 - `sportmonks_cache`: Caches Sportmonks API responses (leagues + fixtures) for 2 days. Fields: `cacheType`, `leagueId`, `dateFrom`, `dateTo`, `data` (JSONB), `updatedAt`.
+- `polls` / `poll_options` / `poll_votes`: Poll data with `vote_count` per option and `total_votes` on polls.
+- `contests` / `contest_participations`: Contest engagement data.
 
 ### API Architecture
 
 - **Dashboard APIs (`/api/*`):** Session-based for internal operations (CRUD, configuration, uploads).
+  - `GET /api/analytics/deltas` — Calcula % de cambio de viewers y engagement en últimos 7 días vs anteriores 7.
+  - `POST /api/broadcasts/:broadcastId/trigger-shoppable-ad` — Dispara un shoppable ad (sin Bearer auth).
 - **Admin APIs (`/v1/*`):** JWT Bearer token secured for full CRUD of broadcasts, polls, and contests.
 - **SDK APIs (`/v1/sdk/*` and `/v1/engagement/*`):** API key authenticated for campaign discovery, configuration, engagement actions, offers, and localization.
+- **Analytics routes:** Definidas en `server/analytics.ts` (no en `routes.ts`).
 
 ### SDK Engagement Flow
 
@@ -98,3 +126,4 @@ The platform runs on **`autoscale`** deployment (changed from `vm` in Feb 2026 a
 - **File Upload & Object Storage:** Uppy (with `uppy/react`, `uppy/aws-s3`), Replit Object Storage.
 - **Development Tools:** Vite, esbuild, tsx.
 - **Database:** Neon Serverless PostgreSQL (via `@neondatabase/serverless`), Drizzle Kit.
+- **Sports Data:** Sportmonks API v3 (`SPORTMONKS_API_TOKEN`). Auth header: `Authorization: <token>` (sin "Bearer"). Cache en tabla `sportmonks_cache` por 2 días.
