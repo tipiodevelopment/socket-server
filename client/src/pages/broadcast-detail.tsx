@@ -72,46 +72,135 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
-function EventTimeline({ polls, contests, onTogglePoll, onToggleContest }: { 
+type MatchEvent = { minute: number; type: string; label: string; team?: string };
+
+function EventTimeline({ polls, contests, matchEvents, broadcastStatus, onTogglePoll, onToggleContest }: { 
   polls: (Poll & { options?: PollOptionRecord[] })[]; 
   contests: Contest[];
+  matchEvents?: MatchEvent[];
+  broadcastStatus?: string;
   onTogglePoll: (id: number, active: boolean) => void;
   onToggleContest: (id: number, active: boolean) => void;
 }) {
   const { toast } = useToast();
-  const [timelineHeight, setTimelineHeight] = useState(128);
-  const allEvents = [
-    ...polls.map((p, i) => ({ id: `poll-${p.id}`, type: 'poll' as const, label: p.question, isActive: p.isActive, position: Math.min(10 + i * 15, 90) })),
-    ...contests.map((c, i) => ({ id: `contest-${c.id}`, type: 'contest' as const, label: c.title, isActive: c.isActive, position: Math.min(25 + i * 20, 90) })),
-  ].sort((a, b) => a.position - b.position);
+  const MATCH_DURATION = 90;
 
-  const colorMap: Record<string, string> = { poll: 'bg-blue-500', contest: 'bg-purple-500' };
-  const activeEventCount = allEvents.filter(e => e.isActive).length;
-  const progressPct = allEvents.length > 0 ? Math.round((activeEventCount / allEvents.length) * 100) : 0;
+  type TimelineEvent = {
+    id: string;
+    minute: number;
+    type: 'kickoff' | 'goal' | 'fulltime' | 'poll' | 'contest' | 'shoppable_ad';
+    label: string;
+    isActive?: boolean;
+    detail?: string;
+    pollId?: number;
+    contestId?: number;
+  };
+
+  const buildEvents = (): TimelineEvent[] => {
+    const events: TimelineEvent[] = [];
+
+    if (matchEvents && matchEvents.length > 0) {
+      matchEvents.forEach(ev => {
+        events.push({
+          id: `match-${ev.minute}-${ev.type}`,
+          minute: ev.minute,
+          type: ev.type as any,
+          label: ev.label,
+        });
+      });
+    } else {
+      events.push({ id: 'kickoff', minute: 0, type: 'kickoff', label: 'Kickoff' });
+      if (broadcastStatus === 'ended') {
+        events.push({ id: 'fulltime', minute: 90, type: 'fulltime', label: 'Full Time' });
+      }
+    }
+
+    polls.forEach((p, i) => {
+      const hasMatchEvent = matchEvents?.some(ev => ev.type === 'poll' && ev.label.includes(p.question.substring(0, 15)));
+      if (!hasMatchEvent) {
+        events.push({
+          id: `poll-${p.id}`,
+          minute: Math.min(5 + i * 18, 88),
+          type: 'poll',
+          label: p.question,
+          isActive: p.isActive ?? false,
+          detail: p.totalVotes ? `${p.totalVotes.toLocaleString()} votes` : undefined,
+          pollId: p.id,
+        });
+      } else {
+        const existing = events.find(ev => ev.type === 'poll' && ev.label.includes(p.question.substring(0, 15)));
+        if (existing) {
+          existing.pollId = p.id;
+          existing.isActive = p.isActive ?? false;
+          existing.detail = p.totalVotes ? `${p.totalVotes.toLocaleString()} votes` : undefined;
+        }
+      }
+    });
+
+    contests.forEach((c, i) => {
+      const hasMatchEvent = matchEvents?.some(ev => ev.type === 'contest');
+      if (!hasMatchEvent) {
+        events.push({
+          id: `contest-${c.id}`,
+          minute: Math.min(30 + i * 20, 85),
+          type: 'contest',
+          label: c.title,
+          isActive: c.isActive ?? false,
+          contestId: c.id,
+        });
+      } else {
+        const existing = events.find(ev => ev.type === 'contest');
+        if (existing) {
+          existing.contestId = c.id;
+          existing.isActive = c.isActive ?? false;
+        }
+      }
+    });
+
+    return events.sort((a, b) => a.minute - b.minute);
+  };
+
+  const allEvents = buildEvents();
+  const engagementEvents = allEvents.filter(e => e.type === 'poll' || e.type === 'contest' || e.type === 'shoppable_ad');
+  const firedCount = allEvents.filter(e => e.type === 'goal' || e.isActive || e.type === 'kickoff' || e.type === 'fulltime' || e.type === 'shoppable_ad').length;
+
+  const typeConfig: Record<string, { color: string; bg: string; icon: string; label: string }> = {
+    kickoff:     { color: 'text-white/60', bg: 'bg-white/30',    icon: '⚽', label: 'Match' },
+    goal:        { color: 'text-yellow-400', bg: 'bg-yellow-400', icon: '⚽', label: 'Goal' },
+    fulltime:    { color: 'text-white/60', bg: 'bg-white/30',    icon: '⏹', label: 'FT' },
+    poll:        { color: 'text-blue-400',   bg: 'bg-blue-500',   icon: '📊', label: 'Poll' },
+    contest:     { color: 'text-purple-400', bg: 'bg-purple-500', icon: '🏆', label: 'Contest' },
+    shoppable_ad:{ color: 'text-green-400',  bg: 'bg-green-500',  icon: '🛍️', label: 'Ad' },
+  };
 
   return (
     <div className="mb-6" data-testid="section-timeline">
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-sm font-semibold text-gray-900 dark:text-white">Event Timeline</h2>
+        <div className="flex items-center gap-3 text-[10px] text-white/30">
+          {(['poll','contest','shoppable_ad','goal'] as const).map(t => (
+            <span key={t} className="flex items-center gap-1">
+              <span className={`w-2 h-2 rounded-full ${typeConfig[t].bg}`} />
+              {typeConfig[t].label}
+            </span>
+          ))}
+        </div>
       </div>
 
-      <div className="bg-transparent border border-gray-200 dark:border-white/10 rounded-lg p-6">
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center space-x-4">
-            <div className="text-xs text-gray-400 dark:text-gray-500">Scheduled Events</div>
-            <div className="text-2xl font-bold text-gray-900 dark:text-white">{allEvents.length}</div>
-          </div>
-          <div className="flex items-center space-x-4">
-            <div className="flex items-center space-x-2">
-              <div className="w-3 h-3 bg-blue-500 rounded-full"></div>
-              <span className="text-xs text-gray-500 dark:text-gray-400">Polls</span>
+      <div className="bg-transparent border border-gray-200 dark:border-white/10 rounded-xl p-5">
+        {/* Stats row */}
+        <div className="flex items-center justify-between mb-5">
+          <div className="flex items-center gap-6">
+            <div>
+              <div className="text-[10px] text-white/30 mb-0.5">Events fired</div>
+              <div className="text-xl font-bold text-white">{firedCount}</div>
             </div>
-            <div className="flex items-center space-x-2">
-              <div className="w-3 h-3 bg-purple-500 rounded-full"></div>
-              <span className="text-xs text-gray-500 dark:text-gray-400">Contests</span>
+            <div>
+              <div className="text-[10px] text-white/30 mb-0.5">Engagement events</div>
+              <div className="text-xl font-bold text-white">{engagementEvents.length}</div>
             </div>
           </div>
-          <div className="flex items-center space-x-2">
+          <div className="flex items-center gap-2">
             <Button
               variant="outline"
               size="sm"
@@ -122,6 +211,7 @@ function EventTimeline({ polls, contests, onTogglePoll, onToggleContest }: {
                 else {
                   const nextInactiveContest = contests.find(c => !c.isActive);
                   if (nextInactiveContest) onToggleContest(nextInactiveContest.id, true);
+                  else toast({ title: 'All events activated' });
                 }
               }}
               data-testid="button-timeline-play"
@@ -132,16 +222,7 @@ function EventTimeline({ polls, contests, onTogglePoll, onToggleContest }: {
               variant="outline"
               size="sm"
               className="h-8 w-8 p-0"
-              onClick={() => {
-                const allEvents = [
-                  ...polls.map(p => ({ id: p.id, type: 'poll' as const })),
-                  ...contests.map(c => ({ id: c.id, type: 'contest' as const })),
-                ];
-                if (allEvents.length > 0) {
-                  // Just a visual skip simulation for now
-                  toast({ title: 'Event skipped' });
-                }
-              }}
+              onClick={() => toast({ title: 'Skip not implemented' })}
               data-testid="button-timeline-skip"
             >
               <SkipForward className="w-4 h-4" />
@@ -150,52 +231,87 @@ function EventTimeline({ polls, contests, onTogglePoll, onToggleContest }: {
               variant="outline"
               size="sm"
               className="h-8 w-8 p-0"
-              onClick={() => setTimelineHeight(timelineHeight === 128 ? 200 : 128)}
               data-testid="button-timeline-maximize"
+              onClick={() => {}}
             >
               <Maximize2 className="w-4 h-4" />
             </Button>
           </div>
         </div>
 
-        {allEvents.length === 0 ? (
+        {allEvents.length <= 2 && !matchEvents?.length && polls.length === 0 && contests.length === 0 ? (
           <div className="py-8 text-center text-xs text-gray-400 dark:text-gray-500">
             No events yet. Create polls or contests to see them on the timeline.
           </div>
         ) : (
           <div className="relative">
-            <div className="h-2 bg-gray-100 dark:bg-white/5 rounded-full overflow-hidden mb-8">
-              <div className="h-full bg-[#3d8b7a] dark:bg-white rounded-full" style={{ width: `${progressPct}%` }}></div>
-            </div>
-
-            <div className="relative overflow-y-auto transition-all" style={{ height: `${timelineHeight}px` }}>
-              <div className="absolute left-0 top-0 bottom-0 w-px bg-gray-200 dark:bg-white/20"></div>
-              <div className="absolute left-1/4 top-0 bottom-0 w-px bg-gray-100 dark:bg-white/10"></div>
-              <div className="absolute left-1/2 top-0 bottom-0 w-px bg-gray-200 dark:bg-white/20"></div>
-              <div className="absolute left-3/4 top-0 bottom-0 w-px bg-gray-100 dark:bg-white/10"></div>
-              <div className="absolute right-0 top-0 bottom-0 w-px bg-gray-200 dark:bg-white/20"></div>
-
-              {allEvents.map((event, i) => (
-                <div
-                  key={event.id}
-                  className="absolute group cursor-pointer"
-                  style={{ left: `${event.position}%`, top: `${(i % 4) * 22}px` }}
-                  data-testid={`timeline-event-${event.id}`}
-                >
-                  <div className={`w-3 h-3 ${colorMap[event.type]} rounded-full border-2 border-white dark:border-black ${!event.isActive ? 'opacity-50' : ''}`}></div>
-                  <div className="absolute left-1/2 -translate-x-1/2 top-6 opacity-0 group-hover:opacity-100 transition bg-white dark:bg-black border border-gray-200 dark:border-white/20 rounded p-2 text-xs whitespace-nowrap z-10">
-                    <div className="font-semibold text-gray-900 dark:text-white mb-1 capitalize">{event.type}: {event.label}</div>
-                    <div className="text-gray-500 dark:text-gray-400">{event.isActive ? 'Active' : 'Scheduled'}</div>
-                  </div>
-                </div>
+            {/* Minute labels */}
+            <div className="flex justify-between text-[9px] text-white/20 mb-2 px-1">
+              {[0, 15, 30, 45, 60, 75, 90].map(m => (
+                <span key={m}>{m}'</span>
               ))}
             </div>
 
-            <div className="flex items-center justify-between mt-6 pt-4 border-t border-gray-200 dark:border-white/10">
-              <div className="text-xs text-gray-400 dark:text-gray-500">
-                {activeEventCount} of {allEvents.length} events active
-              </div>
-              <div className="text-xs text-gray-400 dark:text-gray-500">{progressPct}% complete</div>
+            {/* Scrubber track */}
+            <div className="relative h-2 bg-white/5 rounded-full mb-8">
+              {/* Progress fill for ended matches */}
+              {broadcastStatus === 'ended' && (
+                <div className="absolute inset-0 bg-white/10 rounded-full" />
+              )}
+              {/* Tick marks at 15, 30, 45, 60, 75 */}
+              {[15, 30, 45, 60, 75].map(m => (
+                <div key={m} className="absolute top-0 bottom-0 w-px bg-white/10" style={{ left: `${(m / MATCH_DURATION) * 100}%` }} />
+              ))}
+              {/* Half-time line */}
+              <div className="absolute top-[-3px] bottom-[-3px] w-px bg-white/25" style={{ left: '50%' }} />
+            </div>
+
+            {/* Event markers */}
+            <div className="relative h-16">
+              {allEvents.map((event, i) => {
+                const cfg = typeConfig[event.type] ?? typeConfig.poll;
+                const pct = (event.minute / MATCH_DURATION) * 100;
+                const row = i % 3;
+                const isGoal = event.type === 'goal';
+                const isMatch = event.type === 'kickoff' || event.type === 'fulltime';
+
+                return (
+                  <div
+                    key={event.id}
+                    className="absolute group cursor-default"
+                    style={{ left: `calc(${Math.min(pct, 98)}% - 6px)`, top: `${row * 20}px` }}
+                    data-testid={`timeline-event-${event.id}`}
+                  >
+                    {/* Vertical connector line from track */}
+                    <div
+                      className="absolute bottom-full left-1/2 w-px bg-white/10"
+                      style={{ height: `${26 + (2 - row) * 20}px`, bottom: `calc(100% + 2px)` }}
+                    />
+                    {/* Dot */}
+                    <div className={`w-3 h-3 rounded-full border-2 border-black ${cfg.bg} ${isGoal ? 'ring-2 ring-yellow-400/50 scale-125' : ''} ${isMatch ? 'opacity-40' : ''}`} />
+
+                    {/* Tooltip */}
+                    <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-3 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-20">
+                      <div className="bg-gray-900 dark:bg-black border border-white/10 rounded-lg p-2.5 text-xs whitespace-nowrap shadow-xl min-w-[140px]">
+                        <div className="flex items-center gap-1.5 mb-1">
+                          <span>{cfg.icon}</span>
+                          <span className="text-white/50 text-[10px]">{event.minute}'</span>
+                        </div>
+                        <div className="font-medium text-white text-[11px] leading-tight">{event.label}</div>
+                        {event.detail && <div className="text-white/40 text-[10px] mt-1">{event.detail}</div>}
+                        {event.isActive && <div className="text-green-400 text-[10px] mt-1 font-medium">● Active</div>}
+                      </div>
+                      <div className="w-2 h-2 bg-gray-900 border-b border-r border-white/10 rotate-45 mx-auto -mt-1" />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Bottom stats */}
+            <div className="flex items-center justify-between pt-3 border-t border-white/5 text-[10px] text-white/25">
+              <span>{allEvents.length} total events</span>
+              <span>{broadcastStatus === 'ended' ? '90\' FT' : broadcastStatus === 'live' ? 'Live' : 'Scheduled'}</span>
             </div>
           </div>
         )}
@@ -1648,6 +1764,8 @@ export default function BroadcastDetailPage() {
           <EventTimeline
             polls={polls}
             contests={contests}
+            matchEvents={(broadcast?.metadata as any)?.matchEvents}
+            broadcastStatus={broadcast?.status ?? undefined}
             onTogglePoll={(id, active) => togglePollMutation.mutate({ pollId: id, isActive: active })}
             onToggleContest={(id, active) => toggleContestMutation.mutate({ contestId: id, isActive: active })}
           />

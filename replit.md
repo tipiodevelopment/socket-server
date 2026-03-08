@@ -51,7 +51,7 @@ The platform is built with a full-stack TypeScript environment.
 
 - **Broadcasts List (`/broadcasts`):** Viewer count desde `broadcast.viewerCount` directamente. Upcoming broadcasts muestran "Starts Mar 10 · 19:00". Icono `Users` para viewers, `BarChart3` para polls. Una sola barra de búsqueda contextual (header search oculto via `hideSearch` prop en AppLayout). Sin botón "Filter" dummy.
 
-- **Broadcast Detail (`/broadcast/:id`):** Poll options muestran "45% (234 votos)". Shoppable Ads section redesigned with 3 panels: Pre-programmed Slots (Add Slot dialog: sponsor/products/trigger type/auto-execute; Fire/Delete per slot via `GET/POST/DELETE /api/broadcasts/:id/sponsor-slots`, execute via `POST /api/broadcasts/:id/sponsor-slots/:slotId/execute`), Quick Fire ad-hoc (sponsor + product from campaign Commerce), Session Log. Event timeline con progreso real `activeEvents / totalEvents * 100`, botones Play/Skip/Maximize. Live chat deshabilitado (read-only) cuando `status='ended'` con banner informativo. "Load Demo" en outline/secondary cuando ended, más visible en live/upcoming. Sin array `topValues` hardcodeado.
+- **Broadcast Detail (`/broadcasts/:id`):** Poll options muestran "45% (234 votos)". Shoppable Ads section redesigned with 3 panels: Pre-programmed Slots (Add Slot dialog: sponsor/products/trigger type/auto-execute; Fire/Delete per slot via `GET/POST/DELETE /api/broadcasts/:id/sponsor-slots`, execute via `POST /api/broadcasts/:id/sponsor-slots/:slotId/execute`), Quick Fire ad-hoc (sponsor + product from campaign Commerce), Session Log. **EventTimeline redesigned** como horizontal scrubber 0'–90' con dot markers coloreados por tipo: blue=poll, purple=contest, green=shoppable_ad, yellow=goal, grey=kickoff/fulltime. Minute labels (0',15',30',45',60',75',90'), hover tooltips con label+votes, stats de "events fired" y "engagement events". Recibe `matchEvents` desde `broadcast.metadata.matchEvents` (array JSONB) y `broadcastStatus`. Live chat deshabilitado (read-only) cuando `status='ended'` con banner informativo. Sin array `topValues` hardcodeado.
 
 - **Sponsors (`/sponsors`):** Default colors al crear: `primaryColor: '#3d8b7a'`, `secondaryColor: '#141824'`. Labels "Primary" / "Secondary" visibles junto a los color pickers. SDK badge preview en tarjeta del sponsor (rect redondeado con primaryColor, logo/iniciales y nombre). `GET /sponsors/:id` muestra perfil completo, stats y campañas vinculadas.
 
@@ -78,9 +78,12 @@ The platform is built with a full-stack TypeScript environment.
 ### Demo Data (NO MODIFICAR)
 
 - **TV2 app** (campaign 36): 3 broadcasts, ~34K viewers peak. Live: `tv2-eliteserien-live-2026-03-08` (Brann vs Molde, ~18.7K viewers).
-- **Viaplay app** (campaigns 35/33/31): 6+ broadcasts, ~72K viewers peak. Live: `viaplay-atletico-psg-2026-03-08` (Atlético Madrid vs PSG, ~19.6K viewers).
+  - `barcelona-psg-2026-03-03` (ended, 34200 viewers, peak 41K): 3 polls (36.3K total votes), 1 contest. 11 matchEvents in metadata.
+- **Viaplay app** (campaigns 35/33/31): 6+ broadcasts, ~72K viewers peak.
+  - `viaplay-atletico-psg-2026-03-08` (live, 19.6K viewers, peak 24K): 3 polls (47.6K total votes), 1 contest. 9 matchEvents.
+  - `real-madrid-vs-barcelona-2026-02-25` (ended, 29K viewers, peak 35K): 6 polls (68.1K total votes), 2 contests. 11 matchEvents.
 - Viaplay apiKey: `viaplay_api_key_0c611e983b314ff8` → campaign 35. Commerce key: `KCXF10Y-W5T4PCR-GG5119A-Z64SQ9S`.
-- Polls seeded con votos reales: TV2 ~8.4K votos, Viaplay ~19.4K votos.
+- `matchEvents` in broadcast.metadata JSONB: array of `{minute, type, label, team?}`. Types: kickoff, goal, poll, contest, shoppable_ad, fulltime.
 - Broadcasts con `created_at` distribuidos en los últimos 30 días para chart de analytics.
 
 ### Database Tables

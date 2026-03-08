@@ -4085,8 +4085,20 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       const campaign = await storage.getCampaign(broadcast.campaignId);
       if (!campaign) return res.status(404).json({ error: 'Campaign not found' });
 
-      // Commerce API key: from campaign.reachuApiKey, fallback to env
-      const commerceApiKey = campaign.reachuApiKey || process.env.COMMERCE_API_KEY || 'KCXF10Y-W5T4PCR-GG5119A-Z64SQ9S';
+      // Resolve sponsor first, use sponsor's Commerce API key
+      let sponsor: any = null;
+      let commerceApiKey = process.env.COMMERCE_API_KEY || 'KCXF10Y-W5T4PCR-GG5119A-Z64SQ9S';
+      if (sponsorId) {
+        const sp = await storage.getSponsor(sponsorId);
+        if (sp) {
+          if (sp.commerceApiKey) commerceApiKey = sp.commerceApiKey;
+          sponsor = {
+            name: sp.name,
+            logoUrl: sp.logoUrl ? normalizeUrls(sp.logoUrl, req.protocol, req.get('host')) : null,
+            primaryColor: sp.primaryColor ?? null,
+          };
+        }
+      }
 
       // Resolve product from Commerce GraphQL
       const gqlQuery = `{ Channel { GetProductsByIds(product_ids: [${productId}]) { id title images { url order } price { amount amount_incl_taxes currency_code } } } }`;
@@ -4119,19 +4131,6 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
 
       if (!product) {
         product = { id: String(productId), name: 'Product', price: null, currency: 'NOK', imageUrl: null };
-      }
-
-      // Resolve sponsor info
-      let sponsor: any = null;
-      if (sponsorId) {
-        const sp = await storage.getSponsor(sponsorId);
-        if (sp) {
-          sponsor = {
-            name: sp.name,
-            logoUrl: sp.logoUrl ? normalizeUrls(sp.logoUrl, req.protocol, req.get('host')) : null,
-            primaryColor: sp.primaryColor ?? null,
-          };
-        }
       }
 
       const wsEvent = {
@@ -4170,7 +4169,12 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       const campaign = await storage.getCampaign(broadcast.campaignId);
       if (!campaign) return res.status(404).json({ error: 'Campaign not found' });
 
-      const commerceApiKey = campaign.reachuApiKey || process.env.COMMERCE_API_KEY || 'KCXF10Y-W5T4PCR-GG5119A-Z64SQ9S';
+      // Use sponsor's commerceApiKey if available, fallback to env
+      let commerceApiKey = process.env.COMMERCE_API_KEY || 'KCXF10Y-W5T4PCR-GG5119A-Z64SQ9S';
+      if (sponsorId) {
+        const sp = await storage.getSponsor(parseInt(sponsorId));
+        if (sp?.commerceApiKey) commerceApiKey = sp.commerceApiKey;
+      }
 
       let product: any = null;
       try {
@@ -4286,8 +4290,11 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       const broadcast = await storage.getBroadcast(broadcastId);
       if (!broadcast) return res.status(404).json({ error: 'Broadcast not found' });
 
-      const campaign = await storage.getCampaign(broadcast.campaignId);
-      const commerceApiKey = (campaign as any)?.reachuApiKey || process.env.COMMERCE_API_KEY || '';
+      await storage.getCampaign(broadcast.campaignId);
+
+      // Use slot's sponsor commerceApiKey
+      const slotSponsor = await storage.getSponsor(slot.sponsorId);
+      const commerceApiKey = slotSponsor?.commerceApiKey || process.env.COMMERCE_API_KEY || 'KCXF10Y-W5T4PCR-GG5119A-Z64SQ9S';
 
       const productIds = slot.productIds ?? [];
       let product: any = null;
@@ -4347,8 +4354,15 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
         productIds = [408841, 408874, 408895, 408896, 408898];
       }
 
-      const campaign = campaignId ? await storage.getCampaign(campaignId) : null;
-      const commerceApiKey = (campaign as any)?.reachuApiKey || process.env.COMMERCE_API_KEY || '';
+      // Use commerce key from first campaign sponsor, fallback to env
+      let commerceApiKey = process.env.COMMERCE_API_KEY || 'KCXF10Y-W5T4PCR-GG5119A-Z64SQ9S';
+      if (campaignId) {
+        const campaignSponsorsForKey = await storage.getCampaignSponsors(campaignId);
+        for (const cs of campaignSponsorsForKey) {
+          const sp = await storage.getSponsor(cs.sponsorId);
+          if (sp?.commerceApiKey) { commerceApiKey = sp.commerceApiKey; break; }
+        }
+      }
 
       const gqlQuery = `{ Channel { GetProductsByIds(product_ids: [${productIds.join(',')}]) { id title images { url order } price { amount amount_incl_taxes currency_code } } } }`;
       const gqlRes = await fetch('https://graph-ql-dev.vio.live/graphql', {
@@ -4428,7 +4442,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       let resolvedName = productName || `Product ${productId}`;
       if (!productName) {
         try {
-          const commerceApiKey = campaign?.reachuApiKey || process.env.COMMERCE_API_KEY || 'KCXF10Y-W5T4PCR-GG5119A-Z64SQ9S';
+          const commerceApiKey = process.env.COMMERCE_API_KEY || 'KCXF10Y-W5T4PCR-GG5119A-Z64SQ9S';
           const gqlQuery = `{ Channel { GetProductsByIds(product_ids: [${productId}]) { id title images { url order } price { amount amount_incl_taxes currency_code } } } }`;
           const gqlRes = await fetch('https://graph-ql-dev.vio.live/graphql', {
             method: 'POST',
@@ -4829,12 +4843,19 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
         }
       }
 
-      // Commerce integration (ex-Reachu) — always present so SDK can read without null-checking
+      // Commerce integration — get key from campaign sponsors first, fallback to campaign legacy key
+      const sdkCampaignSponsors = await storage.getCampaignSponsors(campaign.id);
+      let sdkCommerceApiKey: string | null = campaign.reachuApiKey || null;
+      let sdkCommerceChannelId: string | null = campaign.reachuChannelId || null;
+      for (const cs of sdkCampaignSponsors) {
+        const sp = await storage.getSponsor(cs.sponsorId);
+        if (sp?.commerceApiKey) { sdkCommerceApiKey = sp.commerceApiKey; sdkCommerceChannelId = sp.commerceChannelId || null; break; }
+      }
       config.integrations = {
         commerce: {
-          enabled: !!(campaign.reachuApiKey),
-          apiKey: campaign.reachuApiKey || null,
-          channelId: campaign.reachuChannelId || null,
+          enabled: !!(sdkCommerceApiKey),
+          apiKey: sdkCommerceApiKey,
+          channelId: sdkCommerceChannelId,
         }
       };
 
@@ -4965,12 +4986,19 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
         };
       }
 
-      // Commerce integration (ex-Reachu) — always present so SDK can read without null-checking
+      // Commerce integration — get key from campaign sponsors first, fallback to campaign legacy key
+      const sdkCampaignSponsors2 = await storage.getCampaignSponsors(campaign.id);
+      let sdkCommerceApiKey2: string | null = campaign.reachuApiKey || null;
+      let sdkCommerceChannelId2: string | null = campaign.reachuChannelId || null;
+      for (const cs of sdkCampaignSponsors2) {
+        const sp = await storage.getSponsor(cs.sponsorId);
+        if (sp?.commerceApiKey) { sdkCommerceApiKey2 = sp.commerceApiKey; sdkCommerceChannelId2 = sp.commerceChannelId || null; break; }
+      }
       config.integrations = {
         commerce: {
-          enabled: !!(campaign.reachuApiKey),
-          apiKey: campaign.reachuApiKey || null,
-          channelId: campaign.reachuChannelId || null,
+          enabled: !!(sdkCommerceApiKey2),
+          apiKey: sdkCommerceApiKey2,
+          channelId: sdkCommerceChannelId2,
         }
       };
 

@@ -39,6 +39,8 @@ interface SponsorFormData {
   avatarUrl: string;
   primaryColor: string;
   secondaryColor: string;
+  commerceApiKey: string;
+  commerceChannelId: string;
 }
 
 const defaultFormData: SponsorFormData = {
@@ -48,6 +50,8 @@ const defaultFormData: SponsorFormData = {
   avatarUrl: '',
   primaryColor: '#3d8b7a',
   secondaryColor: '#141824',
+  commerceApiKey: '',
+  commerceChannelId: '',
 };
 
 export default function SponsorsPage() {
@@ -149,6 +153,8 @@ export default function SponsorsPage() {
       avatarUrl: sponsor.avatarUrl || '',
       primaryColor: sponsor.primaryColor || '#3B82F6',
       secondaryColor: sponsor.secondaryColor || '#8B5CF6',
+      commerceApiKey: (sponsor as any).commerceApiKey || '',
+      commerceChannelId: (sponsor as any).commerceChannelId || '',
     });
     setEditDialogOpen(true);
   };
@@ -220,6 +226,30 @@ export default function SponsorsPage() {
             onChange={(e) => setFormData((prev) => ({ ...prev, secondaryColor: e.target.value }))}
             placeholder="#141824"
             data-testid="input-secondary-color"
+          />
+        </div>
+      </div>
+      <div className="border-t border-gray-100 dark:border-white/10 pt-4 space-y-4">
+        <p className="text-xs font-semibold text-gray-400 dark:text-white/30 uppercase tracking-wide">Commerce Integration</p>
+        <div className="space-y-2">
+          <Label>Commerce API Key</Label>
+          <Input
+            type="password"
+            placeholder="e.g. KCXF10Y-W5T4PCR-GG5119A-Z64SQ9S"
+            value={formData.commerceApiKey}
+            onChange={(e) => setFormData((prev) => ({ ...prev, commerceApiKey: e.target.value }))}
+            data-testid="input-sponsor-commerce-api-key"
+            autoComplete="off"
+          />
+          <p className="text-[10px] text-gray-400 dark:text-gray-500">API key for the Commerce integration. Products will be fetched using this key.</p>
+        </div>
+        <div className="space-y-2">
+          <Label>Commerce Channel ID <span className="text-gray-400 font-normal">(optional)</span></Label>
+          <Input
+            placeholder="e.g. ch_123456"
+            value={formData.commerceChannelId}
+            onChange={(e) => setFormData((prev) => ({ ...prev, commerceChannelId: e.target.value }))}
+            data-testid="input-sponsor-commerce-channel-id"
           />
         </div>
       </div>

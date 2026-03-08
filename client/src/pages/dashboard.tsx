@@ -355,10 +355,10 @@ export default function DashboardPage() {
                           </span>
                         </td>
                         <td className="py-3 px-4">
-                          <p className="text-sm font-semibold text-gray-900 dark:text-white">--</p>
+                          <p className="text-sm font-semibold text-gray-900 dark:text-white">{(broadcast as any).viewerCount ? Number((broadcast as any).viewerCount).toLocaleString() : '0'}</p>
                         </td>
                         <td className="py-3 px-4">
-                          <p className="text-sm text-gray-500 dark:text-white/50">--</p>
+                          <p className="text-sm text-gray-500 dark:text-white/50">{(broadcast as any).totalVotes ? Number((broadcast as any).totalVotes).toLocaleString() + ' votes' : '--'}</p>
                         </td>
                         <td className="py-3 px-4">
                           <p className="text-sm text-gray-600 dark:text-white/70">{hours > 0 ? `${hours}h ${mins}m` : `${mins}m`}</p>

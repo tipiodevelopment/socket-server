@@ -46,6 +46,8 @@ export const sponsors = pgTable("sponsors", {
   avatarUrl: text("avatar_url"),
   primaryColor: varchar("primary_color", { length: 20 }),
   secondaryColor: varchar("secondary_color", { length: 20 }),
+  commerceApiKey: text("commerce_api_key"),
+  commerceChannelId: text("commerce_channel_id"),
   createdAt: timestamp("created_at").defaultNow().notNull()
 });
 
