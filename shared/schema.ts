@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { pgTable, serial, varchar, text, timestamp, json, integer, boolean, uniqueIndex, index } from "drizzle-orm/pg-core";
 import { relations, sql } from "drizzle-orm";
+import type { AnyPgColumn } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 
 // Database Tables
@@ -395,6 +396,55 @@ export const insertSportmonksCacheSchema = createInsertSchema(sportmonksCache).o
 export type SportmonksCache = typeof sportmonksCache.$inferSelect;
 export type InsertSportmonksCache = z.infer<typeof insertSportmonksCacheSchema>;
 
+// Campaign Sponsors — many-to-many campaigns <-> sponsors with role
+export const campaignSponsors = pgTable("campaign_sponsors", {
+  id: serial("id").primaryKey(),
+  campaignId: integer("campaign_id").notNull().references(() => campaigns.id, { onDelete: 'cascade' }),
+  sponsorId: integer("sponsor_id").notNull().references(() => sponsors.id, { onDelete: 'cascade' }),
+  role: varchar("role", { length: 50 }).notNull().default('shoppable'), // 'engagement' | 'shoppable' | 'full'
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+  uniqueCampaignSponsor: uniqueIndex("unique_campaign_sponsor").on(table.campaignId, table.sponsorId),
+}));
+
+// Broadcast Campaigns — many-to-many broadcasts <-> campaigns
+export const broadcastCampaigns = pgTable("broadcast_campaigns", {
+  id: serial("id").primaryKey(),
+  broadcastId: varchar("broadcast_id", { length: 255 }).notNull().references((): AnyPgColumn => broadcasts.broadcastId, { onDelete: 'cascade' }),
+  campaignId: integer("campaign_id").notNull().references(() => campaigns.id, { onDelete: 'cascade' }),
+  isPrimary: boolean("is_primary").default(false),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+  uniqueBroadcastCampaign: uniqueIndex("unique_broadcast_campaign").on(table.broadcastId, table.campaignId),
+}));
+
+// Broadcast Sponsor Slots — pre-configured shoppable ad schedule per broadcast
+export const broadcastSponsorSlots = pgTable("broadcast_sponsor_slots", {
+  id: serial("id").primaryKey(),
+  broadcastId: varchar("broadcast_id", { length: 255 }).notNull().references((): AnyPgColumn => broadcasts.broadcastId, { onDelete: 'cascade' }),
+  sponsorId: integer("sponsor_id").notNull().references(() => sponsors.id, { onDelete: 'cascade' }),
+  campaignId: integer("campaign_id").references(() => campaigns.id, { onDelete: 'set null' }),
+  role: varchar("role", { length: 50 }).notNull().default('shoppable'),
+  triggerType: varchar("trigger_type", { length: 50 }).notNull().default('manual'), // 'manual' | 'match_minute' | 'absolute_time'
+  triggerValue: text("trigger_value"), // minute number or ISO datetime string
+  autoExecute: boolean("auto_execute").default(false),
+  productIds: integer("product_ids").array().default(sql`'{}'`),
+  status: varchar("status", { length: 20 }).default('scheduled'), // 'scheduled' | 'active' | 'completed'
+  executedAt: timestamp("executed_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertCampaignSponsorSchema = createInsertSchema(campaignSponsors).omit({ id: true, createdAt: true });
+export const insertBroadcastCampaignSchema = createInsertSchema(broadcastCampaigns).omit({ id: true, createdAt: true });
+export const insertBroadcastSponsorSlotSchema = createInsertSchema(broadcastSponsorSlots).omit({ id: true, createdAt: true });
+
+export type CampaignSponsor = typeof campaignSponsors.$inferSelect;
+export type InsertCampaignSponsor = z.infer<typeof insertCampaignSponsorSchema>;
+export type BroadcastCampaign = typeof broadcastCampaigns.$inferSelect;
+export type InsertBroadcastCampaign = z.infer<typeof insertBroadcastCampaignSchema>;
+export type BroadcastSponsorSlot = typeof broadcastSponsorSlots.$inferSelect;
+export type InsertBroadcastSponsorSlot = z.infer<typeof insertBroadcastSponsorSlotSchema>;
+
 // Relations
 export const usersRelations = relations(users, ({ many }) => ({
   campaigns: many(campaigns),
@@ -407,7 +457,9 @@ export const sponsorsRelations = relations(sponsors, ({ one, many }) => ({
     fields: [sponsors.userId],
     references: [users.id]
   }),
-  campaigns: many(campaigns)
+  campaigns: many(campaigns),
+  campaignSponsors: many(campaignSponsors),
+  broadcastSponsorSlots: many(broadcastSponsorSlots),
 }));
 
 export const clientAppsRelations = relations(clientApps, ({ one, many }) => ({
@@ -453,7 +505,9 @@ export const campaignsRelations = relations(campaigns, ({ one, many }) => ({
   engagementConfig: many(campaignEngagementConfig),
   uiConfig: many(campaignUiConfig),
   featureFlags: many(campaignFeatureFlags),
-  broadcasts: many(broadcasts)
+  broadcasts: many(broadcasts),
+  campaignSponsors: many(campaignSponsors),
+  broadcastCampaigns: many(broadcastCampaigns),
 }));
 
 export const campaignTranslationsRelations = relations(campaignTranslations, ({ one }) => ({
@@ -539,6 +593,22 @@ export const campaignComponentsRelations = relations(campaignComponents, ({ one 
   })
 }));
 
+export const campaignSponsorsRelations = relations(campaignSponsors, ({ one }) => ({
+  campaign: one(campaigns, { fields: [campaignSponsors.campaignId], references: [campaigns.id] }),
+  sponsor: one(sponsors, { fields: [campaignSponsors.sponsorId], references: [sponsors.id] }),
+}));
+
+export const broadcastCampaignsRelations = relations(broadcastCampaigns, ({ one }) => ({
+  broadcast: one(broadcasts, { fields: [broadcastCampaigns.broadcastId], references: [broadcasts.broadcastId] }),
+  campaign: one(campaigns, { fields: [broadcastCampaigns.campaignId], references: [campaigns.id] }),
+}));
+
+export const broadcastSponsorSlotsRelations = relations(broadcastSponsorSlots, ({ one }) => ({
+  broadcast: one(broadcasts, { fields: [broadcastSponsorSlots.broadcastId], references: [broadcasts.broadcastId] }),
+  sponsor: one(sponsors, { fields: [broadcastSponsorSlots.sponsorId], references: [sponsors.id] }),
+  campaign: one(campaigns, { fields: [broadcastSponsorSlots.campaignId], references: [campaigns.id] }),
+}));
+
 export const broadcastsRelations = relations(broadcasts, ({ one, many }) => ({
   campaign: one(campaigns, {
     fields: [broadcasts.campaignId],
@@ -556,7 +626,9 @@ export const broadcastsRelations = relations(broadcasts, ({ one, many }) => ({
   contests: many(contests),
   ads: many(broadcastAds),
   products: many(broadcastProducts),
-  chatMessages: many(chatMessages)
+  chatMessages: many(chatMessages),
+  broadcastCampaigns: many(broadcastCampaigns),
+  sponsorSlots: many(broadcastSponsorSlots),
 }));
 
 export const broadcastAdsRelations = relations(broadcastAds, ({ one }) => ({

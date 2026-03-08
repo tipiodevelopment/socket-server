@@ -2,7 +2,7 @@ import { useParams, Link, useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useState, useMemo } from "react";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Pause, Play, MoreVertical, BarChart3, Radio, Puzzle, Settings, Activity, Eye, TrendingUp, ExternalLink, Zap, Square, ChevronDown, ChevronRight, Trophy, Loader2, X, Clock, Search, Check } from "lucide-react";
+import { ArrowLeft, Pause, Play, MoreVertical, BarChart3, Radio, Puzzle, Settings, Activity, Eye, TrendingUp, ExternalLink, Zap, Square, ChevronDown, ChevronRight, Trophy, Loader2, X, Clock, Search, Check, Users2, Plus, Trash2 } from "lucide-react";
 import { Campaign, Sponsor, Broadcast } from "@shared/schema";
 import { OverviewTab } from "@/components/dashboard/OverviewTab";
 import { EventsTab } from "@/components/dashboard/EventsTab";
@@ -37,6 +37,7 @@ const TABS = [
   { value: 'overview', label: 'Overview', icon: BarChart3 },
   { value: 'broadcasts', label: 'Broadcasts', icon: Radio },
   { value: 'components', label: 'Components', icon: Puzzle },
+  { value: 'sponsors', label: 'Sponsors', icon: Users2 },
   { value: 'live', label: 'Live', icon: Zap },
   { value: 'analytics', label: 'Analytics', icon: Activity },
   { value: 'settings', label: 'Settings', icon: Settings },
@@ -241,6 +242,9 @@ export default function CampaignDashboard() {
         {activeTab === 'components' && (
           <ComponentsTab campaignId={campaignId!} />
         )}
+        {activeTab === 'sponsors' && (
+          <SponsorsTabContent campaignId={campaignId!} />
+        )}
         {activeTab === 'live' && (
           <div className="space-y-8">
             <EventsTab campaignId={campaignId!} campaign={campaign} />
@@ -351,7 +355,14 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { Plus, Trash2, Filter, Calendar, Pencil } from 'lucide-react';
+import { Filter, Calendar, Pencil } from 'lucide-react';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 function getStatusBadge(status: string) {
   switch (status) {
@@ -1227,6 +1238,208 @@ function BroadcastsTab({ campaignId }: { campaignId: number }) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+    </div>
+  );
+}
+
+const ROLE_LABELS: Record<string, string> = {
+  engagement: 'Engagement',
+  shoppable: 'Shoppable',
+  full: 'Full',
+};
+const ROLE_COLORS: Record<string, string> = {
+  engagement: 'bg-blue-500/20 text-blue-400',
+  shoppable: 'bg-green-500/20 text-green-400',
+  full: 'bg-purple-500/20 text-purple-400',
+};
+
+function SponsorsTabContent({ campaignId }: { campaignId: number }) {
+  const { toast } = useToast();
+  const [addOpen, setAddOpen] = useState(false);
+  const [selectedSponsorId, setSelectedSponsorId] = useState('');
+  const [selectedRole, setSelectedRole] = useState('shoppable');
+
+  const { data: campaignSponsors = [], isLoading } = useQuery<any[]>({
+    queryKey: ['/api/campaigns', campaignId, 'sponsors'],
+    queryFn: async () => {
+      const res = await fetch(`/api/campaigns/${campaignId}/sponsors`);
+      if (!res.ok) throw new Error('Failed');
+      return res.json();
+    },
+    enabled: !!campaignId,
+  });
+
+  const { data: allSponsors = [] } = useQuery<any[]>({
+    queryKey: ['/api/sponsors'],
+  });
+
+  const linkedSponsorIds = new Set(campaignSponsors.map((s: any) => s.sponsorId));
+  const availableSponsors = allSponsors.filter((s: any) => !linkedSponsorIds.has(s.id));
+
+  const addMutation = useMutation({
+    mutationFn: async () => {
+      const res = await fetch(`/api/campaigns/${campaignId}/sponsors`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sponsorId: parseInt(selectedSponsorId), role: selectedRole }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/campaigns', campaignId, 'sponsors'] });
+      toast({ title: 'Sponsor added' });
+      setAddOpen(false);
+      setSelectedSponsorId('');
+      setSelectedRole('shoppable');
+    },
+    onError: () => toast({ title: 'Error', description: 'Could not add sponsor', variant: 'destructive' }),
+  });
+
+  const removeMutation = useMutation({
+    mutationFn: async (sponsorId: number) => {
+      const res = await fetch(`/api/campaigns/${campaignId}/sponsors/${sponsorId}`, { method: 'DELETE' });
+      if (!res.ok) throw new Error('Failed');
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/campaigns', campaignId, 'sponsors'] });
+      toast({ title: 'Sponsor removed' });
+    },
+    onError: () => toast({ title: 'Error', description: 'Could not remove sponsor', variant: 'destructive' }),
+  });
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Campaign Sponsors</h3>
+        <Dialog open={addOpen} onOpenChange={setAddOpen}>
+          <DialogTrigger asChild>
+            <Button size="sm" className="gap-1.5" data-testid="button-add-sponsor" disabled={availableSponsors.length === 0}>
+              <Plus className="w-3.5 h-3.5" />
+              Add Sponsor
+            </Button>
+          </DialogTrigger>
+          <DialogContent className="sm:max-w-sm">
+            <DialogHeader>
+              <DialogTitle>Add Sponsor</DialogTitle>
+              <DialogDescription>Link a sponsor to this campaign with a role.</DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 py-2">
+              <div className="space-y-1.5">
+                <Label>Sponsor</Label>
+                <Select value={selectedSponsorId} onValueChange={setSelectedSponsorId}>
+                  <SelectTrigger data-testid="select-add-sponsor">
+                    <SelectValue placeholder="Select sponsor..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {availableSponsors.map((s: any) => (
+                      <SelectItem key={s.id} value={String(s.id)}>
+                        <div className="flex items-center gap-2">
+                          {s.logoUrl ? (
+                            <img src={s.logoUrl} alt={s.name} className="w-4 h-4 object-contain rounded" />
+                          ) : (
+                            <div className="w-4 h-4 rounded text-[9px] font-bold flex items-center justify-center text-white"
+                              style={{ backgroundColor: s.primaryColor ?? '#3d8b7a' }}>
+                              {s.name.slice(0, 2).toUpperCase()}
+                            </div>
+                          )}
+                          {s.name}
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label>Role</Label>
+                <Select value={selectedRole} onValueChange={setSelectedRole}>
+                  <SelectTrigger data-testid="select-sponsor-role">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="engagement">Engagement</SelectItem>
+                    <SelectItem value="shoppable">Shoppable</SelectItem>
+                    <SelectItem value="full">Full</SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-[11px] text-gray-500 dark:text-gray-400">
+                  Engagement = polls/contests · Shoppable = products · Full = both
+                </p>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setAddOpen(false)}>Cancel</Button>
+              <Button
+                onClick={() => addMutation.mutate()}
+                disabled={!selectedSponsorId || addMutation.isPending}
+                data-testid="button-confirm-add-sponsor"
+              >
+                {addMutation.isPending ? 'Adding...' : 'Add Sponsor'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      </div>
+
+      {isLoading ? (
+        <div className="space-y-3">
+          {[1, 2].map(i => <div key={i} className="h-20 bg-white/5 rounded-lg animate-pulse" />)}
+        </div>
+      ) : campaignSponsors.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-16 border border-dashed border-white/10 rounded-xl">
+          <Users2 className="w-10 h-10 text-white/20 mb-3" />
+          <p className="text-sm font-medium text-white/40 mb-1">No sponsors linked</p>
+          <p className="text-xs text-white/20">Add a sponsor to associate it with this campaign</p>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {campaignSponsors.map((cs: any) => (
+            <div
+              key={cs.id}
+              className="flex items-center gap-4 p-4 bg-transparent border border-white/10 rounded-xl hover:border-white/20 transition"
+              data-testid={`card-campaign-sponsor-${cs.sponsorId}`}
+            >
+              <div className="shrink-0">
+                {cs.logoUrl ? (
+                  <img src={cs.logoUrl} alt={cs.name} className="w-12 h-12 object-contain rounded-lg bg-white/5 p-1" />
+                ) : (
+                  <div
+                    className="w-12 h-12 rounded-lg flex items-center justify-center text-white font-bold text-sm"
+                    style={{ backgroundColor: cs.primaryColor ?? '#3d8b7a' }}
+                  >
+                    {cs.name.slice(0, 2).toUpperCase()}
+                  </div>
+                )}
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="font-medium text-white text-sm">{cs.name}</span>
+                  <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${ROLE_COLORS[cs.role] ?? 'bg-white/10 text-white/50'}`}>
+                    {ROLE_LABELS[cs.role] ?? cs.role}
+                  </span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  {cs.primaryColor && (
+                    <div className="flex items-center gap-1 text-[11px] text-white/30">
+                      <div className="w-3 h-3 rounded-full border border-white/10" style={{ backgroundColor: cs.primaryColor }} />
+                      {cs.primaryColor}
+                    </div>
+                  )}
+                </div>
+              </div>
+              <button
+                onClick={() => removeMutation.mutate(cs.sponsorId)}
+                disabled={removeMutation.isPending}
+                data-testid={`button-remove-sponsor-${cs.sponsorId}`}
+                className="p-2 text-white/20 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition"
+                title="Remove sponsor"
+              >
+                <Trash2 className="w-4 h-4" />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

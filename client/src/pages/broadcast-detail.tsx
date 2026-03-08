@@ -610,150 +610,437 @@ type TriggeredAdEntry = {
   triggeredAt: Date;
 };
 
+type CommerceProduct = { id: number; name: string; imageUrl: string | null; price: number | null; currency: string };
+type SponsorSlot = {
+  id: number; broadcastId: string; sponsorId: number; campaignId: number | null;
+  role: string; triggerType: string; triggerValue: string | null;
+  autoExecute: boolean | null; productIds: number[] | null;
+  status: string | null; executedAt: string | null; createdAt: string;
+  sponsorName: string; sponsorLogoUrl: string | null; sponsorPrimaryColor: string | null;
+};
+
 function ShoppableAdTriggerSection({ broadcastId, campaignId }: { broadcastId: string; campaignId: number | null }) {
   const { toast } = useToast();
-  const [productId, setProductId] = useState('');
-  const [selectedSponsorId, setSelectedSponsorId] = useState('');
   const [log, setLog] = useState<TriggeredAdEntry[]>([]);
+  const [addSlotOpen, setAddSlotOpen] = useState(false);
+  const [selectedSponsorId, setSelectedSponsorId] = useState('');
+  const [slotTriggerType, setSlotTriggerType] = useState('manual');
+  const [slotTriggerValue, setSlotTriggerValue] = useState('');
+  const [slotProductIds, setSlotProductIds] = useState<number[]>([]);
+  const [autoExecute, setAutoExecute] = useState(false);
 
-  const { data: sponsors = [] } = useQuery<Sponsor[]>({
-    queryKey: ['/api/sponsors'],
-  });
+  const [adhocSponsorId, setAdhocSponsorId] = useState('');
+  const [adhocProductId, setAdhocProductId] = useState<number | null>(null);
 
-  const { data: campaignData2 } = useQuery<Campaign>({
-    queryKey: ['/api/campaigns', campaignId],
+  const { data: campaignSponsors = [] } = useQuery<any[]>({
+    queryKey: ['/api/campaigns', campaignId, 'sponsors'],
+    queryFn: async () => {
+      if (!campaignId) return [];
+      const res = await fetch(`/api/campaigns/${campaignId}/sponsors`);
+      if (!res.ok) return [];
+      return res.json();
+    },
     enabled: !!campaignId,
   });
 
-  const commerceEnabled = (campaignData2 as any)?.integrations?.commerce?.enabled !== false;
+  const { data: slots = [], isLoading: slotsLoading } = useQuery<SponsorSlot[]>({
+    queryKey: ['/api/broadcasts', broadcastId, 'sponsor-slots'],
+    queryFn: async () => {
+      const res = await fetch(`/api/broadcasts/${broadcastId}/sponsor-slots`);
+      if (!res.ok) return [];
+      return res.json();
+    },
+  });
 
-  const triggerMutation = useMutation({
+  const { data: commerceProducts = [] } = useQuery<CommerceProduct[]>({
+    queryKey: ['/api/commerce/products', campaignId],
+    queryFn: async () => {
+      const url = `/api/commerce/products${campaignId ? `?campaignId=${campaignId}` : ''}`;
+      const res = await fetch(url);
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: !!campaignId,
+  });
+
+  const createSlotMutation = useMutation({
     mutationFn: async () => {
+      const res = await fetch(`/api/broadcasts/${broadcastId}/sponsor-slots`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sponsorId: parseInt(selectedSponsorId),
+          campaignId,
+          triggerType: slotTriggerType,
+          triggerValue: slotTriggerValue || null,
+          productIds: slotProductIds,
+          autoExecute,
+        }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/broadcasts', broadcastId, 'sponsor-slots'] });
+      toast({ title: 'Slot configured' });
+      setAddSlotOpen(false);
+      setSelectedSponsorId('');
+      setSlotTriggerType('manual');
+      setSlotTriggerValue('');
+      setSlotProductIds([]);
+      setAutoExecute(false);
+    },
+    onError: () => toast({ title: 'Error', description: 'Could not create slot', variant: 'destructive' }),
+  });
+
+  const deleteSlotMutation = useMutation({
+    mutationFn: async (slotId: number) => {
+      const res = await fetch(`/api/broadcasts/${broadcastId}/sponsor-slots/${slotId}`, { method: 'DELETE' });
+      if (!res.ok) throw new Error('Failed');
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/broadcasts', broadcastId, 'sponsor-slots'] });
+      toast({ title: 'Slot removed' });
+    },
+  });
+
+  const executeSlotMutation = useMutation({
+    mutationFn: async (slotId: number) => {
+      const res = await fetch(`/api/broadcasts/${broadcastId}/sponsor-slots/${slotId}/execute`, { method: 'POST' });
+      if (!res.ok) throw new Error(await res.text());
+      return res.json();
+    },
+    onSuccess: (data, slotId) => {
+      queryClient.invalidateQueries({ queryKey: ['/api/broadcasts', broadcastId, 'sponsor-slots'] });
+      const slot = slots.find(s => s.id === slotId);
+      const entry: TriggeredAdEntry = {
+        id: `slot-${slotId}-${Date.now()}`,
+        productId: String(data.product?.id ?? ''),
+        productName: data.product?.name ?? 'Product',
+        productPrice: data.product?.price != null ? `${data.product.price} ${data.product.currency ?? 'NOK'}`.trim() : null,
+        productImage: data.product?.imageUrl ?? null,
+        sponsorName: slot?.sponsorName ?? null,
+        triggeredAt: new Date(),
+      };
+      setLog(prev => [entry, ...prev]);
+      toast({ title: 'Ad fired', description: `"${entry.productName}" sent to viewers` });
+    },
+    onError: (err: any) => toast({ title: 'Error', description: err.message || 'Failed', variant: 'destructive' }),
+  });
+
+  const adhocTriggerMutation = useMutation({
+    mutationFn: async () => {
+      if (!adhocProductId) throw new Error('Select a product');
       const res = await fetch(`/api/broadcasts/${broadcastId}/trigger-shoppable-ad`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          productId: productId.trim(),
-          sponsorId: (selectedSponsorId && selectedSponsorId !== 'none') ? selectedSponsorId : undefined,
+          productId: String(adhocProductId),
+          sponsorId: (adhocSponsorId && adhocSponsorId !== 'none') ? adhocSponsorId : undefined,
         }),
       });
       if (!res.ok) throw new Error(await res.text());
       return res.json();
     },
     onSuccess: (data) => {
-      const sponsor = selectedSponsorId && selectedSponsorId !== 'none' ? sponsors.find(s => String(s.id) === selectedSponsorId) : undefined;
+      const sponsor = adhocSponsorId && adhocSponsorId !== 'none'
+        ? campaignSponsors.find((s: any) => String(s.sponsorId) === adhocSponsorId)
+        : undefined;
       const entry: TriggeredAdEntry = {
-        id: `${Date.now()}-${productId}`,
-        productId: productId.trim(),
-        productName: data.product?.name ?? `Product #${productId}`,
-        productPrice: data.product?.price != null ? `${data.product.price} ${data.product.currency ?? ''}`.trim() : null,
+        id: `adhoc-${Date.now()}`,
+        productId: String(adhocProductId),
+        productName: data.product?.name ?? `Product #${adhocProductId}`,
+        productPrice: data.product?.price != null ? `${data.product.price} ${data.product.currency ?? 'NOK'}`.trim() : null,
         productImage: data.product?.imageUrl ?? null,
         sponsorName: sponsor?.name ?? null,
         triggeredAt: new Date(),
       };
       setLog(prev => [entry, ...prev]);
-      toast({ title: 'Shoppable Ad triggered', description: `"${entry.productName}" sent to viewers` });
+      toast({ title: 'Ad triggered', description: `"${entry.productName}" sent to viewers` });
     },
-    onError: (err: any) => {
-      toast({ title: 'Error', description: err.message || 'Failed to trigger ad', variant: 'destructive' });
-    },
+    onError: (err: any) => toast({ title: 'Error', description: err.message || 'Failed', variant: 'destructive' }),
   });
 
-  const handleTrigger = () => {
-    if (!productId.trim()) {
-      toast({ title: 'Product ID required', description: 'Enter a Commerce product ID to trigger', variant: 'destructive' });
-      return;
-    }
-    triggerMutation.mutate();
+  const slotStatusStyles: Record<string, string> = {
+    scheduled: 'bg-blue-500/20 text-blue-400',
+    active: 'bg-green-500/20 text-green-400',
+    completed: 'bg-gray-500/20 text-gray-400',
+  };
+
+  const triggerTypeLabel: Record<string, string> = {
+    manual: 'Manual',
+    match_minute: 'Match Minute',
+    absolute_time: 'Absolute Time',
   };
 
   return (
-    <div className="mb-6" data-testid="section-shoppable-ads">
-      <div className="flex items-center justify-between mb-4">
+    <div className="mb-6 space-y-5" data-testid="section-shoppable-ads">
+      <div className="flex items-center justify-between">
         <h2 className="text-sm font-semibold text-gray-900 dark:text-white">Shoppable Ads</h2>
       </div>
 
-      {!commerceEnabled ? (
-        <div className="bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-500/30 rounded-lg p-4 flex items-start gap-3">
-          <ShoppingBag className="w-4 h-4 text-amber-500 mt-0.5 flex-shrink-0" />
-          <div>
-            <p className="text-sm font-medium text-amber-700 dark:text-amber-400">Commerce not configured</p>
-            <p className="text-xs text-amber-600 dark:text-amber-500 mt-0.5">Enable the Commerce integration in Campaign Settings to trigger shoppable ads.</p>
-          </div>
+      {/* Pre-programmed Slots Panel */}
+      <div className="bg-transparent border border-gray-200 dark:border-white/10 rounded-xl overflow-hidden">
+        <div className="flex items-center justify-between px-4 py-3 bg-gray-50 dark:bg-white/[0.03] border-b border-gray-100 dark:border-white/10">
+          <span className="text-xs font-semibold text-gray-500 dark:text-white/50 uppercase tracking-wide">Pre-programmed Slots</span>
+          <Dialog open={addSlotOpen} onOpenChange={setAddSlotOpen}>
+            <DialogTrigger asChild>
+              <button
+                data-testid="button-add-slot"
+                className="flex items-center gap-1.5 text-xs text-white/40 hover:text-white/70 transition px-2 py-1 rounded-md hover:bg-white/5"
+              >
+                <Plus className="w-3 h-3" />
+                Add Slot
+              </button>
+            </DialogTrigger>
+            <DialogContent className="sm:max-w-md">
+              <DialogHeader>
+                <DialogTitle>Configure Slot</DialogTitle>
+                <DialogDescription>Pre-program a shoppable ad for this broadcast.</DialogDescription>
+              </DialogHeader>
+              <div className="space-y-4 py-2">
+                <div className="space-y-1.5">
+                  <Label>Sponsor</Label>
+                  <Select value={selectedSponsorId} onValueChange={setSelectedSponsorId}>
+                    <SelectTrigger data-testid="select-slot-sponsor">
+                      <SelectValue placeholder="Select sponsor..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {campaignSponsors.map((s: any) => (
+                        <SelectItem key={s.sponsorId} value={String(s.sponsorId)}>
+                          <div className="flex items-center gap-2">
+                            {s.logoUrl
+                              ? <img src={s.logoUrl} alt={s.name} className="w-4 h-4 object-contain rounded" />
+                              : <div className="w-4 h-4 rounded text-[9px] font-bold flex items-center justify-center text-white" style={{ backgroundColor: s.primaryColor ?? '#3d8b7a' }}>{s.name.slice(0, 2).toUpperCase()}</div>
+                            }
+                            {s.name}
+                          </div>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Products</Label>
+                  {commerceProducts.length === 0 ? (
+                    <p className="text-xs text-gray-400 dark:text-gray-500">No products configured for this campaign yet.</p>
+                  ) : (
+                    <div className="grid grid-cols-2 gap-2 max-h-52 overflow-y-auto pr-1">
+                      {commerceProducts.map(p => {
+                        const isSelected = slotProductIds.includes(p.id);
+                        return (
+                          <button
+                            key={p.id}
+                            type="button"
+                            onClick={() => setSlotProductIds(prev => isSelected ? prev.filter(id => id !== p.id) : [...prev, p.id])}
+                            data-testid={`slot-product-${p.id}`}
+                            className={`flex items-center gap-2 p-2 rounded-lg border text-left transition ${isSelected ? 'border-blue-500/50 bg-blue-500/10' : 'border-white/10 bg-white/[0.02] hover:border-white/20'}`}
+                          >
+                            {p.imageUrl
+                              ? <img src={p.imageUrl} alt={p.name} className="w-8 h-8 rounded object-cover flex-shrink-0" />
+                              : <div className="w-8 h-8 rounded bg-white/10 flex-shrink-0 flex items-center justify-center"><ShoppingBag className="w-3.5 h-3.5 text-white/30" /></div>
+                            }
+                            <div className="flex-1 min-w-0">
+                              <p className="text-[11px] font-medium text-white truncate">{p.name}</p>
+                              {p.price != null && <p className="text-[10px] text-green-400">{p.price} {p.currency}</p>}
+                            </div>
+                            {isSelected && <Check className="w-3 h-3 text-blue-400 shrink-0" />}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Trigger Type</Label>
+                  <Select value={slotTriggerType} onValueChange={setSlotTriggerType}>
+                    <SelectTrigger data-testid="select-slot-trigger-type">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="manual">Manual</SelectItem>
+                      <SelectItem value="match_minute">Match Minute</SelectItem>
+                      <SelectItem value="absolute_time">Absolute Time</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                {slotTriggerType === 'match_minute' && (
+                  <div className="space-y-1.5">
+                    <Label>Minute</Label>
+                    <Input type="number" min={1} max={120} placeholder="45" value={slotTriggerValue} onChange={e => setSlotTriggerValue(e.target.value)} data-testid="input-slot-trigger-minute" />
+                  </div>
+                )}
+                {slotTriggerType === 'absolute_time' && (
+                  <div className="space-y-1.5">
+                    <Label>Date/Time</Label>
+                    <Input type="datetime-local" value={slotTriggerValue} onChange={e => setSlotTriggerValue(e.target.value)} data-testid="input-slot-trigger-time" className="[color-scheme:dark]" />
+                  </div>
+                )}
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm text-white/80">Auto-execute</p>
+                    <p className="text-xs text-white/30">Fire automatically at trigger time (not implemented yet)</p>
+                  </div>
+                  <input type="checkbox" checked={autoExecute} onChange={e => setAutoExecute(e.target.checked)} data-testid="checkbox-auto-execute" className="w-4 h-4 rounded" />
+                </div>
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setAddSlotOpen(false)}>Cancel</Button>
+                <Button onClick={() => createSlotMutation.mutate()} disabled={!selectedSponsorId || createSlotMutation.isPending} data-testid="button-save-slot">
+                  {createSlotMutation.isPending ? 'Saving...' : 'Save Slot'}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
         </div>
-      ) : (
-        <div className="bg-transparent border border-gray-200 dark:border-white/10 rounded-lg p-5 space-y-4">
-          <div className="grid grid-cols-2 gap-4">
+
+        {slotsLoading ? (
+          <div className="p-6 space-y-2">
+            {[1, 2].map(i => <div key={i} className="h-14 bg-white/5 rounded-lg animate-pulse" />)}
+          </div>
+        ) : slots.length === 0 ? (
+          <div className="px-4 py-8 text-center">
+            <p className="text-xs text-white/25">No slots configured. Add one to pre-program ads.</p>
+          </div>
+        ) : (
+          <div className="divide-y divide-white/5">
+            {slots.map(slot => (
+              <div key={slot.id} className="flex items-center gap-3 px-4 py-3" data-testid={`slot-card-${slot.id}`}>
+                <div className="shrink-0">
+                  {slot.sponsorLogoUrl
+                    ? <img src={slot.sponsorLogoUrl} alt={slot.sponsorName} className="w-8 h-8 rounded object-contain bg-white/5 p-0.5" />
+                    : <div className="w-8 h-8 rounded text-[10px] font-bold text-white flex items-center justify-center" style={{ backgroundColor: slot.sponsorPrimaryColor ?? '#3d8b7a' }}>{slot.sponsorName.slice(0, 2).toUpperCase()}</div>
+                  }
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 mb-0.5">
+                    <span className="text-sm font-medium text-white truncate">{slot.sponsorName}</span>
+                    <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${slotStatusStyles[slot.status ?? 'scheduled'] ?? 'bg-white/10 text-white/50'}`}>
+                      {slot.status ?? 'scheduled'}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2 text-[11px] text-white/30">
+                    <span>{triggerTypeLabel[slot.triggerType]}</span>
+                    {slot.triggerValue && <span>· {slot.triggerValue}</span>}
+                    {slot.productIds && slot.productIds.length > 0 && <span>· {slot.productIds.length} product{slot.productIds.length !== 1 ? 's' : ''}</span>}
+                    {slot.executedAt && <span className="text-green-400">· Fired {new Date(slot.executedAt).toLocaleTimeString()}</span>}
+                  </div>
+                </div>
+                <div className="flex items-center gap-1 shrink-0">
+                  <button
+                    onClick={() => executeSlotMutation.mutate(slot.id)}
+                    disabled={executeSlotMutation.isPending}
+                    data-testid={`button-fire-slot-${slot.id}`}
+                    className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-green-500/20 hover:bg-green-500/30 text-green-400 text-xs font-medium transition disabled:opacity-40"
+                    title="Fire Now"
+                  >
+                    <Play className="w-3 h-3" />
+                    Fire
+                  </button>
+                  <button
+                    onClick={() => deleteSlotMutation.mutate(slot.id)}
+                    data-testid={`button-delete-slot-${slot.id}`}
+                    className="p-1.5 rounded-lg text-white/20 hover:text-red-400 hover:bg-red-500/10 transition"
+                    title="Delete"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Ad-hoc Trigger Panel */}
+      <div className="bg-transparent border border-gray-200 dark:border-white/10 rounded-xl overflow-hidden">
+        <div className="px-4 py-3 bg-gray-50 dark:bg-white/[0.03] border-b border-gray-100 dark:border-white/10">
+          <span className="text-xs font-semibold text-gray-500 dark:text-white/50 uppercase tracking-wide">Quick Fire</span>
+        </div>
+        <div className="p-4 space-y-3">
+          <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
-              <Label className="text-xs text-gray-500 dark:text-gray-400">Commerce Product ID</Label>
-              <Input
-                data-testid="input-shoppable-product-id"
-                value={productId}
-                onChange={e => setProductId(e.target.value)}
-                placeholder="e.g. 12345"
-                className="text-sm"
-                onKeyDown={e => e.key === 'Enter' && handleTrigger()}
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs text-gray-500 dark:text-gray-400">Sponsor (optional)</Label>
-              <Select value={selectedSponsorId} onValueChange={setSelectedSponsorId}>
-                <SelectTrigger data-testid="select-shoppable-sponsor" className="text-sm">
+              <Label className="text-xs text-gray-500 dark:text-gray-400">Sponsor</Label>
+              <Select value={adhocSponsorId} onValueChange={setAdhocSponsorId}>
+                <SelectTrigger data-testid="select-adhoc-sponsor" className="text-sm">
                   <SelectValue placeholder="No sponsor" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="none">No sponsor</SelectItem>
-                  {sponsors.map(s => (
-                    <SelectItem key={s.id} value={String(s.id)}>{s.name}</SelectItem>
+                  {campaignSponsors.map((s: any) => (
+                    <SelectItem key={s.sponsorId} value={String(s.sponsorId)}>
+                      <div className="flex items-center gap-2">
+                        {s.logoUrl ? <img src={s.logoUrl} alt={s.name} className="w-3.5 h-3.5 object-contain rounded" /> : null}
+                        {s.name}
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs text-gray-500 dark:text-gray-400">Product</Label>
+              <Select value={adhocProductId ? String(adhocProductId) : ''} onValueChange={v => setAdhocProductId(parseInt(v))}>
+                <SelectTrigger data-testid="select-adhoc-product" className="text-sm">
+                  <SelectValue placeholder="Select product..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {commerceProducts.map(p => (
+                    <SelectItem key={p.id} value={String(p.id)}>
+                      <div className="flex items-center gap-2">
+                        {p.imageUrl ? <img src={p.imageUrl} alt={p.name} className="w-4 h-4 object-cover rounded flex-shrink-0" /> : <ShoppingBag className="w-3.5 h-3.5 text-gray-400" />}
+                        <span className="truncate">{p.name}</span>
+                        {p.price != null && <span className="text-green-400 shrink-0 text-[10px]">{p.price} {p.currency}</span>}
+                      </div>
+                    </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
           </div>
-
           <button
-            onClick={handleTrigger}
-            disabled={triggerMutation.isPending}
+            onClick={() => adhocTriggerMutation.mutate()}
+            disabled={!adhocProductId || adhocTriggerMutation.isPending}
             data-testid="button-trigger-shoppable-ad"
             className={`w-full flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm font-medium transition ${
-              triggerMutation.isPending
+              !adhocProductId || adhocTriggerMutation.isPending
                 ? 'bg-gray-100 dark:bg-white/5 text-gray-400 cursor-not-allowed'
                 : 'bg-green-600 hover:bg-green-700 dark:bg-green-500 dark:hover:bg-green-600 text-white'
             }`}
           >
             <Radio className="w-4 h-4" />
-            {triggerMutation.isPending ? 'Sending...' : 'Trigger Shoppable Ad'}
+            {adhocTriggerMutation.isPending ? 'Sending...' : 'Trigger Ad'}
           </button>
+        </div>
+      </div>
 
-          {log.length > 0 && (
-            <div className="border-t border-gray-100 dark:border-white/10 pt-4">
-              <p className="text-[11px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wide mb-2">Session Log</p>
-              <div className="space-y-2 max-h-48 overflow-y-auto">
-                {log.map(entry => (
-                  <div key={entry.id} className="flex items-center gap-3 text-xs" data-testid={`log-shoppable-ad-${entry.id}`}>
-                    {entry.productImage ? (
-                      <img src={entry.productImage} className="w-8 h-8 rounded object-cover flex-shrink-0 border border-gray-100 dark:border-white/10" alt="" />
-                    ) : (
-                      <div className="w-8 h-8 rounded bg-gray-100 dark:bg-white/10 flex items-center justify-center flex-shrink-0">
-                        <ShoppingBag className="w-3.5 h-3.5 text-gray-400" />
-                      </div>
-                    )}
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className="font-medium text-gray-900 dark:text-white truncate">{entry.productName}</span>
-                        {entry.productPrice && <span className="text-green-500 dark:text-green-400 shrink-0">{entry.productPrice}</span>}
-                      </div>
-                      <div className="text-gray-400 dark:text-gray-500 flex items-center gap-1.5">
-                        {entry.sponsorName && <span className="text-gray-500">{entry.sponsorName} ·</span>}
-                        <span>{entry.triggeredAt.toLocaleTimeString('en', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</span>
-                      </div>
-                    </div>
-                    <CheckCircle className="w-3.5 h-3.5 text-green-500 flex-shrink-0" />
+      {/* Session Log */}
+      {log.length > 0 && (
+        <div className="bg-transparent border border-gray-200 dark:border-white/10 rounded-xl overflow-hidden">
+          <div className="px-4 py-3 bg-gray-50 dark:bg-white/[0.03] border-b border-gray-100 dark:border-white/10">
+            <span className="text-xs font-semibold text-gray-500 dark:text-white/50 uppercase tracking-wide">Session Log</span>
+          </div>
+          <div className="divide-y divide-gray-50 dark:divide-white/5 max-h-48 overflow-y-auto">
+            {log.map(entry => (
+              <div key={entry.id} className="flex items-center gap-3 px-4 py-2.5 text-xs" data-testid={`log-shoppable-ad-${entry.id}`}>
+                {entry.productImage
+                  ? <img src={entry.productImage} className="w-8 h-8 rounded object-cover flex-shrink-0 border border-gray-100 dark:border-white/10" alt="" />
+                  : <div className="w-8 h-8 rounded bg-gray-100 dark:bg-white/10 flex items-center justify-center flex-shrink-0"><ShoppingBag className="w-3.5 h-3.5 text-gray-400" /></div>
+                }
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="font-medium text-gray-900 dark:text-white truncate">{entry.productName}</span>
+                    {entry.productPrice && <span className="text-green-500 dark:text-green-400 shrink-0">{entry.productPrice}</span>}
                   </div>
-                ))}
+                  <div className="text-gray-400 dark:text-gray-500">
+                    {entry.sponsorName && <span>{entry.sponsorName} · </span>}
+                    {entry.triggeredAt.toLocaleTimeString('en', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                  </div>
+                </div>
+                <CheckCircle className="w-3.5 h-3.5 text-green-500 flex-shrink-0" />
               </div>
-            </div>
-          )}
+            ))}
+          </div>
         </div>
       )}
     </div>

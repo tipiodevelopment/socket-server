@@ -1,6 +1,6 @@
-import { WebSocketEvent, Campaign, InsertCampaign, Event, InsertEvent, CampaignFormState, InsertFormState, ScheduledComponent, InsertScheduledComponent, Component, InsertComponent, CampaignComponent, InsertCampaignComponent, AppComponent, InsertAppComponent, User, InsertUser, ClientApp, InsertClientApp, Channel, InsertChannel, CampaignTranslation, InsertCampaignTranslation, CampaignEngagementConfig, InsertCampaignEngagementConfig, CampaignUiConfig, InsertCampaignUiConfig, CampaignFeatureFlags, InsertCampaignFeatureFlags, SdkTranslation, InsertSdkTranslation, Broadcast, InsertBroadcast, Poll, InsertPoll, PollOptionRecord, InsertPollOption, PollVote, InsertPollVote, Contest, InsertContest, ContestParticipation, InsertContestParticipation, Sponsor, InsertSponsor, BroadcastAd, InsertBroadcastAd, BroadcastProduct, InsertBroadcastProduct, ChatMessage, InsertChatMessage, DeviceToken, InsertDeviceToken, SportmonksCache } from "@shared/schema";
+import { WebSocketEvent, Campaign, InsertCampaign, Event, InsertEvent, CampaignFormState, InsertFormState, ScheduledComponent, InsertScheduledComponent, Component, InsertComponent, CampaignComponent, InsertCampaignComponent, AppComponent, InsertAppComponent, User, InsertUser, ClientApp, InsertClientApp, Channel, InsertChannel, CampaignTranslation, InsertCampaignTranslation, CampaignEngagementConfig, InsertCampaignEngagementConfig, CampaignUiConfig, InsertCampaignUiConfig, CampaignFeatureFlags, InsertCampaignFeatureFlags, SdkTranslation, InsertSdkTranslation, Broadcast, InsertBroadcast, Poll, InsertPoll, PollOptionRecord, InsertPollOption, PollVote, InsertPollVote, Contest, InsertContest, ContestParticipation, InsertContestParticipation, Sponsor, InsertSponsor, BroadcastAd, InsertBroadcastAd, BroadcastProduct, InsertBroadcastProduct, ChatMessage, InsertChatMessage, DeviceToken, InsertDeviceToken, SportmonksCache, type InsertCampaignSponsor, type InsertBroadcastSponsorSlot } from "@shared/schema";
 import { db } from "./db";
-import { campaigns, events, campaignFormState, scheduledComponents, components, campaignComponents, appComponents, users, clientApps, channels, campaignTranslations, campaignEngagementConfig, campaignUiConfig, campaignFeatureFlags, sdkTranslations, broadcasts, polls, pollOptions, pollVotes, contests, contestParticipations, sponsors, broadcastAds, broadcastProducts, chatMessages, deviceTokens, sportmonksCache } from "@shared/schema";
+import { campaigns, events, campaignFormState, scheduledComponents, components, campaignComponents, appComponents, users, clientApps, channels, campaignTranslations, campaignEngagementConfig, campaignUiConfig, campaignFeatureFlags, sdkTranslations, broadcasts, polls, pollOptions, pollVotes, contests, contestParticipations, sponsors, broadcastAds, broadcastProducts, chatMessages, deviceTokens, sportmonksCache, campaignSponsors, broadcastSponsorSlots } from "@shared/schema";
 import { eq, desc, and, or, gte, ne, isNull, sql, lte, inArray } from "drizzle-orm";
 
 export interface IStorage {
@@ -194,6 +194,21 @@ export interface IStorage {
   // Sportmonks cache methods
   getSportmonksCache(cacheType: string, leagueId?: number | null, dateFrom?: string | null, dateTo?: string | null): Promise<SportmonksCache | undefined>;
   upsertSportmonksCache(cacheType: string, data: any, leagueId?: number | null, dateFrom?: string | null, dateTo?: string | null): Promise<SportmonksCache>;
+
+  // Campaign Sponsors methods
+  getCampaignSponsors(campaignId: number): Promise<Array<{ id: number; sponsorId: number; campaignId: number; role: string; name: string; logoUrl: string | null; primaryColor: string | null; secondaryColor: string | null }>>;
+  addCampaignSponsor(data: { campaignId: number; sponsorId: number; role: string }): Promise<any>;
+  removeCampaignSponsor(campaignId: number, sponsorId: number): Promise<void>;
+
+  // Broadcast Sponsor Slots methods
+  getBroadcastSponsorSlots(broadcastId: string): Promise<any[]>;
+  getBroadcastSponsorSlot(id: number): Promise<any | undefined>;
+  createBroadcastSponsorSlot(data: any): Promise<any>;
+  updateBroadcastSponsorSlot(id: number, data: any): Promise<any | undefined>;
+  deleteBroadcastSponsorSlot(id: number): Promise<void>;
+
+  // getBroadcastsByCampaign alias
+  getBroadcastsByCampaign(campaignId: number): Promise<Broadcast[]>;
 }
 
 export class MemStorage implements IStorage {
@@ -1408,6 +1423,104 @@ export class MemStorage implements IStorage {
       .values({ cacheType, leagueId: leagueId ?? null, dateFrom: dateFrom ?? null, dateTo: dateTo ?? null, data })
       .returning();
     return created;
+  }
+
+  async getCampaignSponsors(campaignId: number) {
+    const rows = await db
+      .select({
+        id: campaignSponsors.id,
+        sponsorId: campaignSponsors.sponsorId,
+        campaignId: campaignSponsors.campaignId,
+        role: campaignSponsors.role,
+        name: sponsors.name,
+        logoUrl: sponsors.logoUrl,
+        primaryColor: sponsors.primaryColor,
+        secondaryColor: sponsors.secondaryColor,
+      })
+      .from(campaignSponsors)
+      .innerJoin(sponsors, eq(campaignSponsors.sponsorId, sponsors.id))
+      .where(eq(campaignSponsors.campaignId, campaignId));
+    return rows;
+  }
+
+  async addCampaignSponsor(data: { campaignId: number; sponsorId: number; role: string }) {
+    const [row] = await db.insert(campaignSponsors).values(data).returning();
+    return row;
+  }
+
+  async removeCampaignSponsor(campaignId: number, sponsorId: number) {
+    await db.delete(campaignSponsors).where(
+      and(eq(campaignSponsors.campaignId, campaignId), eq(campaignSponsors.sponsorId, sponsorId))
+    );
+  }
+
+  async getBroadcastSponsorSlots(broadcastId: string) {
+    const rows = await db
+      .select({
+        id: broadcastSponsorSlots.id,
+        broadcastId: broadcastSponsorSlots.broadcastId,
+        sponsorId: broadcastSponsorSlots.sponsorId,
+        campaignId: broadcastSponsorSlots.campaignId,
+        role: broadcastSponsorSlots.role,
+        triggerType: broadcastSponsorSlots.triggerType,
+        triggerValue: broadcastSponsorSlots.triggerValue,
+        autoExecute: broadcastSponsorSlots.autoExecute,
+        productIds: broadcastSponsorSlots.productIds,
+        status: broadcastSponsorSlots.status,
+        executedAt: broadcastSponsorSlots.executedAt,
+        createdAt: broadcastSponsorSlots.createdAt,
+        sponsorName: sponsors.name,
+        sponsorLogoUrl: sponsors.logoUrl,
+        sponsorPrimaryColor: sponsors.primaryColor,
+      })
+      .from(broadcastSponsorSlots)
+      .innerJoin(sponsors, eq(broadcastSponsorSlots.sponsorId, sponsors.id))
+      .where(eq(broadcastSponsorSlots.broadcastId, broadcastId))
+      .orderBy(broadcastSponsorSlots.createdAt);
+    return rows;
+  }
+
+  async getBroadcastSponsorSlot(id: number) {
+    const [row] = await db
+      .select({
+        id: broadcastSponsorSlots.id,
+        broadcastId: broadcastSponsorSlots.broadcastId,
+        sponsorId: broadcastSponsorSlots.sponsorId,
+        campaignId: broadcastSponsorSlots.campaignId,
+        role: broadcastSponsorSlots.role,
+        triggerType: broadcastSponsorSlots.triggerType,
+        triggerValue: broadcastSponsorSlots.triggerValue,
+        autoExecute: broadcastSponsorSlots.autoExecute,
+        productIds: broadcastSponsorSlots.productIds,
+        status: broadcastSponsorSlots.status,
+        executedAt: broadcastSponsorSlots.executedAt,
+        createdAt: broadcastSponsorSlots.createdAt,
+        sponsorName: sponsors.name,
+        sponsorLogoUrl: sponsors.logoUrl,
+        sponsorPrimaryColor: sponsors.primaryColor,
+      })
+      .from(broadcastSponsorSlots)
+      .innerJoin(sponsors, eq(broadcastSponsorSlots.sponsorId, sponsors.id))
+      .where(eq(broadcastSponsorSlots.id, id));
+    return row;
+  }
+
+  async createBroadcastSponsorSlot(data: InsertBroadcastSponsorSlot) {
+    const [row] = await db.insert(broadcastSponsorSlots).values(data).returning();
+    return row;
+  }
+
+  async updateBroadcastSponsorSlot(id: number, data: Partial<InsertBroadcastSponsorSlot>) {
+    const [row] = await db.update(broadcastSponsorSlots).set(data).where(eq(broadcastSponsorSlots.id, id)).returning();
+    return row;
+  }
+
+  async deleteBroadcastSponsorSlot(id: number) {
+    await db.delete(broadcastSponsorSlots).where(eq(broadcastSponsorSlots.id, id));
+  }
+
+  async getBroadcastsByCampaign(campaignId: number): Promise<Broadcast[]> {
+    return this.getCampaignBroadcasts(campaignId);
   }
 }
 

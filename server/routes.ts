@@ -20,6 +20,8 @@ import {
   createContestInputSchema,
   voteInputSchema,
   participateInputSchema,
+  insertCampaignSponsorSchema,
+  insertBroadcastSponsorSlotSchema,
   type WebSocketEvent, 
   type InsertScheduledComponent 
 } from "@shared/schema";
@@ -1544,10 +1546,44 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
         const channel = await storage.getChannel(campaign.channelId);
         if (channel) channelName = channel.name;
       }
-      res.json({ ...campaign, clientAppName, channelName });
+      const campaignSponsors = await storage.getCampaignSponsors(campaign.id);
+      res.json({ ...campaign, clientAppName, channelName, sponsors: campaignSponsors });
     } catch (error) {
       console.error('Error fetching campaign:', error);
       res.status(500).json({ message: 'Error fetching campaign' });
+    }
+  });
+
+  // GET /api/campaigns/:id/sponsors
+  app.get('/api/campaigns/:id/sponsors', async (req, res) => {
+    try {
+      const sponsors = await storage.getCampaignSponsors(parseInt(req.params.id));
+      res.json(sponsors);
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to fetch campaign sponsors' });
+    }
+  });
+
+  // POST /api/campaigns/:id/sponsors
+  app.post('/api/campaigns/:id/sponsors', async (req, res) => {
+    try {
+      const parsed = insertCampaignSponsorSchema.safeParse({ ...req.body, campaignId: parseInt(req.params.id) });
+      if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+      const result = await storage.addCampaignSponsor(parsed.data);
+      res.status(201).json(result);
+    } catch (error: any) {
+      if (error?.code === '23505') return res.status(409).json({ error: 'Sponsor already linked to this campaign' });
+      res.status(500).json({ error: 'Failed to add sponsor to campaign' });
+    }
+  });
+
+  // DELETE /api/campaigns/:id/sponsors/:sponsorId
+  app.delete('/api/campaigns/:id/sponsors/:sponsorId', async (req, res) => {
+    try {
+      await storage.removeCampaignSponsor(parseInt(req.params.id), parseInt(req.params.sponsorId));
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to remove sponsor from campaign' });
     }
   });
 
@@ -4193,6 +4229,144 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
     } catch (error) {
       console.error('[TriggerShoppableAd] Error:', error);
       res.status(500).json({ error: 'Failed to trigger shoppable ad' });
+    }
+  });
+
+  // GET /api/broadcasts/:id/sponsor-slots
+  app.get('/api/broadcasts/:broadcastId/sponsor-slots', async (req, res) => {
+    try {
+      const slots = await storage.getBroadcastSponsorSlots(req.params.broadcastId);
+      res.json(slots);
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to fetch sponsor slots' });
+    }
+  });
+
+  // POST /api/broadcasts/:id/sponsor-slots
+  app.post('/api/broadcasts/:broadcastId/sponsor-slots', async (req, res) => {
+    try {
+      const parsed = insertBroadcastSponsorSlotSchema.safeParse({ ...req.body, broadcastId: req.params.broadcastId });
+      if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+      const slot = await storage.createBroadcastSponsorSlot(parsed.data);
+      res.status(201).json(slot);
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to create sponsor slot' });
+    }
+  });
+
+  // PUT /api/broadcasts/:id/sponsor-slots/:slotId
+  app.put('/api/broadcasts/:broadcastId/sponsor-slots/:slotId', async (req, res) => {
+    try {
+      const slot = await storage.updateBroadcastSponsorSlot(parseInt(req.params.slotId), req.body);
+      if (!slot) return res.status(404).json({ error: 'Slot not found' });
+      res.json(slot);
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to update sponsor slot' });
+    }
+  });
+
+  // DELETE /api/broadcasts/:id/sponsor-slots/:slotId
+  app.delete('/api/broadcasts/:broadcastId/sponsor-slots/:slotId', async (req, res) => {
+    try {
+      await storage.deleteBroadcastSponsorSlot(parseInt(req.params.slotId));
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to delete sponsor slot' });
+    }
+  });
+
+  // POST /api/broadcasts/:id/sponsor-slots/:slotId/execute — Fire the slot as WS event
+  app.post('/api/broadcasts/:broadcastId/sponsor-slots/:slotId/execute', async (req, res) => {
+    try {
+      const { broadcastId } = req.params;
+      const slotId = parseInt(req.params.slotId);
+      const slot = await storage.getBroadcastSponsorSlot(slotId);
+      if (!slot) return res.status(404).json({ error: 'Slot not found' });
+
+      const broadcast = await storage.getBroadcast(broadcastId);
+      if (!broadcast) return res.status(404).json({ error: 'Broadcast not found' });
+
+      const campaign = await storage.getCampaign(broadcast.campaignId);
+      const commerceApiKey = (campaign as any)?.reachuApiKey || process.env.COMMERCE_API_KEY || '';
+
+      const productIds = slot.productIds ?? [];
+      let product: any = null;
+      if (productIds.length > 0) {
+        try {
+          const gqlQuery = `{ Channel { GetProductsByIds(product_ids: [${productIds[0]}]) { id title images { url order } price { amount amount_incl_taxes currency_code } } } }`;
+          const gqlRes = await fetch('https://graph-ql-dev.vio.live/graphql', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': commerceApiKey },
+            body: JSON.stringify({ query: gqlQuery }),
+          });
+          const gqlData = await gqlRes.json() as any;
+          const p = gqlData?.data?.Channel?.GetProductsByIds?.[0];
+          if (p) {
+            const image = p.images?.sort((a: any, b: any) => a.order - b.order)?.[0];
+            product = { id: String(p.id), name: p.title, price: p.price?.amount_incl_taxes ?? p.price?.amount ?? null, currency: p.price?.currency_code ?? 'NOK', imageUrl: image?.url ?? null };
+          }
+        } catch (err) {
+          console.warn('[SponsorSlot] Commerce error:', err);
+        }
+      }
+      if (!product) product = { id: String(productIds[0] ?? 'unknown'), name: 'Product', price: null, currency: 'NOK', imageUrl: null };
+
+      const sp = await storage.getSponsor(slot.sponsorId);
+      const sponsor = sp ? { name: sp.name, logoUrl: sp.logoUrl ? normalizeUrls(sp.logoUrl, req.protocol, req.get('host')) : null, primaryColor: sp.primaryColor ?? null } : null;
+
+      const wsEvent = { type: 'shoppable_ad', broadcastId, campaignId: broadcast.campaignId, product, ...(sponsor ? { sponsor } : {}), slotId, timestamp: Date.now() };
+      if (broadcast.campaignId) broadcastToCampaign(broadcast.campaignId, JSON.stringify(wsEvent));
+
+      await storage.updateBroadcastSponsorSlot(slotId, { status: 'completed', executedAt: new Date() });
+
+      res.json({ success: true, product, sponsor });
+    } catch (error) {
+      console.error('[SponsorSlot] Execute error:', error);
+      res.status(500).json({ error: 'Failed to execute sponsor slot' });
+    }
+  });
+
+  // GET /api/commerce/products?campaignId=:id — Fetch real products from Commerce GraphQL
+  app.get('/api/commerce/products', async (req, res) => {
+    try {
+      const campaignId = req.query.campaignId ? parseInt(req.query.campaignId as string) : null;
+
+      let productIds: number[] = [];
+      if (campaignId) {
+        const broadcasts = await storage.getBroadcastsByCampaign(campaignId);
+        for (const broadcast of broadcasts) {
+          const slots = await storage.getBroadcastSponsorSlots(broadcast.broadcastId);
+          for (const slot of slots) {
+            if (slot.productIds) productIds.push(...slot.productIds);
+          }
+        }
+        productIds = [...new Set(productIds)];
+      }
+
+      if (productIds.length === 0) {
+        productIds = [408841, 408874, 408895, 408896, 408898];
+      }
+
+      const campaign = campaignId ? await storage.getCampaign(campaignId) : null;
+      const commerceApiKey = (campaign as any)?.reachuApiKey || process.env.COMMERCE_API_KEY || '';
+
+      const gqlQuery = `{ Channel { GetProductsByIds(product_ids: [${productIds.join(',')}]) { id title images { url order } price { amount amount_incl_taxes currency_code } } } }`;
+      const gqlRes = await fetch('https://graph-ql-dev.vio.live/graphql', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': commerceApiKey },
+        body: JSON.stringify({ query: gqlQuery }),
+      });
+      const gqlData = await gqlRes.json() as any;
+      const raw = gqlData?.data?.Channel?.GetProductsByIds ?? [];
+      const products = raw.map((p: any) => {
+        const image = p.images?.sort((a: any, b: any) => a.order - b.order)?.[0];
+        return { id: p.id, name: p.title, imageUrl: image?.url ?? null, price: p.price?.amount_incl_taxes ?? p.price?.amount ?? null, currency: p.price?.currency_code ?? 'NOK' };
+      });
+
+      res.json(products);
+    } catch (error) {
+      console.error('[Commerce] Products error:', error);
+      res.status(500).json({ error: 'Failed to fetch Commerce products' });
     }
   });
 
