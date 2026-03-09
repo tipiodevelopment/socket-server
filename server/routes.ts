@@ -3745,6 +3745,16 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
     }
   });
 
+  // DELETE /api/chat/:id — Remove a single chat message
+  app.delete('/api/chat/:id', async (req, res) => {
+    try {
+      await storage.deleteChatMessage(parseInt(req.params.id));
+      res.status(204).send();
+    } catch (error) {
+      res.status(500).json({ message: 'Error deleting chat message' });
+    }
+  });
+
   // ========================================
   // Tweet Endpoint (T2)
   // ========================================
@@ -4084,6 +4094,24 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
     } catch (error) {
       console.error('Error getting poll results:', error);
       res.status(500).json({ message: 'Error getting poll results' });
+    }
+  });
+
+  // POST /api/admin/polls/:pollId/seed-votes — Seed absolute vote counts for demo
+  app.post('/api/admin/polls/:pollId/seed-votes', async (req, res) => {
+    try {
+      const pollId = parseInt(req.params.pollId);
+      const { options } = req.body;
+      if (!Array.isArray(options) || options.length === 0) {
+        return res.status(400).json({ message: 'options array is required: [{ id, voteCount }]' });
+      }
+      const updated = await storage.seedPollVotes(pollId, options);
+      if (!updated) return res.status(404).json({ message: 'Poll not found' });
+      const results = await storage.getPollResults(pollId);
+      res.json(results);
+    } catch (error) {
+      console.error('Error seeding poll votes:', error);
+      res.status(500).json({ message: 'Error seeding poll votes' });
     }
   });
 

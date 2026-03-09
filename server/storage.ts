@@ -186,6 +186,8 @@ export interface IStorage {
   // Chat Messages methods
   getChatMessages(broadcastId: string, limit?: number): Promise<ChatMessage[]>;
   createChatMessage(message: InsertChatMessage): Promise<ChatMessage>;
+  deleteChatMessage(id: number): Promise<void>;
+  seedPollVotes(pollId: number, options: { id: number; voteCount: number }[]): Promise<Poll | undefined>;
 
   // Device Token methods
   upsertDeviceToken(campaignId: number, userId: string, deviceToken: string, platform: string): Promise<DeviceToken>;
@@ -1381,6 +1383,24 @@ export class MemStorage implements IStorage {
   async createChatMessage(message: InsertChatMessage): Promise<ChatMessage> {
     const [created] = await db.insert(chatMessages).values(message).returning();
     return created;
+  }
+
+  async deleteChatMessage(id: number): Promise<void> {
+    await db.delete(chatMessages).where(eq(chatMessages.id, id));
+  }
+
+  async seedPollVotes(pollId: number, options: { id: number; voteCount: number }[]): Promise<Poll | undefined> {
+    for (const opt of options) {
+      await db.update(pollOptions)
+        .set({ voteCount: opt.voteCount })
+        .where(eq(pollOptions.id, opt.id));
+    }
+    const totalVotes = options.reduce((sum, o) => sum + o.voteCount, 0);
+    const [updated] = await db.update(polls)
+      .set({ totalVotes })
+      .where(eq(polls.id, pollId))
+      .returning();
+    return updated;
   }
 
   // Device Tokens (APNs push notifications)

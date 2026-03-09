@@ -438,7 +438,9 @@ export const broadcastSponsorSlots = pgTable("broadcast_sponsor_slots", {
 
 export const insertCampaignSponsorSchema = createInsertSchema(campaignSponsors).omit({ id: true, createdAt: true });
 export const insertBroadcastCampaignSchema = createInsertSchema(broadcastCampaigns).omit({ id: true, createdAt: true });
-export const insertBroadcastSponsorSlotSchema = createInsertSchema(broadcastSponsorSlots).omit({ id: true, createdAt: true });
+export const insertBroadcastSponsorSlotSchema = createInsertSchema(broadcastSponsorSlots).omit({ id: true, createdAt: true }).extend({
+  productIds: z.array(z.number()).optional(),
+});
 
 export type CampaignSponsor = typeof campaignSponsors.$inferSelect;
 export type InsertCampaignSponsor = z.infer<typeof insertCampaignSponsorSchema>;
