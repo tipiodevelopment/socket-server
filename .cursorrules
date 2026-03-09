@@ -95,9 +95,10 @@ Internal CRUD for all entities. Used by the React frontend.
   - `/api/broadcasts/:broadcastId/chat` — GET / POST live chat messages
   - `/api/broadcasts/:broadcastId/analytics` — GET real analytics (polls, contests, viewers, votes)
   - `/api/seed-demo` (POST) — Seeds ads, products, and chat messages into a broadcast for demo purposes
-- Sportmonks proxy (with 2-day server-side cache):
-  - `GET /api/sportmonks/leagues` — All leagues available in Sportmonks account
-  - `GET /api/sportmonks/fixtures?leagueId=X&dateFrom=YYYY-MM-DD&dateTo=YYYY-MM-DD` — Fixtures filtered by league and date range
+- Sportmonks proxy (with server-side cache):
+  - `GET /api/sportmonks/leagues` — All leagues available in Sportmonks account (2-day cache in `sportmonks_cache` table)
+  - `GET /api/sportmonks/fixtures?leagueId=X&dateFrom=YYYY-MM-DD&dateTo=YYYY-MM-DD` — Fixtures filtered by league and date range (2-day cache)
+  - `GET /api/sportmonks/fixture/:fixtureId/result` — Full fixture result: score, teams, filtered events (goals, cards, kickoff, HT, FT). In-memory cache: 30s for live matches, 5min for FT. Response: `{ fixtureId, homeTeam, awayTeam, homeScore, awayScore, status, date, league, events[] }`. Events: `{ minute, type, label }` where type ∈ kickoff | goal | owngoal | yellowcard | redcard | halftime | fulltime | var | penalty.
 
 ### Admin APIs (`/v1/*`) — JWT Bearer Auth (`requireBearerAuth`)
 External admin access for broadcasts, polls, contests.
@@ -199,7 +200,8 @@ Full analytics dashboard with drill-down navigation (no page reload, state-based
 ### Broadcast Detail (`/broadcasts/:broadcastId`)
 Full broadcast management view with split layout. **All data is real — zero hardcoded mocks.**
 - **Header:** Broadcast name + Live/Upcoming/Ended badge + real stats (Viewers from `viewerCount`, Total Votes from analytics, Status). "Load Demo" button calls `POST /api/seed-demo` to seed ads/products/chat.
-- **Event Timeline (redesigned Mar 2026):** Horizontal scrubber 0'–90'. Reads `broadcast.metadata.matchEvents` (JSONB array) + polls + contests. Colored dots: blue=poll, purple=contest, green=shoppable_ad, yellow=goal, grey=kickoff/fulltime. Minute tick labels at 0', 15', 30', 45', 60', 75', 90'. Hover tooltips with minute, label, vote count. Stats row: "events fired" + "engagement events". Bottom: total count + Live/90' FT/Scheduled status.
+- **Event Timeline (redesigned Mar 2026):** Horizontal scrubber 0'–90'. Displays merged events: Sportmonks match events (goals, cards, kickoff, FT) fused with engagement events (polls, contests, shoppable_ads) from `broadcast.metadata.matchEvents`. Merge strategy: Sportmonks is authoritative for match-day events; metadata is authoritative for poll/contest/shoppable_ad. Colored dots: blue=poll, purple=contest, green=shoppable_ad, yellow=goal, grey=kickoff/fulltime. Minute tick labels at 0', 15', 30', 45', 60', 75', 90'. Hover tooltips with minute, label, vote count. Refetches every 60s when broadcast is live.
+- **MatchDataCard** (`client/src/components/match-data-card.tsx`): Rendered after EventTimeline. Fetches `GET /api/sportmonks/fixture/:id/result`. Shows team logos + score, match date, league name, and key event timeline (goals, cards). Hidden (returns null) when `sportmonksFixtureId` is null. Has a manual refresh button.
 - **Active Engagement:** Poll cards with blue color-coding, vote progress bars, create/toggle/delete
 - **Contests & Trivia:** Contest cards with purple color-coding, create/toggle/delete
 - **Shoppable Ads (redesigned Mar 2026):** 3-panel layout:
@@ -221,6 +223,9 @@ Tabbed: **Overview | Broadcasts | Components | Live | Analytics | Settings**. Ta
 - **Settings tab:** Contains `<SettingsTab>` + `<IntegrationsTab>`. Sections: Basic Information, Campaign Schedule, Channel Assignment (optional), Commerce Integration, Targeting & Segmentation, Engagement Settings, Feature Flags, Danger Zone. Styled with raw divs + `border-white/10` (NOT shadcn Cards). Campaign Logo, Match Context, and UI Theme sections were removed — branding comes from Sponsor.
 - **Analytics tab:** Real broadcast performance data. Queries `GET /api/broadcasts?campaignId=X` on tab activation. Shows KPI cards (total broadcasts, live count, total viewers, peak viewers) + per-broadcast table with status badges.
 - **Broadcasts tab:** Create/list/delete broadcasts. "New Broadcast" form has an **"External Content ID"** field that maps to `broadcasts.externalId`. Each card has a pencil icon to edit name/externalId/status/dates via PUT.
+
+### Create Broadcast Modal (`/broadcasts`)
+Dialog to create a new broadcast. Fields: name, description, campaign, start/end times, External Content ID. Includes "Link to a Match" section with league selector + fixture picker from Sportmonks. **Both fixture and externalId are required** — submit button stays disabled until both are filled. On fixture select, auto-fills broadcast name and team/logo fields.
 
 ### Broadcast Detail (`/broadcasts/:broadcastId`)
 - **"Send Live" buttons on Polls:** Each active poll card has a "Send Live" button → `POST /api/events/poll` with `{ question, options, duration, campaignId: broadcast.campaignId }` → fires WS event to connected SDK clients.
@@ -603,6 +608,23 @@ El SDK iOS conecta directamente a Pusher/Ably en lugar de al servidor Vio. Requi
 - Mantiene la arquitectura WebSocket nativa (sin cambios en el SDK iOS)
 - BullMQ ya está parcialmente integrado
 - Redis es compatible con Replit Secrets y Neon Stack
+
+## Fixes & Features (Mar 2026 — Session 2)
+
+### TASK-UI-02 — Match Data & Sportmonks Integration
+
+- **`GET /api/sportmonks/fixture/:fixtureId/result`** — New endpoint. Returns structured match result: `{ fixtureId, homeTeam, awayTeam, homeScore, awayScore, status, date, league, events[] }`. Events filtered to key types only (no substitutions). In-memory cache: 30s when live, 5min when FT.
+
+- **MatchDataCard** (`client/src/components/match-data-card.tsx`) — New component rendered after EventTimeline in broadcast detail. Shows scoreboard (team logos + score), match date, league name, and a visual timeline of key events (goals, cards, HT, FT). Returns null if no `sportmonksFixtureId`. Manual refresh button. Queries Sportmonks every 60s when broadcast is live.
+
+- **EventTimeline — Sportmonks event fusion** — The `mergedMatchEvents` computed value in `BroadcastDetailPage` merges:
+  - Sportmonks events (goals, cards, kickoff, fulltime) → authoritative for match-day event types
+  - `broadcast.metadata.matchEvents` (polls, contests, shoppable_ads) → authoritative for engagement events
+  - Result sorted by minute, passed to EventTimeline. Falls back to pure metadata if no Sportmonks data.
+
+- **MatchDataSection removed** — The old manual score form (home/away team names, score inputs, minute, status dropdown, "Update Score & Send Live" button) has been fully replaced by MatchDataCard.
+
+- **Create Broadcast — required fields** — Submit button now disabled unless `selectedFixture` and `externalId` are both set. Prevents creating broadcasts without a linked Sportmonks fixture and Content ID.
 
 ## Architect Review Notes (Feb 2026)
 
