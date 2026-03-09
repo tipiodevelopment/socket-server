@@ -81,3 +81,23 @@ The broadcast status in DB is `live` — this is intentional for the demo (keeps
 - Fixes 1–4 are quick (< 1h total)
 - Fix 3 (sponsor slots) is needed so Viobot can seed the remaining shoppable ad slots
 - Fix 5 may require a new analytics calculation endpoint
+
+---
+
+## ⚠️ Follow-up (2026-03-09 17:49)
+
+**Fix 3 (sponsor slots) NOT resolved** — endpoint still returns 500 after latest deploy.
+
+Test:
+```bash
+curl -X POST https://api-dev.vio.live/api/broadcasts/viaplay-atletico-psg-2026-03-08/sponsor-slots \
+  -H "Authorization: Bearer <JWT>" \
+  -H "Content-Type: application/json" \
+  -d '{"sponsorId":1,"matchMinute":35,"productIds":[19],"type":"banner"}'
+# Returns: {"error":"Failed to create sponsor slot"}
+```
+
+Once fixed, Viobot will seed 3 slots:
+- min 35: productIds [19]
+- min 45: productIds [17, 18]  
+- min 70: productIds [20]
