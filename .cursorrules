@@ -354,8 +354,11 @@ Dashboard → Apps → Campaigns → Sponsors → Broadcasts → Components → 
 - Event timeline: progreso real `activeEvents / totalEvents * 100`. Botones Play/Skip/Maximize funcionales.
 - Array `topValues` hardcodeado eliminado.
 - Live chat deshabilitado (read-only) cuando `status='ended'` con banner informativo.
-- "Load Demo" button en outline/secondary cuando ended, más visible en live/upcoming.
+- **"Load Demo" button ELIMINADO** del header (Mar-09-2026). Ya no existe en producción.
 - `POST /api/broadcasts/:broadcastId/trigger-shoppable-ad` — sin Bearer auth, dispara shoppable ad con log de sesión.
+- **Header stats (Mar-09-2026):** Viewers · Total Votes · **Engagement Rate** (`Math.round(totalVotes / viewers * 100) + '%'`, muestra `'--'` si alguno es 0) · Status.
+- **Poll vote label (Mar-09-2026):** "votos" → "votes". Formato: `(4,928 votes)`.
+- **Sponsor slots endpoint (Mar-09-2026):** `POST /api/broadcasts/:id/sponsor-slots` ahora retorna `detail` con el mensaje real del error de DB (antes solo "Failed to create sponsor slot"). Usar `sponsorId=3` (Elkjøp) o `sponsorId=4` (Torshov) — `sponsorId=1` NO existe en la DB.
 
 **Sponsors (`/sponsors`):**
 - Default colors al crear: `primaryColor: '#3d8b7a'`, `secondaryColor: '#141824'`.
@@ -381,17 +384,20 @@ Dashboard → Apps → Campaigns → Sponsors → Broadcasts → Components → 
 **Create Broadcast modal (UI-01 — Mar 2026):**
 - Modal rediseñado a `max-w-5xl` con dos secciones explícitas.
 - **Sección 1 — Link Match Context** (top, prominente): grid de 3 columnas (liga, fecha, búsqueda) + lista scrollable de fixtures de Sportmonks. Cada fixture muestra logos de equipos (home/away), nombres y hora de kick-off. Estado seleccionado: borde azul + fondo tintado + checkmark. Al seleccionar → auto-rellena Broadcast Name y Start Time.
-- **Sección 2 — Información del Broadcast**: Broadcast Name (auto-filled), Campaign, Description, External Content ID (con helper text), Start/End Time side-by-side.
+- **Sección 2 — Broadcast Information**: Broadcast Name (auto-filled), Campaign, Description, External Content ID (con helper text), Start/End Time side-by-side.
 - Interfaces actualizadas para usar el formato del servidor: `startingAt`, `homeTeam.logoUrl`, `awayTeam.logoUrl` (no `participants`).
 - `handleFixtureSelect` auto-rellena nombre y start time, respetando valores ya escritos por el operador.
 - `externalId` incluido en el form y enviado al crear el broadcast.
+- **Traducido a inglés (Mar-09-2026):** Toda la UI del modal está ahora en inglés. Labels, placeholders, empty states y botones. Ej: "Liga / Competición"→"League / Competition", "Seleccionar liga..."→"Select league...", "Fecha del partido"→"Match date", "Campaña *"→"Campaign *", "Cancelar"→"Cancel", "Crear Broadcast"→"Create Broadcast". Broadcasts List también traduce "votos"→"votes".
 
 **Demo Data (NO MODIFICAR):**
-- TV2 app (campaign 36, app 18): `tv2-eliteserien-live-2026-03-08` (Brann vs Molde, ~18.7K viewers live). `barcelona-psg-2026-03-03` (ended, 34200 viewers, peak 41K, 3 polls, 1 contest, 11 matchEvents).
-- Viaplay app (campaigns 35/33/31, app 17): `viaplay-atletico-psg-2026-03-08` (live, 19.6K viewers, peak 24K, 3 polls, 1 contest, 9 matchEvents). `real-madrid-vs-barcelona-2026-02-25` (ended, 29K viewers, peak 35K, 6 polls, 2 contests, 11 matchEvents).
+- TV2 app (campaign 36, client_app id=18): `tv2-eliteserien-live-2026-03-08` (Brann vs Molde, ~18.7K viewers live). `barcelona-psg-2026-03-03` (ended, 34200 viewers, peak 41K, 3 polls, 1 contest, 11 matchEvents).
+- Viaplay app (campaigns 35/33/31, client_app id=17): `viaplay-atletico-psg-2026-03-08` (live, 19.6K viewers, peak 24K, 3 polls 45.4K votes, 1 contest, 9 matchEvents, **3 sponsor slots**: id=21 min35 [19], id=11 min45 [17,18], id=22 min70 [20]). `real-madrid-vs-barcelona-2026-02-25` (ended, 29K viewers, peak 35K, 6 polls 68.1K votes, 2 contests, 11 matchEvents).
 - Broadcasts con `created_at` distribuidos en los últimos 30 días para el chart de analytics.
 - Viaplay apiKey: `viaplay_api_key_0c611e983b314ff8` → campaign 35. Commerce key: `KCXF10Y-W5T4PCR-GG5119A-Z64SQ9S`.
-- Sponsors: Elkjøp (id=3, commerceApiKey seeded), Torshov Sport (id=4, commerceApiKey seeded).
+- **Sponsors DB:** SkiStar=id2, Elkjøp=id3 (commerceApiKey seeded), Torshov Sport=id4 (commerceApiKey seeded). Sponsor id=1 DOES NOT EXIST.
+- **Broadcast products** (`viaplay-atletico-psg-2026-03-08`): id=17 (Barça jersey, Torshov), id=18 (PSG jersey, Torshov), id=19 (Samsung 75" TV, Elkjøp), id=20 (Samsung Soundbar, Elkjøp).
+- client_app name was "VIaplay" (typo) → fixed to "Viaplay" in DB (Mar-09-2026).
 
 **Commerce API key — moved to Sponsor level (Mar 2026):**
 - `sponsors.commerceApiKey` + `sponsors.commerceChannelId` added to schema via `npm run db:push`.
