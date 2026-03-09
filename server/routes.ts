@@ -3937,6 +3937,12 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       ];
 
       // Determine full time status
+      // Sportmonks state_id: 5=FT, 3=HT, 2=1H(live), 4=2H(live), 1=NS, 6+=AET/penalties
+      const numericStateId: number | null = f.state_id ?? null;
+      const numericStateMap: Record<number, string> = {
+        1: 'NS', 2: 'LIVE', 3: 'HT', 4: 'LIVE', 5: 'FT',
+        6: 'FT', 7: 'FT', 8: 'FT', 9: 'FT',
+      };
       const stateId = f.state?.state || f.state?.developer_name || '';
       const statusMap: Record<string, string> = {
         'FT': 'FT', 'FINISHED': 'FT', 'FULL_TIME': 'FT',
@@ -3944,7 +3950,12 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
         'LIVE': 'LIVE', 'INPLAY': 'LIVE',
         'NS': 'NS', 'NOT_STARTED': 'NS',
       };
-      const status = statusMap[stateId.toUpperCase()] || stateId || 'NS';
+      let status = numericStateId != null
+        ? (numericStateMap[numericStateId] || 'NS')
+        : (statusMap[stateId.toUpperCase()] || stateId || 'NS');
+      // Fallback: if date is >3h ago and events exist => treat as FT
+      if (status === 'NS' && rawEvents.length > 0) status = 'FT';
+      if (status === 'NS' && f.starting_at && new Date(f.starting_at) < new Date(Date.now() - 3 * 60 * 60 * 1000)) status = 'FT';
 
       if (status === 'FT' || status === 'AET') {
         allEvents.push({ minute: 90, type: 'fulltime', label: 'Fulltid', teamId: null, score: null });
