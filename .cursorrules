@@ -218,8 +218,8 @@ Full broadcast management view with split layout. **All data is real — zero ha
 4-column grid, type icons, filter pills, Templates-only toggle. Detail page at `/components/:id` with iOS Swift integration code and campaign usage.
 
 ### Campaign Dashboard (`/campaigns/:campaignId`)
-Tabbed: **Overview | Broadcasts | Components | Live | Analytics | Settings**. Tab navigation via callback-based `onNavigateTab` prop (not DOM manipulation).
-- **Live tab:** Contains `<EventsTab>` (real-time event dispatch) + `<ScheduledTab>`. Forms start empty and auto-save per campaign to DB via `campaignFormState` table.
+Tabbed: **Overview | Broadcasts | Components | Sponsors | Analytics | Settings**. Tab navigation via callback-based `onNavigateTab` prop (not DOM manipulation). The "Live" tab was removed Mar-09-2026 — `EventsTab` and `ScheduledTab` no longer exist in this view.
+- **Overview tab:** Campaign stats + list of broadcasts. Each broadcast card shows home/away team logo (`TeamLogo` component, defined in `OverviewTab.tsx`) alongside the broadcast name and status badge.
 - **Settings tab:** Contains `<SettingsTab>` + `<IntegrationsTab>`. Sections: Basic Information, Campaign Schedule, Channel Assignment (optional), Commerce Integration, Targeting & Segmentation, Engagement Settings, Feature Flags, Danger Zone. Styled with raw divs + `border-white/10` (NOT shadcn Cards). Campaign Logo, Match Context, and UI Theme sections were removed — branding comes from Sponsor.
 - **Analytics tab:** Real broadcast performance data. Queries `GET /api/broadcasts?campaignId=X` on tab activation. Shows KPI cards (total broadcasts, live count, total viewers, peak viewers) + per-broadcast table with status badges.
 - **Broadcasts tab:** Create/list/delete broadcasts. "New Broadcast" form has an **"External Content ID"** field that maps to `broadcasts.externalId`. Each card has a pencil icon to edit name/externalId/status/dates via PUT.
