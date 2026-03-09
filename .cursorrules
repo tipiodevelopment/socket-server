@@ -69,7 +69,7 @@ Schema additions (Mar 2026):
 - `broadcasts.homeTeamLogo`, `broadcasts.awayTeamLogo` (varchar 500, nullable) — CDN URLs of team logo images
 - `broadcasts.matchStartingAt` (timestamp, nullable) — official match start time from Sportmonks
 - `broadcasts.leagueName` (varchar 255, nullable) — league/competition name (e.g. "Scottish Premiership")
-- `sportmonks_cache` — caches Sportmonks API responses for 2 days. Fields: `cacheType` (varchar), `leagueId` (integer nullable), `dateFrom`/`dateTo` (varchar nullable), `data` (JSONB), `updatedAt` (timestamp)
+- `sportmonks_cache` — caches Sportmonks API responses. TTL diferenciado: **fixtures = 6 horas**, **leagues = 2 días**. Fields: `cacheType` (varchar), `leagueId` (integer nullable), `dateFrom`/`dateTo` (varchar nullable), `data` (JSONB), `updatedAt` (timestamp)
 - `sponsors.commerceApiKey` (varchar 255, nullable) — Commerce module API key per sponsor (previously stored at campaign level as `campaigns.reachuApiKey`)
 - `sponsors.commerceChannelId` (varchar 255, nullable) — Commerce channel ID per sponsor (previously `campaigns.reachuChannelId`)
 - `broadcasts.metadata` (JSONB) — arbitrary JSON. Key sub-field: `matchEvents` — array of `{ minute, type, label, team? }`. Types: `kickoff`, `goal`, `fulltime`, `poll`, `contest`, `shoppable_ad`. Powers the EventTimeline horizontal scrubber.
@@ -97,7 +97,7 @@ Internal CRUD for all entities. Used by the React frontend.
   - `/api/seed-demo` (POST) — Seeds ads, products, and chat messages into a broadcast for demo purposes
 - Sportmonks proxy (with server-side cache):
   - `GET /api/sportmonks/leagues` — All leagues available in Sportmonks account (2-day cache in `sportmonks_cache` table)
-  - `GET /api/sportmonks/fixtures?leagueId=X&dateFrom=YYYY-MM-DD&dateTo=YYYY-MM-DD` — Fixtures filtered by league and date range (2-day cache)
+  - `GET /api/sportmonks/fixtures?leagueId=X&dateFrom=YYYY-MM-DD&dateTo=YYYY-MM-DD` — Fixtures filtered by league and date range (6-hour cache). **IMPORTANTE:** el parámetro `?leagues=X` de Sportmonks no filtra bien — el servidor ignora ese param, trae todos los fixtures del día con `per_page=150` y aplica `f.league_id === leagueId` server-side ANTES de guardar en caché. Solo datos ya filtrados van a la DB. Cache diferenciada: `isCacheValidFor(cached, FIXTURE_CACHE_TTL_MS)` (6h) vs `LEAGUE_CACHE_TTL_MS` (2d).
   - `GET /api/sportmonks/fixture/:fixtureId/result` — Full fixture result: score, teams, filtered events (goals, cards, kickoff, HT, FT). In-memory cache: 30s for live matches, 5min for FT. Response: `{ fixtureId, homeTeam, awayTeam, homeScore, awayScore, status, date, league, events[] }`. Events: `{ minute, type, label }` where type ∈ kickoff | goal | owngoal | yellowcard | redcard | halftime | fulltime | var | penalty.
 
 ### Admin APIs (`/v1/*`) — JWT Bearer Auth (`requireBearerAuth`)
@@ -387,6 +387,7 @@ Dashboard → Apps → Campaigns → Sponsors → Broadcasts → Components → 
 **Create Broadcast modal (UI-01 — Mar 2026):**
 - Modal rediseñado a `max-w-5xl` con dos secciones explícitas.
 - **Sección 1 — Link Match Context** (top, prominente): grid de 3 columnas (liga, fecha, búsqueda) + lista scrollable de fixtures de Sportmonks. Cada fixture muestra logos de equipos (home/away), nombres y hora de kick-off. Estado seleccionado: borde azul + fondo tintado + checkmark. Al seleccionar → auto-rellena Broadcast Name y Start Time.
+- **Liga dropdown restringido (Mar-09-2026):** Solo muestra 4 ligas: Champions League (2), Europa League (5), Premier League (8), La Liga (564). Filtro aplicado en frontend: `leagues.filter(l => [2, 5, 8, 564].includes(l.id))`. El endpoint `/api/sportmonks/leagues` sigue retornando todas las ligas del plan; el filtro es únicamente de presentación.
 - **Sección 2 — Broadcast Information**: Broadcast Name (auto-filled), Campaign, Description, External Content ID (con helper text), Start/End Time side-by-side.
 - Interfaces actualizadas para usar el formato del servidor: `startingAt`, `homeTeam.logoUrl`, `awayTeam.logoUrl` (no `participants`).
 - `handleFixtureSelect` auto-rellena nombre y start time, respetando valores ya escritos por el operador.
@@ -617,6 +618,16 @@ El SDK iOS conecta directamente a Pusher/Ably en lugar de al servidor Vio. Requi
 - Mantiene la arquitectura WebSocket nativa (sin cambios en el SDK iOS)
 - BullMQ ya está parcialmente integrado
 - Redis es compatible con Replit Secrets y Neon Stack
+
+## Fixes & Features (Mar 2026 — Session 4)
+
+### TASK-SPORTMONKS-DEFINITIVE — Fix definitivo de cache y filtrado por liga
+
+- **TTL diferenciado:** `FIXTURE_CACHE_TTL_MS = 6h`, `LEAGUE_CACHE_TTL_MS = 2d`. Antes ambos usaban 2 días. Función `isCacheValidFor(cache, ttlMs)` reemplaza la anterior `isCacheValid`.
+- **`?leagues=X` eliminado de la URL:** El parámetro no filtra correctamente en el plan actual de Sportmonks (devuelve fixtures de otras ligas). Ahora el servidor fetch todos los fixtures del día con `/fixtures/between/${dateFrom}/${dateTo}?per_page=150&include=participants` y filtra server-side con `f.league_id === leagueId`.
+- **Cache limpio:** Solo los fixtures ya filtrados se guardan en `sportmonks_cache`. Datos contaminados previos eliminados (`DELETE FROM sportmonks_cache WHERE cache_type='fixtures'` — 11 filas).
+- **`leagueId` incluido en fixture response:** Cada fixture ahora incluye `leagueId: f.league_id` en el objeto retornado, confirmando el filtro correcto.
+- **Verificado:** CL 2026-03-10 → 4 fixtures, todos `leagueId=2`. Championship → 6 fixtures, cero contaminación. Segunda llamada → 38ms (cache hit) vs 584ms (API call).
 
 ## Fixes & Features (Mar 2026 — Session 2)
 
