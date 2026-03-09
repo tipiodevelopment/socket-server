@@ -3863,7 +3863,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
         return res.json(cached!.data);
       }
 
-      const path = `/fixtures/between/${dateFrom}/${dateTo}?per_page=150&include=participants`;
+      const path = `/fixtures/between/${dateFrom}/${dateTo}?leagues=${leagueId}&per_page=150&include=participants`;
       const json = await sportmonksFetch(path);
 
       const allFixtures = (json.data || []).filter((f: any) => f.league_id === leagueId);
