@@ -4388,8 +4388,9 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
       const slot = await storage.createBroadcastSponsorSlot(parsed.data);
       res.status(201).json(slot);
-    } catch (error) {
-      res.status(500).json({ error: 'Failed to create sponsor slot' });
+    } catch (error: any) {
+      console.error('[sponsor-slots POST]', error?.message ?? error);
+      res.status(500).json({ error: 'Failed to create sponsor slot', detail: error?.message });
     }
   });
 

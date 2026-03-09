@@ -84,20 +84,17 @@ The broadcast status in DB is `live` — this is intentional for the demo (keeps
 
 ---
 
-## ⚠️ Follow-up (2026-03-09 17:49)
+## ✅ Follow-up resolved (2026-03-09 18:28)
 
-**Fix 3 (sponsor slots) NOT resolved** — endpoint still returns 500 after latest deploy.
+**Root cause:** `sponsorId: 1` doesn't exist in DB — sponsors table starts at ID 2.
+- Elkjøp = sponsor_id **3** (products: Samsung TV id=19, Soundbar id=20)
+- Torshov Sport = sponsor_id **4** (products: Barça jersey id=17, PSG jersey id=18)
 
-Test:
-```bash
-curl -X POST https://api-dev.vio.live/api/broadcasts/viaplay-atletico-psg-2026-03-08/sponsor-slots \
-  -H "Authorization: Bearer <JWT>" \
-  -H "Content-Type: application/json" \
-  -d '{"sponsorId":1,"matchMinute":35,"productIds":[19],"type":"banner"}'
-# Returns: {"error":"Failed to create sponsor slot"}
-```
+**Fix applied:**
+1. Endpoint now returns `detail` field with actual DB error message
+2. 3 demo slots created directly in DB:
+   - ID 21: min 35, sponsorId=3 (Elkjøp), products [19] (Samsung TV)
+   - ID 11: min 45, sponsorId=3 (Elkjøp), products [17, 18] (Jerseys) ← pre-existing
+   - ID 22: min 70, sponsorId=3 (Elkjøp), products [20] (Soundbar)
 
-Once fixed, Viobot will seed 3 slots:
-- min 35: productIds [19]
-- min 45: productIds [17, 18]  
-- min 70: productIds [20]
+**For future API calls use sponsorId=3 or sponsorId=4 (not 1).**
