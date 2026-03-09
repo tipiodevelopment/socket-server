@@ -1375,6 +1375,21 @@ export default function BroadcastDetailPage() {
     refetchInterval: 30000,
   });
 
+  const { data: fixtureResult } = useQuery<{
+    events: Array<{ minute: number; type: string; label: string; teamId?: number | null }>;
+    status: string;
+  }>({
+    queryKey: ['/api/sportmonks/fixture', broadcast?.sportmonksFixtureId, 'result'],
+    queryFn: async () => {
+      const res = await fetch(`/api/sportmonks/fixture/${broadcast!.sportmonksFixtureId}/result`);
+      if (!res.ok) throw new Error('Failed to fetch fixture result');
+      return res.json();
+    },
+    enabled: !!broadcast?.sportmonksFixtureId,
+    refetchInterval: broadcast?.status === 'live' ? 60000 : false,
+    staleTime: 30000,
+  });
+
   const seedDemoMutation = useMutation({
     mutationFn: () => apiRequest('POST', '/api/seed-demo', { broadcastId }),
     onSuccess: () => {
@@ -1551,6 +1566,28 @@ export default function BroadcastDetailPage() {
   const activePolls = polls.filter(p => p.isActive);
   const inactivePolls = polls.filter(p => !p.isActive);
 
+  // Merge Sportmonks events with broadcast metadata events for the EventTimeline
+  // Strategy: Sportmonks events are authoritative for match events (goal, card, etc.)
+  // Metadata events are authoritative for engagement events (poll, contest, shoppable_ad)
+  const metadataEvents: MatchEvent[] = (broadcast?.metadata as any)?.matchEvents || [];
+  const engagementTypes = new Set(['poll', 'contest', 'shoppable_ad']);
+  const matchDayTypes = new Set(['kickoff', 'goal', 'owngoal', 'yellowcard', 'redcard', 'halftime', 'fulltime', 'var', 'penalty']);
+  const mergedMatchEvents: MatchEvent[] = (() => {
+    const sportmonksEvents: MatchEvent[] = (fixtureResult?.events || []).map(e => ({
+      minute: e.minute,
+      type: e.type,
+      label: e.label,
+    }));
+    if (sportmonksEvents.length === 0) return metadataEvents;
+    // Use Sportmonks for match-day events, metadata for engagement events
+    const engagementEvents = metadataEvents.filter(e => engagementTypes.has(e.type));
+    const merged = [
+      ...sportmonksEvents.filter(e => matchDayTypes.has(e.type)),
+      ...engagementEvents,
+    ].sort((a, b) => a.minute - b.minute);
+    return merged;
+  })();
+
   return (
     <AppLayout breadcrumbs={breadcrumbs}>
       <div className="-mx-8 -mt-6 flex h-[calc(100vh-64px)] overflow-hidden">
@@ -1689,7 +1726,7 @@ export default function BroadcastDetailPage() {
           <EventTimeline
             polls={polls}
             contests={contests}
-            matchEvents={(broadcast?.metadata as any)?.matchEvents}
+            matchEvents={mergedMatchEvents.length > 0 ? mergedMatchEvents : undefined}
             broadcastStatus={broadcast?.status ?? undefined}
             onTogglePoll={(id, active) => togglePollMutation.mutate({ pollId: id, isActive: active })}
             onToggleContest={(id, active) => toggleContestMutation.mutate({ contestId: id, isActive: active })}
