@@ -3878,6 +3878,102 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
     }
   });
 
+  // GET /api/sportmonks/fixture/:id/result — Full fixture result with events
+  // Cache: 5min for finished, 30s for live
+  const fixtureResultCache: Map<number, { data: any; fetchedAt: number; status: string }> = new Map();
+
+  app.get('/api/sportmonks/fixture/:fixtureId/result', async (req, res) => {
+    try {
+      const fixtureId = parseInt(req.params.fixtureId);
+      if (!fixtureId) return res.status(400).json({ message: 'Invalid fixtureId' });
+
+      const cached = fixtureResultCache.get(fixtureId);
+      const ttl = cached?.status === 'FT' || cached?.status === 'AET' ? 5 * 60 * 1000 : 30 * 1000;
+      if (cached && Date.now() - cached.fetchedAt < ttl) {
+        return res.json(cached.data);
+      }
+
+      const json = await sportmonksFetch(`/fixtures/${fixtureId}?include=events.type;participants;scores`);
+      const f = json.data;
+      if (!f) return res.status(404).json({ message: 'Fixture not found' });
+
+      const participants = f.participants || [];
+      const home = participants.find((p: any) => p.meta?.location === 'home');
+      const away = participants.find((p: any) => p.meta?.location === 'away');
+
+      const scores = f.scores || [];
+      const getCurrentScore = (teamId: number) => {
+        const current = scores.filter((s: any) => s.participant_id === teamId && s.description === 'CURRENT');
+        if (current.length > 0) return current[current.length - 1]?.score?.goals ?? 0;
+        const ft = scores.filter((s: any) => s.participant_id === teamId && (s.description === 'FT' || s.description === '2ND_HALF'));
+        if (ft.length > 0) return ft[ft.length - 1]?.score?.goals ?? 0;
+        return 0;
+      };
+
+      const typeMap: Record<string, string> = {
+        'GOAL': 'goal', 'OWNGOAL': 'owngoal', 'YELLOWCARD': 'yellowcard',
+        'REDCARD': 'redcard', 'SUBSTITUTION': 'substitution', 'VAR': 'var',
+        'PENALTY': 'penalty', 'PENALTY_SHOOTOUT': 'penalty',
+      };
+
+      const keyEventTypes = new Set(['kickoff', 'goal', 'owngoal', 'yellowcard', 'redcard', 'halftime', 'fulltime', 'var', 'penalty']);
+
+      const rawEvents = (f.events || []).map((e: any) => {
+        const typeName = e.type?.developer_name?.toUpperCase() || e.type?.name?.toUpperCase() || '';
+        const mapped = typeMap[typeName] || typeName.toLowerCase();
+        return {
+          minute: e.minute || 0,
+          type: mapped,
+          label: e.player_name || e.detail || mapped,
+          teamId: e.participant_id || null,
+          score: null as string | null,
+        };
+      });
+
+      // Add kickoff and fulltime synthetic events
+      const allEvents = [
+        { minute: 0, type: 'kickoff', label: 'Avspark', teamId: null, score: null },
+        ...rawEvents,
+      ];
+
+      // Determine full time status
+      const stateId = f.state?.state || f.state?.developer_name || '';
+      const statusMap: Record<string, string> = {
+        'FT': 'FT', 'FINISHED': 'FT', 'FULL_TIME': 'FT',
+        'HT': 'HT', 'HALF_TIME': 'HT',
+        'LIVE': 'LIVE', 'INPLAY': 'LIVE',
+        'NS': 'NS', 'NOT_STARTED': 'NS',
+      };
+      const status = statusMap[stateId.toUpperCase()] || stateId || 'NS';
+
+      if (status === 'FT' || status === 'AET') {
+        allEvents.push({ minute: 90, type: 'fulltime', label: 'Fulltid', teamId: null, score: null });
+      }
+
+      const filteredEvents = allEvents
+        .filter(e => keyEventTypes.has(e.type))
+        .sort((a, b) => a.minute - b.minute);
+
+      const result = {
+        fixtureId,
+        homeTeam: home ? { id: home.id, name: home.name, logo: home.image_path || null } : null,
+        awayTeam: away ? { id: away.id, name: away.name, logo: away.image_path || null } : null,
+        homeScore: home ? getCurrentScore(home.id) : 0,
+        awayScore: away ? getCurrentScore(away.id) : 0,
+        status,
+        date: f.starting_at ? f.starting_at.substring(0, 10) : null,
+        league: f.league?.name || null,
+        events: filteredEvents,
+      };
+
+      fixtureResultCache.set(fixtureId, { data: result, fetchedAt: Date.now(), status });
+      res.json(result);
+    } catch (error: any) {
+      console.error('Sportmonks fixture result error:', error.message);
+      res.status(502).json({ message: 'Failed to fetch fixture result', error: error.message });
+    }
+  });
+
   // ========================================
   // Broadcast Analytics Endpoint
   // ========================================
@@ -4333,10 +4429,25 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
     }
   });
 
-  // GET /api/commerce/products?campaignId=:id — Fetch real products from Commerce GraphQL
+  // GET /api/commerce/products?sponsorId=:id OR ?campaignId=:id — Fetch products from Commerce GraphQL
   app.get('/api/commerce/products', async (req, res) => {
     try {
+      const sponsorId = req.query.sponsorId ? parseInt(req.query.sponsorId as string) : null;
       const campaignId = req.query.campaignId ? parseInt(req.query.campaignId as string) : null;
+
+      let commerceApiKey = process.env.COMMERCE_API_KEY || 'KCXF10Y-W5T4PCR-GG5119A-Z64SQ9S';
+
+      // Prefer sponsor-level key
+      if (sponsorId) {
+        const sp = await storage.getSponsor(sponsorId);
+        if (sp?.commerceApiKey) commerceApiKey = sp.commerceApiKey;
+      } else if (campaignId) {
+        const campaignSponsorsForKey = await storage.getCampaignSponsors(campaignId);
+        for (const cs of campaignSponsorsForKey) {
+          const sp = await storage.getSponsor(cs.sponsorId);
+          if (sp?.commerceApiKey) { commerceApiKey = sp.commerceApiKey; break; }
+        }
+      }
 
       let productIds: number[] = [];
       if (campaignId) {
@@ -4352,16 +4463,6 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
 
       if (productIds.length === 0) {
         productIds = [408841, 408874, 408895, 408896, 408898];
-      }
-
-      // Use commerce key from first campaign sponsor, fallback to env
-      let commerceApiKey = process.env.COMMERCE_API_KEY || 'KCXF10Y-W5T4PCR-GG5119A-Z64SQ9S';
-      if (campaignId) {
-        const campaignSponsorsForKey = await storage.getCampaignSponsors(campaignId);
-        for (const cs of campaignSponsorsForKey) {
-          const sp = await storage.getSponsor(cs.sponsorId);
-          if (sp?.commerceApiKey) { commerceApiKey = sp.commerceApiKey; break; }
-        }
       }
 
       const gqlQuery = `{ Channel { GetProductsByIds(product_ids: [${productIds.join(',')}]) { id title images { url order } price { amount amount_incl_taxes currency_code } } } }`;

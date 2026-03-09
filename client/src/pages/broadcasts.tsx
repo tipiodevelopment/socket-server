@@ -380,6 +380,14 @@ export default function BroadcastsPage() {
       toast({ title: 'Requerido', description: 'El nombre y la campaña son obligatorios.', variant: 'destructive' });
       return;
     }
+    if (!selectedFixture) {
+      toast({ title: 'Kamp requerida', description: 'Velg en kamp fra Sportmonks.', variant: 'destructive' });
+      return;
+    }
+    if (!formData.externalId.trim()) {
+      toast({ title: 'Content ID requerido', description: 'Påkrevd for SDK-integrasjon.', variant: 'destructive' });
+      return;
+    }
     createMutation.mutate({
       broadcastName: formData.broadcastName,
       description: formData.description || undefined,
@@ -681,7 +689,7 @@ export default function BroadcastsPage() {
               <Button variant="outline" onClick={() => setCreateOpen(false)} data-testid="button-cancel-broadcast">Cancelar</Button>
               <Button
                 onClick={handleCreate}
-                disabled={createMutation.isPending || !formData.broadcastName.trim() || !formData.campaignId}
+                disabled={createMutation.isPending || !formData.broadcastName.trim() || !formData.campaignId || !selectedFixture || !formData.externalId.trim()}
                 data-testid="button-submit-broadcast"
                 className="bg-[#3d8b7a] hover:bg-[#2f7365] text-white"
               >
