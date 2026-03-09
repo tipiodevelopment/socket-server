@@ -1,6 +1,6 @@
 # TASK UI-04 — Broadcast demo polish
 
-**Status: TODO — Priority HIGH (Viaplay demo)**  
+**Status: COMPLETED**  
 **Owner:** Replit
 
 ---

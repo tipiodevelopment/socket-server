@@ -1,6 +1,6 @@
 # TASK UI-01 — Redesign "Create Broadcast" modal
 
-**Status: TODO — Priority HIGH (Viaplay demo)**  
+**Status: TRANSLATIONS COMPLETED — Modal redesign COMPLETED**  
 **Owner:** Replit
 
 ---

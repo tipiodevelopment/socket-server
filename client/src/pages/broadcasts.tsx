@@ -449,7 +449,7 @@ export default function BroadcastsPage() {
           <DialogContent className="sm:max-w-5xl max-h-[90vh] overflow-y-auto bg-[#0F1115] border border-white/10">
             <DialogHeader className="pb-2">
               <DialogTitle className="text-white text-lg">Create Broadcast</DialogTitle>
-              <DialogDescription className="text-white/40 text-sm">Selecciona un partido para autocompletar el formulario.</DialogDescription>
+              <DialogDescription className="text-white/40 text-sm">Select a match to auto-fill the form.</DialogDescription>
             </DialogHeader>
 
             <div className="space-y-5 py-2">
@@ -477,7 +477,7 @@ export default function BroadcastsPage() {
                   <div className="grid grid-cols-3 gap-3">
                     {/* League selector */}
                     <div className="space-y-1.5">
-                      <label className="text-xs text-white/50 font-medium">Liga / Competición</label>
+                      <label className="text-xs text-white/50 font-medium">League / Competition</label>
                       <select
                         data-testid="select-league"
                         value={selectedLeagueId?.toString() || ''}
@@ -488,7 +488,7 @@ export default function BroadcastsPage() {
                         }}
                         className="w-full h-9 px-3 rounded-lg border border-white/10 bg-[#0a0e1a] text-sm text-white focus:border-white/30 focus:outline-none transition [color-scheme:dark]"
                       >
-                        <option value="">Seleccionar liga...</option>
+                        <option value="">Select league...</option>
                         {leagues.map(l => (
                           <option key={l.id} value={String(l.id)}>
                             {l.name}{l.countryName ? ` · ${l.countryName}` : ''}
@@ -499,7 +499,7 @@ export default function BroadcastsPage() {
 
                     {/* Date picker */}
                     <div className="space-y-1.5">
-                      <label className="text-xs text-white/50 font-medium">Fecha del partido</label>
+                      <label className="text-xs text-white/50 font-medium">Match date</label>
                       <input
                         type="date"
                         data-testid="input-fixture-date"
@@ -511,7 +511,7 @@ export default function BroadcastsPage() {
 
                     {/* Search filter */}
                     <div className="space-y-1.5">
-                      <label className="text-xs text-white/50 font-medium">Buscar equipo</label>
+                      <label className="text-xs text-white/50 font-medium">Search team</label>
                       <div className="relative">
                         <Search className="absolute left-3 top-2.5 w-3.5 h-3.5 text-white/30" />
                         <input
@@ -519,7 +519,7 @@ export default function BroadcastsPage() {
                           data-testid="input-fixture-search"
                           value={fixtureSearch}
                           onChange={e => setFixtureSearch(e.target.value)}
-                          placeholder="Nombre del equipo..."
+                          placeholder="Team name..."
                           className="w-full h-9 pl-9 pr-3 rounded-lg border border-white/10 bg-[#0a0e1a] text-sm text-white placeholder-white/20 focus:border-white/30 focus:outline-none transition"
                         />
                       </div>
@@ -529,15 +529,15 @@ export default function BroadcastsPage() {
                   {/* Match list */}
                   {!selectedLeagueId ? (
                     <div className="border border-white/5 rounded-lg py-8 text-center text-sm text-white/30">
-                      Selecciona una liga para ver los partidos disponibles
+                      Select a league to see available matches
                     </div>
                   ) : fixturesLoading ? (
                     <div className="border border-white/5 rounded-lg py-8 text-center text-sm text-white/30 animate-pulse">
-                      Cargando partidos...
+                      Loading matches...
                     </div>
                   ) : filteredFixtures.length === 0 ? (
                     <div className="border border-white/5 rounded-lg py-8 text-center text-sm text-white/30">
-                      No hay partidos disponibles para esta fecha
+                      No matches available for this date
                     </div>
                   ) : (
                     <div className="max-h-56 overflow-y-auto space-y-1.5 pr-1" data-testid="fixture-list">
@@ -602,31 +602,31 @@ export default function BroadcastsPage() {
               {/* ── SECTION 2: Basic Info ── */}
               <div className="rounded-xl border border-white/10 overflow-hidden bg-[#161B26]">
                 <div className="px-5 py-3 border-b border-white/10">
-                  <span className="text-sm font-semibold text-white">Información del Broadcast</span>
+                  <span className="text-sm font-semibold text-white">Broadcast Information</span>
                 </div>
                 <div className="p-4 space-y-4">
                   {/* Broadcast Name */}
                   <div className="space-y-1.5">
-                    <label className="text-xs text-white/50 font-medium">Nombre del Broadcast *</label>
+                    <label className="text-xs text-white/50 font-medium">Broadcast Name *</label>
                     <input
                       data-testid="input-broadcast-name"
                       value={formData.broadcastName}
                       onChange={(e) => setFormData(prev => ({ ...prev, broadcastName: e.target.value }))}
-                      placeholder="Ej: Atlético Madrid vs PSG"
+                      placeholder='E.g.: "Barcelona vs PSG"'
                       className="w-full h-9 px-3 rounded-lg border border-white/10 bg-[#0a0e1a] text-sm text-white placeholder-white/20 focus:border-white/30 focus:outline-none transition"
                     />
                   </div>
 
                   {/* Campaign */}
                   <div className="space-y-1.5">
-                    <label className="text-xs text-white/50 font-medium">Campaña *</label>
+                    <label className="text-xs text-white/50 font-medium">Campaign *</label>
                     <select
                       data-testid="select-campaign"
                       value={formData.campaignId}
                       onChange={(e) => setFormData(prev => ({ ...prev, campaignId: e.target.value }))}
                       className="w-full h-9 px-3 rounded-lg border border-white/10 bg-[#0a0e1a] text-sm text-white focus:border-white/30 focus:outline-none transition [color-scheme:dark]"
                     >
-                      <option value="">Seleccionar campaña...</option>
+                      <option value="">Select campaign...</option>
                       {campaigns.map(c => (
                         <option key={c.id} value={String(c.id)}>{c.name}</option>
                       ))}
@@ -635,12 +635,12 @@ export default function BroadcastsPage() {
 
                   {/* Description */}
                   <div className="space-y-1.5">
-                    <label className="text-xs text-white/50 font-medium">Descripción</label>
+                    <label className="text-xs text-white/50 font-medium">Description</label>
                     <input
                       data-testid="input-broadcast-description"
                       value={formData.description}
                       onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
-                      placeholder="Descripción opcional del broadcast"
+                      placeholder="Optional broadcast description"
                       className="w-full h-9 px-3 rounded-lg border border-white/10 bg-[#0a0e1a] text-sm text-white placeholder-white/20 focus:border-white/30 focus:outline-none transition"
                     />
                   </div>
@@ -652,16 +652,16 @@ export default function BroadcastsPage() {
                       data-testid="input-external-id"
                       value={formData.externalId}
                       onChange={(e) => setFormData(prev => ({ ...prev, externalId: e.target.value }))}
-                      placeholder="ej: viaplay-atletico-psg-2026-03-08"
+                      placeholder="e.g. viaplay-atletico-psg-2026-03-08"
                       className="w-full h-9 px-3 rounded-lg border border-white/10 bg-[#0a0e1a] text-sm text-white placeholder-white/20 focus:border-white/30 focus:outline-none transition"
                     />
-                    <p className="text-xs text-white/30">Vincula este broadcast al ID de contenido de tu reproductor de vídeo (ej: stream ID de Viaplay o TV2).</p>
+                    <p className="text-xs text-white/30">Link this broadcast to your video player content ID (e.g. Viaplay or TV2 stream ID).</p>
                   </div>
 
                   {/* Start + End Time */}
                   <div className="grid grid-cols-2 gap-3">
                     <div className="space-y-1.5">
-                      <label className="text-xs text-white/50 font-medium">Inicio</label>
+                      <label className="text-xs text-white/50 font-medium">Start time</label>
                       <input
                         type="datetime-local"
                         data-testid="input-start-time"
@@ -671,7 +671,7 @@ export default function BroadcastsPage() {
                       />
                     </div>
                     <div className="space-y-1.5">
-                      <label className="text-xs text-white/50 font-medium">Fin</label>
+                      <label className="text-xs text-white/50 font-medium">End time</label>
                       <input
                         type="datetime-local"
                         data-testid="input-end-time"
@@ -686,14 +686,14 @@ export default function BroadcastsPage() {
             </div>
 
             <DialogFooter className="pt-2">
-              <Button variant="outline" onClick={() => setCreateOpen(false)} data-testid="button-cancel-broadcast">Cancelar</Button>
+              <Button variant="outline" onClick={() => setCreateOpen(false)} data-testid="button-cancel-broadcast">Cancel</Button>
               <Button
                 onClick={handleCreate}
                 disabled={createMutation.isPending || !formData.broadcastName.trim() || !formData.campaignId || !selectedFixture || !formData.externalId.trim()}
                 data-testid="button-submit-broadcast"
                 className="bg-[#3d8b7a] hover:bg-[#2f7365] text-white"
               >
-                {createMutation.isPending ? 'Creando...' : 'Crear Broadcast'}
+                {createMutation.isPending ? 'Creating...' : 'Create Broadcast'}
               </Button>
             </DialogFooter>
           </DialogContent>

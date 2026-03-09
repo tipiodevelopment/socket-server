@@ -397,7 +397,7 @@ function ActivePollCard({ poll, onToggle, onDelete, campaignId }: {
                     <span className="text-gray-900 dark:text-white font-semibold">
                       {percentage}%
                       {totalVotes > 0 && (
-                        <span className="text-gray-400 dark:text-gray-500 font-normal ml-1">({(option.voteCount || 0).toLocaleString()} votos)</span>
+                        <span className="text-gray-400 dark:text-gray-500 font-normal ml-1">({(option.voteCount || 0).toLocaleString()} votes)</span>
                       )}
                     </span>
                   </div>
@@ -1641,25 +1641,24 @@ export default function BroadcastDetailPage() {
                 </div>
                 <div className="w-px h-8 bg-gray-200 dark:bg-white/10"></div>
                 <div className="text-center">
+                  <div className="text-xs text-gray-400 dark:text-gray-500">Engagement Rate</div>
+                  <div className="text-sm font-semibold text-gray-900 dark:text-white" data-testid="stat-header-engagement-rate">
+                    {(() => {
+                      const viewers = analytics?.viewerCount ?? broadcast.viewerCount ?? 0;
+                      const votes = analytics?.totalVotes ?? 0;
+                      if (!viewers || !votes) return '--';
+                      return `${Math.round((votes / viewers) * 100)}%`;
+                    })()}
+                  </div>
+                </div>
+                <div className="w-px h-8 bg-gray-200 dark:bg-white/10"></div>
+                <div className="text-center">
                   <div className="text-xs text-gray-400 dark:text-gray-500">Status</div>
                   <div className="text-sm font-semibold capitalize text-gray-900 dark:text-white" data-testid="stat-header-status">
                     {broadcast.status}
                   </div>
                 </div>
               </div>
-              <button
-                onClick={() => seedDemoMutation.mutate()}
-                disabled={seedDemoMutation.isPending}
-                className={`px-3 py-2 border rounded text-xs font-medium transition disabled:opacity-50 ${
-                  broadcast.status === 'ended'
-                    ? 'bg-transparent border-gray-200 dark:border-white/20 hover:border-gray-300 dark:hover:border-white/40 text-gray-500 dark:text-gray-400'
-                    : 'bg-[#3d8b7a] hover:bg-[#2f7365] dark:bg-white dark:hover:bg-gray-200 text-white dark:text-black border-transparent'
-                }`}
-                data-testid="button-seed-demo"
-                title="Load demo data"
-              >
-                {seedDemoMutation.isPending ? 'Loading...' : 'Load Demo'}
-              </button>
               <button className="w-10 h-10 flex items-center justify-center rounded border border-gray-200 dark:border-white/20 hover:border-gray-300 dark:hover:border-white/40 text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition" data-testid="button-more-options">
                 <MoreVertical className="w-4 h-4" />
               </button>
