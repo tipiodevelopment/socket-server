@@ -489,9 +489,9 @@ export default function BroadcastsPage() {
                         className="w-full h-9 px-3 rounded-lg border border-white/10 bg-[#0a0e1a] text-sm text-white focus:border-white/30 focus:outline-none transition [color-scheme:dark]"
                       >
                         <option value="">Select league...</option>
-                        {leagues.map(l => (
+                        {leagues.filter(l => [2, 5, 8, 564].includes(l.id)).map(l => (
                           <option key={l.id} value={String(l.id)}>
-                            {l.name}{l.countryName ? ` · ${l.countryName}` : ''}
+                            {l.name}
                           </option>
                         ))}
                       </select>
