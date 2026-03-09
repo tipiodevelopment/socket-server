@@ -61,9 +61,9 @@ The platform is built with a full-stack TypeScript environment.
 
 - **AppLayout:** Acepta prop `hideSearch` para ocultar el search bar global del header en páginas con su propio search contextual (ej: /broadcasts).
 
-- **Commerce Integration:** Módulo de ecommerce llamado "Commerce" en todas las interfaces públicas. API key de Commerce es a nivel de campaña, entregada via `integrations.commerce.apiKey` en la respuesta de config. Soporta componentes `product_carousel` y `product_banner`.
+- **Commerce Integration:** Módulo de ecommerce llamado "Commerce" en todas las interfaces públicas. API key de Commerce almacenada a nivel de **Sponsor** (`sponsors.commerceApiKey` + `sponsors.commerceChannelId`), entregada via `integrations.commerce.apiKey` en la respuesta de config. Soporta componentes `product_carousel` y `product_banner`.
 
-- **API Key Architecture:** SDK usa una sola Vio App API Key (`client_apps.api_key`). Commerce key es campaign-level.
+- **API Key Architecture:** SDK usa una sola Vio App API Key (`client_apps.api_key`). Commerce key es por Sponsor (no por campaña).
 
 - **Location Slot System:** `locationId` en `campaign_components` (ej: `sport-detail-banner`). SDK consulta `GET /v1/sdk/components?locationId=` para resolver el componente activo por slot.
 
@@ -92,7 +92,8 @@ Key tables and their extensions:
 - `broadcast_ads`: Ads linked to broadcasts (name, description, imageUrl, ctaUrl, adType, duration, isActive, displayOrder).
 - `broadcast_products`: Shoppable products per broadcast (name, subtitle, price/originalPrice as varchar, buyUrl, status, displayOrder).
 - `chat_messages`: Live chat messages per broadcast (username, message, createdAt, type, metadata).
-- `broadcasts`: Extended with `viewerCount`, `peakViewers`, `externalId` (indexed on `(externalId, campaignId)`), and Sportmonks match fields: `sportmonksFixtureId`, `homeTeamName`, `homeTeamLogo`, `awayTeamName`, `awayTeamLogo`, `matchStartingAt`, `leagueName`.
+- `broadcasts`: Extended with `viewerCount`, `peakViewers`, `externalId` (indexed on `(externalId, campaignId)`), `metadata` (JSONB — stores `matchEvents` array), and Sportmonks match fields: `sportmonksFixtureId`, `homeTeamName`, `homeTeamLogo`, `awayTeamName`, `awayTeamLogo`, `matchStartingAt`, `leagueName`.
+- `sponsors`: Extended with `commerceApiKey` (varchar, nullable) and `commerceChannelId` (varchar, nullable) — Commerce module credentials per sponsor.
 - `campaign_components`: Extended with `locationId` for SDK slot identification.
 - `sportmonks_cache`: Caches Sportmonks API responses (leagues + fixtures) for 2 days. Fields: `cacheType`, `leagueId`, `dateFrom`, `dateTo`, `data` (JSONB), `updatedAt`.
 - `polls` / `poll_options` / `poll_votes`: Poll data with `vote_count` per option and `total_votes` on polls.

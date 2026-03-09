@@ -70,6 +70,9 @@ Schema additions (Mar 2026):
 - `broadcasts.matchStartingAt` (timestamp, nullable) — official match start time from Sportmonks
 - `broadcasts.leagueName` (varchar 255, nullable) — league/competition name (e.g. "Scottish Premiership")
 - `sportmonks_cache` — caches Sportmonks API responses for 2 days. Fields: `cacheType` (varchar), `leagueId` (integer nullable), `dateFrom`/`dateTo` (varchar nullable), `data` (JSONB), `updatedAt` (timestamp)
+- `sponsors.commerceApiKey` (varchar 255, nullable) — Commerce module API key per sponsor (previously stored at campaign level as `campaigns.reachuApiKey`)
+- `sponsors.commerceChannelId` (varchar 255, nullable) — Commerce channel ID per sponsor (previously `campaigns.reachuChannelId`)
+- `broadcasts.metadata` (JSONB) — arbitrary JSON. Key sub-field: `matchEvents` — array of `{ minute, type, label, team? }`. Types: `kickoff`, `goal`, `fulltime`, `poll`, `contest`, `shoppable_ad`. Powers the EventTimeline horizontal scrubber.
 
 All schemas, insert schemas, and types are exported from `shared/schema.ts`.
 
@@ -196,13 +199,17 @@ Full analytics dashboard with drill-down navigation (no page reload, state-based
 ### Broadcast Detail (`/broadcasts/:broadcastId`)
 Full broadcast management view with split layout. **All data is real — zero hardcoded mocks.**
 - **Header:** Broadcast name + Live/Upcoming/Ended badge + real stats (Viewers from `viewerCount`, Total Votes from analytics, Status). "Load Demo" button calls `POST /api/seed-demo` to seed ads/products/chat.
-- **Event Timeline:** Built from real polls + contests. No hardcoded TIMELINE_EVENTS. Empty state if no polls/contests exist.
+- **Event Timeline (redesigned Mar 2026):** Horizontal scrubber 0'–90'. Reads `broadcast.metadata.matchEvents` (JSONB array) + polls + contests. Colored dots: blue=poll, purple=contest, green=shoppable_ad, yellow=goal, grey=kickoff/fulltime. Minute tick labels at 0', 15', 30', 45', 60', 75', 90'. Hover tooltips with minute, label, vote count. Stats row: "events fired" + "engagement events". Bottom: total count + Live/90' FT/Scheduled status.
 - **Active Engagement:** Poll cards with blue color-coding, vote progress bars, create/toggle/delete
 - **Contests & Trivia:** Contest cards with purple color-coding, create/toggle/delete
+- **Shoppable Ads (redesigned Mar 2026):** 3-panel layout:
+  1. **Pre-programmed Slots** — Add Slot dialog (sponsor, products, trigger type, auto-execute toggle). Fire/Delete per slot. Endpoints: `GET/POST /api/broadcasts/:id/sponsor-slots`, `DELETE /api/broadcasts/:id/sponsor-slots/:slotId`, `POST /api/broadcasts/:id/sponsor-slots/:slotId/execute`.
+  2. **Quick Fire** — Ad-hoc fire: select sponsor from campaign + product from that sponsor's Commerce catalog. Fires immediately via `POST /api/broadcasts/:id/trigger-shoppable-ad` with Commerce key from `sponsor.commerceApiKey`.
+  3. **Session Log** — Recent shoppable ad fire events for this session.
 - **Scheduled Ads:** Loads from `GET /api/broadcasts/:id/ads`. Empty state if none. Delete with confirmation dialog.
-- **Shoppable Products:** 4-column grid, loads from `GET /api/broadcasts/:id/products`. Shows price/originalPrice (varchar), status badge, buy URL. Summary bar shows active count and total.
+- **Shoppable Products:** 4-column grid, loads from `GET /api/broadcasts/:id/products`. Shows price/originalPrice (varchar), status badge, buy URL. Each product has "Fire Ad" button using sponsor's Commerce key.
 - **Right Sidebar:**
-  - **Live Chat tab:** Real messages from `GET /api/broadcasts/:id/chat`, auto-refresh every 10s. Send button posts to `POST /api/broadcasts/:id/chat`. Message input supports Enter key.
+  - **Live Chat tab:** Real messages from `GET /api/broadcasts/:id/chat`, auto-refresh every 10s. Send button posts to `POST /api/broadcasts/:id/chat`. Message input supports Enter key. Disabled (read-only) when `status='ended'` with informational banner.
   - **Analytics tab:** Real data from `GET /api/broadcasts/:id/analytics` — viewerCount, peakViewers, totalVotes, activePolls, activeContests, chat message count.
 
 ### Component Library (`/components`)
@@ -375,10 +382,38 @@ Dashboard → Apps → Campaigns → Sponsors → Broadcasts → Components → 
 - `externalId` incluido en el form y enviado al crear el broadcast.
 
 **Demo Data (NO MODIFICAR):**
-- TV2 app (campaign 36): `tv2-eliteserien-live-2026-03-08` (Brann vs Molde, ~18.7K viewers). Polls: ~8.4K votos.
-- Viaplay app (campaigns 35/33/31): `viaplay-atletico-psg-2026-03-08` (Atlético Madrid vs PSG, ~19.6K viewers). Polls: ~19.4K votos.
+- TV2 app (campaign 36, app 18): `tv2-eliteserien-live-2026-03-08` (Brann vs Molde, ~18.7K viewers live). `barcelona-psg-2026-03-03` (ended, 34200 viewers, peak 41K, 3 polls, 1 contest, 11 matchEvents).
+- Viaplay app (campaigns 35/33/31, app 17): `viaplay-atletico-psg-2026-03-08` (live, 19.6K viewers, peak 24K, 3 polls, 1 contest, 9 matchEvents). `real-madrid-vs-barcelona-2026-02-25` (ended, 29K viewers, peak 35K, 6 polls, 2 contests, 11 matchEvents).
 - Broadcasts con `created_at` distribuidos en los últimos 30 días para el chart de analytics.
 - Viaplay apiKey: `viaplay_api_key_0c611e983b314ff8` → campaign 35. Commerce key: `KCXF10Y-W5T4PCR-GG5119A-Z64SQ9S`.
+- Sponsors: Elkjøp (id=3, commerceApiKey seeded), Torshov Sport (id=4, commerceApiKey seeded).
+
+**Commerce API key — moved to Sponsor level (Mar 2026):**
+- `sponsors.commerceApiKey` + `sponsors.commerceChannelId` added to schema via `npm run db:push`.
+- All shoppable ad routes now use `sponsor.commerceApiKey` (not `campaign.reachuApiKey`).
+- Sponsor create/edit form includes Commerce API Key + Channel ID fields.
+- `campaigns.reachuApiKey` / `campaigns.reachuChannelId` preserved in DB for backward compatibility but no longer the active source for shoppable ads.
+
+**ShoppableAdTriggerSection — 3-panel redesign (Mar 2026):**
+- Panel 1 "Pre-programmed Slots": Add Slot dialog (sponsor, products, trigger type, auto-execute). Endpoints: `GET/POST /api/broadcasts/:id/sponsor-slots`, `DELETE /api/broadcasts/:id/sponsor-slots/:slotId`, `POST /api/broadcasts/:id/sponsor-slots/:slotId/execute`.
+- Panel 2 "Quick Fire": sponsor dropdown (sponsors linked to campaign) + product from sponsor's Commerce catalog. Fires via `POST /api/broadcasts/:id/trigger-shoppable-ad` with Commerce key from `sponsor.commerceApiKey`.
+- Panel 3 "Session Log": Tracks ad fire events for the current session.
+
+**EventTimeline — horizontal scrubber redesign (Mar 2026):**
+- Completely replaced old vertical list with a horizontal 0'–90' scrubber.
+- Takes `matchEvents` from `broadcast.metadata.matchEvents` (JSONB) + `broadcastStatus` as props alongside polls/contests.
+- Colored dots: blue=poll, purple=contest, green=shoppable_ad, yellow=goal, grey=kickoff/fulltime.
+- Minute labels at 0', 15', 30', 45', 60', 75', 90'. Half-time divider line at 50%.
+- Hover tooltips with minute, event label, vote count (for polls).
+- Stats row: "events fired" counter + "engagement events" counter.
+- Bottom footer: total event count + match status (Live / 90' FT / Scheduled).
+
+**Dashboard viewer count fix (Mar 2026):**
+- Live Broadcasts table on the dashboard now reads `viewerCount` directly from `broadcast.viewerCount` column (was hardcoded `--`).
+
+**Campaign → App linking fix (Mar 2026):**
+- Campaign 36 (TV2 Barcelona-PSG) → linked to app 18 via `campaign.clientAppId`.
+- Campaign 35 (Viaplay) → linked to app 17 (was already correct).
 
 ## Fixes & Features (Feb 2026)
 
@@ -388,7 +423,7 @@ Dashboard → Apps → Campaigns → Sponsors → Broadcasts → Components → 
 - **campaign-dashboard.tsx:** Tabs reorganized to Overview | Broadcasts | Components | Live | Analytics | Settings. "New Broadcast" form includes "External Content ID" field. Broadcast cards have a pencil icon for inline editing.
 - **EventsTab.tsx:** No demo data. Forms start empty and auto-save per campaign. Event Log panel removed. Campaign Logo section removed entirely.
 - **SettingsTab.tsx (Feb 2026 — latest):** Removed Campaign Logo, Match Context, and UI Theme sections. Remaining 8 sections: Basic Information, Campaign Schedule, Channel Assignment (optional — "No channel" option available), Commerce Integration, Targeting & Segmentation, Engagement Settings, Feature Flags, Danger Zone. Fully restyled with raw divs + `border-white/10` (removed all shadcn Card usage). Style matches OverviewTab.
-- **Commerce Integration (Feb 2026):** "Reachu Integration" renamed to "Commerce Integration" in UI and docs. The Commerce API key is stored in `campaigns.reachuApiKey` (internal DB name preserved). The key is now exposed via `GET /v1/campaigns/:id/config` → `response.integrations.commerce.apiKey` so the SDK reads it dynamically instead of hardcoding it. `integrations.commerce` block is always present in the response (`enabled: false` when no key configured).
+- **Commerce Integration (Feb 2026, updated Mar 2026):** "Reachu Integration" renamed to "Commerce Integration" in UI and docs. The Commerce API key was originally stored in `campaigns.reachuApiKey`, but as of Mar 2026 it is stored at the **sponsor level** (`sponsors.commerceApiKey` + `sponsors.commerceChannelId`). The key is exposed via `GET /v1/campaigns/:id/config` → `response.integrations.commerce.apiKey` so the SDK reads it dynamically. `integrations.commerce` block is always present in the response (`enabled: false` when no key configured).
 - **Config endpoint `/v1/campaigns/:id/config` (Feb 2026):** Authorization now supports direct match (`campaign.clientAppId === clientApp.id`) OR channel legacy fallback. No longer returns 400 when campaign has no channel assigned. Channel references use optional chaining (`channel?.id`, `channel?.name`).
 - **Brand data in SDK config:** `brand.name`, `brand.iconUrl`, `brand.logoUrl` come from the linked Sponsor. Legacy campaign brand fields used only as fallback.
 
@@ -433,7 +468,7 @@ Returns dynamic campaign config. The `integrations.commerce` block is **always**
 ```
 - `enabled: true` → SDK initializes Commerce module with that key.
 - `enabled: false` (apiKey is null) → do not initialize Commerce module.
-- Source in DB: `campaigns.reachuApiKey` + `campaigns.reachuChannelId` (internal names, never exposed publicly).
+- Source in DB (Mar 2026+): `sponsors.commerceApiKey` + `sponsors.commerceChannelId` (from the sponsor linked to the campaign). `campaigns.reachuApiKey` preserved in DB for backward compatibility but no longer the active source.
 - The Commerce key comes from the server — the SDK uses it to call the external Commerce system directly, bypassing the Vio backend. Vio is a secure key distributor only.
 
 **Step 3 — Stream open:**
