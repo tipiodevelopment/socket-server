@@ -160,6 +160,11 @@ Engagement Rate = `Math.round(totalVotes / viewers * 100) + '%'`. Shows `'--'` i
 
 ## Session Change Log
 
+### Mar-09-2026 (Session 4 — Sportmonks Definitive Fix)
+- **Sportmonks fixtures cache:** TTL split — fixtures 6h, leagues 2d. Removed `?leagues=${leagueId}` from Sportmonks URL (doesn't filter reliably). Server-side `f.league_id === leagueId` filter applied BEFORE caching. Stale fixtures cache cleared (11 rows). `leagueId` field added to cached fixture objects.
+- **League dropdown:** Kept restricted to 4 leagues: CL (2), Europa League (5), Premier League (8), La Liga (564).
+- **Verified:** CL Mar-10 → 4 correct fixtures. Championship Mar-10 → 6 fixtures, zero cross-contamination. Cache hit confirmed (38ms vs 584ms).
+
 ### Mar-09-2026 (Session 3 — UI Polish)
 - **Create Broadcast modal fully translated to English** (was mixed Spanish/English)
 - **Poll vote label:** "votos" → "votes" in broadcast detail

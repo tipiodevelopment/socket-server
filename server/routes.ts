@@ -3810,7 +3810,8 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
 
   const SPORTMONKS_BASE = 'https://api.sportmonks.com/v3/football';
   const SPORTMONKS_TOKEN = process.env.SPORTMONKS_API_TOKEN || '';
-  const CACHE_TTL_MS = 2 * 24 * 60 * 60 * 1000; // 2 days
+  const FIXTURE_CACHE_TTL_MS = 6 * 60 * 60 * 1000;       // 6 hours — fixtures change frequently
+  const LEAGUE_CACHE_TTL_MS  = 2 * 24 * 60 * 60 * 1000;  // 2 days  — leagues are stable
 
   const sportmonksFetch = async (path: string) => {
     const url = `${SPORTMONKS_BASE}${path}`;
@@ -3819,16 +3820,16 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
     return res.json();
   };
 
-  const isCacheValid = (cache: { updatedAt: Date | string } | undefined) => {
+  const isCacheValidFor = (cache: { updatedAt: Date | string } | undefined, ttlMs: number) => {
     if (!cache) return false;
-    return Date.now() - new Date(cache.updatedAt).getTime() < CACHE_TTL_MS;
+    return Date.now() - new Date(cache.updatedAt).getTime() < ttlMs;
   };
 
   // GET /api/sportmonks/leagues
   app.get('/api/sportmonks/leagues', async (req, res) => {
     try {
       const cached = await storage.getSportmonksCache('leagues');
-      if (isCacheValid(cached)) {
+      if (isCacheValidFor(cached, LEAGUE_CACHE_TTL_MS)) {
         return res.json(cached!.data);
       }
       const json = await sportmonksFetch('/leagues?per_page=150&include=country');
@@ -3858,29 +3859,35 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
         return res.status(400).json({ message: 'leagueId, dateFrom, and dateTo are required' });
       }
 
+      // Cache check — serves pre-filtered clean data (6h TTL)
       const cached = await storage.getSportmonksCache('fixtures', leagueId, dateFrom, dateTo);
-      if (isCacheValid(cached)) {
+      if (isCacheValidFor(cached, FIXTURE_CACHE_TTL_MS)) {
         return res.json(cached!.data);
       }
 
-      const path = `/fixtures/between/${dateFrom}/${dateTo}?leagues=${leagueId}&per_page=150&include=participants`;
+      // Sportmonks ?leagues= param does NOT filter correctly — fetch all and filter server-side
+      const path = `/fixtures/between/${dateFrom}/${dateTo}?per_page=150&include=participants`;
       const json = await sportmonksFetch(path);
 
-      const allFixtures = (json.data || []).filter((f: any) => f.league_id === leagueId);
-      const fixtures = allFixtures.map((f: any) => {
-        const participants = f.participants || [];
-        const home = participants.find((p: any) => p.meta?.location === 'home');
-        const away = participants.find((p: any) => p.meta?.location === 'away');
-        return {
-          id: f.id,
-          name: f.name,
-          startingAt: f.starting_at,
-          status: f.result_info || f.state?.name || null,
-          homeTeam: home ? { id: home.id, name: home.name, logoUrl: home.image_path || null } : null,
-          awayTeam: away ? { id: away.id, name: away.name, logoUrl: away.image_path || null } : null,
-        };
-      });
+      // Strict server-side filter: only fixtures belonging to the requested league
+      const fixtures = (json.data || [])
+        .filter((f: any) => f.league_id === leagueId)
+        .map((f: any) => {
+          const participants = f.participants || [];
+          const home = participants.find((p: any) => p.meta?.location === 'home');
+          const away = participants.find((p: any) => p.meta?.location === 'away');
+          return {
+            id: f.id,
+            name: f.name,
+            startingAt: f.starting_at,
+            leagueId: f.league_id,
+            status: f.result_info || f.state?.name || null,
+            homeTeam: home ? { id: home.id, name: home.name, logoUrl: home.image_path || null } : null,
+            awayTeam: away ? { id: away.id, name: away.name, logoUrl: away.image_path || null } : null,
+          };
+        });
 
+      // Cache only the already-filtered clean data
       await storage.upsertSportmonksCache('fixtures', fixtures, leagueId, dateFrom, dateTo);
       res.json(fixtures);
     } catch (error: any) {
