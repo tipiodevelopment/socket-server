@@ -170,6 +170,7 @@ Engagement Rate = `Math.round(totalVotes / viewers * 100) + '%'`. Shows `'--'` i
 - **3 demo sponsor slots seeded** for viaplay-atletico-psg (id=21/11/22)
 - **Team logos in campaign Overview tab** — `TeamLogo` component added to `OverviewTab.tsx`, renders home/away logos in broadcast cards
 - **"Live" tab removed from campaign dashboard** — tabs are now Overview · Broadcasts · Components · Sponsors · Analytics · Settings
+- **Contest edit modal** — pencil icon on each ContestCard opens a Dialog with fields: Title, Description, Image upload (file + URL), Prize, Type. Calls `PUT /api/contests/:id`.
 
 ### Mar-2026 (Session 1–2 — Architecture)
 - Commerce API key moved from campaign level to sponsor level (`sponsors.commerceApiKey`)

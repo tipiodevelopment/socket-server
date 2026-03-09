@@ -361,6 +361,7 @@ Dashboard → Apps → Campaigns → Sponsors → Broadcasts → Components → 
 - **Header stats (Mar-09-2026):** Viewers · Total Votes · **Engagement Rate** (`Math.round(totalVotes / viewers * 100) + '%'`, muestra `'--'` si alguno es 0) · Status.
 - **Poll vote label (Mar-09-2026):** "votos" → "votes". Formato: `(4,928 votes)`.
 - **Sponsor slots endpoint (Mar-09-2026):** `POST /api/broadcasts/:id/sponsor-slots` ahora retorna `detail` con el mensaje real del error de DB (antes solo "Failed to create sponsor slot"). Usar `sponsorId=3` (Elkjøp) o `sponsorId=4` (Torshov) — `sponsorId=1` NO existe en la DB.
+- **Contest edit modal (Mar-09-2026):** `ContestCard` tiene botón de lápiz (Pencil icon) que abre un Dialog de edición. Campos: Title, Description, Image (ImageUploadWithPreview — soporta upload a Object Storage y URL manual), Prize, Type (vote/trivia/prediction). Llama a `PUT /api/contests/:id` al guardar. Invalida `['/api/broadcasts', broadcastId, 'contests']` en cache.
 
 **Sponsors (`/sponsors`):**
 - Default colors al crear: `primaryColor: '#3d8b7a'`, `secondaryColor: '#141824'`.

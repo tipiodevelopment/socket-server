@@ -439,13 +439,45 @@ function ActivePollCard({ poll, onToggle, onDelete, campaignId }: {
   );
 }
 
-function ContestCard({ contest, onToggle, onDelete, campaignId }: {
+function ContestCard({ contest, onToggle, onDelete, campaignId, broadcastId }: {
   contest: Contest;
   onToggle: (contestId: number, isActive: boolean) => void;
   onDelete: (contestId: number) => void;
   campaignId?: number | null;
+  broadcastId: string;
 }) {
   const { toast } = useToast();
+  const [editOpen, setEditOpen] = useState(false);
+  const [editTitle, setEditTitle] = useState(contest.title);
+  const [editDescription, setEditDescription] = useState(contest.description ?? '');
+  const [editImageUrl, setEditImageUrl] = useState(contest.imageUrl ?? '');
+  const [editPrize, setEditPrize] = useState(contest.prize ?? '');
+  const [editType, setEditType] = useState(contest.contestType);
+
+  const openEdit = () => {
+    setEditTitle(contest.title);
+    setEditDescription(contest.description ?? '');
+    setEditImageUrl(contest.imageUrl ?? '');
+    setEditPrize(contest.prize ?? '');
+    setEditType(contest.contestType);
+    setEditOpen(true);
+  };
+
+  const updateMutation = useMutation({
+    mutationFn: () => apiRequest('PUT', `/api/contests/${contest.id}`, {
+      title: editTitle,
+      description: editDescription || null,
+      imageUrl: editImageUrl || null,
+      prize: editPrize || null,
+      contestType: editType,
+    }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/broadcasts', broadcastId, 'contests'] });
+      setEditOpen(false);
+      toast({ title: 'Contest updated' });
+    },
+    onError: () => toast({ title: 'Error', description: 'Failed to update contest', variant: 'destructive' }),
+  });
 
   const sendLiveMutation = useMutation({
     mutationFn: () => apiRequest('POST', '/api/events/contest', {
@@ -472,6 +504,13 @@ function ContestCard({ contest, onToggle, onDelete, campaignId }: {
           </span>
         </div>
         <div className="flex items-center space-x-2">
+          <button
+            onClick={openEdit}
+            className="text-xs text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"
+            data-testid={`button-edit-contest-${contest.id}`}
+          >
+            <Pencil className="w-3.5 h-3.5" />
+          </button>
           <Switch
             checked={contest.isActive}
             onCheckedChange={(checked) => onToggle(contest.id, checked)}
@@ -530,6 +569,80 @@ function ContestCard({ contest, onToggle, onDelete, campaignId }: {
           {sendLiveMutation.isPending ? 'Sending...' : 'Send Live'}
         </button>
       )}
+
+      <Dialog open={editOpen} onOpenChange={setEditOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Edit Contest</DialogTitle>
+            <DialogDescription>Update the contest details. Changes are saved immediately.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-1.5">
+              <Label htmlFor={`contest-title-${contest.id}`}>Title *</Label>
+              <Input
+                id={`contest-title-${contest.id}`}
+                value={editTitle}
+                onChange={(e) => setEditTitle(e.target.value)}
+                placeholder="Contest title"
+                data-testid={`input-edit-contest-title-${contest.id}`}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor={`contest-desc-${contest.id}`}>Description</Label>
+              <Textarea
+                id={`contest-desc-${contest.id}`}
+                value={editDescription}
+                onChange={(e) => setEditDescription(e.target.value)}
+                placeholder="Short description"
+                rows={2}
+                data-testid={`input-edit-contest-desc-${contest.id}`}
+              />
+            </div>
+            <ImageUploadWithPreview
+              label="Image"
+              value={editImageUrl}
+              onChange={setEditImageUrl}
+              placeholder="https://example.com/image.jpg"
+              testId={`edit-contest-image-${contest.id}`}
+            />
+            <div className="space-y-1.5">
+              <Label htmlFor={`contest-prize-${contest.id}`}>Prize</Label>
+              <Input
+                id={`contest-prize-${contest.id}`}
+                value={editPrize}
+                onChange={(e) => setEditPrize(e.target.value)}
+                placeholder="e.g. Nike shoes worth 150 USD"
+                data-testid={`input-edit-contest-prize-${contest.id}`}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Type</Label>
+              <Select value={editType} onValueChange={setEditType}>
+                <SelectTrigger data-testid={`select-edit-contest-type-${contest.id}`}>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="vote">Vote</SelectItem>
+                  <SelectItem value="trivia">Trivia</SelectItem>
+                  <SelectItem value="prediction">Prediction</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditOpen(false)} data-testid={`button-cancel-edit-contest-${contest.id}`}>
+              Cancel
+            </Button>
+            <Button
+              onClick={() => updateMutation.mutate()}
+              disabled={updateMutation.isPending || !editTitle.trim()}
+              data-testid={`button-save-edit-contest-${contest.id}`}
+            >
+              {updateMutation.isPending ? 'Saving...' : 'Save changes'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -1983,6 +2096,7 @@ export default function BroadcastDetailPage() {
                     onToggle={(id, active) => toggleContestMutation.mutate({ contestId: id, isActive: active })}
                     onDelete={(id) => deleteContestMutation.mutate(id)}
                     campaignId={broadcast.campaignId}
+                    broadcastId={broadcast.broadcastId}
                   />
                 ))}
               </div>
