@@ -84,17 +84,52 @@ The broadcast status in DB is `live` — this is intentional for the demo (keeps
 
 ---
 
-## ✅ Follow-up resolved (2026-03-09 18:28)
+## ⚠️ Follow-up (2026-03-09 17:49)
 
-**Root cause:** `sponsorId: 1` doesn't exist in DB — sponsors table starts at ID 2.
-- Elkjøp = sponsor_id **3** (products: Samsung TV id=19, Soundbar id=20)
-- Torshov Sport = sponsor_id **4** (products: Barça jersey id=17, PSG jersey id=18)
+**Fix 3 (sponsor slots) NOT resolved** — endpoint still returns 500 after latest deploy.
 
-**Fix applied:**
-1. Endpoint now returns `detail` field with actual DB error message
-2. 3 demo slots created directly in DB:
-   - ID 21: min 35, sponsorId=3 (Elkjøp), products [19] (Samsung TV)
-   - ID 11: min 45, sponsorId=3 (Elkjøp), products [17, 18] (Jerseys) ← pre-existing
-   - ID 22: min 70, sponsorId=3 (Elkjøp), products [20] (Soundbar)
+Test:
+```bash
+curl -X POST https://api-dev.vio.live/api/broadcasts/viaplay-atletico-psg-2026-03-08/sponsor-slots \
+  -H "Authorization: Bearer <JWT>" \
+  -H "Content-Type: application/json" \
+  -d '{"sponsorId":1,"matchMinute":35,"productIds":[19],"type":"banner"}'
+# Returns: {"error":"Failed to create sponsor slot"}
+```
 
-**For future API calls use sponsorId=3 or sponsorId=4 (not 1).**
+Once fixed, Viobot will seed 3 slots:
+- min 35: productIds [19]
+- min 45: productIds [17, 18]  
+- min 70: productIds [20]
+
+---
+
+## Fix 7 — Team logos not showing in campaign broadcasts list
+
+In `campaigns/:id` overview, the broadcasts list cards do not render team logos even when `homeTeamLogo` and `awayTeamLogo` are set in the broadcast.
+
+The broadcast detail page (MatchDataCard) shows them correctly — the issue is only in the campaign overview list view.
+
+Add team logo circles (overlapping, like the broadcasts list page) to each broadcast card in the campaign overview.
+
+---
+
+## Fix 8 — Remove "Live" tab from campaigns view (legacy)
+
+The campaign detail page has a "Live" tab alongside Overview, Broadcasts, Components, Sponsors, Analytics, Settings.
+
+This is a legacy tab and should be removed entirely.
+
+---
+
+## Fix 9 — Rename "RProduct*" components → remove "R" prefix
+
+Active components show names like "RProductCarousel 1", "RProductBanner 2". The "R" prefix is legacy from Reachu.
+
+Rename them in the DB:
+- "RProductCarousel 1" → "ProductCarousel 1"
+- "RProductCarousel 2" → "ProductCarousel 2"
+- "RProductBanner 1" → "ProductBanner 1"
+- "RProductBanner 2" → "ProductBanner 2"
+
+Or add a migration to strip leading "R" from component names that start with "RProduct".
