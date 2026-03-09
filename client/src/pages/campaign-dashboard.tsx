@@ -2,11 +2,9 @@ import { useParams, Link, useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useState, useMemo } from "react";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Pause, Play, MoreVertical, BarChart3, Radio, Puzzle, Settings, Activity, Eye, TrendingUp, ExternalLink, Zap, Square, ChevronDown, ChevronRight, Trophy, Loader2, X, Clock, Search, Check, Users2, Plus, Trash2 } from "lucide-react";
+import { ArrowLeft, Pause, Play, MoreVertical, BarChart3, Radio, Puzzle, Settings, Activity, Eye, TrendingUp, ExternalLink, Square, ChevronDown, ChevronRight, Trophy, Loader2, X, Clock, Search, Check, Users2, Plus, Trash2 } from "lucide-react";
 import { Campaign, Sponsor, Broadcast } from "@shared/schema";
 import { OverviewTab } from "@/components/dashboard/OverviewTab";
-import { EventsTab } from "@/components/dashboard/EventsTab";
-import { ScheduledTab } from "@/components/dashboard/ScheduledTab";
 import { ComponentsTab } from "@/components/dashboard/ComponentsTab";
 import { IntegrationsTab } from "@/components/dashboard/IntegrationsTab";
 import { SettingsTab } from "@/components/dashboard/SettingsTab";
@@ -38,7 +36,6 @@ const TABS = [
   { value: 'broadcasts', label: 'Broadcasts', icon: Radio },
   { value: 'components', label: 'Components', icon: Puzzle },
   { value: 'sponsors', label: 'Sponsors', icon: Users2 },
-  { value: 'live', label: 'Live', icon: Zap },
   { value: 'analytics', label: 'Analytics', icon: Activity },
   { value: 'settings', label: 'Settings', icon: Settings },
 ] as const;
@@ -244,12 +241,6 @@ export default function CampaignDashboard() {
         )}
         {activeTab === 'sponsors' && (
           <SponsorsTabContent campaignId={campaignId!} />
-        )}
-        {activeTab === 'live' && (
-          <div className="space-y-8">
-            <EventsTab campaignId={campaignId!} campaign={campaign} />
-            <ScheduledTab campaignId={campaignId!} />
-          </div>
         )}
         {activeTab === 'settings' && (
           <div className="space-y-8">

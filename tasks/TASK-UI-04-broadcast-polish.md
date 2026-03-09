@@ -104,32 +104,18 @@ Once fixed, Viobot will seed 3 slots:
 
 ---
 
-## Fix 7 — Team logos not showing in campaign broadcasts list
+## ✅ Fix 7 — Team logos in campaign overview broadcasts list (Mar-09-2026)
 
-In `campaigns/:id` overview, the broadcasts list cards do not render team logos even when `homeTeamLogo` and `awayTeamLogo` are set in the broadcast.
-
-The broadcast detail page (MatchDataCard) shows them correctly — the issue is only in the campaign overview list view.
-
-Add team logo circles (overlapping, like the broadcasts list page) to each broadcast card in the campaign overview.
+Added `TeamLogo` component to `client/src/components/dashboard/OverviewTab.tsx`. The broadcasts list in the campaign Overview tab now shows home/away team logo circles alongside the broadcast name when `homeTeamLogo`/`awayTeamName` are set.
 
 ---
 
-## Fix 8 — Remove "Live" tab from campaigns view (legacy)
+## ✅ Fix 8 — "Live" tab removed from campaign view (Mar-09-2026)
 
-The campaign detail page has a "Live" tab alongside Overview, Broadcasts, Components, Sponsors, Analytics, Settings.
-
-This is a legacy tab and should be removed entirely.
+Removed `{ value: 'live', label: 'Live', icon: Zap }` from TABS array in `campaign-dashboard.tsx`. Removed `activeTab === 'live'` render block, `EventsTab` import, `ScheduledTab` import, and `Zap` lucide icon import. Campaign tabs are now: Overview · Broadcasts · Components · Sponsors · Analytics · Settings.
 
 ---
 
-## Fix 9 — Rename "RProduct*" components → remove "R" prefix
+## ✅ Fix 9 — N/A: No "RProduct*" components in DB (Mar-09-2026)
 
-Active components show names like "RProductCarousel 1", "RProductBanner 2". The "R" prefix is legacy from Reachu.
-
-Rename them in the DB:
-- "RProductCarousel 1" → "ProductCarousel 1"
-- "RProductCarousel 2" → "ProductCarousel 2"
-- "RProductBanner 1" → "ProductBanner 1"
-- "RProductBanner 2" → "ProductBanner 2"
-
-Or add a migration to strip leading "R" from component names that start with "RProduct".
+Checked all components via `GET /api/components` — no component names start with "R" or have "RProduct" prefix. This fix is not applicable to the current DB state.

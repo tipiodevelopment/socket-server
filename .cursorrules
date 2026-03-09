@@ -342,6 +342,8 @@ Dashboard → Apps → Campaigns → Sponsors → Broadcasts → Components → 
 - Analytics tab pre-fetched al cargar la página (`enabled: true`, no lazy).
 - Poll results: porcentaje + votos absolutos "45% (234 votos)".
 - Commerce API key save unificado con el resto del formulario.
+- **Tab "Live" ELIMINADO (Mar-09-2026):** Tabs actuales: Overview · Broadcasts · Components · Sponsors · Analytics · Settings. `EventsTab`, `ScheduledTab` y `Zap` icon removidos de `campaign-dashboard.tsx`.
+- **Team logos en Overview tab (Mar-09-2026):** `OverviewTab.tsx` muestra logos de equipo (home/away) en cada broadcast card cuando `homeTeamLogo`/`awayTeamName` están disponibles. Componente `TeamLogo` definido en `OverviewTab.tsx`.
 
 **Broadcasts (`/broadcasts`):**
 - Viewer count desde `broadcast.viewerCount` directamente (no de metadata).
