@@ -48,14 +48,53 @@ WS payload:
 ```json
 {
   "type": "lineup_show",
-  "videoTimestamp": -600,
-  "broadcastId": "<externalId>"
+  "videoTimestamp": 1200,
+  "kickoffVideoTimestamp": 1800,
+  "broadcastId": "<externalId>",
+  "leadTimeSeconds": 600
 }
 ```
 
-`videoTimestamp: -600` = 10 minutes before kickoff (negative = pre-match).
-Use `timeline.currentVideoTime` or a fixed pre-kickoff offset.
-If `broadcastStartTime` is null or in the past, use `videoTimestamp: 0`.
+### How to calculate videoTimestamp (IMPORTANT)
+
+The stream may start 5, 15, or 30+ minutes before kickoff.
+`videoTimestamp` is ALWAYS relative to stream start (seconds since broadcast went live).
+NEVER hardcode -600.
+
+```ts
+// broadcastStartedAt: when broadcast status changed to "live" (Date)
+// kickoffAt: Sportmonks fixture starting_at (Date)
+// leadTimeSeconds: how many seconds before kickoff to show lineup (e.g. 600 = 10 min)
+
+const now = Date.now();
+const kickoffAt = new Date(fixture.starting_at).getTime();
+const broadcastStartedAt = new Date(broadcast.started_at).getTime(); // see note below
+
+// Seconds into the video where kickoff occurs
+const kickoffVideoTimestamp = Math.max(0, (kickoffAt - broadcastStartedAt) / 1000);
+
+// When to show lineup in video time
+const videoTimestamp = Math.max(0, kickoffVideoTimestamp - leadTimeSeconds);
+
+// Example: stream starts 20 min before kickoff, lead = 10 min
+//   kickoffVideoTimestamp = 1200, videoTimestamp = 600
+// Example: stream starts AT kickoff, lead = 10 min
+//   kickoffVideoTimestamp = 0, videoTimestamp = 0 (show immediately)
+```
+
+### Add `started_at` to broadcasts
+
+Add column to track when the broadcast actually went live:
+```sql
+ALTER TABLE broadcasts ADD COLUMN started_at TIMESTAMPTZ;
+```
+Set it automatically when `status` changes to `"live"`:
+```ts
+if (req.body.status === 'live' && broadcast.status !== 'live') {
+  updateData.startedAt = new Date();
+}
+```
+If `started_at` is null (not yet live), do not send lineup_show yet.
 
 ### 5. Manual "Send lineup now" endpoint (for demo)
 
