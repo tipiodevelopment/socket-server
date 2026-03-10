@@ -4014,6 +4014,9 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
         events: filteredEvents,
       };
 
+      if (fixtureResultCache.size > 200) {
+        fixtureResultCache.delete(fixtureResultCache.keys().next().value!);
+      }
       fixtureResultCache.set(fixtureId, { data: result, fetchedAt: Date.now(), status });
       res.json(result);
     } catch (error: any) {
@@ -4046,6 +4049,73 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
     return `${def}-${mid}-${fwd}`;
   }
 
+  // In-flight dedup: prevents N simultaneous cache-miss requests hitting Sportmonks in parallel
+  const lineupInFlight = new Map<string, Promise<any>>();
+
+  async function fetchLineupData(fixtureId: number, homeTeamId: number | undefined, awayTeamId: number | undefined, broadcast: any): Promise<any> {
+    const cacheKey = `lineup_${fixtureId}`;
+    const cached = await storage.getSportmonksCache(cacheKey);
+    if (isCacheValidFor(cached, LINEUP_CACHE_TTL_MS)) return cached!.data;
+
+    if (lineupInFlight.has(cacheKey)) return lineupInFlight.get(cacheKey)!;
+
+    const promise = (async () => {
+      try {
+        // Bug 1 fix: use sportmonksFetch (consistent token handling + proper error throwing)
+        const json = await sportmonksFetch(`/fixtures/${fixtureId}?include=lineups.player`);
+        const lineups: any[] = (json.data?.lineups || []).filter((l: any) => l.type_id === 11);
+
+        if (lineups.length === 0) {
+          const result = { available: false, message: 'Lineup not yet available' };
+          await storage.upsertSportmonksCache(cacheKey, result);
+          return result;
+        }
+
+        const mapPlayer = (l: any) => ({
+          id: l.player_id,
+          name: l.player?.name || l.player?.display_name || `#${l.player_id}`,
+          jerseyNumber: l.jersey_number ?? null,
+          position: mapPosition(l.position_id ?? 0),
+        });
+
+        let homePlayers = lineups.filter((l: any) => l.team_id === homeTeamId).map(mapPlayer);
+        let awayPlayers = lineups.filter((l: any) => l.team_id === awayTeamId).map(mapPlayer);
+
+        if (homePlayers.length === 0 && awayPlayers.length === 0) {
+          const teamIds = [...new Set(lineups.map((l: any) => l.team_id))];
+          homePlayers = lineups.filter((l: any) => l.team_id === teamIds[0]).map(mapPlayer);
+          awayPlayers = lineups.filter((l: any) => l.team_id === teamIds[1]).map(mapPlayer);
+        }
+
+        const result = {
+          fixtureId,
+          available: true,
+          home: {
+            teamId: homeTeamId ?? null,
+            teamName: broadcast.homeTeamName ?? null,
+            teamLogo: broadcast.homeTeamLogo ?? null,
+            formation: deriveFormation(homePlayers.filter((p: any) => p.position !== 'goalkeeper')),
+            players: homePlayers,
+          },
+          away: {
+            teamId: awayTeamId ?? null,
+            teamName: broadcast.awayTeamName ?? null,
+            teamLogo: broadcast.awayTeamLogo ?? null,
+            formation: deriveFormation(awayPlayers.filter((p: any) => p.position !== 'goalkeeper')),
+            players: awayPlayers,
+          },
+        };
+        await storage.upsertSportmonksCache(cacheKey, result);
+        return result;
+      } finally {
+        lineupInFlight.delete(cacheKey);
+      }
+    })();
+
+    lineupInFlight.set(cacheKey, promise);
+    return promise;
+  }
+
   async function fetchLineup(broadcastId: string, res: any) {
     const broadcast = await storage.getBroadcast(broadcastId);
     if (!broadcast) return res.status(404).json({ message: 'Broadcast not found' });
@@ -4059,64 +4129,13 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
     const homeTeamId: number | undefined = meta.homeTeamId;
     const awayTeamId: number | undefined = meta.awayTeamId;
 
-    const cacheKey = `lineup_${fixtureId}`;
-    const cached = await storage.getSportmonksCache(cacheKey);
-    if (isCacheValidFor(cached, LINEUP_CACHE_TTL_MS)) {
-      return res.json(cached!.data);
+    try {
+      const data = await fetchLineupData(fixtureId, homeTeamId, awayTeamId, broadcast);
+      return res.json(data);
+    } catch (error: any) {
+      console.error(`[Lineup] Sportmonks error for fixture ${fixtureId}:`, error.message);
+      return res.status(502).json({ message: 'Failed to fetch lineup from Sportmonks', error: error.message });
     }
-
-    const url = `https://api.sportmonks.com/v3/football/fixtures/${fixtureId}?include=lineups.player`;
-    const smRes = await fetch(url, { headers: { Authorization: process.env.SPORTMONKS_API_TOKEN || '' } });
-    if (!smRes.ok) {
-      return res.status(502).json({ message: 'Failed to fetch lineup from Sportmonks' });
-    }
-    const json = await smRes.json();
-    const lineups: any[] = (json.data?.lineups || []).filter((l: any) => l.type_id === 11);
-
-    if (lineups.length === 0) {
-      const result = { available: false, message: 'Lineup not yet available' };
-      await storage.upsertSportmonksCache(cacheKey, result);
-      return res.json(result);
-    }
-
-    const mapPlayer = (l: any) => ({
-      id: l.player_id,
-      name: l.player?.name || l.player?.display_name || `#${l.player_id}`,
-      jerseyNumber: l.jersey_number ?? null,
-      position: mapPosition(l.position_id ?? 0),
-    });
-
-    let homePlayers = lineups.filter((l: any) => l.team_id === homeTeamId).map(mapPlayer);
-    let awayPlayers = lineups.filter((l: any) => l.team_id === awayTeamId).map(mapPlayer);
-
-    // Fallback: if teamIds are missing, split by first two unique team_ids
-    if (homePlayers.length === 0 && awayPlayers.length === 0) {
-      const teamIds = [...new Set(lineups.map((l: any) => l.team_id))];
-      homePlayers = lineups.filter((l: any) => l.team_id === teamIds[0]).map(mapPlayer);
-      awayPlayers = lineups.filter((l: any) => l.team_id === teamIds[1]).map(mapPlayer);
-    }
-
-    const result = {
-      fixtureId,
-      available: true,
-      home: {
-        teamId: homeTeamId ?? null,
-        teamName: broadcast.homeTeamName ?? null,
-        teamLogo: broadcast.homeTeamLogo ?? null,
-        formation: deriveFormation(homePlayers.filter(p => p.position !== 'goalkeeper')),
-        players: homePlayers,
-      },
-      away: {
-        teamId: awayTeamId ?? null,
-        teamName: broadcast.awayTeamName ?? null,
-        teamLogo: broadcast.awayTeamLogo ?? null,
-        formation: deriveFormation(awayPlayers.filter(p => p.position !== 'goalkeeper')),
-        players: awayPlayers,
-      },
-    };
-
-    await storage.upsertSportmonksCache(cacheKey, result);
-    return res.json(result);
   }
 
   app.get('/api/broadcasts/:broadcastId/lineup', async (req, res) => {
