@@ -4025,10 +4025,13 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   const LINEUP_CACHE_TTL_MS = 30 * 60 * 1000; // 30 min — lineups can change until ~15min before kickoff
 
   function mapPosition(positionId: number): string {
-    if ([24, 25].includes(positionId)) return 'goalkeeper';
-    if ([27, 28, 29, 30, 155, 156].includes(positionId)) return 'defender';
-    if ([31, 32, 33, 34, 157, 158, 159].includes(positionId)) return 'midfielder';
-    return 'forward';
+    switch (positionId) {
+      case 24: return "goalkeeper";
+      case 25: return "defender";
+      case 26: return "midfielder";
+      case 27: return "forward";
+      default: return "forward";
+    }
   }
 
   function deriveFormation(players: { position: string }[]): string | null {
