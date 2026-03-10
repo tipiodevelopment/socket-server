@@ -1,24 +1,67 @@
 # TASK-UI-07 — Lineup endpoint + Dashboard section
 
-## Objetivo
+## Decisiones de arquitectura (confirmadas 2026-03-10)
 
-Exponer las alineaciones reales desde Sportmonks via API y mostrarlas en el dashboard.
+### ¿Cómo separar jugadores por equipo (home vs away)?
+
+**NO usar `homeTeamId`/`awayTeamId` como columnas en `broadcasts`** — no es sport-agnostic (mañana puede ser F1).
+
+**Solución: `metadata` JSONB** — cuando el usuario selecciona un fixture en el modal de crear/editar broadcast, guardar los IDs en el campo `metadata` que ya existe:
+
+```json
+// broadcasts.metadata (ya existe como JSONB)
+{
+  "homeTeamId": 83,
+  "awayTeamId": 591
+}
+```
+
+Al seleccionar el fixture, Sportmonks ya devuelve los participantes con sus IDs. Escribirlos en `metadata` en ese momento. Así el lineup endpoint los lee directamente sin llamadas extra ni dependencia del cache TTL.
+
+**Ventaja a futuro:** F1 usaría `metadata.driverId`, `metadata.circuitId`, etc. El schema de `broadcasts` nunca cambia.
+
+### Prioridad: hacer los 3 tasks hoy
+
+Orden:
+1. **UI-06** — Fix videoStartTime (simple, 30 min)
+2. **UI-07** — Lineup endpoint (este task)
+3. **UI-08** — WS trigger + dashboard toggle (mañana si no llega hoy — los partidos son a las 21:00 Oslo del Mar 11)
+
+---
 
 ## Backend — `GET /api/broadcasts/:broadcastId/lineup`
 
-### Lógica
+### Lógica completa
 
-1. Buscar el broadcast por `broadcastId` → obtener `sportmonks_fixture_id`
-2. Si no hay `sportmonks_fixture_id` → 404 `{ message: "No fixture linked to this broadcast" }`
-3. Llamar a Sportmonks:
+1. Buscar el broadcast → obtener `sportmonks_fixture_id` y `metadata`
+2. Si no hay `sportmonks_fixture_id` → `{ available: false, message: "No fixture linked to this broadcast" }`
+3. Leer `homeTeamId` y `awayTeamId` de `broadcast.metadata`
+4. Check cache `sportmonks_cache` (key `lineup_${fixtureId}`)
+5. Si no hay cache → llamar Sportmonks:
    ```
    GET https://api.sportmonks.com/v3/football/fixtures/:fixtureId?include=lineups.player
-   api_token: hTAp0XE1x7CsBh1yi8g47OQh1dLhGPfygQTf08MnCbCY38dLFc73HuxxYBcJ
+   Authorization: Bearer hTAp0XE1x7CsBh1yi8g47OQh1dLhGPfygQTf08MnCbCY38dLFc73HuxxYBcJ
    ```
-4. Filtrar `type_id === 11` (titulares XI inicial)
-5. Separar por `team_id` (home vs away — usar `homeTeamId`/`awayTeamId` del broadcast)
-6. Cachear resultado en `sportmonks_cache` con key `lineup_:fixtureId`, TTL 30 min
-7. Devolver respuesta limpia
+6. Filtrar `type_id === 11` (titulares XI inicial)
+7. Agrupar por `team_id` usando `homeTeamId`/`awayTeamId` de `metadata`
+8. Si no hay jugadores → `{ available: false, message: "Lineup not yet available" }`
+9. Cachear en `sportmonks_cache` TTL 30 min
+10. Devolver respuesta limpia
+
+### Escribir homeTeamId/awayTeamId en metadata al vincular fixture
+
+En el modal de crear/editar broadcast, cuando el usuario selecciona un fixture de Sportmonks, ya se rellena `homeTeamName`, `homeTeamLogo`, etc. Añadir en ese mismo PATCH:
+
+```typescript
+// Cuando se selecciona un fixture:
+const participants = fixture.participants; // viene de Sportmonks
+const homeParticipant = participants.find(p => p.meta?.location === 'home');
+const awayParticipant = participants.find(p => p.meta?.location === 'away');
+
+// Deep-merge en metadata (ya existe el mecanismo de deep-merge)
+metadata.homeTeamId = homeParticipant?.id;
+metadata.awayTeamId = awayParticipant?.id;
+```
 
 ### Response format
 
@@ -45,12 +88,12 @@ Exponer las alineaciones reales desde Sportmonks via API y mostrarlas en el dash
 }
 ```
 
-Si el lineup aún no está disponible en Sportmonks (antes del partido):
+Si el lineup aún no está disponible:
 ```json
 { "available": false, "message": "Lineup not yet available" }
 ```
 
-### Position mapping (de position_id a string)
+### Position mapping (position_id → string)
 
 ```typescript
 function mapPosition(positionId: number): string {
@@ -61,69 +104,85 @@ function mapPosition(positionId: number): string {
 }
 ```
 
-### Formation
+### Formation derivation
 
-Sportmonks no devuelve formation directamente en lineups. Derivarla contando jugadores por posición:
-- 4 defenders + 3 mid + 3 fwd = "4-3-3"
-- 4 defenders + 2 mid + 3 fwd + 1 att = "4-2-3-1"
-- etc.
+Sportmonks no devuelve formation en lineups. Derivar contando por posición:
 
-O devolver `null` si no se puede calcular.
+```typescript
+function deriveFormation(players: LineupPlayer[]): string {
+  const defenders  = players.filter(p => p.position === 'defender').length;
+  const midfielders = players.filter(p => p.position === 'midfielder').length;
+  const forwards   = players.filter(p => p.position === 'forward').length;
+  return `${defenders}-${midfielders}-${forwards}`; // e.g. "4-3-3"
+}
+```
 
 ### Caching
 
-Usar la tabla `sportmonks_cache` existente:
 ```typescript
 const cacheKey = `lineup_${fixtureId}`;
-// TTL: 30 min (1800000 ms) — lineups pueden cambiar hasta ~15min antes del partido
+const LINEUP_CACHE_TTL_MS = 30 * 60 * 1000; // 30 min
 ```
+
+Usar tabla `sportmonks_cache` existente con `isCacheValidFor(cache, LINEUP_CACHE_TTL_MS)`.
+
+---
+
+## Endpoints
+
+```
+GET /api/broadcasts/:broadcastId/lineup    (admin — JWT Bearer)
+GET /v1/sdk/broadcasts/:broadcastId/lineup (SDK — ?apiKey=...)
+```
+
+Mismo handler, distinta auth middleware.
+
+---
 
 ## Dashboard — Sección "Alineaciones" en broadcast detail
 
-Añadir debajo de `MatchDataCard`, encima de "Active Engagement":
+Añadir debajo de `MatchDataCard`:
 
 ```
-┌─────────────────────────────────┐
-│ 👥 Alineaciones         [Refresh]│
-│                                  │
-│ FC Barcelona (4-3-3)             │
-│  1. Ter Stegen  🧤               │
-│  3. A. Balde    🛡️               │
-│  ...                             │
-│                                  │
-│ PSG (4-2-3-1)                    │
-│  ...                             │
-│                                  │
-│ "Lineup not yet available"       │
-│ (si Sportmonks aún no tiene datos)│
-└─────────────────────────────────┘
+┌─────────────────────────────────────┐
+│ 👥 Alineaciones              [↺ Refresh] │
+│                                     │
+│ FC Barcelona (4-3-3)                │
+│  31. Ter Stegen  🧤                 │
+│   3. A. Balde    🛡️                 │
+│  ...                                │
+│                                     │
+│ PSG (4-2-3-1)                       │
+│  ...                                │
+│                                     │
+│ [gris] "Alineación disponible ~60   │
+│         min antes del partido"      │
+└─────────────────────────────────────┘
 ```
 
-- Botón **Refresh** → re-fetch desde Sportmonks (invalida cache)
-- Si `available: false` → mostrar mensaje gris "Alineación disponible ~60 min antes del partido"
-- Mostrar solo titulares (type_id = 11), no suplentes
+- **Refresh** → invalida cache, re-fetch de Sportmonks
+- Si `available: false` → mensaje gris, no error
+- Solo titulares (type_id=11), no suplentes
 
-## SDK endpoint (para referencia)
-
-El SDK Swift hará:
-```
-GET /v1/sdk/broadcasts/:broadcastId/lineup
-```
-Crear también la versión SDK (sin auth admin, con api-key) que devuelva el mismo formato.
+---
 
 ## Archivos a tocar
 
-- `server/routes.ts` — añadir GET `/api/broadcasts/:broadcastId/lineup` y `/v1/sdk/broadcasts/:broadcastId/lineup`
-- `server/storage.ts` — reutilizar `sportmonks_cache` para el lineup
-- `client/src/components/broadcast-detail.tsx` — añadir sección Alineaciones
+- `server/routes.ts` — añadir los 2 endpoints (admin + SDK)
+- `server/storage.ts` o `server/sportmonksService.ts` — lógica fetch + cache
+- `shared/schema.ts` — no cambios de columnas, pero documentar que `metadata` almacena teamIds
+- `client/src/components/broadcast-detail.tsx` — sección Alineaciones
+- Modal de crear/editar broadcast — escribir `homeTeamId`/`awayTeamId` en metadata al seleccionar fixture
+
+---
 
 ## Test
 
 ```bash
-# Con fixture real (Barcelona-PSG, CL oct 2025)
-curl https://api-dev.vio.live/api/broadcasts/barcelona-psg-2026-03-03/lineup
+# Fixture real (Newcastle vs Barcelona, UCL Mar 10)
+curl https://api-dev.vio.live/v1/sdk/broadcasts/newcastle-united-vs-fc-barcelona-2026-03-10/lineup?apiKey=viaplay_api_key_0c611e983b314ff8
 
-# Con broadcast sin fixture
+# Broadcast sin fixture
 curl https://api-dev.vio.live/api/broadcasts/elkjop-gaming-live-2026-03-09/lineup
-# → 404: No fixture linked
+# → { available: false, message: "No fixture linked to this broadcast" }
 ```
