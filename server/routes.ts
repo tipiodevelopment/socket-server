@@ -2812,14 +2812,15 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
         isActive: isActive !== undefined ? isActive : true
       };
 
+      if (videoStartTime !== undefined) pollData.videoStartTime = videoStartTime;
+      if (videoEndTime !== undefined) pollData.videoEndTime = videoEndTime;
+
       if (videoStartTime !== undefined && videoEndTime !== undefined && broadcastStartTime) {
         const validation = validateScheduling({ broadcastStartTime, videoStartTime, videoEndTime });
         if (!validation.valid) {
           return res.status(400).json({ message: validation.error });
         }
         const scheduled = calculateScheduledTimes({ broadcastStartTime, videoStartTime, videoEndTime });
-        pollData.videoStartTime = videoStartTime;
-        pollData.videoEndTime = videoEndTime;
         pollData.broadcastStartTime = new Date(broadcastStartTime);
         pollData.scheduledStartTime = scheduled.scheduledStart;
         pollData.scheduledEndTime = scheduled.scheduledEnd;
@@ -2941,14 +2942,15 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
         isActive: isActive !== undefined ? isActive : true
       };
 
+      if (videoStartTime !== undefined) contestData.videoStartTime = videoStartTime;
+      if (videoEndTime !== undefined) contestData.videoEndTime = videoEndTime;
+
       if (videoStartTime !== undefined && videoEndTime !== undefined && broadcastStartTime) {
         const validation = validateScheduling({ broadcastStartTime, videoStartTime, videoEndTime });
         if (!validation.valid) {
           return res.status(400).json({ message: validation.error });
         }
         const scheduled = calculateScheduledTimes({ broadcastStartTime, videoStartTime, videoEndTime });
-        contestData.videoStartTime = videoStartTime;
-        contestData.videoEndTime = videoEndTime;
         contestData.broadcastStartTime = new Date(broadcastStartTime);
         contestData.scheduledStartTime = scheduled.scheduledStart;
         contestData.scheduledEndTime = scheduled.scheduledEnd;
@@ -3329,7 +3331,8 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   app.put('/api/broadcasts/:broadcastId', async (req, res) => {
     try {
       const { broadcastName, externalId, description, campaignId, channelId, startTime, endTime, status, metadata,
-              sportmonksFixtureId, homeTeamName, homeTeamLogo, awayTeamName, awayTeamLogo, matchStartingAt, leagueName } = req.body;
+              sportmonksFixtureId, homeTeamName, homeTeamLogo, awayTeamName, awayTeamLogo, matchStartingAt, leagueName,
+              showLineup } = req.body;
       const existing = await storage.getBroadcast(req.params.broadcastId);
       if (!existing) return res.status(404).json({ message: 'Broadcast not found' });
 
@@ -3350,6 +3353,12 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       if (awayTeamLogo !== undefined) updateData.awayTeamLogo = awayTeamLogo || null;
       if (matchStartingAt !== undefined) updateData.matchStartingAt = matchStartingAt ? new Date(matchStartingAt) : null;
       if (leagueName !== undefined) updateData.leagueName = leagueName || null;
+      if (showLineup !== undefined) updateData.showLineup = showLineup;
+
+      // Auto-set startedAt when broadcast goes live for the first time
+      if (status === 'live' && existing.status !== 'live' && !existing.startedAt) {
+        updateData.startedAt = new Date();
+      }
 
       const updated = await storage.updateBroadcast(req.params.broadcastId, updateData);
       if (!updated) return res.status(404).json({ message: 'Broadcast not found' });
@@ -3427,14 +3436,15 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
         isActive: isActive !== undefined ? isActive : true
       };
 
+      if (videoStartTime !== undefined) pollData.videoStartTime = videoStartTime;
+      if (videoEndTime !== undefined) pollData.videoEndTime = videoEndTime;
+
       if (videoStartTime !== undefined && videoEndTime !== undefined && broadcastStartTime) {
         const validation = validateScheduling({ broadcastStartTime, videoStartTime, videoEndTime });
         if (!validation.valid) {
           return res.status(400).json({ message: validation.error });
         }
         const scheduled = calculateScheduledTimes({ broadcastStartTime, videoStartTime, videoEndTime });
-        pollData.videoStartTime = videoStartTime;
-        pollData.videoEndTime = videoEndTime;
         pollData.broadcastStartTime = new Date(broadcastStartTime);
         pollData.scheduledStartTime = scheduled.scheduledStart;
         pollData.scheduledEndTime = scheduled.scheduledEnd;
@@ -3463,13 +3473,15 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   app.put('/api/polls/:pollId', async (req, res) => {
     try {
       const pollId = parseInt(req.params.pollId);
-      const { question, isActive, duration, startTime, endTime } = req.body;
+      const { question, isActive, duration, startTime, endTime, videoStartTime, videoEndTime } = req.body;
       const updateData: any = {};
       if (question !== undefined) updateData.question = question;
       if (isActive !== undefined) updateData.isActive = isActive;
       if (duration !== undefined) updateData.duration = duration ?? null;
       if (startTime !== undefined) updateData.startTime = startTime ? new Date(startTime) : null;
       if (endTime !== undefined) updateData.endTime = endTime ? new Date(endTime) : null;
+      if (videoStartTime !== undefined) updateData.videoStartTime = videoStartTime;
+      if (videoEndTime !== undefined) updateData.videoEndTime = videoEndTime;
 
       const updated = await storage.updatePoll(pollId, updateData);
       if (!updated) {
@@ -3529,14 +3541,15 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
         isActive: contestIsActive
       };
 
+      if (videoStartTime !== undefined) contestData.videoStartTime = videoStartTime;
+      if (videoEndTime !== undefined) contestData.videoEndTime = videoEndTime;
+
       if (videoStartTime !== undefined && videoEndTime !== undefined && broadcastStartTime) {
         const validation = validateScheduling({ broadcastStartTime, videoStartTime, videoEndTime });
         if (!validation.valid) {
           return res.status(400).json({ message: validation.error });
         }
         const scheduled = calculateScheduledTimes({ broadcastStartTime, videoStartTime, videoEndTime });
-        contestData.videoStartTime = videoStartTime;
-        contestData.videoEndTime = videoEndTime;
         contestData.broadcastStartTime = new Date(broadcastStartTime);
         contestData.scheduledStartTime = scheduled.scheduledStart;
         contestData.scheduledEndTime = scheduled.scheduledEnd;
@@ -3570,7 +3583,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   app.put('/api/contests/:contestId', async (req, res) => {
     try {
       const contestId = parseInt(req.params.contestId);
-      const { title, description, prize, contestType, isActive, imageUrl, startTime, endTime } = req.body;
+      const { title, description, prize, contestType, isActive, imageUrl, startTime, endTime, videoStartTime, videoEndTime } = req.body;
       const updateData: any = {};
       if (title !== undefined) updateData.title = title;
       if (description !== undefined) updateData.description = description;
@@ -3580,6 +3593,8 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       if (imageUrl !== undefined) updateData.imageUrl = imageUrl || null;
       if (startTime !== undefined) updateData.startTime = startTime ? new Date(startTime) : null;
       if (endTime !== undefined) updateData.endTime = endTime ? new Date(endTime) : null;
+      if (videoStartTime !== undefined) updateData.videoStartTime = videoStartTime;
+      if (videoEndTime !== undefined) updateData.videoEndTime = videoEndTime;
 
       const updated = await storage.updateContest(contestId, updateData);
       if (!updated) {
@@ -4000,6 +4015,161 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
     } catch (error: any) {
       console.error('Sportmonks fixture result error:', error.message);
       res.status(502).json({ message: 'Failed to fetch fixture result', error: error.message });
+    }
+  });
+
+  // ========================================
+  // Lineup Endpoints (Sportmonks)
+  // ========================================
+
+  const LINEUP_CACHE_TTL_MS = 30 * 60 * 1000; // 30 min — lineups can change until ~15min before kickoff
+
+  function mapPosition(positionId: number): string {
+    if ([24, 25].includes(positionId)) return 'goalkeeper';
+    if ([27, 28, 29, 30, 155, 156].includes(positionId)) return 'defender';
+    if ([31, 32, 33, 34, 157, 158, 159].includes(positionId)) return 'midfielder';
+    return 'forward';
+  }
+
+  function deriveFormation(players: { position: string }[]): string | null {
+    const def = players.filter(p => p.position === 'defender').length;
+    const mid = players.filter(p => p.position === 'midfielder').length;
+    const fwd = players.filter(p => p.position === 'forward').length;
+    if (def === 0 && mid === 0 && fwd === 0) return null;
+    return `${def}-${mid}-${fwd}`;
+  }
+
+  async function fetchLineup(broadcastId: string, res: any) {
+    const broadcast = await storage.getBroadcast(broadcastId);
+    if (!broadcast) return res.status(404).json({ message: 'Broadcast not found' });
+
+    if (!broadcast.sportmonksFixtureId) {
+      return res.json({ available: false, message: 'No fixture linked to this broadcast' });
+    }
+
+    const fixtureId = broadcast.sportmonksFixtureId;
+    const meta = (broadcast.metadata as any) || {};
+    const homeTeamId: number | undefined = meta.homeTeamId;
+    const awayTeamId: number | undefined = meta.awayTeamId;
+
+    const cacheKey = `lineup_${fixtureId}`;
+    const cached = await storage.getSportmonksCache(cacheKey);
+    if (isCacheValidFor(cached, LINEUP_CACHE_TTL_MS)) {
+      return res.json(cached!.data);
+    }
+
+    const url = `https://api.sportmonks.com/v3/football/fixtures/${fixtureId}?include=lineups.player`;
+    const smRes = await fetch(url, { headers: { Authorization: process.env.SPORTMONKS_API_TOKEN || '' } });
+    if (!smRes.ok) {
+      return res.status(502).json({ message: 'Failed to fetch lineup from Sportmonks' });
+    }
+    const json = await smRes.json();
+    const lineups: any[] = (json.data?.lineups || []).filter((l: any) => l.type_id === 11);
+
+    if (lineups.length === 0) {
+      const result = { available: false, message: 'Lineup not yet available' };
+      await storage.upsertSportmonksCache(cacheKey, result);
+      return res.json(result);
+    }
+
+    const mapPlayer = (l: any) => ({
+      id: l.player_id,
+      name: l.player?.name || l.player?.display_name || `#${l.player_id}`,
+      jerseyNumber: l.jersey_number ?? null,
+      position: mapPosition(l.position_id ?? 0),
+    });
+
+    let homePlayers = lineups.filter((l: any) => l.team_id === homeTeamId).map(mapPlayer);
+    let awayPlayers = lineups.filter((l: any) => l.team_id === awayTeamId).map(mapPlayer);
+
+    // Fallback: if teamIds are missing, split by first two unique team_ids
+    if (homePlayers.length === 0 && awayPlayers.length === 0) {
+      const teamIds = [...new Set(lineups.map((l: any) => l.team_id))];
+      homePlayers = lineups.filter((l: any) => l.team_id === teamIds[0]).map(mapPlayer);
+      awayPlayers = lineups.filter((l: any) => l.team_id === teamIds[1]).map(mapPlayer);
+    }
+
+    const result = {
+      fixtureId,
+      available: true,
+      home: {
+        teamId: homeTeamId ?? null,
+        teamName: broadcast.homeTeamName ?? null,
+        teamLogo: broadcast.homeTeamLogo ?? null,
+        formation: deriveFormation(homePlayers.filter(p => p.position !== 'goalkeeper')),
+        players: homePlayers,
+      },
+      away: {
+        teamId: awayTeamId ?? null,
+        teamName: broadcast.awayTeamName ?? null,
+        teamLogo: broadcast.awayTeamLogo ?? null,
+        formation: deriveFormation(awayPlayers.filter(p => p.position !== 'goalkeeper')),
+        players: awayPlayers,
+      },
+    };
+
+    await storage.upsertSportmonksCache(cacheKey, result);
+    return res.json(result);
+  }
+
+  app.get('/api/broadcasts/:broadcastId/lineup', async (req, res) => {
+    try {
+      await fetchLineup(req.params.broadcastId, res);
+    } catch (error: any) {
+      console.error('Lineup error:', error.message);
+      res.status(500).json({ message: 'Error fetching lineup', error: error.message });
+    }
+  });
+
+  app.get('/v1/sdk/broadcasts/:broadcastId/lineup', async (req, res) => {
+    try {
+      await fetchLineup(req.params.broadcastId, res);
+    } catch (error: any) {
+      console.error('Lineup SDK error:', error.message);
+      res.status(500).json({ message: 'Error fetching lineup', error: error.message });
+    }
+  });
+
+  // POST /api/broadcasts/:broadcastId/send-lineup — Manual lineup_show trigger (for demo)
+  const lineupSentMap = new Map<string, number>(); // broadcastId → timestamp sent
+
+  app.post('/api/broadcasts/:broadcastId/send-lineup', async (req, res) => {
+    try {
+      const { broadcastId } = req.params;
+      const broadcast = await storage.getBroadcast(broadcastId);
+      if (!broadcast) return res.status(404).json({ message: 'Broadcast not found' });
+      if (!broadcast.showLineup) return res.status(400).json({ success: false, error: 'showLineup is disabled for this broadcast' });
+      if (!broadcast.sportmonksFixtureId) return res.status(400).json({ success: false, error: 'No fixture linked to this broadcast' });
+
+      const now = Date.now();
+      const broadcastStartedAt = broadcast.startedAt ? new Date(broadcast.startedAt).getTime() : now;
+      const matchStartingAt = broadcast.matchStartingAt ? new Date(broadcast.matchStartingAt).getTime() : null;
+      const leadTimeSeconds = 600; // 10 min before kickoff
+
+      const kickoffVideoTimestamp = matchStartingAt
+        ? Math.max(0, Math.round((matchStartingAt - broadcastStartedAt) / 1000))
+        : 0;
+      const videoTimestamp = Math.max(0, kickoffVideoTimestamp - leadTimeSeconds);
+
+      const event = {
+        type: 'lineup_show',
+        videoTimestamp,
+        kickoffVideoTimestamp,
+        broadcastId,
+        leadTimeSeconds,
+        timestamp: new Date().toISOString(),
+      };
+
+      if (broadcast.campaignId) {
+        broadcastToCampaign(broadcast.campaignId, JSON.stringify(event));
+        lineupSentMap.set(broadcastId, now);
+        console.log(`[Lineup] Sent lineup_show for broadcast ${broadcastId} — videoTimestamp=${videoTimestamp}s`);
+      }
+
+      res.json({ success: true, event });
+    } catch (error: any) {
+      console.error('send-lineup error:', error.message);
+      res.status(500).json({ success: false, error: error.message });
     }
   });
 

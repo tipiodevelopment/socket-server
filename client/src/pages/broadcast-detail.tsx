@@ -14,7 +14,7 @@ import { AppLayout } from '@/components/AppLayout';
 import { ImageUploadWithPreview } from '@/components/ImageUploadWithPreview';
 import MatchDataCard from '@/components/match-data-card';
 import type { Broadcast, Poll, PollOptionRecord, Contest, Campaign, BroadcastAd, BroadcastProduct, ChatMessage, Sponsor } from '@shared/schema';
-import { ArrowLeft, Plus, Trash2, BarChart3, Trophy, X, MoreVertical, CheckCircle, Play, SkipBack, SkipForward, Maximize2, Send, Megaphone, ShoppingBag, ExternalLink, Eye, TrendingUp, Vote, MessageSquare, RefreshCw, Users, Radio, Pencil, Check, AtSign, ChevronDown, ChevronRight, Code2 } from 'lucide-react';
+import { ArrowLeft, Plus, Trash2, BarChart3, Trophy, X, MoreVertical, CheckCircle, Play, SkipBack, SkipForward, Maximize2, Send, Megaphone, ShoppingBag, ExternalLink, Eye, TrendingUp, Vote, MessageSquare, RefreshCw, Users, Radio, Pencil, Check, AtSign, ChevronDown, ChevronRight, Code2, Shirt } from 'lucide-react';
 import { useState, useRef, useEffect } from 'react';
 import { useUser } from '@/contexts/UserContext';
 
@@ -1457,6 +1457,135 @@ function LiveChatSidebar({ broadcastId, analytics, reachuUserId, broadcastStatus
 }
 
 
+function LineupSection({ broadcastId, hasFixture, showLineup, broadcastStatus }: {
+  broadcastId: string;
+  hasFixture: boolean;
+  showLineup: boolean;
+  broadcastStatus?: string;
+}) {
+  const { toast } = useToast();
+  const [sentAt, setSentAt] = useState<Date | null>(null);
+
+  const { data: lineup, isLoading, refetch, isFetching } = useQuery<any>({
+    queryKey: ['/api/broadcasts', broadcastId, 'lineup'],
+    queryFn: async () => {
+      const res = await fetch(`/api/broadcasts/${broadcastId}/lineup`);
+      if (!res.ok) throw new Error('Failed to fetch lineup');
+      return res.json();
+    },
+    enabled: hasFixture,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const toggleMutation = useMutation({
+    mutationFn: (value: boolean) => apiRequest('PUT', `/api/broadcasts/${broadcastId}`, { showLineup: value }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['/api/broadcasts', broadcastId] }),
+    onError: () => toast({ title: 'Error', description: 'Failed to update lineup setting', variant: 'destructive' }),
+  });
+
+  const sendMutation = useMutation({
+    mutationFn: () => apiRequest('POST', `/api/broadcasts/${broadcastId}/send-lineup`, {}),
+    onSuccess: () => {
+      setSentAt(new Date());
+      toast({ title: 'Lineup sent', description: 'lineup_show event broadcast to all SDK clients' });
+    },
+    onError: (e: any) => toast({ title: 'Error', description: e.message || 'Failed to send lineup', variant: 'destructive' }),
+  });
+
+  const positionIcon = (pos: string) => {
+    if (pos === 'goalkeeper') return '🧤';
+    if (pos === 'defender') return '🛡️';
+    if (pos === 'midfielder') return '⚙️';
+    return '⚡';
+  };
+
+  const renderTeam = (team: { teamName: string | null; formation: string | null; players: { id: number; name: string; jerseyNumber: number | null; position: string }[] }) => (
+    <div className="flex-1 min-w-0">
+      <div className="flex items-center gap-2 mb-2">
+        <span className="text-xs font-semibold text-white truncate">{team.teamName ?? 'Team'}</span>
+        {team.formation && <span className="text-xs text-gray-500 bg-white/5 px-1.5 py-0.5 rounded">{team.formation}</span>}
+      </div>
+      <div className="space-y-0.5">
+        {team.players.map(p => (
+          <div key={p.id} className="flex items-center gap-2 text-xs text-gray-400">
+            <span className="w-5 text-right text-gray-600 font-mono">{p.jerseyNumber ?? '–'}</span>
+            <span className="flex-1 truncate">{p.name}</span>
+            <span className="text-gray-600">{positionIcon(p.position)}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+
+  if (!hasFixture) return null;
+
+  return (
+    <div className="mb-6 rounded-lg border border-white/10 bg-[#141824] p-4" data-testid="section-lineup">
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-2">
+          <Shirt className="w-4 h-4 text-gray-400" />
+          <h2 className="text-sm font-semibold text-white">Lineup</h2>
+        </div>
+        <button
+          onClick={() => refetch()}
+          disabled={isFetching}
+          className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-300 transition"
+          data-testid="button-lineup-refresh"
+        >
+          <RefreshCw className={`w-3 h-3 ${isFetching ? 'animate-spin' : ''}`} />
+          Refresh
+        </button>
+      </div>
+
+      <div className="flex items-center justify-between py-2 border-b border-white/5 mb-3">
+        <div>
+          <p className="text-xs text-white">Show lineup to viewers</p>
+          <p className="text-xs text-gray-600">Auto-sends 10 min before kickoff when enabled</p>
+        </div>
+        <Switch
+          checked={showLineup}
+          onCheckedChange={(v) => toggleMutation.mutate(v)}
+          disabled={toggleMutation.isPending}
+          data-testid="switch-show-lineup"
+        />
+      </div>
+
+      <div className="flex items-center justify-between mb-4">
+        <button
+          onClick={() => sendMutation.mutate()}
+          disabled={sendMutation.isPending || !showLineup}
+          className="flex items-center gap-1.5 px-3 py-1.5 bg-white/10 hover:bg-white/20 disabled:opacity-40 text-white text-xs rounded transition"
+          data-testid="button-send-lineup-now"
+        >
+          <Play className="w-3 h-3" />
+          {sendMutation.isPending ? 'Sending…' : 'Send lineup now'}
+        </button>
+        <span className="text-xs text-gray-600">
+          {sentAt ? `Sent at ${sentAt.toLocaleTimeString('en', { hour: '2-digit', minute: '2-digit' })}` : 'Not yet sent'}
+        </span>
+      </div>
+
+      {isLoading && (
+        <div className="text-xs text-gray-500 py-4 text-center">Loading lineup…</div>
+      )}
+
+      {!isLoading && lineup && !lineup.available && (
+        <div className="text-xs text-gray-500 py-2 text-center">
+          {lineup.message ?? 'Alineación disponible ~60 min antes del partido'}
+        </div>
+      )}
+
+      {!isLoading && lineup?.available && (
+        <div className="flex gap-6">
+          {lineup.home && renderTeam(lineup.home)}
+          <div className="w-px bg-white/10 self-stretch" />
+          {lineup.away && renderTeam(lineup.away)}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function BroadcastDetailPage() {
   const params = useParams();
   const [, setLocation] = useLocation();
@@ -1851,6 +1980,13 @@ export default function BroadcastDetailPage() {
             homeTeamLogo={broadcast?.homeTeamLogo ?? null}
             awayTeamName={broadcast?.awayTeamName ?? null}
             awayTeamLogo={broadcast?.awayTeamLogo ?? null}
+          />
+
+          <LineupSection
+            broadcastId={broadcastId!}
+            hasFixture={!!broadcast?.sportmonksFixtureId}
+            showLineup={(broadcast as any)?.showLineup ?? false}
+            broadcastStatus={broadcast?.status ?? undefined}
           />
 
           <div className="mb-6" data-testid="section-engagement">

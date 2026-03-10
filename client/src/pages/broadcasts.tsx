@@ -404,6 +404,10 @@ export default function BroadcastsPage() {
         awayTeamLogo: selectedFixture.awayTeam?.logoUrl,
         matchStartingAt: selectedFixture.startingAt,
         leagueName: leagues.find(l => l.id === selectedLeagueId)?.name,
+        metadata: {
+          homeTeamId: (selectedFixture as any).homeTeam?.id ?? null,
+          awayTeamId: (selectedFixture as any).awayTeam?.id ?? null,
+        },
       } : {}),
     });
   };

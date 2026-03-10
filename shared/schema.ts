@@ -227,6 +227,8 @@ export const broadcasts = pgTable("broadcasts", {
   awayTeamLogo: varchar("away_team_logo", { length: 512 }),
   matchStartingAt: timestamp("match_starting_at"),
   leagueName: varchar("league_name", { length: 255 }),
+  showLineup: boolean("show_lineup").notNull().default(false),
+  startedAt: timestamp("started_at"),
 }, (table) => ({
   externalIdCampaignIdx: index("idx_broadcasts_external_id_campaign").on(table.externalId, table.campaignId),
 }));

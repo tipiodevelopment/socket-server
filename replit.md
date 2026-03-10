@@ -160,6 +160,10 @@ Engagement Rate = `Math.round(totalVotes / viewers * 100) + '%'`. Shows `'--'` i
 
 ## Session Change Log
 
+### Mar-10-2026 (Session 5 — Lineup Feature UI-07 + UI-08)
+- **UI-07 COMPLETED:** Lineup endpoints added — `GET /api/broadcasts/:id/lineup` (dashboard) and `GET /v1/sdk/broadcasts/:id/lineup` (SDK). `homeTeamId`/`awayTeamId` stored in `broadcasts.metadata` JSONB (sport-agnostic). 30-min lineup cache (`cacheType='lineup_{fixtureId}'`). Position mapping: G=goalkeeper, D=defender, M=midfielder, F=attacker. `LineupSection` component added to broadcast detail (after MatchDataCard).
+- **UI-08 COMPLETED:** `showLineup: boolean` and `startedAt: timestamp` columns added to `broadcasts` table. `PUT /api/broadcasts/:id` now accepts `showLineup` and auto-sets `startedAt` when status→live. `POST /api/broadcasts/:id/send-lineup` sends `lineup_show` WS event with computed `videoTimestamp` (10 min before kickoff). `LineupSection` upgraded: toggle "Show lineup to viewers" (disabled = Send button grayed out), "Send lineup now" manual trigger, "Sent at HH:MM" status indicator.
+
 ### Mar-09-2026 (Session 4 — Sportmonks Definitive Fix)
 - **Sportmonks fixtures cache:** TTL split — fixtures 6h, leagues 2d. Removed `?leagues=${leagueId}` from Sportmonks URL (doesn't filter reliably). Server-side `f.league_id === leagueId` filter applied BEFORE caching. Stale fixtures cache cleared (11 rows). `leagueId` field added to cached fixture objects.
 - **League dropdown:** Kept restricted to 4 leagues: CL (2), Europa League (5), Premier League (8), La Liga (564).
