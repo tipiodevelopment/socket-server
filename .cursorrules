@@ -72,7 +72,9 @@ Schema additions (Mar 2026):
 - `sportmonks_cache` — caches Sportmonks API responses. TTL diferenciado: **fixtures = 6 horas**, **leagues = 2 días**. Fields: `cacheType` (varchar), `leagueId` (integer nullable), `dateFrom`/`dateTo` (varchar nullable), `data` (JSONB), `updatedAt` (timestamp)
 - `sponsors.commerceApiKey` (varchar 255, nullable) — Commerce module API key per sponsor (previously stored at campaign level as `campaigns.reachuApiKey`)
 - `sponsors.commerceChannelId` (varchar 255, nullable) — Commerce channel ID per sponsor (previously `campaigns.reachuChannelId`)
-- `broadcasts.metadata` (JSONB) — arbitrary JSON. Key sub-field: `matchEvents` — array of `{ minute, type, label, team? }`. Types: `kickoff`, `goal`, `fulltime`, `poll`, `contest`, `shoppable_ad`. Powers the EventTimeline horizontal scrubber.
+- `broadcasts.metadata` (JSONB) — arbitrary JSON. Key sub-field: `matchEvents` — array of `{ minute, type, label, team? }`. Types: `kickoff`, `goal`, `fulltime`, `poll`, `contest`, `shoppable_ad`. Powers the EventTimeline horizontal scrubber. Also stores `homeTeamId`/`awayTeamId` (integer) written by the Create Broadcast modal when the operator picks a Sportmonks fixture.
+- `broadcasts.showLineup` (boolean, default false) — operator toggle: when `true` the lineup section is delivered to SDK viewers. Persisted via `PUT /api/broadcasts/:id`.
+- `broadcasts.startedAt` (timestamp, nullable) — auto-set to `NOW()` when status transitions to `'live'` for the first time; used to compute `videoTimestamp` for the `lineup_show` WS event.
 
 All schemas, insert schemas, and types are exported from `shared/schema.ts`.
 
@@ -618,6 +620,30 @@ El SDK iOS conecta directamente a Pusher/Ably en lugar de al servidor Vio. Requi
 - Mantiene la arquitectura WebSocket nativa (sin cambios en el SDK iOS)
 - BullMQ ya está parcialmente integrado
 - Redis es compatible con Replit Secrets y Neon Stack
+
+## Fixes & Features (Mar 2026 — Session 5 — UI-07 + UI-08: Lineup)
+
+### UI-07 — Lineup Endpoints
+
+- **`GET /api/broadcasts/:broadcastId/lineup`** — Dashboard endpoint. Returns `{ available, home, away }` where each team has `{ teamName, formation, players[] }`. Players have `{ id, name, jerseyNumber, position }`. Position mapping: `G` → `goalkeeper`, `D` → `defender`, `M` → `midfielder`, `F/A` → `attacker`.
+- **`GET /v1/sdk/broadcasts/:broadcastId/lineup`** — SDK endpoint (API Key auth). Same response shape.
+- **Cache:** `cacheType = 'lineup_{fixtureId}'`, TTL = 30 min. Stored in `sportmonks_cache`.
+- **Team ID resolution:** `homeTeamId` and `awayTeamId` are read from `broadcasts.metadata.homeTeamId/awayTeamId` (set when operator selects a fixture in the Create Broadcast modal — `broadcasts.tsx` writes `metadata.homeTeamId/awayTeamId` from Sportmonks `participants[]`). Fallback: splits players by first two distinct `team_id` values in the Sportmonks lineups response.
+- **LineupSection component** (`broadcast-detail.tsx`) — Displayed after MatchDataCard. Shows home/away player lists with jersey numbers and position icons. Refresh button triggers manual refetch.
+
+### UI-08 — Show Lineup Toggle + Send Lineup Now
+
+- **Schema additions:**
+  - `broadcasts.showLineup` — `boolean("show_lineup").notNull().default(false)`. Controls whether lineup is delivered to SDK viewers.
+  - `broadcasts.startedAt` — `timestamp("started_at")`. Auto-set to `NOW()` when broadcast status transitions to `'live'` for the first time (via `PUT /api/broadcasts/:id`).
+- **`PUT /api/broadcasts/:broadcastId`** — Now accepts `showLineup: boolean`. Auto-sets `startedAt` on first `status → 'live'` transition if `startedAt` is null.
+- **`POST /api/broadcasts/:broadcastId/send-lineup`** — Manual trigger. Sends `lineup_show` WS event to all SDK clients on the campaign channel. Requires `showLineup = true` and `sportmonksFixtureId` linked. `videoTimestamp = max(0, kickoffVideoTimestamp - 600)` (10 min lead). Tracked in-memory via `lineupSentMap`.
+- **LineupSection upgraded:** Toggle "Show lineup to viewers" (calls PUT with `showLineup`) + "Send lineup now" button (calls send-lineup POST) + "Not yet sent / Sent at HH:MM" status. Button disabled when toggle is OFF.
+- **WS event payload to SDK:**
+  ```json
+  { "type": "lineup_show", "videoTimestamp": 1800, "kickoffVideoTimestamp": 2400,
+    "broadcastId": "...", "leadTimeSeconds": 600, "timestamp": "..." }
+  ```
 
 ## Fixes & Features (Mar 2026 — Session 4)
 

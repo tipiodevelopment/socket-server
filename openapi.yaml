@@ -44,6 +44,10 @@ tags:
     description: Event tracking and WebSocket event triggers
   - name: Dashboard - Objects
     description: File upload and object storage management
+  - name: Dashboard - Lineups
+    description: Lineup retrieval and lineup_show WebSocket trigger endpoints
+  - name: SDK - Lineup
+    description: Starting XI lineup retrieval for SDK clients (API Key auth)
   - name: Analytics
     description: Analytics and reporting endpoints (planned)
 
@@ -959,6 +963,40 @@ components:
           type: boolean
         message:
           type: string
+
+    LineupPlayer:
+      type: object
+      properties:
+        id:
+          type: integer
+          description: Sportmonks player ID
+        name:
+          type: string
+          example: "Marc-André ter Stegen"
+        jerseyNumber:
+          type: integer
+          nullable: true
+          example: 1
+        position:
+          type: string
+          enum: [goalkeeper, defender, midfielder, attacker]
+          example: goalkeeper
+
+    LineupTeam:
+      type: object
+      properties:
+        teamName:
+          type: string
+          nullable: true
+          example: "FC Barcelona"
+        formation:
+          type: string
+          nullable: true
+          example: "4-3-3"
+        players:
+          type: array
+          items:
+            $ref: '#/components/schemas/LineupPlayer'
 
 paths:
   # ============================================================
@@ -5716,6 +5754,175 @@ paths:
                 $ref: '#/components/schemas/Error'
               example:
                 message: "type and ids query parameters are required"
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  # ============================================================
+  # Dashboard - Lineups
+  # ============================================================
+  /api/broadcasts/{broadcastId}/lineup:
+    get:
+      tags:
+        - Dashboard - Lineups
+      summary: Get broadcast lineup (dashboard)
+      description: >-
+        Returns the starting XI for home and away teams linked via `sportmonksFixtureId`.
+        Cached 30 min (`cacheType = 'lineup_{fixtureId}'`). Team IDs from `broadcasts.metadata.homeTeamId/awayTeamId`.
+        Returns `{ available: false }` when lineup not yet published (~60 min before kickoff).
+      parameters:
+        - name: broadcastId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Lineup data
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  available:
+                    type: boolean
+                  home:
+                    $ref: '#/components/schemas/LineupTeam'
+                  away:
+                    $ref: '#/components/schemas/LineupTeam'
+        '404':
+          description: Broadcast not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/broadcasts/{broadcastId}/send-lineup:
+    post:
+      tags:
+        - Dashboard - Lineups
+      summary: Send lineup_show WebSocket event
+      description: >-
+        Triggers a `lineup_show` WS event to all SDK clients on the campaign channel.
+        Requires `showLineup = true` and a linked `sportmonksFixtureId`.
+        `videoTimestamp = max(0, kickoffVideoTimestamp - 600)` (10 min lead time).
+      parameters:
+        - name: broadcastId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Event sent
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  event:
+                    type: object
+                    properties:
+                      type:
+                        type: string
+                        example: lineup_show
+                      videoTimestamp:
+                        type: integer
+                        example: 1800
+                      kickoffVideoTimestamp:
+                        type: integer
+                        example: 2400
+                      broadcastId:
+                        type: string
+                      leadTimeSeconds:
+                        type: integer
+                        example: 600
+                      timestamp:
+                        type: string
+                        format: date-time
+        '400':
+          description: showLineup disabled or no fixture linked
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  error:
+                    type: string
+        '404':
+          description: Broadcast not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  # ============================================================
+  # SDK - Lineup
+  # ============================================================
+  /v1/sdk/broadcasts/{broadcastId}/lineup:
+    get:
+      tags:
+        - SDK - Lineup
+      summary: Get lineup for SDK clients
+      description: >-
+        Starting XI for home/away teams. API key auth. Same data as dashboard lineup endpoint.
+        Cached 30 min. Returns `{ available: false }` when not yet published.
+      security:
+        - ApiKeyHeader: []
+        - ApiKeyQuery: []
+      parameters:
+        - name: broadcastId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Lineup data
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  available:
+                    type: boolean
+                  home:
+                    $ref: '#/components/schemas/LineupTeam'
+                  away:
+                    $ref: '#/components/schemas/LineupTeam'
+        '401':
+          description: Invalid or missing API key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Broadcast not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '500':
           description: Internal server error
           content:
