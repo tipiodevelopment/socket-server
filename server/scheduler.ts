@@ -114,40 +114,35 @@ async function checkScheduledComponents() {
 async function processScheduledPolls() {
   try {
     const now = new Date();
+    // Single JOIN query: live broadcasts × polls with scheduledStartTime (was N+1)
+    const scheduledPolls = await storage.getScheduledPollsForLiveBroadcasts();
+    for (const poll of scheduledPolls) {
+      const scheduledStart = new Date(poll.scheduledStartTime!);
+      const scheduledEnd = poll.scheduledEndTime ? new Date(poll.scheduledEndTime) : null;
 
-    const liveBroadcasts = await storage.getBroadcastsByStatus('live');
-    for (const broadcast of liveBroadcasts) {
-      const polls = await storage.getBroadcastPolls(broadcast.broadcastId);
-      for (const poll of polls) {
-        if (!poll.scheduledStartTime) continue;
-
-        const scheduledStart = new Date(poll.scheduledStartTime);
-        const scheduledEnd = poll.scheduledEndTime ? new Date(poll.scheduledEndTime) : null;
-
-        if (!poll.isActive && now >= scheduledStart && (!scheduledEnd || now < scheduledEnd)) {
-          await storage.updatePoll(poll.id, { isActive: true });
-          console.log(`[Scheduler] Activated poll ${poll.id} for broadcast ${broadcast.broadcastId}`);
-          if (broadcast.campaignId) {
-            broadcastToCampaign(broadcast.campaignId, JSON.stringify({
-              type: 'poll_activated',
-              pollId: poll.id,
-              broadcastId: broadcast.broadcastId,
-              timestamp: now.toISOString(),
-            }));
-          }
+      if (!poll.isActive && now >= scheduledStart && (!scheduledEnd || now < scheduledEnd)) {
+        await storage.updatePoll(poll.id, { isActive: true });
+        console.log(`[Scheduler] Activated poll ${poll.id} for broadcast ${poll.broadcastId}`);
+        if (poll.campaignId) {
+          broadcastToCampaign(poll.campaignId, JSON.stringify({
+            type: 'poll_activated',
+            pollId: poll.id,
+            broadcastId: poll.broadcastId,
+            timestamp: now.toISOString(),
+          }));
         }
+      }
 
-        if (poll.isActive && scheduledEnd && now >= scheduledEnd) {
-          await storage.updatePoll(poll.id, { isActive: false });
-          console.log(`[Scheduler] Deactivated poll ${poll.id} for broadcast ${broadcast.broadcastId}`);
-          if (broadcast.campaignId) {
-            broadcastToCampaign(broadcast.campaignId, JSON.stringify({
-              type: 'poll_deactivated',
-              pollId: poll.id,
-              broadcastId: broadcast.broadcastId,
-              timestamp: now.toISOString(),
-            }));
-          }
+      if (poll.isActive && scheduledEnd && now >= scheduledEnd) {
+        await storage.updatePoll(poll.id, { isActive: false });
+        console.log(`[Scheduler] Deactivated poll ${poll.id} for broadcast ${poll.broadcastId}`);
+        if (poll.campaignId) {
+          broadcastToCampaign(poll.campaignId, JSON.stringify({
+            type: 'poll_deactivated',
+            pollId: poll.id,
+            broadcastId: poll.broadcastId,
+            timestamp: now.toISOString(),
+          }));
         }
       }
     }
@@ -159,40 +154,35 @@ async function processScheduledPolls() {
 async function processScheduledContests() {
   try {
     const now = new Date();
+    // Single JOIN query: live broadcasts × contests with scheduledStartTime (was N+1)
+    const scheduledContests = await storage.getScheduledContestsForLiveBroadcasts();
+    for (const contest of scheduledContests) {
+      const scheduledStart = new Date(contest.scheduledStartTime!);
+      const scheduledEnd = contest.scheduledEndTime ? new Date(contest.scheduledEndTime) : null;
 
-    const liveBroadcasts = await storage.getBroadcastsByStatus('live');
-    for (const broadcast of liveBroadcasts) {
-      const contests = await storage.getBroadcastContests(broadcast.broadcastId);
-      for (const contest of contests) {
-        if (!contest.scheduledStartTime) continue;
-
-        const scheduledStart = new Date(contest.scheduledStartTime);
-        const scheduledEnd = contest.scheduledEndTime ? new Date(contest.scheduledEndTime) : null;
-
-        if (!contest.isActive && now >= scheduledStart && (!scheduledEnd || now < scheduledEnd)) {
-          await storage.updateContest(contest.id, { isActive: true });
-          console.log(`[Scheduler] Activated contest ${contest.id} for broadcast ${broadcast.broadcastId}`);
-          if (broadcast.campaignId) {
-            broadcastToCampaign(broadcast.campaignId, JSON.stringify({
-              type: 'contest_activated',
-              contestId: contest.id,
-              broadcastId: broadcast.broadcastId,
-              timestamp: now.toISOString(),
-            }));
-          }
+      if (!contest.isActive && now >= scheduledStart && (!scheduledEnd || now < scheduledEnd)) {
+        await storage.updateContest(contest.id, { isActive: true });
+        console.log(`[Scheduler] Activated contest ${contest.id} for broadcast ${contest.broadcastId}`);
+        if (contest.campaignId) {
+          broadcastToCampaign(contest.campaignId, JSON.stringify({
+            type: 'contest_activated',
+            contestId: contest.id,
+            broadcastId: contest.broadcastId,
+            timestamp: now.toISOString(),
+          }));
         }
+      }
 
-        if (contest.isActive && scheduledEnd && now >= scheduledEnd) {
-          await storage.updateContest(contest.id, { isActive: false });
-          console.log(`[Scheduler] Deactivated contest ${contest.id} for broadcast ${broadcast.broadcastId}`);
-          if (broadcast.campaignId) {
-            broadcastToCampaign(broadcast.campaignId, JSON.stringify({
-              type: 'contest_deactivated',
-              contestId: contest.id,
-              broadcastId: broadcast.broadcastId,
-              timestamp: now.toISOString(),
-            }));
-          }
+      if (contest.isActive && scheduledEnd && now >= scheduledEnd) {
+        await storage.updateContest(contest.id, { isActive: false });
+        console.log(`[Scheduler] Deactivated contest ${contest.id} for broadcast ${contest.broadcastId}`);
+        if (contest.campaignId) {
+          broadcastToCampaign(contest.campaignId, JSON.stringify({
+            type: 'contest_deactivated',
+            contestId: contest.id,
+            broadcastId: contest.broadcastId,
+            timestamp: now.toISOString(),
+          }));
         }
       }
     }

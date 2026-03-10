@@ -160,6 +160,12 @@ Engagement Rate = `Math.round(totalVotes / viewers * 100) + '%'`. Shows `'--'` i
 
 ## Session Change Log
 
+### Mar-10-2026 (Session 6 — TASK-BACKEND-REVIEW: 4 fixes)
+- **Bug 1 FIXED:** `fetchLineup` refactored into `fetchLineupData` (pure data, uses `sportmonksFetch`) + thin `fetchLineup` wrapper. Eliminates silent auth failure on cold start.
+- **Bug 2 FIXED:** Cache stampede on lineup — `lineupInFlight = new Map<string, Promise<any>>()` in-flight dedup. N concurrent cache-miss requests = 1 Sportmonks call.
+- **Bug 3 FIXED:** `fixtureResultCache` LRU eviction at 200 entries (3 lines, FIFO on Map insertion order).
+- **Scheduler N+1 FIXED:** `processScheduledPolls` and `processScheduledContests` now use 1 JOIN query each instead of 1 + N per broadcast. New storage methods: `getScheduledPollsForLiveBroadcasts()` and `getScheduledContestsForLiveBroadcasts()` — JOIN polls/contests × broadcasts WHERE status='live' AND scheduledStartTime IS NOT NULL.
+
 ### Mar-10-2026 (Session 5 — Lineup Feature UI-07 + UI-08)
 - **UI-07 COMPLETED:** Lineup endpoints added — `GET /api/broadcasts/:id/lineup` (dashboard) and `GET /v1/sdk/broadcasts/:id/lineup` (SDK). `homeTeamId`/`awayTeamId` stored in `broadcasts.metadata` JSONB (sport-agnostic). 30-min lineup cache (`cacheType='lineup_{fixtureId}'`). Position mapping: G=goalkeeper, D=defender, M=midfielder, F=attacker. `LineupSection` component added to broadcast detail (after MatchDataCard).
 - **UI-08 COMPLETED:** `showLineup: boolean` and `startedAt: timestamp` columns added to `broadcasts` table. `PUT /api/broadcasts/:id` now accepts `showLineup` and auto-sets `startedAt` when status→live. `POST /api/broadcasts/:id/send-lineup` sends `lineup_show` WS event with computed `videoTimestamp` (10 min before kickoff). `LineupSection` upgraded: toggle "Show lineup to viewers" (disabled = Send button grayed out), "Send lineup now" manual trigger, "Sent at HH:MM" status indicator.

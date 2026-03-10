@@ -1,7 +1,7 @@
 import { WebSocketEvent, Campaign, InsertCampaign, Event, InsertEvent, CampaignFormState, InsertFormState, ScheduledComponent, InsertScheduledComponent, Component, InsertComponent, CampaignComponent, InsertCampaignComponent, AppComponent, InsertAppComponent, User, InsertUser, ClientApp, InsertClientApp, Channel, InsertChannel, CampaignTranslation, InsertCampaignTranslation, CampaignEngagementConfig, InsertCampaignEngagementConfig, CampaignUiConfig, InsertCampaignUiConfig, CampaignFeatureFlags, InsertCampaignFeatureFlags, SdkTranslation, InsertSdkTranslation, Broadcast, InsertBroadcast, Poll, InsertPoll, PollOptionRecord, InsertPollOption, PollVote, InsertPollVote, Contest, InsertContest, ContestParticipation, InsertContestParticipation, Sponsor, InsertSponsor, BroadcastAd, InsertBroadcastAd, BroadcastProduct, InsertBroadcastProduct, ChatMessage, InsertChatMessage, DeviceToken, InsertDeviceToken, SportmonksCache, type InsertCampaignSponsor, type InsertBroadcastSponsorSlot } from "@shared/schema";
 import { db } from "./db";
 import { campaigns, events, campaignFormState, scheduledComponents, components, campaignComponents, appComponents, users, clientApps, channels, campaignTranslations, campaignEngagementConfig, campaignUiConfig, campaignFeatureFlags, sdkTranslations, broadcasts, polls, pollOptions, pollVotes, contests, contestParticipations, sponsors, broadcastAds, broadcastProducts, chatMessages, deviceTokens, sportmonksCache, campaignSponsors, broadcastSponsorSlots } from "@shared/schema";
-import { eq, desc, and, or, gte, ne, isNull, sql, lte, inArray } from "drizzle-orm";
+import { eq, desc, and, or, gte, ne, isNull, isNotNull, sql, lte, inArray } from "drizzle-orm";
 
 export interface IStorage {
   addEvent(event: WebSocketEvent): Promise<void>;
@@ -152,6 +152,8 @@ export interface IStorage {
   createContest(contest: InsertContest): Promise<Contest>;
   getContest(id: number): Promise<Contest | undefined>;
   getBroadcastContests(broadcastId: string): Promise<Contest[]>;
+  getScheduledPollsForLiveBroadcasts(): Promise<Array<Poll & { campaignId: number | null }>>;
+  getScheduledContestsForLiveBroadcasts(): Promise<Array<Contest & { campaignId: number | null }>>;
   updateContest(id: number, data: Partial<InsertContest>): Promise<Contest | undefined>;
   deleteContest(id: number): Promise<void>;
 
@@ -1172,6 +1174,24 @@ export class MemStorage implements IStorage {
     return await db.select().from(contests)
       .where(eq(contests.broadcastId, broadcastId))
       .orderBy(desc(contests.createdAt));
+  }
+
+  async getScheduledPollsForLiveBroadcasts(): Promise<Array<Poll & { campaignId: number | null }>> {
+    const rows = await db
+      .select({ poll: polls, campaignId: broadcasts.campaignId })
+      .from(polls)
+      .innerJoin(broadcasts, eq(polls.broadcastId, broadcasts.broadcastId))
+      .where(and(eq(broadcasts.status, 'live'), isNotNull(polls.scheduledStartTime)));
+    return rows.map(r => ({ ...r.poll, campaignId: r.campaignId }));
+  }
+
+  async getScheduledContestsForLiveBroadcasts(): Promise<Array<Contest & { campaignId: number | null }>> {
+    const rows = await db
+      .select({ contest: contests, campaignId: broadcasts.campaignId })
+      .from(contests)
+      .innerJoin(broadcasts, eq(contests.broadcastId, broadcasts.broadcastId))
+      .where(and(eq(broadcasts.status, 'live'), isNotNull(contests.scheduledStartTime)));
+    return rows.map(r => ({ ...r.contest, campaignId: r.campaignId }));
   }
 
   async updateContest(id: number, data: Partial<InsertContest>): Promise<Contest | undefined> {

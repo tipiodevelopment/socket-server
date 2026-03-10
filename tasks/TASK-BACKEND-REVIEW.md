@@ -1,41 +1,41 @@
-# TASK-BACKEND-REVIEW — Fixes post-auditoría de backend engineer (2026-03-10)
+# TASK-BACKEND-REVIEW — Fixes post-auditoría de backend engineer
 
-## Estado: ✅ COMPLETADO (2026-03-10 sesión 5)
+## Estado: ✅ COMPLETADO (2026-03-10 sesión 6)
 
 ---
 
 ## Bug 1 — fetchLineup usa fetch directo ✅ RESUELTO
 
-**Fix aplicado:** `fetchLineup` refactorizada en dos funciones:
-- `fetchLineupData(fixtureId, homeTeamId, awayTeamId, broadcast)` — pura, retorna datos, usa `sportmonksFetch()`
-- `fetchLineup(broadcastId, res)` — wrapper que lee broadcast, llama a fetchLineupData, envía respuesta
-
-`sportmonksFetch` maneja el token desde la constante pre-calculada, lanza error con status text en !ok, consistente con el resto de endpoints Sportmonks.
+`fetchLineup` refactorizada en `fetchLineupData` (pura, retorna datos) + `fetchLineup` (wrapper req/res).
+Usa `sportmonksFetch` — token desde constante pre-calculada, error con status text en !ok.
 
 ---
 
 ## Bug 2 — Cache stampede en lineup ✅ RESUELTO
 
-**Fix aplicado:** `lineupInFlight = new Map<string, Promise<any>>()` dentro de `registerRoutes`.
-- Si hay cache miss y una request ya está en vuelo para ese `cacheKey`, las demás retornan la misma Promise
-- El Map se limpia en el bloque `finally` de la promise (tanto en éxito como en error)
-- Implementado dentro de `fetchLineupData`
+`lineupInFlight = new Map<string, Promise<any>>()` en `registerRoutes`.
+N requests con cache miss para mismo fixture = 1 sola llamada a Sportmonks.
+Map se limpia en `finally` del promise (éxito y error).
 
 ---
 
-## Bug 3 — fixtureResultCache sin límite de tamaño ✅ RESUELTO
+## Bug 3 — fixtureResultCache sin límite ✅ RESUELTO
 
-**Fix aplicado (3 líneas):** Antes de cada `fixtureResultCache.set()`:
+Antes de cada `fixtureResultCache.set()`:
 ```typescript
 if (fixtureResultCache.size > 200) {
   fixtureResultCache.delete(fixtureResultCache.keys().next().value!);
 }
 ```
-LRU simple: elimina el entry más antiguo (primer key en el Map) cuando supera 200 entries.
 
 ---
 
-## Optimización scheduler — N+1 queries (PENDIENTE — próxima semana)
+## Optimización scheduler N+1 ✅ RESUELTO
 
-`processScheduledPolls` y `processScheduledContests` hacen 1 query por broadcast live.
-Mejora futura: JOIN para traer todos los polls/contests con `scheduledStartTime IS NOT NULL` en una sola query.
+`processScheduledPolls` y `processScheduledContests` ahora usan 1 query JOIN en lugar de 1 + N.
+
+Nuevos métodos en `IStorage` + `DatabaseStorage`:
+- `getScheduledPollsForLiveBroadcasts()` → JOIN polls × broadcasts WHERE status='live' AND scheduledStartTime IS NOT NULL
+- `getScheduledContestsForLiveBroadcasts()` → igual para contests
+
+Resultado: por tick del scheduler, de `1 + N_broadcasts` queries a exactamente 2 queries (1 por polls, 1 por contests).
