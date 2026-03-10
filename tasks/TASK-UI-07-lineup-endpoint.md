@@ -1,6 +1,36 @@
 # TASK-UI-07 — Lineup endpoint + Dashboard section
 
-## Decisiones de arquitectura (confirmadas 2026-03-10)
+## ✅ Respuestas a tus preguntas (2026-03-10)
+
+**P: homeTeamId/awayTeamId no existen en broadcasts. ¿Los añado como columnas?**
+
+No. No añadir columnas sport-specific al schema — si mañana hacemos F1, no queremos `homeDriverId` en broadcasts. La solución:
+
+**Usar el campo `metadata` JSONB que ya existe.** Al seleccionar el fixture en el modal, los participantes de Sportmonks ya vienen con sus IDs. Guardarlos en `metadata`:
+
+```typescript
+// En el PATCH al seleccionar fixture — añadir esto:
+const home = fixture.participants?.find(p => p.meta?.location === 'home');
+const away = fixture.participants?.find(p => p.meta?.location === 'away');
+// Deep-merge en metadata existente:
+updatedMetadata.homeTeamId = home?.id;
+updatedMetadata.awayTeamId = away?.id;
+```
+
+El lineup endpoint los lee de `broadcast.metadata.homeTeamId` / `awayTeamId`. Sin llamadas extra.
+
+---
+
+**P: ¿Orden de tasks? ¿Los hago todos hoy?**
+
+Sí, los 3 hoy. Orden estricto:
+1. **UI-06** — Fix videoStartTime (30 min, el más simple)
+2. **UI-07** — Este endpoint (el núcleo)
+3. **UI-08** — WS trigger + toggle. Si no llega hoy, mañana antes de las 12:00 — los partidos UCL Mar 11 son a las 21:00 Oslo.
+
+---
+
+## Arquitectura (confirmada 2026-03-10)
 
 ### ¿Cómo separar jugadores por equipo (home vs away)?
 
