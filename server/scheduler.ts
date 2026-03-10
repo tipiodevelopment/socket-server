@@ -1,6 +1,6 @@
 import { storage } from "./storage";
 import { isCampaignActive, normalizeUrls } from "./utils";
-import { broadcastToCampaign } from "./routes";
+import { broadcastToCampaign, lineupSentMap } from "./routes";
 
 const SCHEDULER_INTERVAL_MINUTES = parseInt(process.env.SCHEDULER_INTERVAL_MINUTES || '1', 10);
 
@@ -25,6 +25,7 @@ export function startScheduler() {
     updateBroadcastStatuses();
     processScheduledPolls();
     processScheduledContests();
+    processScheduledLineups();
   }, intervalMs);
 }
 
@@ -197,6 +198,53 @@ async function processScheduledContests() {
     }
   } catch (error) {
     console.error('[Scheduler] Error processing scheduled contests:', error);
+  }
+}
+
+async function processScheduledLineups() {
+  try {
+    const now = Date.now();
+    const LEAD_TIME_MS = 10 * 60 * 1000; // 10 min before kickoff
+    const SEND_WINDOW_MS = 60 * 60 * 1000; // stop trying 60 min after kickoff
+
+    const liveBroadcasts = await storage.getBroadcastsByStatus('live');
+
+    for (const broadcast of liveBroadcasts) {
+      const b = broadcast as any;
+      if (!b.showLineup) continue;
+      if (!b.matchStartingAt) continue;
+      if (!b.sportmonksFixtureId) continue;
+      if (lineupSentMap.has(broadcast.broadcastId)) continue;
+
+      const kickoffMs = new Date(b.matchStartingAt).getTime();
+      const sendAt = kickoffMs - LEAD_TIME_MS;
+      const cutoff = kickoffMs + SEND_WINDOW_MS;
+
+      if (now < sendAt || now > cutoff) continue;
+
+      // Calculate videoTimestamp relative to when the broadcast went live
+      const startedAtMs = b.startedAt ? new Date(b.startedAt).getTime() : now;
+      const kickoffVideoTimestamp = Math.max(0, Math.round((kickoffMs - startedAtMs) / 1000));
+      const videoTimestamp = Math.max(0, kickoffVideoTimestamp - 600);
+
+      const event = {
+        type: 'lineup_show',
+        videoTimestamp,
+        kickoffVideoTimestamp,
+        broadcastId: broadcast.broadcastId,
+        leadTimeSeconds: 600,
+        timestamp: new Date().toISOString(),
+        source: 'scheduler',
+      };
+
+      if (broadcast.campaignId) {
+        broadcastToCampaign(broadcast.campaignId, JSON.stringify(event));
+        lineupSentMap.set(broadcast.broadcastId, now);
+        console.log(`[Scheduler] Auto-sent lineup_show for broadcast ${broadcast.broadcastId} — videoTimestamp=${videoTimestamp}s`);
+      }
+    }
+  } catch (error) {
+    console.error('[Scheduler] Error processing scheduled lineups:', error);
   }
 }
 

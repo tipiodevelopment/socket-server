@@ -140,6 +140,10 @@ export let broadcastToCampaign: (campaignId: number, message: string) => void = 
   console.warn('[WebSocket] broadcastToCampaign called before initialization');
 };
 
+// Tracks which broadcasts have had lineup_show sent (broadcastId → epoch ms)
+// Module-level so both the manual endpoint and the scheduler can share state
+export const lineupSentMap = new Map<string, number>();
+
 export async function registerRoutes(app: Express, existingServer?: Server): Promise<Server> {
   const httpServer = existingServer ?? createServer(app);
 
@@ -4133,9 +4137,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
     }
   });
 
-  // POST /api/broadcasts/:broadcastId/send-lineup — Manual lineup_show trigger (for demo)
-  const lineupSentMap = new Map<string, number>(); // broadcastId → timestamp sent
-
+  // POST /api/broadcasts/:broadcastId/send-lineup — Manual lineup_show trigger
   app.post('/api/broadcasts/:broadcastId/send-lineup', async (req, res) => {
     try {
       const { broadcastId } = req.params;
