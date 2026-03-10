@@ -216,3 +216,47 @@ curl https://api-dev.vio.live/v1/sdk/broadcasts/newcastle-united-vs-fc-barcelona
 curl https://api-dev.vio.live/api/broadcasts/elkjop-gaming-live-2026-03-09/lineup
 # → { available: false, message: "No fixture linked to this broadcast" }
 ```
+
+---
+
+## 🐛 Fix requerido — Position mapping incorrecto (2026-03-10)
+
+**Bug encontrado en auditoría**: formation "3-0-3" y 5 goalkeepers por equipo.
+
+**Causa**: El mapeo de `position_id` en el task estaba mal. Los IDs reales de Sportmonks v3 son:
+
+```
+24 = Goalkeeper
+25 = Defender
+26 = Midfielder
+27 = Forward
+```
+
+**Fix en `mapPosition()`** — reemplazar lo que haya por:
+
+```typescript
+function mapPosition(positionId: number): string {
+  switch (positionId) {
+    case 24: return "goalkeeper";
+    case 25: return "defender";
+    case 26: return "midfielder";
+    case 27: return "forward";
+    default: return "forward";
+  }
+}
+```
+
+**Validación post-fix** — Newcastle vs Barcelona debería devolver:
+```json
+"home": {
+  "teamName": "Newcastle United",
+  "formation": "4-3-3",
+  "players": [
+    { "name": "Nick Pope", "jerseyNumber": 1, "position": "goalkeeper" },
+    { "name": "Kieran Trippier", "jerseyNumber": ..., "position": "defender" },
+    ...
+  ]
+}
+```
+
+Fixture verificado con Sportmonks directo: `19662563` tiene `position_id` 24, 25, 26, 27 — nada más.
