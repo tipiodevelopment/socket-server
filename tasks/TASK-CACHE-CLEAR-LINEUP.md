@@ -26,3 +26,24 @@ Resultado esperado:
 - Trippier → defender ✓
 
 ## Urgente — hacerlo ahora
+
+---
+
+## Update 18:30 — Solo Newcastle sigue con cache antiguo
+
+Atalanta, Atlético y Galatasaray ya muestran formaciones correctas.
+Newcastle vs Barcelona (fixture_id: **19662563**) sigue cacheado.
+
+Ejecutar en Neon DB:
+
+```sql
+DELETE FROM sportmonks_cache 
+WHERE cache_key = 'lineup_19662563';
+```
+
+O más seguro — borrar todos los lineup:
+
+```sql
+DELETE FROM sportmonks_cache 
+WHERE cache_key LIKE 'lineup_%';
+```
