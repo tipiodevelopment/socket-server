@@ -126,7 +126,7 @@ Mobile SDK integration endpoints. Two-step initialization flow:
 - `/v1/localization/:language` — i18n strings
 
 **Other SDK:**
-- `/v1/sdk/config` — Campaign config for Swift SDK (legacy)
+- `/v1/sdk/config` — Zero-config endpoint for Swift SDK. Requires only `apiKey` (no `campaignId`). Auto-detects active campaign. Returns `{ clientApp, endpoints, features, commerce, theme, markets }`. Commerce key sourced from `sponsors.commerceApiKey` (fallback `campaigns.reachuApiKey`).
 
 ### API Key Architecture (definitive model — Feb 2026)
 
@@ -411,10 +411,11 @@ Dashboard → Apps → Campaigns → Sponsors → Broadcasts → Components → 
 - Sponsor create/edit form includes Commerce API Key + Channel ID fields.
 - `campaigns.reachuApiKey` / `campaigns.reachuChannelId` preserved in DB for backward compatibility but no longer the active source for shoppable ads.
 
-**ShoppableAdTriggerSection — 3-panel redesign (Mar 2026):**
-- Panel 1 "Pre-programmed Slots": Add Slot dialog (sponsor, products, trigger type, auto-execute). Endpoints: `GET/POST /api/broadcasts/:id/sponsor-slots`, `DELETE /api/broadcasts/:id/sponsor-slots/:slotId`, `POST /api/broadcasts/:id/sponsor-slots/:slotId/execute`.
-- Panel 2 "Quick Fire": sponsor dropdown (sponsors linked to campaign) + product from sponsor's Commerce catalog. Fires via `POST /api/broadcasts/:id/trigger-shoppable-ad` with Commerce key from `sponsor.commerceApiKey`.
+**Sponsor Moments — 3-panel section (formerly "Shoppable Ads", renamed Mar-12-2026):**
+- Panel 1 "Pre-programmed Slots": Add Slot dialog (sponsor, **slot type**, trigger type, auto-execute). Endpoints: `GET/POST /api/broadcasts/:id/sponsor-slots`, `DELETE /api/broadcasts/:id/sponsor-slots/:slotId`, `POST /api/broadcasts/:id/sponsor-slots/:slotId/execute`.
+- Panel 2 "Quick Fire": sponsor dropdown + product from sponsor's Commerce catalog. Fires via `POST /api/broadcasts/:id/trigger-shoppable-ad` with Commerce key from `sponsor.commerceApiKey`.
 - Panel 3 "Session Log": Tracks ad fire events for the current session.
+- **Slot types** (`broadcast_sponsor_slots.type` varchar, default `'product'`): `product` (product picker), `lead` (title/fields/cta), `poll_cta` (pollId/message/cta), `contest_cta` (contestId/message/cta), `link` (url/title/cta). Each type stores its config in `broadcast_sponsor_slots.config` (JSONB). Type badge shown in slot list. Backward-compatible: existing slots have `type='product'`, `config={}`.
 
 **EventTimeline — horizontal scrubber redesign (Mar 2026):**
 - Completely replaced old vertical list with a horizontal 0'–90' scrubber.
@@ -672,6 +673,68 @@ El SDK iOS conecta directamente a Pusher/Ably en lugar de al servidor Vio. Requi
 
 - **Create Broadcast — required fields** — Submit button now disabled unless `selectedFixture` and `externalId` are both set. Prevents creating broadcasts without a linked Sportmonks fixture and Content ID.
 
+## Fixes & Features (Mar 2026 — Session 7 — TASK-ZERO-CONFIG-BACKEND)
+
+### Task 1 — `GET /v1/sdk/config` zero-config
+
+Endpoint rewritten. No longer requires `campaignId` parameter.
+
+**New behavior:**
+1. Authenticates via `?apiKey=` (existing `validateApiKey` middleware)
+2. Auto-detects active campaign: `getClientAppCampaigns(clientApp.id)` → first `status='active'` with dates valid today → fallback to most recent
+3. Commerce key: first `sponsor.commerceApiKey` from campaign sponsors → fallback to `campaign.reachuApiKey`
+4. Endpoints block: `restBase` + `webSocketBase` computed from `req.protocol://req.get('host')`
+
+**Response shape (actual):**
+```json
+{
+  "clientApp": { "id": 17, "name": "Viaplay", "apiKey": "<Vio App API Key>" },
+  "endpoints": {
+    "restBase": "https://api-dev.vio.live",
+    "webSocketBase": "wss://api-dev.vio.live",
+    "commerceGraphQL": "https://graph-ql-dev.vio.live/graphql"
+  },
+  "features": { "engagement": true, "adPlacements": true, "commerce": true, "lineup": true },
+  "commerce": { "apiKey": "KCXF10Y-...", "endpoint": "https://graph-ql-dev.vio.live/graphql" },
+  "theme": { "primaryColor": null, "accentColor": null },
+  "markets": []
+}
+```
+Note: `commerce` is `null` when no Commerce API key is configured. `features.commerce` mirrors this as a boolean flag.
+
+Verified: `GET /v1/sdk/config?apiKey=viaplay_api_key_0c611e983b314ff8` → clientApp id=17, campaign 35, `commerce.apiKey = "KCXF10Y-..."` ✅
+
+### Task 2 — UI rename: "Shoppable Ads" / "Shoppable Products" → "Sponsor Moments"
+
+Changed in `client/src/pages/broadcast-detail.tsx`:
+- `ShoppableProductsSection` h2: "Shoppable Products" → "Sponsor Moments"
+- `ShoppableAdTriggerSection` h2: "Shoppable Ads" → "Sponsor Moments"
+- Dialog description: "Pre-program a shoppable ad" → "Pre-program a sponsor moment"
+
+Not changed: component names, data-testid attributes, API endpoints, DB table names.
+
+### Task 3 — Sponsor Moment slot types
+
+**Schema:** `broadcast_sponsor_slots.type` varchar(50) DEFAULT `'product'`; `broadcast_sponsor_slots.config` JSON DEFAULT `'{}'`. Columns already existed in DB — added to Drizzle schema definition and explicit SELECT lists in `getBroadcastSponsorSlots` (plural) and `getBroadcastSponsorSlot` (singular).
+
+**Five slot types:**
+| Type | Config fields |
+|------|---------------|
+| `product` | `productIds[]` (existing picker) |
+| `lead` | `title`, `fields` (email/phone/name), `cta` |
+| `poll_cta` | `pollId`, `message`, `cta` |
+| `contest_cta` | `contestId`, `message`, `cta` |
+| `link` | `url`, `title`, `cta` |
+
+**UI:** Dialog has a type dropdown + dynamic field section per type. Slot list shows a type badge. Backward-compatible: existing rows return `type='product'`, `config={}`.
+
+### TASK-BACKEND-REVIEW — 4 bugs fixed (also this session)
+
+1. **`fetchLineupData` split:** Pure data-fetching function using `sportmonksFetch`; thin `fetchLineup` wrapper. Eliminates silent auth failure on cold start.
+2. **Lineup stampede prevention:** `lineupInFlight = new Map<string, Promise<any>>()` — N concurrent cache-miss requests collapse into 1 Sportmonks call.
+3. **`fixtureResultCache` LRU:** Eviction at 200 entries (FIFO on Map insertion order).
+4. **Scheduler N+1 eliminated:** `processScheduledPolls` / `processScheduledContests` use 1 JOIN query each. New storage methods: `getScheduledPollsForLiveBroadcasts()` and `getScheduledContestsForLiveBroadcasts()`.
+
 ## Architect Review Notes (Feb 2026)
 
 Pending improvements identified by architecture review:
@@ -681,4 +744,4 @@ Pending improvements identified by architecture review:
 4. **Important:** Wrap multi-step storage operations in database transactions
 5. **Important:** Audit and enforce auth consistently across all route groups
 6. **Minor:** Restrict CORS in production
-7. **Minor:** Optimize scheduler to avoid N+1 query patterns
+7. ~~**Minor:** Optimize scheduler to avoid N+1 query patterns~~ — **DONE** (Session 7: JOIN-based scheduler methods)

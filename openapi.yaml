@@ -1868,10 +1868,17 @@ paths:
     get:
       tags:
         - SDK - Discovery
-      summary: Get SDK config
+      summary: Get SDK config (zero-config)
       description: >-
-        Retrieves the SDK configuration for a specific campaign.
-        Includes components, UI config, feature flags, and engagement settings.
+        Zero-config SDK bootstrap endpoint for the Swift SDK. Only requires the
+        `apiKey` — no `campaignId` needed. The server auto-detects the active
+        campaign for the client app (first campaign with `status=active` and
+        dates valid today; falls back to the most recent campaign).
+
+        Returns a flat, SDK-friendly config object with endpoint URLs, feature
+        flags, Commerce integration key (sourced from the linked sponsor's
+        `commerceApiKey`, falling back to `campaign.reachuApiKey`), branding
+        theme, and target markets.
       security:
         - ApiKeyQuery: []
       parameters:
@@ -1880,47 +1887,101 @@ paths:
           required: true
           schema:
             type: string
-          description: API key for authentication
-        - name: campaignId
-          in: query
-          required: true
-          schema:
-            type: integer
-          description: Campaign ID to get config for
+          description: Vio App API key (`client_apps.api_key`)
       responses:
         '200':
-          description: SDK configuration
+          description: SDK bootstrap configuration
           content:
             application/json:
               schema:
                 type: object
+                required:
+                  - clientApp
+                  - endpoints
+                  - features
+                  - commerce
+                  - theme
+                  - markets
                 properties:
-                  campaign:
-                    $ref: '#/components/schemas/Campaign'
-                  components:
+                  clientApp:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                        example: 17
+                      name:
+                        type: string
+                        example: Viaplay
+                      apiKey:
+                        type: string
+                        description: The Vio App API key for this client app
+                  endpoints:
+                    type: object
+                    properties:
+                      restBase:
+                        type: string
+                        example: https://api-dev.vio.live
+                        description: Base URL for all REST calls
+                      webSocketBase:
+                        type: string
+                        example: wss://api-dev.vio.live
+                        description: Base URL for WebSocket connections
+                      commerceGraphQL:
+                        type: string
+                        example: https://graph-ql-dev.vio.live/graphql
+                        description: Commerce GraphQL endpoint (external)
+                  features:
+                    type: object
+                    properties:
+                      engagement:
+                        type: boolean
+                        description: Polls, contests, and real-time engagement
+                      adPlacements:
+                        type: boolean
+                        description: Sponsor moments / ad slots
+                      commerce:
+                        type: boolean
+                        description: True if a Commerce API key is available
+                      lineup:
+                        type: boolean
+                        description: Team lineup delivery via WebSocket
+                  commerce:
+                    type: object
+                    nullable: true
+                    description: Present when a Commerce key is configured; null otherwise
+                    properties:
+                      apiKey:
+                        type: string
+                        description: Commerce module API key — sourced from `sponsors.commerceApiKey`, fallback to `campaigns.reachuApiKey`
+                      endpoint:
+                        type: string
+                        example: https://graph-ql-dev.vio.live/graphql
+                  theme:
+                    type: object
+                    properties:
+                      primaryColor:
+                        type: string
+                        nullable: true
+                        example: '#3d8b7a'
+                      accentColor:
+                        type: string
+                        nullable: true
+                  markets:
                     type: array
                     items:
-                      $ref: '#/components/schemas/CampaignComponent'
-                  featureFlags:
-                    $ref: '#/components/schemas/CampaignFeatureFlags'
-                  uiConfig:
-                    $ref: '#/components/schemas/CampaignUiConfig'
-                  engagementConfig:
-                    $ref: '#/components/schemas/CampaignEngagementConfig'
-        '400':
-          description: Missing required parameters
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
+                      type: string
+                    description: Target market country codes (ISO-3166-1 alpha-2)
+                    example:
+                      - NO
+                      - SE
         '401':
-          description: Invalid API key
+          description: Invalid or missing API key
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
         '404':
-          description: Campaign not found
+          description: No campaign found for this client app
           content:
             application/json:
               schema:
