@@ -429,6 +429,8 @@ export const broadcastSponsorSlots = pgTable("broadcast_sponsor_slots", {
   sponsorId: integer("sponsor_id").notNull().references(() => sponsors.id, { onDelete: 'cascade' }),
   campaignId: integer("campaign_id").references(() => campaigns.id, { onDelete: 'set null' }),
   role: varchar("role", { length: 50 }).notNull().default('shoppable'),
+  type: varchar("type", { length: 50 }).notNull().default('product'), // 'product' | 'lead' | 'poll_cta' | 'contest_cta' | 'link'
+  config: json("config").default({}), // type-specific config payload
   triggerType: varchar("trigger_type", { length: 50 }).notNull().default('manual'), // 'manual' | 'match_minute' | 'absolute_time'
   triggerValue: text("trigger_value"), // minute number or ISO datetime string
   autoExecute: boolean("auto_execute").default(false),
@@ -442,6 +444,8 @@ export const insertCampaignSponsorSchema = createInsertSchema(campaignSponsors).
 export const insertBroadcastCampaignSchema = createInsertSchema(broadcastCampaigns).omit({ id: true, createdAt: true });
 export const insertBroadcastSponsorSlotSchema = createInsertSchema(broadcastSponsorSlots).omit({ id: true, createdAt: true }).extend({
   productIds: z.array(z.number()).optional(),
+  type: z.enum(['product', 'lead', 'poll_cta', 'contest_cta', 'link']).default('product'),
+  config: z.record(z.any()).optional(),
 });
 
 export type CampaignSponsor = typeof campaignSponsors.$inferSelect;

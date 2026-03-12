@@ -771,7 +771,7 @@ function ShoppableProductsSection({ broadcastId, campaignId }: { broadcastId: st
   return (
     <div className="mb-6" data-testid="section-products">
       <div className="flex items-center justify-between mb-4">
-        <h2 className="text-sm font-semibold text-gray-900 dark:text-white">Shoppable Products</h2>
+        <h2 className="text-sm font-semibold text-gray-900 dark:text-white">Sponsor Moments</h2>
         {products.length > 0 && (
           <span className="text-[11px] text-white/30">{products.length} product{products.length !== 1 ? 's' : ''} from Commerce</span>
         )}
@@ -845,7 +845,8 @@ type TriggeredAdEntry = {
 type CommerceProduct = { id: number; name: string; imageUrl: string | null; price: number | null; currency: string };
 type SponsorSlot = {
   id: number; broadcastId: string; sponsorId: number; campaignId: number | null;
-  role: string; triggerType: string; triggerValue: string | null;
+  role: string; type: string; config: Record<string, any> | null;
+  triggerType: string; triggerValue: string | null;
   autoExecute: boolean | null; productIds: number[] | null;
   status: string | null; executedAt: string | null; createdAt: string;
   sponsorName: string; sponsorLogoUrl: string | null; sponsorPrimaryColor: string | null;
@@ -856,10 +857,18 @@ function ShoppableAdTriggerSection({ broadcastId, campaignId }: { broadcastId: s
   const [log, setLog] = useState<TriggeredAdEntry[]>([]);
   const [addSlotOpen, setAddSlotOpen] = useState(false);
   const [selectedSponsorId, setSelectedSponsorId] = useState('');
+  const [slotType, setSlotType] = useState<'product' | 'lead' | 'poll_cta' | 'contest_cta' | 'link'>('product');
   const [slotTriggerType, setSlotTriggerType] = useState('manual');
   const [slotTriggerValue, setSlotTriggerValue] = useState('');
   const [slotProductIds, setSlotProductIds] = useState<number[]>([]);
   const [autoExecute, setAutoExecute] = useState(false);
+  // Config fields for non-product types
+  const [cfgTitle, setCfgTitle] = useState('');
+  const [cfgUrl, setCfgUrl] = useState('');
+  const [cfgCta, setCfgCta] = useState('');
+  const [cfgMessage, setCfgMessage] = useState('');
+  const [cfgRefId, setCfgRefId] = useState('');
+  const [cfgLeadFields, setCfgLeadFields] = useState<string[]>(['email']);
 
   const [adhocSponsorId, setAdhocSponsorId] = useState('');
   const [adhocProductId, setAdhocProductId] = useState<number | null>(null);
@@ -895,6 +904,20 @@ function ShoppableAdTriggerSection({ broadcastId, campaignId }: { broadcastId: s
     enabled: !!campaignId,
   });
 
+  const buildSlotConfig = () => {
+    if (slotType === 'lead') return { title: cfgTitle, fields: cfgLeadFields, cta: cfgCta };
+    if (slotType === 'poll_cta') return { pollId: cfgRefId, message: cfgMessage, cta: cfgCta };
+    if (slotType === 'contest_cta') return { contestId: cfgRefId, message: cfgMessage, cta: cfgCta };
+    if (slotType === 'link') return { url: cfgUrl, title: cfgTitle, cta: cfgCta };
+    return {};
+  };
+
+  const resetSlotForm = () => {
+    setSelectedSponsorId(''); setSlotType('product');
+    setSlotTriggerType('manual'); setSlotTriggerValue(''); setSlotProductIds([]); setAutoExecute(false);
+    setCfgTitle(''); setCfgUrl(''); setCfgCta(''); setCfgMessage(''); setCfgRefId(''); setCfgLeadFields(['email']);
+  };
+
   const createSlotMutation = useMutation({
     mutationFn: async () => {
       const res = await fetch(`/api/broadcasts/${broadcastId}/sponsor-slots`, {
@@ -903,9 +926,11 @@ function ShoppableAdTriggerSection({ broadcastId, campaignId }: { broadcastId: s
         body: JSON.stringify({
           sponsorId: parseInt(selectedSponsorId),
           campaignId,
+          type: slotType,
+          config: buildSlotConfig(),
           triggerType: slotTriggerType,
           triggerValue: slotTriggerValue || null,
-          productIds: slotProductIds,
+          productIds: slotType === 'product' ? slotProductIds : [],
           autoExecute,
         }),
       });
@@ -916,11 +941,7 @@ function ShoppableAdTriggerSection({ broadcastId, campaignId }: { broadcastId: s
       queryClient.invalidateQueries({ queryKey: ['/api/broadcasts', broadcastId, 'sponsor-slots'] });
       toast({ title: 'Slot configured' });
       setAddSlotOpen(false);
-      setSelectedSponsorId('');
-      setSlotTriggerType('manual');
-      setSlotTriggerValue('');
-      setSlotProductIds([]);
-      setAutoExecute(false);
+      resetSlotForm();
     },
     onError: () => toast({ title: 'Error', description: 'Could not create slot', variant: 'destructive' }),
   });
@@ -1008,7 +1029,7 @@ function ShoppableAdTriggerSection({ broadcastId, campaignId }: { broadcastId: s
   return (
     <div className="mb-6 space-y-5" data-testid="section-shoppable-ads">
       <div className="flex items-center justify-between">
-        <h2 className="text-sm font-semibold text-gray-900 dark:text-white">Shoppable Ads</h2>
+        <h2 className="text-sm font-semibold text-gray-900 dark:text-white">Sponsor Moments</h2>
       </div>
 
       {/* Pre-programmed Slots Panel */}
@@ -1028,7 +1049,7 @@ function ShoppableAdTriggerSection({ broadcastId, campaignId }: { broadcastId: s
             <DialogContent className="sm:max-w-md">
               <DialogHeader>
                 <DialogTitle>Configure Slot</DialogTitle>
-                <DialogDescription>Pre-program a shoppable ad for this broadcast.</DialogDescription>
+                <DialogDescription>Pre-program a sponsor moment for this broadcast.</DialogDescription>
               </DialogHeader>
               <div className="space-y-4 py-2">
                 <div className="space-y-1.5">
@@ -1053,36 +1074,114 @@ function ShoppableAdTriggerSection({ broadcastId, campaignId }: { broadcastId: s
                   </Select>
                 </div>
                 <div className="space-y-1.5">
-                  <Label>Products</Label>
-                  {commerceProducts.length === 0 ? (
-                    <p className="text-xs text-gray-400 dark:text-gray-500">No products configured for this campaign yet.</p>
-                  ) : (
-                    <div className="grid grid-cols-2 gap-2 max-h-52 overflow-y-auto pr-1">
-                      {commerceProducts.map(p => {
-                        const isSelected = slotProductIds.includes(p.id);
-                        return (
-                          <button
-                            key={p.id}
-                            type="button"
-                            onClick={() => setSlotProductIds(prev => isSelected ? prev.filter(id => id !== p.id) : [...prev, p.id])}
-                            data-testid={`slot-product-${p.id}`}
-                            className={`flex items-center gap-2 p-2 rounded-lg border text-left transition ${isSelected ? 'border-blue-500/50 bg-blue-500/10' : 'border-white/10 bg-white/[0.02] hover:border-white/20'}`}
-                          >
-                            {p.imageUrl
-                              ? <img src={p.imageUrl} alt={p.name} className="w-8 h-8 rounded object-cover flex-shrink-0" />
-                              : <div className="w-8 h-8 rounded bg-white/10 flex-shrink-0 flex items-center justify-center"><ShoppingBag className="w-3.5 h-3.5 text-white/30" /></div>
-                            }
-                            <div className="flex-1 min-w-0">
-                              <p className="text-[11px] font-medium text-white truncate">{p.name}</p>
-                              {p.price != null && <p className="text-[10px] text-green-400">{p.price} {p.currency}</p>}
-                            </div>
-                            {isSelected && <Check className="w-3 h-3 text-blue-400 shrink-0" />}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  )}
+                  <Label>Type</Label>
+                  <Select value={slotType} onValueChange={v => setSlotType(v as typeof slotType)}>
+                    <SelectTrigger data-testid="select-slot-type">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="product">Product</SelectItem>
+                      <SelectItem value="lead">Lead capture</SelectItem>
+                      <SelectItem value="poll_cta">Poll CTA</SelectItem>
+                      <SelectItem value="contest_cta">Contest CTA</SelectItem>
+                      <SelectItem value="link">Link</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
+
+                {/* Dynamic config fields by type */}
+                {slotType === 'product' && (
+                  <div className="space-y-1.5">
+                    <Label>Products</Label>
+                    {commerceProducts.length === 0 ? (
+                      <p className="text-xs text-gray-400 dark:text-gray-500">No products configured for this campaign yet.</p>
+                    ) : (
+                      <div className="grid grid-cols-2 gap-2 max-h-52 overflow-y-auto pr-1">
+                        {commerceProducts.map(p => {
+                          const isSelected = slotProductIds.includes(p.id);
+                          return (
+                            <button
+                              key={p.id}
+                              type="button"
+                              onClick={() => setSlotProductIds(prev => isSelected ? prev.filter(id => id !== p.id) : [...prev, p.id])}
+                              data-testid={`slot-product-${p.id}`}
+                              className={`flex items-center gap-2 p-2 rounded-lg border text-left transition ${isSelected ? 'border-blue-500/50 bg-blue-500/10' : 'border-white/10 bg-white/[0.02] hover:border-white/20'}`}
+                            >
+                              {p.imageUrl
+                                ? <img src={p.imageUrl} alt={p.name} className="w-8 h-8 rounded object-cover flex-shrink-0" />
+                                : <div className="w-8 h-8 rounded bg-white/10 flex-shrink-0 flex items-center justify-center"><ShoppingBag className="w-3.5 h-3.5 text-white/30" /></div>
+                              }
+                              <div className="flex-1 min-w-0">
+                                <p className="text-[11px] font-medium text-white truncate">{p.name}</p>
+                                {p.price != null && <p className="text-[10px] text-green-400">{p.price} {p.currency}</p>}
+                              </div>
+                              {isSelected && <Check className="w-3 h-3 text-blue-400 shrink-0" />}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {slotType === 'lead' && (
+                  <div className="space-y-3">
+                    <div className="space-y-1.5">
+                      <Label>Title</Label>
+                      <Input placeholder="Win a jersey!" value={cfgTitle} onChange={e => setCfgTitle(e.target.value)} data-testid="input-cfg-title" />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label>Fields</Label>
+                      <div className="flex gap-3">
+                        {['email', 'phone', 'name'].map(f => (
+                          <label key={f} className="flex items-center gap-1.5 text-sm text-white/70 cursor-pointer">
+                            <input type="checkbox" checked={cfgLeadFields.includes(f)} onChange={e => setCfgLeadFields(prev => e.target.checked ? [...prev, f] : prev.filter(x => x !== f))} className="w-3.5 h-3.5 rounded" />
+                            {f}
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label>CTA text</Label>
+                      <Input placeholder="Submit" value={cfgCta} onChange={e => setCfgCta(e.target.value)} data-testid="input-cfg-cta" />
+                    </div>
+                  </div>
+                )}
+
+                {(slotType === 'poll_cta' || slotType === 'contest_cta') && (
+                  <div className="space-y-3">
+                    <div className="space-y-1.5">
+                      <Label>{slotType === 'poll_cta' ? 'Poll ID' : 'Contest ID'}</Label>
+                      <Input placeholder="e.g. 42" value={cfgRefId} onChange={e => setCfgRefId(e.target.value)} data-testid="input-cfg-ref-id" />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label>Message</Label>
+                      <Input placeholder="Vote now!" value={cfgMessage} onChange={e => setCfgMessage(e.target.value)} data-testid="input-cfg-message" />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label>CTA text</Label>
+                      <Input placeholder="Go to poll" value={cfgCta} onChange={e => setCfgCta(e.target.value)} data-testid="input-cfg-cta" />
+                    </div>
+                  </div>
+                )}
+
+                {slotType === 'link' && (
+                  <div className="space-y-3">
+                    <div className="space-y-1.5">
+                      <Label>URL</Label>
+                      <Input placeholder="https://example.com" value={cfgUrl} onChange={e => setCfgUrl(e.target.value)} data-testid="input-cfg-url" />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label>Title</Label>
+                      <Input placeholder="Check it out" value={cfgTitle} onChange={e => setCfgTitle(e.target.value)} data-testid="input-cfg-title" />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label>CTA text</Label>
+                      <Input placeholder="Open" value={cfgCta} onChange={e => setCfgCta(e.target.value)} data-testid="input-cfg-cta" />
+                    </div>
+                  </div>
+                )}
+
                 <div className="space-y-1.5">
                   <Label>Trigger Type</Label>
                   <Select value={slotTriggerType} onValueChange={setSlotTriggerType}>
@@ -1145,10 +1244,13 @@ function ShoppableAdTriggerSection({ broadcastId, campaignId }: { broadcastId: s
                   }
                 </div>
                 <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-0.5">
+                  <div className="flex items-center gap-2 mb-0.5 flex-wrap">
                     <span className="text-sm font-medium text-white truncate">{slot.sponsorName}</span>
                     <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${slotStatusStyles[slot.status ?? 'scheduled'] ?? 'bg-white/10 text-white/50'}`}>
                       {slot.status ?? 'scheduled'}
+                    </span>
+                    <span className="text-[10px] px-1.5 py-0.5 rounded-full font-medium bg-white/10 text-white/50">
+                      {slot.type || 'product'}
                     </span>
                   </div>
                   <div className="flex items-center gap-2 text-[11px] text-white/30">

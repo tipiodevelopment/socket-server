@@ -1,109 +1,54 @@
 # TASK: Zero-Config SDK — Backend Support
 
-## Objetivo
-Implementar el soporte backend para que el SDK funcione con configuración mínima.
-Target: `VioSDK.configure(apiKey: "xxx")` — todo lo demás viene del backend.
-
-## Contexto
-El SDK actualmente requiere un `vio-config.json` con ~15 secciones de configuración
-(theme, commerce apiKey, feature flags, URLs, etc.). El objetivo es eliminar ese archivo
-y que el backend devuelva todo lo que el SDK necesita para funcionar.
+## Estado: ✅ COMPLETADO (2026-03-12)
 
 ---
 
-## Task 1: Endpoint GET /v1/sdk/config
+## Task 1: GET /v1/sdk/config ✅
 
-### Endpoint
-```
-GET /v1/sdk/config?apiKey=<apiKey>
-```
+Endpoint actualizado — ya no requiere `campaignId`. Solo necesita `apiKey`.
 
-### Response esperada
-```json
-{
-  "clientApp": {
-    "id": 17,
-    "name": "Viaplay NO",
-    "apiKey": "viaplay_api_key_0c611e983b314ff8"
-  },
-  "endpoints": {
-    "restBase": "https://api-dev.vio.live",
-    "webSocketBase": "https://api-dev.vio.live",
-    "commerceGraphQL": "https://graph-ql-dev.vio.live/graphql"
-  },
-  "features": {
-    "engagement": true,
-    "adPlacements": true,
-    "commerce": true,
-    "lineup": true
-  },
-  "commerce": {
-    "apiKey": "KCXF10Y-W5T4PCR-GG5119A-Z64SQ9S",
-    "endpoint": "https://graph-ql-dev.vio.live/graphql"
-  },
-  "theme": {
-    "primaryColor": "#FFFFFF",
-    "accentColor": "#0066CC"
-  },
-  "markets": ["NO", "SE", "DK", "FI"]
-}
-```
+Lógica:
+- Busca clientApp por apiKey (validateApiKey middleware)
+- Auto-detecta campaña activa via `getClientAppCampaigns(clientApp.id)` — primero `status='active'` con fechas válidas, fallback a la más reciente
+- Commerce apiKey: desde sponsors de la campaña (campo `commerceApiKey`), fallback a `reachuApiKey` legacy
+- `endpoints.restBase` y `webSocketBase` desde `${req.protocol}://${req.get('host')}`
 
-### Lógica
-1. Buscar clientApp por `apiKey`
-2. Si no existe → 401 Unauthorized
-3. Devolver la config del clientApp + integrations de la campaña activa (si existe)
-4. `commerce.apiKey` viene de `campaigns.integrations.commerce.apiKey` (campaña activa para ese clientApp)
-5. `features` por ahora todos `true` — se puede hacer configurable después por clientApp
+Response: `{ clientApp, endpoints, features, commerce, theme, markets }`
+
+Verificado: `GET /v1/sdk/config?apiKey=viaplay_api_key_0c611e983b314ff8` →
+- clientApp id=17, features.commerce=true, commerceApiKey=KCXF10Y... ✓
 
 ---
 
-## Task 2: Renombrar "Shoppable Ads" → "Sponsor Moments" en Dashboard
+## Task 2: Rename "Shoppable Ads" → "Sponsor Moments" ✅
 
-### Archivos a cambiar
-- Cualquier string "Shoppable Ads" en el dashboard React → "Sponsor Moments"
-- Cualquier label "Shoppable Ad" → "Sponsor Moment"
-- NO cambiar el nombre de la tabla/columnas en DB (sigue siendo `sponsor_slots`)
-- NO cambiar el API endpoint (sigue siendo `/api/broadcasts/:id/sponsor-slots`)
-- Solo cambiar el texto visible en la UI
+Cambios en `client/src/pages/broadcast-detail.tsx`:
+- `ShoppableProductsSection` h2: "Shoppable Products" → "Sponsor Moments"
+- `ShoppableAdTriggerSection` h2: "Shoppable Ads" → "Sponsor Moments"
+- Dialog description: "Pre-program a shoppable ad" → "Pre-program a sponsor moment"
 
----
-
-## Task 3: Añadir `type` a Sponsor Moments
-
-### Schema DB — añadir columna a `sponsor_slots`
-```sql
-ALTER TABLE sponsor_slots 
-ADD COLUMN type VARCHAR(50) NOT NULL DEFAULT 'product',
-ADD COLUMN config JSONB DEFAULT '{}';
-```
-
-### Tipos soportados
-| type | config fields |
-|------|--------------|
-| `product` | `{ productId, commerceProductId, cta }` |
-| `lead` | `{ title, fields: ["email","phone"], cta }` |
-| `poll_cta` | `{ pollId, message, cta }` |
-| `contest_cta` | `{ contestId, message, cta }` |
-| `link` | `{ url, title, cta }` |
-
-### API
-- `GET /api/broadcasts/:id/sponsor-slots` → incluir `type` y `config` en response
-- `POST /api/broadcasts/:id/sponsor-slots` → aceptar `type` y `config`
-- Default `type: "product"` para slots existentes (retrocompat)
-
-### Dashboard
-- Al crear/editar un Sponsor Moment → dropdown para seleccionar `type`
-- Según el tipo, mostrar campos diferentes (productId, pollId, url, etc.)
+No se tocaron: nombres de componentes, data-testid, API endpoints, tablas DB.
 
 ---
 
-## Prioridad
-1. **Task 1 (GET /v1/sdk/config)** — blocker para SDK zero-config. Hacer primero.
-2. **Task 2 (rename UI)** — quick win, solo texto. Hacer junto con Task 1.
-3. **Task 3 (type system)** — más trabajo, puede ir después.
+## Task 3: `type` y `config` en Sponsor Moments ✅
 
-## Referencias
-- Backend: `https://api-dev.vio.live`
-- Dashboard: `https://staging.vio.live`
-- SDK repo: `angelosv/VioSwiftSDK`, branch `feature/zero-config`
+Schema DB: columnas `type varchar(50) DEFAULT 'product'` y `config json DEFAULT '{}'` ya existían en DB.
+- `shared/schema.ts`: campos añadidos al `pgTable`
+- `insertBroadcastSponsorSlotSchema`: extends con `type` enum y `config: z.record(z.any()).optional()`
+
+API:
+- `GET /api/broadcasts/:id/sponsor-slots` → incluye `type` y `config` (storage select actualizado)
+- `POST /api/broadcasts/:id/sponsor-slots` → acepta `type` y `config` via Zod schema
+
+UI (slot creation dialog):
+- Dropdown "Type": product / lead capture / poll CTA / contest CTA / link
+- Campos dinámicos según tipo:
+  - `product`: productos picker (existente)
+  - `lead`: title, fields (email/phone/name), cta
+  - `poll_cta` / `contest_cta`: pollId/contestId, message, cta
+  - `link`: url, title, cta
+- Badge de tipo en slot list
+
+Retrocompat: slots existentes muestran `type: product`, `config: {}` ✓

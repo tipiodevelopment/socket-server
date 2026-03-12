@@ -5100,114 +5100,60 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
     }
   });
 
-  // GET /v1/sdk/config - Get dynamic SDK configuration
+  // GET /v1/sdk/config — Zero-config bootstrap for SDK. Only needs apiKey.
   app.get('/v1/sdk/config', validateApiKey, async (req, res) => {
     try {
       const clientApp = (req as any).clientApp;
-      const campaignIdParam = req.query.campaignId as string | undefined;
-      
-      // Require campaignId for proper campaign-level scoping
-      if (!campaignIdParam) {
-        return res.status(400).json({ 
-          message: 'campaignId query parameter is required'
-        });
-      }
-      
-      const requestedCampaignId = parseInt(campaignIdParam);
-      if (isNaN(requestedCampaignId)) {
-        return res.status(400).json({ message: 'Invalid campaignId parameter' });
-      }
-      
-      // Get the campaign
-      const campaign = await storage.getCampaign(requestedCampaignId);
-      
-      if (!campaign) {
-        return res.status(404).json({ message: 'Campaign not found' });
-      }
 
-      // Resolve channel if campaign has one (optional — channel is now campaign-level metadata)
-      const channel = campaign.channelId ? await storage.getChannel(campaign.channelId) : null;
+      // Auto-detect active campaign for this clientApp
+      const appCampaigns = await storage.getClientAppCampaigns(clientApp.id);
+      const now = new Date();
+      const activeCampaign = appCampaigns.find(c =>
+        c.status === 'active' &&
+        (!c.startDate || new Date(c.startDate) <= now) &&
+        (!c.endDate || new Date(c.endDate) >= now)
+      ) || appCampaigns[0] || null;
 
-      // Verify campaign belongs to this client app (directly or via legacy channel association)
-      const belongsByClientApp = campaign.clientAppId === clientApp.id;
-      const belongsByChannel = channel && channel.clientAppId === clientApp.id;
-      if (!belongsByClientApp && !belongsByChannel) {
-        return res.status(403).json({ message: 'Campaign does not belong to this API key' });
+      // Commerce API key — from campaign sponsors first, then legacy campaign field
+      let commerceApiKey: string | null = (activeCampaign as any)?.reachuApiKey || null;
+      if (activeCampaign) {
+        const campaignSponsors = await storage.getCampaignSponsors(activeCampaign.id);
+        for (const cs of campaignSponsors) {
+          const sp = await storage.getSponsor(cs.sponsorId);
+          if (sp?.commerceApiKey) { commerceApiKey = sp.commerceApiKey; break; }
+        }
       }
 
-      const dynamicConfig = (channel?.dynamicConfig as any) || {};
+      const baseUrl = `${req.protocol}://${req.get('host')}`;
+      const COMMERCE_GRAPHQL = 'https://graph-ql-dev.vio.live/graphql';
 
-      const config: any = {
-        campaignId: campaign.id,
-        campaignName: campaign.name,
-        campaignLogo: campaign.logo ? toAbsoluteUrl(campaign.logo, req) : null,
-        channelId: channel?.id ?? null,
-        channelName: channel?.name ?? null,
-        environment: dynamicConfig.environment || 'production',
-        campaigns: {
-          webSocketBaseURL: dynamicConfig.webSocketBaseURL || `${req.protocol}://${req.get('host')}`,
-          restAPIBaseURL: dynamicConfig.restAPIBaseURL || `${req.protocol}://${req.get('host')}`
+      return res.json({
+        clientApp: {
+          id: clientApp.id,
+          name: clientApp.name,
+          apiKey: clientApp.apiKey,
         },
-        marketFallback: dynamicConfig.marketFallback || {
-          countryCode: 'US',
-          currencyCode: 'USD',
-          currencySymbol: '$',
-          phoneCode: '+1'
+        endpoints: {
+          restBase: baseUrl,
+          webSocketBase: baseUrl,
+          commerceGraphQL: COMMERCE_GRAPHQL,
         },
-        features: dynamicConfig.features || {
-          enableWebSocket: true,
-          enableGuestCheckout: true
-        }
-      };
-
-      // Include matchContext if campaign is associated with a match
-      if (campaign.matchId) {
-        config.matchContext = {
-          matchId: campaign.matchId,
-          matchName: campaign.matchName || null,
-          startTime: campaign.matchStartTime ? campaign.matchStartTime.toISOString() : null,
-          channelId: campaign.channelId,
-          metadata: {}
-        };
-      }
-
-      // Include sponsor branding if campaign has a sponsor
-      if (campaign.sponsorId) {
-        const sponsor = await storage.getSponsor(campaign.sponsorId);
-        if (sponsor) {
-          config.sponsor = {
-            id: sponsor.id,
-            name: sponsor.name,
-            logoUrl: sponsor.logoUrl ? toAbsoluteUrl(sponsor.logoUrl, req) : null,
-            avatarUrl: sponsor.avatarUrl ? toAbsoluteUrl(sponsor.avatarUrl, req) : null,
-            primaryColor: sponsor.primaryColor || null,
-            secondaryColor: sponsor.secondaryColor || null,
-          };
-        }
-      }
-
-      // Commerce integration — get key from campaign sponsors first, fallback to campaign legacy key
-      const sdkCampaignSponsors = await storage.getCampaignSponsors(campaign.id);
-      let sdkCommerceApiKey: string | null = campaign.reachuApiKey || null;
-      let sdkCommerceChannelId: string | null = campaign.reachuChannelId || null;
-      for (const cs of sdkCampaignSponsors) {
-        const sp = await storage.getSponsor(cs.sponsorId);
-        if (sp?.commerceApiKey) { sdkCommerceApiKey = sp.commerceApiKey; sdkCommerceChannelId = sp.commerceChannelId || null; break; }
-      }
-      config.integrations = {
-        commerce: {
-          enabled: !!(sdkCommerceApiKey),
-          apiKey: sdkCommerceApiKey,
-          channelId: sdkCommerceChannelId,
-        }
-      };
-
-      // Checkout config — payment methods enabled for this campaign
-      config.checkout = {
-        paymentMethods: (campaign.paymentMethods as string[] | null) || ["apple_pay"],
-      };
-
-      res.json(config);
+        features: {
+          engagement: true,
+          adPlacements: true,
+          commerce: !!(commerceApiKey),
+          lineup: true,
+        },
+        commerce: commerceApiKey ? {
+          apiKey: commerceApiKey,
+          endpoint: COMMERCE_GRAPHQL,
+        } : null,
+        theme: {
+          primaryColor: (activeCampaign as any)?.primaryColor || null,
+          accentColor: (activeCampaign as any)?.accentColor || null,
+        },
+        markets: [],
+      });
     } catch (error) {
       console.error('Error fetching SDK config:', error);
       res.status(500).json({ message: 'Error fetching SDK config' });
