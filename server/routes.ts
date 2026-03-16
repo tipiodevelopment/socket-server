@@ -6,16 +6,6 @@ import jwt from "jsonwebtoken";
 import Stripe from "stripe";
 import apn from "@parse/node-apn";
 import { storage } from "./storage";
-<<<<<<< HEAD
-import {
-  webSocketEventSchema,
-  type WebSocketEvent,
-  type InsertScheduledComponent,
-} from "@shared/schema";
-import { randomUUID } from "crypto";
-import { ObjectStorageService, ObjectNotFoundError } from "./objectStorage";
-import { isCampaignActive, normalizeUrls } from "./utils";
-=======
 import { 
   webSocketEventSchema, 
   updateCampaignSchema,
@@ -77,7 +67,6 @@ const requireBearerAuth = (req: Request, res: any, next: any) => {
     return res.status(401).json({ message: 'Invalid token' });
   }
 };
->>>>>>> main
 
 // Helper function to convert relative paths to absolute URLs
 function toAbsoluteUrl(
@@ -90,15 +79,6 @@ function toAbsoluteUrl(
   if (pathOrUrl.startsWith("http://") || pathOrUrl.startsWith("https://")) {
     return pathOrUrl;
   }
-<<<<<<< HEAD
-
-  // Convert relative path to absolute URL
-  const protocol = req.protocol || "https";
-  const host = req.get("host") || "localhost:5000";
-  return `${protocol}://${host}${
-    pathOrUrl.startsWith("/") ? pathOrUrl : "/" + pathOrUrl
-  }`;
-=======
   
   // Detect protocol: check X-Forwarded-Proto header (set by reverse proxies) or use req.protocol
   // In production (Replit), X-Forwarded-Proto will be 'https'
@@ -109,7 +89,6 @@ function toAbsoluteUrl(
   const host = req.get('host') || 'localhost:5000';
   
   return `${protocol}://${host}${pathOrUrl.startsWith('/') ? pathOrUrl : '/' + pathOrUrl}`;
->>>>>>> main
 }
 
 // Helper function to calculate deterministic hash for user segmentation
@@ -167,11 +146,6 @@ export let broadcastToCampaign: (
   console.warn("[WebSocket] broadcastToCampaign called before initialization");
 };
 
-<<<<<<< HEAD
-export async function registerRoutes(app: Express): Promise<Server> {
-  const httpServer = createServer(app);
-
-=======
 // Tracks which broadcasts have had lineup_show sent (broadcastId → epoch ms)
 // Module-level so both the manual endpoint and the scheduler can share state
 export const lineupSentMap = new Map<string, number>();
@@ -183,7 +157,6 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   const { registerAnalyticsRoutes } = await import("./analytics");
   registerAnalyticsRoutes(app);
   
->>>>>>> main
   // Create WebSocket server with noServer mode for custom path handling
   const wss = new WebSocketServer({ noServer: true });
 
@@ -200,29 +173,6 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   const clientAlive = new WeakMap<WebSocket, boolean>();
 
   // Handle WebSocket upgrade requests
-<<<<<<< HEAD
-  httpServer.on("upgrade", (request, socket, head) => {
-    const url = new URL(request.url || "", `http://${request.headers.host}`);
-
-    // Extract campaign ID from path like /ws/123
-    const pathMatch = url.pathname.match(/^\/ws\/(\d+)$/);
-
-    if (pathMatch) {
-      // Campaign-specific WebSocket
-      const campaignId = parseInt(pathMatch[1], 10);
-
-      wss.handleUpgrade(request, socket, head, (ws) => {
-        clientCampaigns.set(ws, campaignId);
-        wss.emit("connection", ws, request, campaignId);
-      });
-    } else if (url.pathname === "/ws") {
-      // Legacy WebSocket (no campaign ID) - use campaign ID 0 for backwards compatibility
-      wss.handleUpgrade(request, socket, head, (ws) => {
-        clientCampaigns.set(ws, 0);
-        wss.emit("connection", ws, request, 0);
-      });
-    } else {
-=======
   httpServer.on('upgrade', (request, socket, head) => {
     try {
       const url = new URL(request.url || '', `http://${request.headers.host}`);
@@ -249,7 +199,6 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       }
     } catch (error) {
       console.error('Error handling WebSocket upgrade:', error);
->>>>>>> main
       socket.destroy();
     }
   });
@@ -264,40 +213,6 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       }
       campaignClients.get(campaignId)!.add(ws);
 
-<<<<<<< HEAD
-      console.log(`Client connected to campaign ${campaignId}`);
-
-      // Check if campaign is inactive and immediately notify
-      if (campaignId !== 0) {
-        try {
-          const campaign = await storage.getCampaign(campaignId);
-          if (campaign && !isCampaignActive(campaign)) {
-            // Campaign has already ended, notify client immediately
-            if (ws.readyState === WebSocket.OPEN) {
-              ws.send(
-                JSON.stringify({
-                  type: "campaign_ended",
-                  campaignId: campaign.id,
-                  endDate: campaign.endDate,
-                })
-              );
-              console.log(
-                `Sent campaign_ended notification to new client for campaign ${campaignId}`
-              );
-            }
-          }
-        } catch (error) {
-          console.error("Error checking campaign status on connection:", error);
-        }
-      }
-
-      ws.on("close", () => {
-        const clients = campaignClients.get(campaignId);
-        if (clients) {
-          clients.delete(ws);
-          if (clients.size === 0) {
-            campaignClients.delete(campaignId);
-=======
     // Mark client as alive initially
     clientAlive.set(ws, true);
 
@@ -340,24 +255,9 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
             // Campaign hasn't started yet (startDate in the future)
             // Don't send any event - components won't activate until campaign starts
             console.log(`Client connected to upcoming campaign ${campaignId} (starts: ${campaign.startDate})`);
->>>>>>> main
           }
           // else: campaign is active or has no dates (always active) - no immediate event needed
         }
-<<<<<<< HEAD
-        console.log(`Client disconnected from campaign ${campaignId}`);
-      });
-
-      ws.on("error", (error) => {
-        console.error("WebSocket error:", error);
-        const clients = campaignClients.get(campaignId);
-        if (clients) {
-          clients.delete(ws);
-        }
-      });
-    }
-  );
-=======
       } catch (error) {
         console.error('Error checking campaign status on connection:', error);
       }
@@ -455,7 +355,6 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       }
     });
   });
->>>>>>> main
 
   // Function to broadcast to clients in a specific campaign
   const broadcastToCampaignImpl = (campaignId: number, message: string) => {
@@ -468,17 +367,10 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       });
     }
   };
-<<<<<<< HEAD
-
-  // Assign to exported variable
-  broadcastToCampaign = broadcastToCampaignImpl;
-
-=======
   
   broadcastToCampaign = broadcastToCampaignImpl;
   setVoteBroadcastFunction(broadcastToCampaignImpl);
   
->>>>>>> main
   // Legacy broadcast function (broadcasts to all campaigns)
   function broadcast(message: string) {
     campaignClients.forEach((clients) => {
@@ -682,13 +574,8 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
           name: req.body.name,
           description: req.body.description,
           price: String(req.body.price),
-<<<<<<< HEAD
-          currency: req.body.currency || "USD",
-          imageUrl: req.body.imageUrl,
-=======
           currency: req.body.currency || 'USD',
           imageUrl: toAbsoluteUrl(req.body.imageUrl, req)
->>>>>>> main
         },
         campaignLogo: toAbsoluteUrl(req.body.campaignLogo, req),
         timestamp: Date.now(),
@@ -767,12 +654,8 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
           : req.body.duration;
 
       const pollEvent: WebSocketEvent = {
-<<<<<<< HEAD
-        type: "poll",
-=======
         type: 'poll',
         broadcastId: req.body.broadcastId || undefined,
->>>>>>> main
         data: {
           id: `poll_${randomUUID()}`,
           question: req.body.question,
@@ -827,12 +710,8 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       }
 
       const contestEvent: WebSocketEvent = {
-<<<<<<< HEAD
-        type: "contest",
-=======
         type: 'contest',
         broadcastId: req.body.broadcastId || undefined,
->>>>>>> main
         data: {
           id: `contest_${randomUUID()}`,
           name: req.body.name,
@@ -1568,15 +1447,9 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   });
 
   // Campaign CRUD endpoints
-<<<<<<< HEAD
-
-  // Create campaign
-  app.post("/api/campaigns", async (req, res) => {
-=======
   
   // Create campaign (requires userId for multi-tenant scoping)
   app.post('/api/campaigns', async (req, res) => {
->>>>>>> main
     try {
       const { userId, clientAppId } = req.body;
       
@@ -1632,13 +1505,8 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
     }
   });
 
-<<<<<<< HEAD
-  // Get all campaigns
-  app.get("/api/campaigns", async (req, res) => {
-=======
   // Get campaigns (requires userId for multi-tenant isolation)
   app.get('/api/campaigns', async (req, res) => {
->>>>>>> main
     try {
       const userIdParam = req.query.userId as string | undefined;
       
@@ -1708,15 +1576,6 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
     }
   });
 
-<<<<<<< HEAD
-  // Update campaign
-  app.put("/api/campaigns/:id", async (req, res) => {
-    try {
-      const campaign = await storage.updateCampaign(
-        parseInt(req.params.id),
-        req.body
-      );
-=======
   // GET /api/campaigns/:id/sponsors
   app.get('/api/campaigns/:id/sponsors', async (req, res) => {
     try {
@@ -1754,7 +1613,6 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
     try {
       const campaignId = parseInt(req.params.id);
       const campaign = await storage.getCampaign(campaignId);
->>>>>>> main
       if (!campaign) {
         return res.status(404).json({ message: "Campaign not found" });
       }
@@ -2548,26 +2406,6 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
         );
 
         if (isUsed) {
-<<<<<<< HEAD
-          broadcastToCampaignImpl(
-            campaign.id,
-            JSON.stringify({
-              type: "component_config_updated",
-              campaignId: campaign.id,
-              componentId: req.params.id,
-              component: {
-                id: component.id,
-                type: component.type,
-                name: component.name,
-                config: normalizeUrls(
-                  updates.config || component.config,
-                  req.protocol,
-                  req.get("host")
-                ), // Normalize URLs to absolute
-              },
-            })
-          );
-=======
           const campaignComponent = campaignComponents.find(cc => cc.componentId === req.params.id);
           const event: any = {
             type: 'component_config_updated',
@@ -2587,7 +2425,6 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
             event.matchId = campaign.matchId;
           }
           broadcastToCampaignImpl(campaign.id, JSON.stringify(event));
->>>>>>> main
         }
       }
 
@@ -2671,13 +2508,8 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   app.post("/api/campaigns/:id/components", async (req, res) => {
     try {
       const campaignId = parseInt(req.params.id);
-<<<<<<< HEAD
-      const { componentId, status } = req.body;
-
-=======
       const { componentId, status, instanceName, locationId } = req.body;
       
->>>>>>> main
       if (!componentId) {
         return res
           .status(400)
@@ -2715,59 +2547,22 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       }
 
       // Validate component availability if status is active
-<<<<<<< HEAD
-      if (status === "active") {
-        const availability = await storage.validateComponentAvailability(
-          componentId,
-          campaignId
-        );
-=======
       if (status === 'active') {
         const availability = await storage.validateComponentAvailability(componentId, component.isTemplate === 'true', campaignId);
->>>>>>> main
         if (!availability.available) {
           return res.status(409).json({
             message: "Component is already active in another campaign",
             activeCampaignId: availability.activeCampaignId,
           });
         }
-<<<<<<< HEAD
-
-        // Check if another component of the same type is already active in this campaign
-        const existingComponents = await storage.getCampaignComponents(
-          campaignId
-        );
-        const sameTypeActive = existingComponents.find(
-          (cc) =>
-            cc.status === "active" &&
-            cc.component.type === component.type &&
-            cc.componentId !== componentId
-        );
-
-        if (sameTypeActive) {
-          return res.status(409).json({
-            message: `Another ${component.type} component is already active in this campaign. Only one component of each type can be active at a time.`,
-            conflictingComponent: {
-              id: sameTypeActive.component.id,
-              name: sameTypeActive.component.name,
-              type: sameTypeActive.component.type,
-            },
-          });
-        }
-=======
->>>>>>> main
       }
 
       const campaignComponent = await storage.addComponentToCampaign({
         campaignId,
         componentId,
-<<<<<<< HEAD
-        status: status || "inactive",
-=======
         instanceName: finalInstanceName,
         status: status || 'inactive',
         locationId: locationId || null,
->>>>>>> main
       });
 
       res.status(201).json(campaignComponent);
@@ -2782,14 +2577,6 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
     try {
       const campaignId = parseInt(req.params.id);
       const { componentId } = req.params;
-<<<<<<< HEAD
-      const { status } = req.body;
-
-      if (!status || !["active", "inactive"].includes(status)) {
-        return res
-          .status(400)
-          .json({ message: 'Invalid status. Must be "active" or "inactive"' });
-=======
       const { status, locationId } = req.body;
       
       if (!status && locationId === undefined) {
@@ -2797,7 +2584,6 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       }
       if (status && !['active', 'inactive'].includes(status)) {
         return res.status(400).json({ message: 'Invalid status. Must be "active" or "inactive"' });
->>>>>>> main
       }
 
       // Get component details to check type
@@ -2807,53 +2593,14 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       }
 
       // Validate component availability if activating
-<<<<<<< HEAD
-      if (status === "active") {
-        const availability = await storage.validateComponentAvailability(
-          componentId,
-          campaignId
-        );
-=======
       if (status === 'active') {
         const availability = await storage.validateComponentAvailability(componentId, component.isTemplate === 'true', campaignId);
->>>>>>> main
         if (!availability.available) {
           return res.status(409).json({
             message: "Component is already active in another campaign",
             activeCampaignId: availability.activeCampaignId,
           });
         }
-<<<<<<< HEAD
-
-        // Check if another component of the same type is already active in this campaign
-        const existingComponents = await storage.getCampaignComponents(
-          campaignId
-        );
-        const sameTypeActive = existingComponents.find(
-          (cc) =>
-            cc.status === "active" &&
-            cc.component.type === component.type &&
-            cc.componentId !== componentId
-        );
-
-        if (sameTypeActive) {
-          return res.status(409).json({
-            message: `Another ${component.type} component is already active in this campaign. Only one component of each type can be active at a time.`,
-            conflictingComponent: {
-              id: sameTypeActive.component.id,
-              name: sameTypeActive.component.name,
-              type: sameTypeActive.component.type,
-            },
-          });
-        }
-      }
-
-      const updated = await storage.updateCampaignComponentStatus(
-        campaignId,
-        componentId,
-        status
-      );
-=======
       }
 
       let updated: any;
@@ -2866,7 +2613,6 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       if (locationId !== undefined) {
         updated = await storage.updateCampaignComponentLocationId(campaignId, componentId, locationId || null);
       }
->>>>>>> main
 
       if (!updated) {
         return res
@@ -2874,37 +2620,6 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
           .json({ message: "Campaign component not found" });
       }
 
-<<<<<<< HEAD
-      // Check if campaign is active before broadcasting
-      const campaign = await storage.getCampaign(campaignId);
-      if (campaign && isCampaignActive(campaign)) {
-        // Get full component details for broadcast
-        const fullComponent = await storage.getComponentById(componentId);
-
-        // Broadcast status change via WebSocket with complete component data
-        broadcastToCampaignImpl(
-          campaignId,
-          JSON.stringify({
-            type: "component_status_changed",
-            campaignId,
-            componentId,
-            status,
-            component: fullComponent
-              ? {
-                  id: fullComponent.id,
-                  type: fullComponent.type,
-                  name: fullComponent.name,
-                  // Use campaign-specific customConfig if available, otherwise use component's default config
-                  config: normalizeUrls(
-                    updated.customConfig || fullComponent.config,
-                    req.protocol,
-                    req.get("host")
-                  ),
-                }
-              : null,
-          })
-        );
-=======
       // Only broadcast WS event when status changes (not for locationId-only updates)
       if (status) {
         const campaign = await storage.getCampaign(campaignId);
@@ -2929,7 +2644,6 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
           }
           broadcastToCampaignImpl(campaignId, JSON.stringify(event));
         }
->>>>>>> main
       }
 
       res.json(updated);
@@ -2957,62 +2671,6 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
           });
         }
 
-<<<<<<< HEAD
-        const updated = await storage.updateCampaignComponentConfig(
-          campaignId,
-          componentId,
-          customConfig
-        );
-
-        if (!updated) {
-          return res
-            .status(404)
-            .json({ message: "Campaign component not found" });
-        }
-
-        // Check if campaign is active and component is active before broadcasting
-        const campaign = await storage.getCampaign(campaignId);
-        if (
-          campaign &&
-          isCampaignActive(campaign) &&
-          updated.status === "active"
-        ) {
-          // Get full component details for broadcast
-          const fullComponent = await storage.getComponentById(componentId);
-
-          // Broadcast config update via WebSocket
-          // Use customConfig if set, otherwise fall back to component's default config
-          const effectiveConfig = updated.customConfig || fullComponent?.config;
-
-          broadcastToCampaignImpl(
-            campaignId,
-            JSON.stringify({
-              type: "component_config_updated",
-              campaignId,
-              componentId,
-              component: fullComponent
-                ? {
-                    id: fullComponent.id,
-                    type: fullComponent.type,
-                    name: fullComponent.name,
-                    config: normalizeUrls(
-                      effectiveConfig,
-                      req.protocol,
-                      req.get("host")
-                    ),
-                  }
-                : null,
-            })
-          );
-        }
-
-        res.json(updated);
-      } catch (error) {
-        console.error("Error updating campaign component config:", error);
-        res
-          .status(500)
-          .json({ message: "Error updating campaign component config" });
-=======
       // Check if campaign is active and component is active before broadcasting
       const campaign = await storage.getCampaign(campaignId);
       if (campaign && isCampaignActive(campaign) && updated.status === 'active') {
@@ -3040,7 +2698,6 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
           event.matchId = campaign.matchId;
         }
         broadcastToCampaignImpl(campaignId, JSON.stringify(event));
->>>>>>> main
       }
     }
   );
@@ -3065,16 +2722,6 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   app.get("/api/components/:id/availability", async (req, res) => {
     try {
       const componentId = req.params.id;
-<<<<<<< HEAD
-      const campaignId = req.query.campaignId
-        ? parseInt(req.query.campaignId as string)
-        : undefined;
-
-      const availability = await storage.validateComponentAvailability(
-        componentId,
-        campaignId
-      );
-=======
       const campaignId = req.query.campaignId ? parseInt(req.query.campaignId as string) : undefined;
       
       // Verify component exists before checking availability
@@ -3084,7 +2731,6 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       }
       
       const availability = await storage.validateComponentAvailability(componentId, component.isTemplate === 'true', campaignId);
->>>>>>> main
       res.json(availability);
     } catch (error) {
       console.error("Error validating component availability:", error);
