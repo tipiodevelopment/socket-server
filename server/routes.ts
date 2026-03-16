@@ -69,14 +69,11 @@ const requireBearerAuth = (req: Request, res: any, next: any) => {
 };
 
 // Helper function to convert relative paths to absolute URLs
-function toAbsoluteUrl(
-  pathOrUrl: string | undefined,
-  req: Request
-): string | undefined {
+function toAbsoluteUrl(pathOrUrl: string | undefined, req: Request): string | undefined {
   if (!pathOrUrl) return undefined;
-
+  
   // If already a full URL, return as is
-  if (pathOrUrl.startsWith("http://") || pathOrUrl.startsWith("https://")) {
+  if (pathOrUrl.startsWith('http://') || pathOrUrl.startsWith('https://')) {
     return pathOrUrl;
   }
   
@@ -139,11 +136,8 @@ function isUserEligibleForCampaign(
 }
 
 // Export broadcastToCampaign function (will be set during registerRoutes)
-export let broadcastToCampaign: (
-  campaignId: number,
-  message: string
-) => void = () => {
-  console.warn("[WebSocket] broadcastToCampaign called before initialization");
+export let broadcastToCampaign: (campaignId: number, message: string) => void = () => {
+  console.warn('[WebSocket] broadcastToCampaign called before initialization');
 };
 
 // Tracks which broadcasts have had lineup_show sent (broadcastId → epoch ms)
@@ -162,7 +156,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
 
   // Store connected clients organized by campaign ID
   const campaignClients = new Map<number, Set<WebSocket>>();
-
+  
   // Store campaign ID for each WebSocket
   const clientCampaigns = new WeakMap<WebSocket, number>();
   
@@ -204,14 +198,14 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   });
 
   // WebSocket connection handling
-  wss.on(
-    "connection",
-    async (ws: WebSocket, request: any, campaignId: number) => {
-      // Add client to campaign room
-      if (!campaignClients.has(campaignId)) {
-        campaignClients.set(campaignId, new Set());
-      }
-      campaignClients.get(campaignId)!.add(ws);
+  wss.on('connection', async (ws: WebSocket, request: any, campaignId: number) => {
+    // Add client to campaign room
+    if (!campaignClients.has(campaignId)) {
+      campaignClients.set(campaignId, new Set());
+    }
+    campaignClients.get(campaignId)!.add(ws);
+    
+    console.log(`Client connected to campaign ${campaignId}`);
 
     // Mark client as alive initially
     clientAlive.set(ws, true);
@@ -387,7 +381,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
     try {
       const campaigns = await storage.getAllCampaigns();
       const now = new Date();
-
+      
       for (const campaign of campaigns) {
         if (campaign.endDate) {
           const endDate = new Date(campaign.endDate);
@@ -395,20 +389,17 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
           const timeDiff = now.getTime() - endDate.getTime();
           if (timeDiff >= 0 && timeDiff < 60000) {
             // Campaign just ended, broadcast to all connected clients
-            broadcastToCampaignImpl(
-              campaign.id,
-              JSON.stringify({
-                type: "campaign_ended",
-                campaignId: campaign.id,
-                endDate: campaign.endDate,
-              })
-            );
+            broadcastToCampaignImpl(campaign.id, JSON.stringify({
+              type: 'campaign_ended',
+              campaignId: campaign.id,
+              endDate: campaign.endDate
+            }));
             console.log(`Campaign ${campaign.id} (${campaign.name}) has ended`);
           }
         }
       }
     } catch (error) {
-      console.error("Error checking ended campaigns:", error);
+      console.error('Error checking ended campaigns:', error);
     }
   }
 
@@ -450,26 +441,21 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   setInterval(checkAndNotifyStartedCampaigns, 30000);
 
   // HTTP API endpoints
-  app.get("/api", async (req, res) => {
-    res.status(200).json({ message: "Error fetching events" });
-  });
-
+  
   // Get recent events
-  app.get("/api/events", async (req, res) => {
+  app.get('/api/events', async (req, res) => {
     try {
-      const campaignId = req.query.campaignId
-        ? parseInt(req.query.campaignId as string)
-        : undefined;
-
+      const campaignId = req.query.campaignId ? parseInt(req.query.campaignId as string) : undefined;
+      
       if (campaignId) {
         // Get events for specific campaign from database
         const dbEvents = await storage.getCampaignEvents(campaignId);
         // Convert DB events to WebSocket events format
-        const events = dbEvents.map((dbEvent) => ({
+        const events = dbEvents.map(dbEvent => ({
           type: dbEvent.type,
           data: dbEvent.data,
           campaignLogo: dbEvent.campaignLogo || undefined,
-          timestamp: new Date(dbEvent.timestamp).getTime(),
+          timestamp: new Date(dbEvent.timestamp).getTime()
         }));
         res.json(events);
       } else {
@@ -478,8 +464,8 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
         res.json(events);
       }
     } catch (error) {
-      console.error("Error fetching events:", error);
-      res.status(500).json({ message: "Error fetching events" });
+      console.error('Error fetching events:', error);
+      res.status(500).json({ message: 'Error fetching events' });
     }
   });
 
@@ -545,29 +531,29 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   });
 
   // Get connection status
-  app.get("/api/status", (req, res) => {
+  app.get('/api/status', (req, res) => {
     res.json({
-      server: "running",
-      wsPort: "same as http",
-      httpPort: process.env.PORT || 5000,
+      server: 'running',
+      wsPort: 'same as http',
+      httpPort: process.env.PORT || 5000
     });
   });
 
   // Trigger product event
-  app.post("/api/events/product", async (req, res) => {
+  app.post('/api/events/product', async (req, res) => {
     try {
       const campaignId = req.body.campaignId;
-
+      
       // Validate campaignId if provided
       if (campaignId) {
         const campaign = await storage.getCampaign(campaignId);
         if (!campaign) {
-          return res.status(404).json({ message: "Campaign not found" });
+          return res.status(404).json({ message: 'Campaign not found' });
         }
       }
-
+      
       const productEvent: WebSocketEvent = {
-        type: "product",
+        type: 'product',
         data: {
           id: `prod_${randomUUID()}`,
           productId: req.body.productId,
@@ -578,7 +564,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
           imageUrl: toAbsoluteUrl(req.body.imageUrl, req)
         },
         campaignLogo: toAbsoluteUrl(req.body.campaignLogo, req),
-        timestamp: Date.now(),
+        timestamp: Date.now()
       };
 
       // Validate the event
@@ -591,11 +577,11 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       if (campaignId) {
         await storage.addCampaignEvent({
           campaignId,
-          type: "product",
+          type: 'product',
           data: productEvent.data,
-          campaignLogo: productEvent.campaignLogo || null,
+          campaignLogo: productEvent.campaignLogo || null
         });
-
+        
         // Broadcast to specific campaign
         broadcastToCampaignImpl(campaignId, JSON.stringify(productEvent));
       } else {
@@ -603,55 +589,51 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
         broadcast(JSON.stringify(productEvent));
       }
 
-      res.json({ success: true, event: productEvent });
+      res.json({ success: true, event: productEvent});
     } catch (error) {
-      console.error("Error sending product event:", error);
-      res.status(400).json({
-        message: "Error sending product event",
-        error: error instanceof Error ? error.message : String(error),
+      console.error('Error sending product event:', error);
+      res.status(400).json({ 
+        message: 'Error sending product event',
+        error: error instanceof Error ? error.message : String(error)
       });
     }
   });
 
   // Trigger poll event
-  app.post("/api/events/poll", async (req, res) => {
+  app.post('/api/events/poll', async (req, res) => {
     try {
       const campaignId = req.body.campaignId;
-
+      
       // Validate campaignId if provided
       if (campaignId) {
         const campaign = await storage.getCampaign(campaignId);
         if (!campaign) {
-          return res.status(404).json({ message: "Campaign not found" });
+          return res.status(404).json({ message: 'Campaign not found' });
         }
       }
-
+      
       // Process options: convert comma-separated string to array or process objects
       let options;
-      if (typeof req.body.options === "string") {
+      if (typeof req.body.options === 'string') {
         // Legacy format: comma-separated string
-        options = req.body.options
-          .split(",")
-          .map((opt: string) => ({
-            text: opt.trim(),
-            imageUrl: undefined,
-          }))
-          .filter((opt: any) => opt.text);
+        options = req.body.options.split(',').map((opt: string) => ({
+          text: opt.trim(),
+          imageUrl: undefined
+        })).filter((opt: any) => opt.text);
       } else if (Array.isArray(req.body.options)) {
         // New format: array of objects with optional imageUrl
         options = req.body.options.map((opt: any) => ({
           text: opt.text,
-          imageUrl: toAbsoluteUrl(opt.imageUrl, req),
+          imageUrl: toAbsoluteUrl(opt.imageUrl, req)
         }));
       } else {
         options = [];
       }
 
       // Process duration: convert to number
-      const duration =
-        typeof req.body.duration === "string"
-          ? parseInt(req.body.duration, 10)
-          : req.body.duration;
+      const duration = typeof req.body.duration === 'string' 
+        ? parseInt(req.body.duration, 10) 
+        : req.body.duration;
 
       const pollEvent: WebSocketEvent = {
         type: 'poll',
@@ -661,10 +643,10 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
           question: req.body.question,
           options,
           duration,
-          imageUrl: toAbsoluteUrl(req.body.imageUrl, req),
+          imageUrl: toAbsoluteUrl(req.body.imageUrl, req)
         },
         campaignLogo: toAbsoluteUrl(req.body.campaignLogo, req),
-        timestamp: Date.now(),
+        timestamp: Date.now()
       };
 
       // Validate the event
@@ -677,11 +659,11 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       if (campaignId) {
         await storage.addCampaignEvent({
           campaignId,
-          type: "poll",
+          type: 'poll',
           data: pollEvent.data,
-          campaignLogo: pollEvent.campaignLogo || null,
+          campaignLogo: pollEvent.campaignLogo || null
         });
-
+        
         // Broadcast to specific campaign
         broadcastToCampaignImpl(campaignId, JSON.stringify(pollEvent));
       } else {
@@ -691,24 +673,24 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
 
       res.json({ success: true, event: pollEvent });
     } catch (error) {
-      console.error("Error sending poll event:", error);
-      res.status(400).json({ message: "Error sending poll event" });
+      console.error('Error sending poll event:', error);
+      res.status(400).json({ message: 'Error sending poll event' });
     }
   });
 
   // Trigger contest event
-  app.post("/api/events/contest", async (req, res) => {
+  app.post('/api/events/contest', async (req, res) => {
     try {
       const campaignId = req.body.campaignId;
-
+      
       // Validate campaignId if provided
       if (campaignId) {
         const campaign = await storage.getCampaign(campaignId);
         if (!campaign) {
-          return res.status(404).json({ message: "Campaign not found" });
+          return res.status(404).json({ message: 'Campaign not found' });
         }
       }
-
+      
       const contestEvent: WebSocketEvent = {
         type: 'contest',
         broadcastId: req.body.broadcastId || undefined,
@@ -717,10 +699,10 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
           name: req.body.name,
           prize: req.body.prize,
           deadline: req.body.deadline,
-          maxParticipants: req.body.maxParticipants,
+          maxParticipants: req.body.maxParticipants
         },
         campaignLogo: toAbsoluteUrl(req.body.campaignLogo, req),
-        timestamp: Date.now(),
+        timestamp: Date.now()
       };
 
       // Validate the event
@@ -733,11 +715,11 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       if (campaignId) {
         await storage.addCampaignEvent({
           campaignId,
-          type: "contest",
+          type: 'contest',
           data: contestEvent.data,
-          campaignLogo: contestEvent.campaignLogo || null,
+          campaignLogo: contestEvent.campaignLogo || null
         });
-
+        
         // Broadcast to specific campaign
         broadcastToCampaignImpl(campaignId, JSON.stringify(contestEvent));
       } else {
@@ -747,8 +729,8 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
 
       res.json({ success: true, event: contestEvent });
     } catch (error) {
-      console.error("Error sending contest event:", error);
-      res.status(400).json({ message: "Error sending contest event" });
+      console.error('Error sending contest event:', error);
+      res.status(400).json({ message: 'Error sending contest event' });
     }
   });
 
@@ -837,13 +819,13 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   });
 
   // Object Storage endpoints - based on blueprint:javascript_object_storage
-
+  
   // Serve uploaded objects (public access for campaign logos)
   app.get("/objects/:objectPath(*)", async (req, res) => {
     const objectStorageService = new ObjectStorageService();
     try {
       const objectFile = await objectStorageService.getObjectEntityFile(
-        req.path
+        req.path,
       );
       objectStorageService.downloadObject(objectFile, res);
     } catch (error) {
@@ -871,7 +853,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
     try {
       const objectStorageService = new ObjectStorageService();
       const objectPath = objectStorageService.normalizeObjectEntityPath(
-        req.body.logoURL
+        req.body.logoURL,
       );
 
       res.status(200).json({
@@ -884,44 +866,44 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   });
 
   // User CRUD endpoints
-
+  
   // Get all users
-  app.get("/api/users", async (req, res) => {
+  app.get('/api/users', async (req, res) => {
     try {
       const allUsers = await storage.getAllUsers();
       res.json(allUsers);
     } catch (error) {
-      console.error("Error fetching users:", error);
-      res.status(500).json({ message: "Error fetching users" });
+      console.error('Error fetching users:', error);
+      res.status(500).json({ message: 'Error fetching users' });
     }
   });
 
   // Get user by ID
-  app.get("/api/users/:id", async (req, res) => {
+  app.get('/api/users/:id', async (req, res) => {
     try {
       const id = parseInt(req.params.id);
       const user = await storage.getUser(id);
       if (!user) {
-        return res.status(404).json({ message: "User not found" });
+        return res.status(404).json({ message: 'User not found' });
       }
       res.json(user);
     } catch (error) {
-      console.error("Error fetching user:", error);
-      res.status(500).json({ message: "Error fetching user" });
+      console.error('Error fetching user:', error);
+      res.status(500).json({ message: 'Error fetching user' });
     }
   });
 
   // Get user by Reachu ID
-  app.get("/api/users/reachu/:reachuUserId", async (req, res) => {
+  app.get('/api/users/reachu/:reachuUserId', async (req, res) => {
     try {
       const user = await storage.getUserByReachuId(req.params.reachuUserId);
       if (!user) {
-        return res.status(404).json({ message: "User not found" });
+        return res.status(404).json({ message: 'User not found' });
       }
       res.json(user);
     } catch (error) {
-      console.error("Error fetching user by Reachu ID:", error);
-      res.status(500).json({ message: "Error fetching user" });
+      console.error('Error fetching user by Reachu ID:', error);
+      res.status(500).json({ message: 'Error fetching user' });
     }
   });
 
@@ -985,31 +967,31 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   });
 
   // Create user
-  app.post("/api/users", async (req, res) => {
+  app.post('/api/users', async (req, res) => {
     try {
       const user = await storage.createUser(req.body);
       res.status(201).json(user);
     } catch (error) {
-      console.error("Error creating user:", error);
-      res.status(400).json({
-        message: "Error creating user",
-        error: error instanceof Error ? error.message : String(error),
+      console.error('Error creating user:', error);
+      res.status(400).json({ 
+        message: 'Error creating user',
+        error: error instanceof Error ? error.message : String(error)
       });
     }
   });
 
   // Update user
-  app.patch("/api/users/:id", async (req, res) => {
+  app.patch('/api/users/:id', async (req, res) => {
     try {
       const id = parseInt(req.params.id);
       const user = await storage.updateUser(id, req.body);
       if (!user) {
-        return res.status(404).json({ message: "User not found" });
+        return res.status(404).json({ message: 'User not found' });
       }
       res.json(user);
     } catch (error) {
-      console.error("Error updating user:", error);
-      res.status(500).json({ message: "Error updating user" });
+      console.error('Error updating user:', error);
+      res.status(500).json({ message: 'Error updating user' });
     }
   });
 
@@ -1497,10 +1479,10 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       const campaign = await storage.createCampaign(campaignData);
       res.status(201).json(campaign);
     } catch (error) {
-      console.error("Error creating campaign:", error);
-      res.status(400).json({
-        message: "Error creating campaign",
-        error: error instanceof Error ? error.message : String(error),
+      console.error('Error creating campaign:', error);
+      res.status(400).json({ 
+        message: 'Error creating campaign',
+        error: error instanceof Error ? error.message : String(error)
       });
     }
   });
@@ -1546,17 +1528,17 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
 
       res.json(enriched);
     } catch (error) {
-      console.error("Error fetching campaigns:", error);
-      res.status(500).json({ message: "Error fetching campaigns" });
+      console.error('Error fetching campaigns:', error);
+      res.status(500).json({ message: 'Error fetching campaigns' });
     }
   });
 
   // Get single campaign
-  app.get("/api/campaigns/:id", async (req, res) => {
+  app.get('/api/campaigns/:id', async (req, res) => {
     try {
       const campaign = await storage.getCampaign(parseInt(req.params.id));
       if (!campaign) {
-        return res.status(404).json({ message: "Campaign not found" });
+        return res.status(404).json({ message: 'Campaign not found' });
       }
       let clientAppName: string | null = null;
       let channelName: string | null = null;
@@ -1571,8 +1553,8 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       const campaignSponsors = await storage.getCampaignSponsors(campaign.id);
       res.json({ ...campaign, clientAppName, channelName, sponsors: campaignSponsors });
     } catch (error) {
-      console.error("Error fetching campaign:", error);
-      res.status(500).json({ message: "Error fetching campaign" });
+      console.error('Error fetching campaign:', error);
+      res.status(500).json({ message: 'Error fetching campaign' });
     }
   });
 
@@ -1614,7 +1596,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       const campaignId = parseInt(req.params.id);
       const campaign = await storage.getCampaign(campaignId);
       if (!campaign) {
-        return res.status(404).json({ message: "Campaign not found" });
+        return res.status(404).json({ message: 'Campaign not found' });
       }
       const broadcasts = await storage.getCampaignBroadcasts(campaignId);
       let totalViews = 0;
@@ -1729,22 +1711,22 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       
       res.json(campaign);
     } catch (error) {
-      console.error("Error updating campaign:", error);
-      res.status(400).json({
-        message: "Error updating campaign",
-        error: error instanceof Error ? error.message : String(error),
+      console.error('Error updating campaign:', error);
+      res.status(400).json({ 
+        message: 'Error updating campaign',
+        error: error instanceof Error ? error.message : String(error)
       });
     }
   });
 
   // Delete campaign
-  app.delete("/api/campaigns/:id", async (req, res) => {
+  app.delete('/api/campaigns/:id', async (req, res) => {
     try {
       await storage.deleteCampaign(parseInt(req.params.id));
       res.status(204).send();
     } catch (error) {
-      console.error("Error deleting campaign:", error);
-      res.status(500).json({ message: "Error deleting campaign" });
+      console.error('Error deleting campaign:', error);
+      res.status(500).json({ message: 'Error deleting campaign' });
     }
   });
 
@@ -1905,7 +1887,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   });
 
   // Get campaign events
-  app.get("/api/campaigns/:id/events", async (req, res) => {
+  app.get('/api/campaigns/:id/events', async (req, res) => {
     try {
       const events = await storage.getCampaignEvents(
         parseInt(req.params.id),
@@ -1913,100 +1895,81 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       );
       res.json(events);
     } catch (error) {
-      console.error("Error fetching campaign events:", error);
-      res.status(500).json({ message: "Error fetching campaign events" });
+      console.error('Error fetching campaign events:', error);
+      res.status(500).json({ message: 'Error fetching campaign events' });
     }
   });
 
   // Scheduled Components Routes
-
+  
   // Get scheduled components for a campaign
-  app.get("/api/campaigns/:id/scheduled-components", async (req, res) => {
+  app.get('/api/campaigns/:id/scheduled-components', async (req, res) => {
     try {
-      const components = await storage.getCampaignScheduledComponents(
-        parseInt(req.params.id)
-      );
-
+      const components = await storage.getCampaignScheduledComponents(parseInt(req.params.id));
+      
       // Enrich custom components with component details
       const enrichedComponents = await Promise.all(
         components.map(async (comp) => {
-          if (
-            comp.type === "custom_component" &&
-            comp.data &&
-            typeof comp.data === "object" &&
-            "componentId" in comp.data &&
-            typeof comp.data.componentId === "string"
-          ) {
-            const componentDetails = await storage.getComponentById(
-              comp.data.componentId
-            );
+          if (comp.type === 'custom_component' && 
+              comp.data && 
+              typeof comp.data === 'object' && 
+              'componentId' in comp.data && 
+              typeof comp.data.componentId === 'string') {
+            const componentDetails = await storage.getComponentById(comp.data.componentId);
             return {
               ...comp,
-              componentDetails,
+              componentDetails
             };
           }
           return comp;
         })
       );
-
+      
       res.json(enrichedComponents);
     } catch (error) {
-      console.error("Error fetching scheduled components:", error);
-      res.status(500).json({ message: "Error fetching scheduled components" });
+      console.error('Error fetching scheduled components:', error);
+      res.status(500).json({ message: 'Error fetching scheduled components' });
     }
   });
 
   // Create scheduled component
-  app.post("/api/campaigns/:id/scheduled-components", async (req, res) => {
+  app.post('/api/campaigns/:id/scheduled-components', async (req, res) => {
     try {
       const campaignId = parseInt(req.params.id);
       const { type, scheduledTime, endTime, data } = req.body;
 
       if (!type || !scheduledTime || !data) {
-        return res.status(400).json({ message: "Missing required fields" });
+        return res.status(400).json({ message: 'Missing required fields' });
       }
 
       // Validate custom component exists and get its type
       let componentType = type;
       let componentName = type;
-
-      if (type === "custom_component") {
+      
+      if (type === 'custom_component') {
         if (!data.componentId) {
-          return res
-            .status(400)
-            .json({ message: "componentId is required for custom components" });
+          return res.status(400).json({ message: 'componentId is required for custom components' });
         }
-        const existingComponent = await storage.getComponentById(
-          data.componentId
-        );
+        const existingComponent = await storage.getComponentById(data.componentId);
         if (!existingComponent) {
-          return res.status(404).json({ message: "Component not found" });
+          return res.status(404).json({ message: 'Component not found' });
         }
         componentType = existingComponent.type;
         componentName = existingComponent.name;
       }
 
       // Check for overlapping scheduled components of the same type
-      const allScheduled = await storage.getCampaignScheduledComponents(
-        campaignId
-      );
+      const allScheduled = await storage.getCampaignScheduledComponents(campaignId);
       const newStart = new Date(scheduledTime);
       const newEnd = endTime ? new Date(endTime) : null;
 
       for (const scheduled of allScheduled) {
-        if (scheduled.status === "cancelled") continue;
+        if (scheduled.status === 'cancelled') continue;
 
         // Determine the type of the scheduled component
         let scheduledType = scheduled.type;
-        if (
-          scheduled.type === "custom_component" &&
-          scheduled.data &&
-          typeof scheduled.data === "object" &&
-          "componentId" in scheduled.data
-        ) {
-          const comp = await storage.getComponentById(
-            scheduled.data.componentId as string
-          );
+        if (scheduled.type === 'custom_component' && scheduled.data && typeof scheduled.data === 'object' && 'componentId' in scheduled.data) {
+          const comp = await storage.getComponentById(scheduled.data.componentId as string);
           if (comp) {
             scheduledType = comp.type;
           }
@@ -2016,9 +1979,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
         if (scheduledType !== componentType) continue;
 
         const existingStart = new Date(scheduled.scheduledTime);
-        const existingEnd = scheduled.endTime
-          ? new Date(scheduled.endTime)
-          : null;
+        const existingEnd = scheduled.endTime ? new Date(scheduled.endTime) : null;
 
         // Check for overlap
         const hasOverlap = (() => {
@@ -2038,15 +1999,8 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
 
         if (hasOverlap) {
           let scheduledName = scheduled.type;
-          if (
-            scheduled.type === "custom_component" &&
-            scheduled.data &&
-            typeof scheduled.data === "object" &&
-            "componentId" in scheduled.data
-          ) {
-            const comp = await storage.getComponentById(
-              scheduled.data.componentId as string
-            );
+          if (scheduled.type === 'custom_component' && scheduled.data && typeof scheduled.data === 'object' && 'componentId' in scheduled.data) {
+            const comp = await storage.getComponentById(scheduled.data.componentId as string);
             if (comp) scheduledName = comp.name;
           }
 
@@ -2057,8 +2011,8 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
               type: scheduledType,
               name: scheduledName,
               scheduledTime: scheduled.scheduledTime,
-              endTime: scheduled.endTime,
-            },
+              endTime: scheduled.endTime
+            }
           });
         }
       }
@@ -2069,21 +2023,21 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
         scheduledTime: new Date(scheduledTime),
         endTime: endTime ? new Date(endTime) : undefined,
         data,
-        status: "pending",
+        status: 'pending'
       });
 
       res.status(201).json(component);
     } catch (error) {
-      console.error("Error creating scheduled component:", error);
-      res.status(400).json({
-        message: "Error creating scheduled component",
-        error: error instanceof Error ? error.message : String(error),
+      console.error('Error creating scheduled component:', error);
+      res.status(400).json({ 
+        message: 'Error creating scheduled component',
+        error: error instanceof Error ? error.message : String(error)
       });
     }
   });
 
   // Update scheduled component
-  app.patch("/api/scheduled-components/:id", async (req, res) => {
+  app.patch('/api/scheduled-components/:id', async (req, res) => {
     try {
       const id = parseInt(req.params.id);
       const { type, scheduledTime, endTime, data } = req.body;
@@ -2091,29 +2045,19 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       // Get current scheduled component
       const current = await storage.getScheduledComponent(id);
       if (!current) {
-        return res
-          .status(404)
-          .json({ message: "Scheduled component not found" });
+        return res.status(404).json({ message: 'Scheduled component not found' });
       }
 
       // Determine the component type for validation
       let componentType = type || current.type;
       let componentName = componentType;
-
-      if (componentType === "custom_component") {
-        const componentId =
-          data?.componentId ||
-          (current.data &&
-          typeof current.data === "object" &&
-          "componentId" in current.data
-            ? current.data.componentId
-            : null);
+      
+      if (componentType === 'custom_component') {
+        const componentId = data?.componentId || (current.data && typeof current.data === 'object' && 'componentId' in current.data ? current.data.componentId : null);
         if (componentId) {
-          const existingComponent = await storage.getComponentById(
-            componentId as string
-          );
+          const existingComponent = await storage.getComponentById(componentId as string);
           if (!existingComponent) {
-            return res.status(404).json({ message: "Component not found" });
+            return res.status(404).json({ message: 'Component not found' });
           }
           componentType = existingComponent.type;
           componentName = existingComponent.name;
@@ -2122,35 +2066,17 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
 
       // Check for overlapping scheduled components of the same type (if time is being updated)
       if (scheduledTime !== undefined || endTime !== undefined) {
-        const allScheduled = await storage.getCampaignScheduledComponents(
-          current.campaignId
-        );
-        const newStart = scheduledTime
-          ? new Date(scheduledTime)
-          : new Date(current.scheduledTime);
-        const newEnd =
-          endTime !== undefined
-            ? endTime
-              ? new Date(endTime)
-              : null
-            : current.endTime
-            ? new Date(current.endTime)
-            : null;
+        const allScheduled = await storage.getCampaignScheduledComponents(current.campaignId);
+        const newStart = scheduledTime ? new Date(scheduledTime) : new Date(current.scheduledTime);
+        const newEnd = endTime !== undefined ? (endTime ? new Date(endTime) : null) : (current.endTime ? new Date(current.endTime) : null);
 
         for (const scheduled of allScheduled) {
-          if (scheduled.id === id || scheduled.status === "cancelled") continue;
+          if (scheduled.id === id || scheduled.status === 'cancelled') continue;
 
           // Determine the type of the scheduled component
           let scheduledType = scheduled.type;
-          if (
-            scheduled.type === "custom_component" &&
-            scheduled.data &&
-            typeof scheduled.data === "object" &&
-            "componentId" in scheduled.data
-          ) {
-            const comp = await storage.getComponentById(
-              scheduled.data.componentId as string
-            );
+          if (scheduled.type === 'custom_component' && scheduled.data && typeof scheduled.data === 'object' && 'componentId' in scheduled.data) {
+            const comp = await storage.getComponentById(scheduled.data.componentId as string);
             if (comp) {
               scheduledType = comp.type;
             }
@@ -2160,9 +2086,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
           if (scheduledType !== componentType) continue;
 
           const existingStart = new Date(scheduled.scheduledTime);
-          const existingEnd = scheduled.endTime
-            ? new Date(scheduled.endTime)
-            : null;
+          const existingEnd = scheduled.endTime ? new Date(scheduled.endTime) : null;
 
           // Check for overlap
           const hasOverlap = (() => {
@@ -2177,15 +2101,8 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
 
           if (hasOverlap) {
             let scheduledName = scheduled.type;
-            if (
-              scheduled.type === "custom_component" &&
-              scheduled.data &&
-              typeof scheduled.data === "object" &&
-              "componentId" in scheduled.data
-            ) {
-              const comp = await storage.getComponentById(
-                scheduled.data.componentId as string
-              );
+            if (scheduled.type === 'custom_component' && scheduled.data && typeof scheduled.data === 'object' && 'componentId' in scheduled.data) {
+              const comp = await storage.getComponentById(scheduled.data.componentId as string);
               if (comp) scheduledName = comp.name;
             }
 
@@ -2196,8 +2113,8 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
                 type: scheduledType,
                 name: scheduledName,
                 scheduledTime: scheduled.scheduledTime,
-                endTime: scheduled.endTime,
-              },
+                endTime: scheduled.endTime
+              }
             });
           }
         }
@@ -2205,191 +2122,183 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
 
       const updateData: Partial<InsertScheduledComponent> = {};
       if (type !== undefined) updateData.type = type;
-      if (scheduledTime !== undefined)
-        updateData.scheduledTime = new Date(scheduledTime);
-      if (endTime !== undefined)
-        updateData.endTime = endTime ? new Date(endTime) : null;
+      if (scheduledTime !== undefined) updateData.scheduledTime = new Date(scheduledTime);
+      if (endTime !== undefined) updateData.endTime = endTime ? new Date(endTime) : null;
       if (data !== undefined) updateData.data = data;
 
       const updated = await storage.updateScheduledComponent(id, updateData);
 
       if (!updated) {
-        return res
-          .status(404)
-          .json({ message: "Scheduled component not found" });
+        return res.status(404).json({ message: 'Scheduled component not found' });
       }
 
       res.json(updated);
     } catch (error) {
-      console.error("Error updating scheduled component:", error);
-      res.status(500).json({
-        message: "Error updating scheduled component",
-        error: error instanceof Error ? error.message : String(error),
+      console.error('Error updating scheduled component:', error);
+      res.status(500).json({ 
+        message: 'Error updating scheduled component',
+        error: error instanceof Error ? error.message : String(error)
       });
     }
   });
 
   // Delete scheduled component
-  app.delete("/api/scheduled-components/:id", async (req, res) => {
+  app.delete('/api/scheduled-components/:id', async (req, res) => {
     try {
       await storage.deleteScheduledComponent(parseInt(req.params.id));
       res.status(204).send();
     } catch (error) {
-      console.error("Error deleting scheduled component:", error);
-      res.status(500).json({ message: "Error deleting scheduled component" });
+      console.error('Error deleting scheduled component:', error);
+      res.status(500).json({ message: 'Error deleting scheduled component' });
     }
   });
 
   // Form state routes
-
+  
   // Save form state
-  app.post("/api/form-state", async (req, res) => {
+  app.post('/api/form-state', async (req, res) => {
     try {
       const { campaignId, formType, formData } = req.body;
-
+      
       if (!campaignId || !formType || !formData) {
-        return res.status(400).json({ message: "Missing required fields" });
+        return res.status(400).json({ message: 'Missing required fields' });
       }
 
       const state = await storage.saveFormState({
         campaignId: parseInt(campaignId),
         formType,
-        formData,
+        formData
       });
-
+      
       res.json(state);
     } catch (error) {
-      console.error("Error saving form state:", error);
-      res.status(500).json({ message: "Error saving form state" });
+      console.error('Error saving form state:', error);
+      res.status(500).json({ message: 'Error saving form state' });
     }
   });
 
   // Get specific form state
-  app.get("/api/form-state/:campaignId/:formType", async (req, res) => {
+  app.get('/api/form-state/:campaignId/:formType', async (req, res) => {
     try {
       const state = await storage.getFormState(
         parseInt(req.params.campaignId),
         req.params.formType
       );
-
+      
       if (!state) {
-        return res.status(404).json({ message: "Form state not found" });
+        return res.status(404).json({ message: 'Form state not found' });
       }
-
+      
       res.json(state);
     } catch (error) {
-      console.error("Error fetching form state:", error);
-      res.status(500).json({ message: "Error fetching form state" });
+      console.error('Error fetching form state:', error);
+      res.status(500).json({ message: 'Error fetching form state' });
     }
   });
 
   // Get all form states for a campaign
-  app.get("/api/form-state/:campaignId", async (req, res) => {
+  app.get('/api/form-state/:campaignId', async (req, res) => {
     try {
-      const states = await storage.getAllFormStates(
-        parseInt(req.params.campaignId)
-      );
+      const states = await storage.getAllFormStates(parseInt(req.params.campaignId));
       res.json(states);
     } catch (error) {
-      console.error("Error fetching form states:", error);
-      res.status(500).json({ message: "Error fetching form states" });
+      console.error('Error fetching form states:', error);
+      res.status(500).json({ message: 'Error fetching form states' });
     }
   });
 
   // Mock endpoint for Reachu channels
-  app.get("/api/reachu/channels", async (req, res) => {
+  app.get('/api/reachu/channels', async (req, res) => {
     try {
       // Mock data - in production this would fetch from Reachu API
       const mockChannels = [
-        { id: "ch_1", name: "Electronics Store", productCount: 245 },
-        { id: "ch_2", name: "Fashion & Apparel", productCount: 389 },
-        { id: "ch_3", name: "Home & Garden", productCount: 156 },
-        { id: "ch_4", name: "Sports Equipment", productCount: 92 },
-        { id: "ch_5", name: "Beauty & Health", productCount: 178 },
+        { id: 'ch_1', name: 'Electronics Store', productCount: 245 },
+        { id: 'ch_2', name: 'Fashion & Apparel', productCount: 389 },
+        { id: 'ch_3', name: 'Home & Garden', productCount: 156 },
+        { id: 'ch_4', name: 'Sports Equipment', productCount: 92 },
+        { id: 'ch_5', name: 'Beauty & Health', productCount: 178 }
       ];
-
+      
       res.json(mockChannels);
     } catch (error) {
-      console.error("Error fetching Reachu channels:", error);
-      res.status(500).json({ message: "Error fetching channels" });
+      console.error('Error fetching Reachu channels:', error);
+      res.status(500).json({ message: 'Error fetching channels' });
     }
   });
 
   // Component Library Routes
-
+  
   // Get all components
-  app.get("/api/components", async (req, res) => {
+  app.get('/api/components', async (req, res) => {
     try {
       const components = await storage.getComponents();
       res.json(components);
     } catch (error) {
-      console.error("Error fetching components:", error);
-      res.status(500).json({ message: "Error fetching components" });
+      console.error('Error fetching components:', error);
+      res.status(500).json({ message: 'Error fetching components' });
     }
   });
 
   // Get component usage across campaigns
-  app.get("/api/components/usage", async (req, res) => {
+  app.get('/api/components/usage', async (req, res) => {
     try {
       const usage = await storage.getComponentUsage();
       res.json(usage);
     } catch (error) {
-      console.error("Error fetching component usage:", error);
-      res.status(500).json({ message: "Error fetching component usage" });
+      console.error('Error fetching component usage:', error);
+      res.status(500).json({ message: 'Error fetching component usage' });
     }
   });
 
   // Create new component
-  app.post("/api/components", async (req, res) => {
+  app.post('/api/components', async (req, res) => {
     try {
       const { type, name, config } = req.body;
-
+      
       if (!type || !name || !config) {
-        return res
-          .status(400)
-          .json({ message: "Missing required fields: type, name, config" });
+        return res.status(400).json({ message: 'Missing required fields: type, name, config' });
       }
 
       const component = await storage.createComponent({ type, name, config });
       res.status(201).json(component);
     } catch (error) {
-      console.error("Error creating component:", error);
-      res.status(500).json({ message: "Error creating component" });
+      console.error('Error creating component:', error);
+      res.status(500).json({ message: 'Error creating component' });
     }
   });
 
   // Get component by ID
-  app.get("/api/components/:id", async (req, res) => {
+  app.get('/api/components/:id', async (req, res) => {
     try {
       const component = await storage.getComponentById(req.params.id);
-
+      
       if (!component) {
-        return res.status(404).json({ message: "Component not found" });
+        return res.status(404).json({ message: 'Component not found' });
       }
-
+      
       res.json(component);
     } catch (error) {
-      console.error("Error fetching component:", error);
-      res.status(500).json({ message: "Error fetching component" });
+      console.error('Error fetching component:', error);
+      res.status(500).json({ message: 'Error fetching component' });
     }
   });
 
   // Update component
-  app.patch("/api/components/:id", async (req, res) => {
+  app.patch('/api/components/:id', async (req, res) => {
     try {
       const { type, name, config } = req.body;
       const updates: any = {};
-
+      
       if (type !== undefined) updates.type = type;
       if (name !== undefined) updates.name = name;
       if (config !== undefined) updates.config = config;
-
+      
       const component = await storage.updateComponent(req.params.id, updates);
-
+      
       if (!component) {
-        return res.status(404).json({ message: "Component not found" });
+        return res.status(404).json({ message: 'Component not found' });
       }
-
+      
       // Broadcast config update to all campaigns using this component
       const allCampaigns = await storage.getAllCampaigns();
       for (const campaign of allCampaigns) {
@@ -2397,14 +2306,10 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
         if (!isCampaignActive(campaign)) {
           continue;
         }
-
-        const campaignComponents = await storage.getCampaignComponents(
-          campaign.id
-        );
-        const isUsed = campaignComponents.some(
-          (cc) => cc.componentId === req.params.id
-        );
-
+        
+        const campaignComponents = await storage.getCampaignComponents(campaign.id);
+        const isUsed = campaignComponents.some(cc => cc.componentId === req.params.id);
+        
         if (isUsed) {
           const campaignComponent = campaignComponents.find(cc => cc.componentId === req.params.id);
           const event: any = {
@@ -2427,99 +2332,91 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
           broadcastToCampaignImpl(campaign.id, JSON.stringify(event));
         }
       }
-
+      
       res.json(component);
     } catch (error) {
-      console.error("Error updating component:", error);
-      res.status(500).json({ message: "Error updating component" });
+      console.error('Error updating component:', error);
+      res.status(500).json({ message: 'Error updating component' });
     }
   });
 
   // Delete component
-  app.delete("/api/components/:id", async (req, res) => {
+  app.delete('/api/components/:id', async (req, res) => {
     try {
       await storage.deleteComponent(req.params.id);
       res.status(204).send();
     } catch (error) {
-      console.error("Error deleting component:", error);
-      res.status(500).json({ message: "Error deleting component" });
+      console.error('Error deleting component:', error);
+      res.status(500).json({ message: 'Error deleting component' });
     }
   });
 
   // Campaign Component Routes
-
+  
   // Get components for a campaign
-  app.get("/api/campaigns/:id/components", async (req, res) => {
+  app.get('/api/campaigns/:id/components', async (req, res) => {
     try {
       const campaignId = parseInt(req.params.id);
       const components = await storage.getCampaignComponents(campaignId);
       res.json(components);
     } catch (error) {
-      console.error("Error fetching campaign components:", error);
-      res.status(500).json({ message: "Error fetching campaign components" });
+      console.error('Error fetching campaign components:', error);
+      res.status(500).json({ message: 'Error fetching campaign components' });
     }
   });
 
   // Get active components for a campaign (for iOS app initial state)
-  app.get("/api/campaigns/:id/active-components", async (req, res) => {
+  app.get('/api/campaigns/:id/active-components', async (req, res) => {
     try {
       const campaignId = parseInt(req.params.id);
-
+      
       // Check if campaign exists and is active
       const campaign = await storage.getCampaign(campaignId);
       if (!campaign) {
-        return res.status(404).json({ message: "Campaign not found" });
+        return res.status(404).json({ message: 'Campaign not found' });
       }
-
+      
       if (!isCampaignActive(campaign)) {
         // Campaign has ended, return empty array
         return res.json([]);
       }
-
+      
       const allComponents = await storage.getCampaignComponents(campaignId);
-
+      
       // Filter only active components and format for iOS consumption
       const activeComponents = allComponents
-        .filter((cc) => cc.status === "active")
-        .map((cc) => ({
+        .filter(cc => cc.status === 'active')
+        .map(cc => ({
           componentId: cc.component.id,
           type: cc.component.type,
           name: cc.component.name,
           // Use campaign-specific customConfig if available, otherwise use component's default config
-          config: normalizeUrls(
-            cc.customConfig || cc.component.config,
-            req.protocol,
-            req.get("host")
-          ),
+          config: normalizeUrls(cc.customConfig || cc.component.config, req.protocol, req.get('host')),
           status: cc.status,
-          activatedAt: cc.activatedAt,
+          activatedAt: cc.activatedAt
         }));
-
+      
       res.json(activeComponents);
     } catch (error) {
-      console.error("Error fetching active campaign components:", error);
-      res
-        .status(500)
-        .json({ message: "Error fetching active campaign components" });
+      console.error('Error fetching active campaign components:', error);
+      res.status(500).json({ message: 'Error fetching active campaign components' });
     }
   });
 
   // Add component to campaign
-  app.post("/api/campaigns/:id/components", async (req, res) => {
+  app.post('/api/campaigns/:id/components', async (req, res) => {
     try {
       const campaignId = parseInt(req.params.id);
       const { componentId, status, instanceName, locationId } = req.body;
       
       if (!componentId) {
-        return res
-          .status(400)
-          .json({ message: "Missing required field: componentId" });
+        return res.status(400).json({ message: 'Missing required field: componentId' });
       }
 
       // Get component details
       const component = await storage.getComponentById(componentId);
       if (!component) {
-        return res.status(404).json({ message: "Component not found" });
+        return res.status(404).json({ message: 'Component not found' });
       }
 
       // Generate default instanceName if not provided
@@ -2550,9 +2447,9 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       if (status === 'active') {
         const availability = await storage.validateComponentAvailability(componentId, component.isTemplate === 'true', campaignId);
         if (!availability.available) {
-          return res.status(409).json({
-            message: "Component is already active in another campaign",
-            activeCampaignId: availability.activeCampaignId,
+          return res.status(409).json({ 
+            message: 'Component is already active in another campaign',
+            activeCampaignId: availability.activeCampaignId
           });
         }
       }
@@ -2564,16 +2461,16 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
         status: status || 'inactive',
         locationId: locationId || null,
       });
-
+      
       res.status(201).json(campaignComponent);
     } catch (error) {
-      console.error("Error adding component to campaign:", error);
-      res.status(500).json({ message: "Error adding component to campaign" });
+      console.error('Error adding component to campaign:', error);
+      res.status(500).json({ message: 'Error adding component to campaign' });
     }
   });
 
   // Update campaign component status (toggle ON/OFF)
-  app.patch("/api/campaigns/:id/components/:componentId", async (req, res) => {
+  app.patch('/api/campaigns/:id/components/:componentId', async (req, res) => {
     try {
       const campaignId = parseInt(req.params.id);
       const { componentId } = req.params;
@@ -2589,16 +2486,16 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       // Get component details to check type
       const component = await storage.getComponentById(componentId);
       if (!component) {
-        return res.status(404).json({ message: "Component not found" });
+        return res.status(404).json({ message: 'Component not found' });
       }
 
       // Validate component availability if activating
       if (status === 'active') {
         const availability = await storage.validateComponentAvailability(componentId, component.isTemplate === 'true', campaignId);
         if (!availability.available) {
-          return res.status(409).json({
-            message: "Component is already active in another campaign",
-            activeCampaignId: availability.activeCampaignId,
+          return res.status(409).json({ 
+            message: 'Component is already active in another campaign',
+            activeCampaignId: availability.activeCampaignId
           });
         }
       }
@@ -2615,9 +2512,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       }
 
       if (!updated) {
-        return res
-          .status(404)
-          .json({ message: "Campaign component not found" });
+        return res.status(404).json({ message: 'Campaign component not found' });
       }
 
       // Only broadcast WS event when status changes (not for locationId-only updates)
@@ -2645,31 +2540,31 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
           broadcastToCampaignImpl(campaignId, JSON.stringify(event));
         }
       }
-
+      
       res.json(updated);
     } catch (error) {
-      console.error("Error updating campaign component status:", error);
-      res
-        .status(500)
-        .json({ message: "Error updating campaign component status" });
+      console.error('Error updating campaign component status:', error);
+      res.status(500).json({ message: 'Error updating campaign component status' });
     }
   });
 
   // Update campaign component custom configuration
-  app.patch(
-    "/api/campaigns/:id/components/:componentId/config",
-    async (req, res) => {
-      try {
-        const campaignId = parseInt(req.params.id);
-        const { componentId } = req.params;
-        const { customConfig } = req.body;
+  app.patch('/api/campaigns/:id/components/:componentId/config', async (req, res) => {
+    try {
+      const campaignId = parseInt(req.params.id);
+      const { componentId } = req.params;
+      const { customConfig } = req.body;
+      
+      // Allow null/undefined to clear customConfig and revert to template defaults
+      if (customConfig === undefined) {
+        return res.status(400).json({ message: 'Missing required field: customConfig (use null to clear)' });
+      }
 
-        // Allow null/undefined to clear customConfig and revert to template defaults
-        if (customConfig === undefined) {
-          return res.status(400).json({
-            message: "Missing required field: customConfig (use null to clear)",
-          });
-        }
+      const updated = await storage.updateCampaignComponentConfig(campaignId, componentId, customConfig);
+      
+      if (!updated) {
+        return res.status(404).json({ message: 'Campaign component not found' });
+      }
 
       // Check if campaign is active and component is active before broadcasting
       const campaign = await storage.getCampaign(campaignId);
@@ -2699,27 +2594,30 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
         }
         broadcastToCampaignImpl(campaignId, JSON.stringify(event));
       }
+      
+      res.json(updated);
+    } catch (error) {
+      console.error('Error updating campaign component config:', error);
+      res.status(500).json({ message: 'Error updating campaign component config' });
     }
-  );
+  });
 
   // Remove component from campaign
-  app.delete("/api/campaigns/:id/components/:componentId", async (req, res) => {
+  app.delete('/api/campaigns/:id/components/:componentId', async (req, res) => {
     try {
       const campaignId = parseInt(req.params.id);
       const { componentId } = req.params;
-
+      
       await storage.removeComponentFromCampaign(campaignId, componentId);
       res.status(204).send();
     } catch (error) {
-      console.error("Error removing component from campaign:", error);
-      res
-        .status(500)
-        .json({ message: "Error removing component from campaign" });
+      console.error('Error removing component from campaign:', error);
+      res.status(500).json({ message: 'Error removing component from campaign' });
     }
   });
 
   // Validate component availability
-  app.get("/api/components/:id/availability", async (req, res) => {
+  app.get('/api/components/:id/availability', async (req, res) => {
     try {
       const componentId = req.params.id;
       const campaignId = req.query.campaignId ? parseInt(req.query.campaignId as string) : undefined;
@@ -2733,10 +2631,8 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       const availability = await storage.validateComponentAvailability(componentId, component.isTemplate === 'true', campaignId);
       res.json(availability);
     } catch (error) {
-      console.error("Error validating component availability:", error);
-      res
-        .status(500)
-        .json({ message: "Error validating component availability" });
+      console.error('Error validating component availability:', error);
+      res.status(500).json({ message: 'Error validating component availability' });
     }
   });
 
