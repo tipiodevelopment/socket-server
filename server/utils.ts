@@ -7,19 +7,68 @@ import { Campaign } from "@shared/schema";
 let cachedBaseUrl: string | null = null;
 
 /**
- * Check if a campaign is currently active based on its endDate
+ * Check if a campaign is currently active based on its startDate, endDate, and isPaused state
  * @param campaign The campaign to check
- * @returns true if campaign is active (endDate is null or in the future)
+ * @returns true if campaign is active (within startDate and endDate range AND not paused)
  */
 export function isCampaignActive(campaign: Campaign): boolean {
+  const now = new Date();
+  
+  // Check if campaign is manually paused
+  if (campaign.isPaused === 'true') {
+    return false; // Campaign is paused
+  }
+  
+  // Check if campaign has started
+  if (campaign.startDate) {
+    const startDate = new Date(campaign.startDate);
+    if (now < startDate) {
+      return false; // Campaign hasn't started yet
+    }
+  }
+  
+  // Check if campaign has ended
+  if (campaign.endDate) {
+    const endDate = new Date(campaign.endDate);
+    if (now >= endDate) {
+      return false; // Campaign has ended
+    }
+  }
+  
+  // Campaign is active if it has started, not ended, and not paused
+  return true;
+}
+
+/**
+ * Check if a campaign has ended
+ * @param campaign The campaign to check
+ * @returns true if campaign has ended (endDate is in the past)
+ */
+export function hasCampaignEnded(campaign: Campaign): boolean {
   if (!campaign.endDate) {
-    return true; // No end date means campaign runs indefinitely
+    return false; // No end date means campaign runs indefinitely
   }
   
   const now = new Date();
   const endDate = new Date(campaign.endDate);
   
-  return endDate > now;
+  return now >= endDate;
+}
+
+/**
+ * Check if a campaign hasn't started yet
+ * @param campaign The campaign to check
+ * @returns true if campaign hasn't started (startDate is in the future)
+ */
+export function isCampaignUpcoming(campaign: Campaign): boolean {
+  if (!campaign.startDate) {
+    return false; // No start date means campaign is already active
+  }
+  
+  const now = new Date();
+  const startDate = new Date(campaign.startDate);
+  
+  return now < startDate;
 }
 
 /**

@@ -1,9 +1,8 @@
 import { useState } from 'react';
 import { Link } from 'wouter';
-import { ArrowLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
+import { AppLayout } from '@/components/AppLayout';
 
 export default function DocsPage() {
   const { toast } = useToast();
@@ -91,6 +90,9 @@ class WebSocketManager: NSObject, URLSessionWebSocketDelegate {
         case "contest":
             let event = try JSONDecoder().decode(ContestEvent.self, from: data)
             handleContestEvent(event)
+        case "campaign_started":
+            // Campaign has started, show all active components
+            handleCampaignStarted(json)
         case "campaign_ended":
             // Campaign has ended, hide all components immediately
             handleCampaignEnded(json)
@@ -105,6 +107,15 @@ class WebSocketManager: NSObject, URLSessionWebSocketDelegate {
         }
     } catch {
         print("Error decoding event: \\(error)")
+    }
+}
+
+private func handleCampaignStarted(_ json: [String: Any]) {
+    DispatchQueue.main.async {
+        // Campaign has started, prepare to show components
+        // You can optionally fetch and display active components
+        print("Campaign started, ready to display components")
+        self.loadActiveComponents()
     }
 }
 
@@ -258,121 +269,77 @@ struct ContestEvent: Codable {
 }`;
 
   return (
-    <div className="min-h-screen bg-background text-foreground">
-      {/* Header */}
-      <header className="border-0 bg-card">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-3">
-              <div className="w-10 h-10 bg-primary rounded-lg flex items-center justify-center">
-                <svg className="w-6 h-6 text-primary-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
-                </svg>
-              </div>
-              <div>
-                <h1 className="text-xl font-bold text-foreground">Swift Documentation</h1>
-                <p className="text-sm text-muted-foreground">WebSocket Integration for iOS</p>
-              </div>
-            </div>
-            
-            <div className="flex space-x-2">
-              <Link href="/">
-                <Button variant="outline" size="sm" data-testid="link-admin">
-                  Admin
-                </Button>
-              </Link>
-              <Link href="/viewer">
-                <Button variant="outline" size="sm" data-testid="link-viewer">
-                  Viewer
-                </Button>
-              </Link>
-            </div>
-          </div>
-        </div>
-      </header>
-
-      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
-        {/* Back Button */}
-        <Link href="/">
-          <Button variant="outline" size="sm" className="mb-4" data-testid="button-back-campaigns">
-            <ArrowLeft className="w-4 h-4 mr-2" />
-            Back to campaigns
-          </Button>
-        </Link>
-
+    <AppLayout title="Documentation">
+      <div className="max-w-4xl mx-auto space-y-6">
         {/* Introduction */}
-        <Card className="border-0">
-          <CardHeader>
-            <CardTitle className="flex items-center space-x-2">
+        <div className="bg-white dark:bg-white/[0.03] border border-gray-200 dark:border-white/10 rounded-2xl overflow-hidden">
+          <div className="p-6">
+            <h2 className="flex items-center space-x-2 text-lg font-semibold text-gray-900 dark:text-white mb-4">
               <svg className="w-6 h-6 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
               </svg>
               <span>Introduction</span>
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-muted-foreground mb-4">
+            </h2>
+            <p className="text-gray-600 dark:text-muted-foreground mb-4">
               This documentation will guide you to integrate the WebSocket server with your Swift/iOS application. 
               The server sends real-time events for products, polls, and contests.
             </p>
             
-            <div className="bg-primary/10 border-0 rounded-lg p-4">
+            <div className="bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/20 rounded-xl p-4">
               <h4 className="font-semibold mb-2 text-primary">Connection Information</h4>
               <div className="space-y-3 text-sm">
                 <div>
-                  <span className="text-muted-foreground block mb-2">WebSocket URL Pattern:</span>
-                  <code className="font-mono bg-background px-3 py-2 rounded block">
+                  <span className="text-gray-500 dark:text-white/40 block mb-2">WebSocket URL Pattern:</span>
+                  <code className="font-mono bg-gray-100 dark:bg-black/30 border border-gray-200 dark:border-white/10 px-3 py-2 rounded-xl block text-green-600 dark:text-green-400">
                     {`${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/ws/:campaignId`}
                   </code>
                 </div>
-                <div className="bg-background/50 rounded p-3 space-y-1.5">
-                  <p className="text-xs text-muted-foreground font-semibold">Examples:</p>
-                  <code className="font-mono text-xs block text-green-400">
+                <div className="bg-gray-100 dark:bg-black/30 border border-gray-200 dark:border-white/10 rounded-xl p-3 space-y-1.5">
+                  <p className="text-xs text-gray-500 dark:text-white/40 font-semibold">Examples:</p>
+                  <code className="font-mono text-xs block text-green-600 dark:text-green-400">
                     {`${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/ws/10`} → Campaign 10
                   </code>
-                  <code className="font-mono text-xs block text-blue-400">
+                  <code className="font-mono text-xs block text-gray-600 dark:text-gray-300">
                     {`${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/ws/25`} → Campaign 25
                   </code>
-                  <code className="font-mono text-xs block text-purple-400">
+                  <code className="font-mono text-xs block text-gray-600 dark:text-gray-300">
                     {`${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/ws/123`} → Campaign 123
                   </code>
                 </div>
                 <div className="flex justify-between pt-2">
-                  <span className="text-muted-foreground">Protocol:</span>
-                  <code className="font-mono bg-background px-2 py-1 rounded">WebSocket</code>
+                  <span className="text-gray-500 dark:text-white/40">Protocol:</span>
+                  <code className="font-mono bg-gray-100 dark:bg-black/30 border border-gray-200 dark:border-white/10 px-2 py-1 rounded-lg text-green-600 dark:text-green-400">WebSocket</code>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-muted-foreground">Format:</span>
-                  <code className="font-mono bg-background px-2 py-1 rounded">JSON</code>
+                  <span className="text-gray-500 dark:text-white/40">Format:</span>
+                  <code className="font-mono bg-gray-100 dark:bg-black/30 border border-gray-200 dark:border-white/10 px-2 py-1 rounded-lg text-green-600 dark:text-green-400">JSON</code>
                 </div>
               </div>
             </div>
             
-            <div className="bg-green-500/10 border-0 rounded-lg p-4 mt-4">
-              <h4 className="font-semibold mb-2 text-green-400 flex items-center space-x-2">
+            <div className="bg-green-50 dark:bg-green-500/10 border border-green-200 dark:border-green-500/20 rounded-xl p-4 mt-4">
+              <h4 className="font-semibold mb-2 text-green-700 dark:text-green-400 flex items-center space-x-2">
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path>
                 </svg>
                 <span>Efficient Architecture</span>
               </h4>
-              <p className="text-sm text-muted-foreground">
+              <p className="text-sm text-gray-600 dark:text-muted-foreground">
                 Each campaign has its own isolated WebSocket channel. Events are only broadcast to clients connected to that specific campaign, 
                 ensuring optimal performance and data isolation. Your app won't receive irrelevant events from other campaigns.
               </p>
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        </div>
 
         {/* Step 1: Connection */}
-        <Card className="border-0">
-          <CardHeader>
-            <CardTitle className="flex items-center space-x-2">
+        <div className="bg-white dark:bg-white/[0.03] border border-gray-200 dark:border-white/10 rounded-2xl overflow-hidden">
+          <div className="p-6">
+            <h2 className="flex items-center space-x-2 text-lg font-semibold text-gray-900 dark:text-white mb-4">
               <div className="w-8 h-8 bg-primary rounded-full flex items-center justify-center text-white font-bold text-sm">1</div>
               <span>Connect to WebSocket</span>
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-muted-foreground mb-4">
+            </h2>
+            <p className="text-gray-600 dark:text-muted-foreground mb-4">
               Create a class to handle the WebSocket connection. Pass the campaign ID to connect to the correct channel:
             </p>
             
@@ -380,40 +347,38 @@ struct ContestEvent: Codable {
               <Button
                 size="sm"
                 variant="outline"
-                className="absolute right-2 top-2 z-10"
+                className="absolute right-2 top-2 z-10 border-gray-200 dark:border-white/10 text-gray-600 dark:text-white/60"
                 onClick={() => copyToClipboard(swiftConnectionCode, 'Swift connection')}
                 data-testid="button-copy-connection"
               >
                 {copiedCode === 'Swift connection' ? '✓ Copied' : 'Copy'}
               </Button>
-              <pre className="bg-background border-0 rounded-lg p-4 overflow-x-auto code-block text-sm">
+              <pre className="bg-gray-900 dark:bg-black/50 rounded-xl p-4 overflow-x-auto text-sm">
                 <code className="text-green-400">{swiftConnectionCode}</code>
               </pre>
             </div>
             
-            <div className="bg-background/50 rounded-lg p-4 mt-4">
-              <h4 className="font-semibold mb-2 text-sm">Usage Example:</h4>
-              <pre className="bg-gray-900 rounded p-3 overflow-x-auto text-xs">
-                <code className="text-blue-400">{`// Initialize with your campaign ID
+            <div className="bg-gray-100 dark:bg-black/30 border border-gray-200 dark:border-white/10 rounded-xl p-4 mt-4">
+              <h4 className="font-semibold mb-2 text-sm text-gray-900 dark:text-white">Usage Example:</h4>
+              <pre className="bg-gray-900 dark:bg-black/50 rounded-xl p-3 overflow-x-auto text-xs">
+                <code className="text-gray-300">{`// Initialize with your campaign ID
 let wsManager = WebSocketManager(campaignId: 10)
 wsManager.connect()
 
 // Now you'll only receive events from campaign 10`}</code>
               </pre>
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        </div>
 
         {/* Step 2: Message Handling */}
-        <Card className="border-0">
-          <CardHeader>
-            <CardTitle className="flex items-center space-x-2">
+        <div className="bg-white dark:bg-white/[0.03] border border-gray-200 dark:border-white/10 rounded-2xl overflow-hidden">
+          <div className="p-6">
+            <h2 className="flex items-center space-x-2 text-lg font-semibold text-gray-900 dark:text-white mb-4">
               <div className="w-8 h-8 bg-secondary rounded-full flex items-center justify-center text-white font-bold text-sm">2</div>
               <span>Handle Messages</span>
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-muted-foreground mb-4">
+            </h2>
+            <p className="text-gray-600 dark:text-muted-foreground mb-4">
               Implement handling of the different event types:
             </p>
             
@@ -421,29 +386,27 @@ wsManager.connect()
               <Button
                 size="sm"
                 variant="outline"
-                className="absolute right-2 top-2 z-10"
+                className="absolute right-2 top-2 z-10 border-gray-200 dark:border-white/10 text-gray-600 dark:text-white/60"
                 onClick={() => copyToClipboard(messageHandlingCode, 'message handling')}
                 data-testid="button-copy-handling"
               >
                 {copiedCode === 'message handling' ? '✓ Copied' : 'Copy'}
               </Button>
-              <pre className="bg-background border-0 rounded-lg p-4 overflow-x-auto code-block text-sm max-h-96">
+              <pre className="bg-gray-900 dark:bg-black/50 rounded-xl p-4 overflow-x-auto text-sm max-h-96">
                 <code className="text-green-400">{messageHandlingCode}</code>
               </pre>
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        </div>
 
         {/* Step 3: Data Models */}
-        <Card className="border-0">
-          <CardHeader>
-            <CardTitle className="flex items-center space-x-2">
+        <div className="bg-white dark:bg-white/[0.03] border border-gray-200 dark:border-white/10 rounded-2xl overflow-hidden">
+          <div className="p-6">
+            <h2 className="flex items-center space-x-2 text-lg font-semibold text-gray-900 dark:text-white mb-4">
               <div className="w-8 h-8 bg-amber-500 rounded-full flex items-center justify-center text-white font-bold text-sm">3</div>
               <span>Data Models</span>
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-muted-foreground mb-4">
+            </h2>
+            <p className="text-gray-600 dark:text-muted-foreground mb-4">
               Define the data structures to handle the events:
             </p>
             
@@ -451,30 +414,28 @@ wsManager.connect()
               <Button
                 size="sm"
                 variant="outline"
-                className="absolute right-2 top-2 z-10"
+                className="absolute right-2 top-2 z-10 border-gray-200 dark:border-white/10 text-gray-600 dark:text-white/60"
                 onClick={() => copyToClipboard(modelStructCode, 'Swift models')}
                 data-testid="button-copy-models"
               >
                 {copiedCode === 'Swift models' ? '✓ Copied' : 'Copy'}
               </Button>
-              <pre className="bg-background border-0 rounded-lg p-4 overflow-x-auto code-block text-sm max-h-96">
+              <pre className="bg-gray-900 dark:bg-black/50 rounded-xl p-4 overflow-x-auto text-sm max-h-96">
                 <code className="text-green-400">{modelStructCode}</code>
               </pre>
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        </div>
 
         {/* JSON Examples */}
-        <Card className="border-0">
-          <CardHeader>
-            <CardTitle className="flex items-center space-x-2">
+        <div className="bg-white dark:bg-white/[0.03] border border-gray-200 dark:border-white/10 rounded-2xl overflow-hidden">
+          <div className="p-6">
+            <h2 className="flex items-center space-x-2 text-lg font-semibold text-gray-900 dark:text-white mb-4">
               <svg className="w-6 h-6 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
               </svg>
               <span>JSON Payload Examples</span>
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
+            </h2>
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
               {/* Product JSON */}
               <div>
@@ -483,13 +444,14 @@ wsManager.connect()
                   <Button
                     size="sm"
                     variant="ghost"
+                    className="text-gray-600 dark:text-white/60"
                     onClick={() => copyToClipboard(productJSON, 'Product JSON')}
                     data-testid="button-copy-product-json"
                   >
                     {copiedCode === 'Product JSON' ? '✓' : 'Copy'}
                   </Button>
                 </div>
-                <pre className="bg-background border-0 rounded-lg p-3 overflow-x-auto code-block text-xs">
+                <pre className="bg-gray-900 dark:bg-black/50 rounded-xl p-3 overflow-x-auto text-xs">
                   <code className="text-green-400">{productJSON}</code>
                 </pre>
               </div>
@@ -501,13 +463,14 @@ wsManager.connect()
                   <Button
                     size="sm"
                     variant="ghost"
+                    className="text-gray-600 dark:text-white/60"
                     onClick={() => copyToClipboard(pollJSON, 'Poll JSON')}
                     data-testid="button-copy-poll-json"
                   >
                     {copiedCode === 'Poll JSON' ? '✓' : 'Copy'}
                   </Button>
                 </div>
-                <pre className="bg-background border-0 rounded-lg p-3 overflow-x-auto code-block text-xs">
+                <pre className="bg-gray-900 dark:bg-black/50 rounded-xl p-3 overflow-x-auto text-xs">
                   <code className="text-green-400">{pollJSON}</code>
                 </pre>
               </div>
@@ -519,35 +482,112 @@ wsManager.connect()
                   <Button
                     size="sm"
                     variant="ghost"
+                    className="text-gray-600 dark:text-white/60"
                     onClick={() => copyToClipboard(contestJSON, 'Contest JSON')}
                     data-testid="button-copy-contest-json"
                   >
                     {copiedCode === 'Contest JSON' ? '✓' : 'Copy'}
                   </Button>
                 </div>
-                <pre className="bg-background border-0 rounded-lg p-3 overflow-x-auto code-block text-xs">
+                <pre className="bg-gray-900 dark:bg-black/50 rounded-xl p-3 overflow-x-auto text-xs">
                   <code className="text-green-400">{contestJSON}</code>
                 </pre>
               </div>
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        </div>
+
+        {/* Campaign Lifecycle */}
+        <div className="bg-white dark:bg-white/[0.03] border border-gray-200 dark:border-white/10 rounded-2xl overflow-hidden">
+          <div className="p-6">
+            <h2 className="flex items-center space-x-2 text-lg font-semibold text-gray-900 dark:text-white mb-4">
+              <svg className="w-6 h-6 text-gray-600 dark:text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+              </svg>
+              <span>Campaign Lifecycle</span>
+            </h2>
+            <p className="text-gray-600 dark:text-muted-foreground mb-4">
+              All components automatically respect campaign start and end dates. The system broadcasts lifecycle events to notify your app when campaigns start or end.
+            </p>
+            
+            <div className="space-y-4">
+              <div className="bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/20 rounded-xl p-4">
+                <h4 className="font-semibold mb-2 text-gray-700 dark:text-gray-300 flex items-center space-x-2">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M14 5l7 7m0 0l-7 7m7-7H3"></path>
+                  </svg>
+                  <span>campaign_started Event</span>
+                </h4>
+                <p className="text-sm text-gray-600 dark:text-muted-foreground mb-3">
+                  Sent when a campaign's start date is reached. Use this to prepare your UI and load active components.
+                </p>
+                <pre className="bg-gray-900 dark:bg-black/50 rounded-xl p-3 overflow-x-auto text-xs">
+                  <code className="text-green-400">{`{
+  "type": "campaign_started",
+  "campaignId": 10,
+  "startDate": "2024-12-25T10:00:00Z",
+  "endDate": "2024-12-31T23:59:59Z"
+}`}</code>
+                </pre>
+              </div>
+
+              <div className="bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 rounded-xl p-4">
+                <h4 className="font-semibold mb-2 text-red-700 dark:text-red-400 flex items-center space-x-2">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path>
+                  </svg>
+                  <span>campaign_ended Event</span>
+                </h4>
+                <p className="text-sm text-gray-600 dark:text-muted-foreground mb-3">
+                  Sent when a campaign's end date is reached. Hide all campaign components immediately when this event is received.
+                </p>
+                <pre className="bg-gray-900 dark:bg-black/50 rounded-xl p-3 overflow-x-auto text-xs">
+                  <code className="text-green-400">{`{
+  "type": "campaign_ended",
+  "campaignId": 10,
+  "endDate": "2024-12-31T23:59:59Z"
+}`}</code>
+                </pre>
+              </div>
+
+              <div className="bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/20 rounded-xl p-4">
+                <h4 className="font-semibold mb-2 text-gray-700 dark:text-gray-300">Component Behavior</h4>
+                <ul className="text-sm space-y-2 text-gray-600 dark:text-muted-foreground">
+                  <li className="flex items-start space-x-2">
+                    <span className="text-gray-600 dark:text-gray-300 mt-1">•</span>
+                    <span><strong>Before start date:</strong> Components will not activate, even if manually toggled</span>
+                  </li>
+                  <li className="flex items-start space-x-2">
+                    <span className="text-gray-600 dark:text-gray-300 mt-1">•</span>
+                    <span><strong>During campaign:</strong> Components can be activated/deactivated via manual toggle or scheduling</span>
+                  </li>
+                  <li className="flex items-start space-x-2">
+                    <span className="text-gray-600 dark:text-gray-300 mt-1">•</span>
+                    <span><strong>After end date:</strong> All components are automatically hidden</span>
+                  </li>
+                  <li className="flex items-start space-x-2">
+                    <span className="text-gray-600 dark:text-gray-300 mt-1">•</span>
+                    <span><strong>Manual toggle:</strong> Admins can activate/deactivate components anytime during the active campaign period</span>
+                  </li>
+                </ul>
+              </div>
+            </div>
+          </div>
+        </div>
 
         {/* Implementation Tips */}
-        <Card className="border-0">
-          <CardHeader>
-            <CardTitle className="flex items-center space-x-2">
+        <div className="bg-white dark:bg-white/[0.03] border border-gray-200 dark:border-white/10 rounded-2xl overflow-hidden">
+          <div className="p-6">
+            <h2 className="flex items-center space-x-2 text-lg font-semibold text-gray-900 dark:text-white mb-4">
               <svg className="w-6 h-6 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
               </svg>
               <span>Implementation Tips</span>
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
+            </h2>
             <div className="space-y-4">
-              <div className="bg-primary/10 border-0 rounded-lg p-4">
+              <div className="bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/20 rounded-xl p-4">
                 <h4 className="font-semibold mb-2 text-primary">Best Practices</h4>
-                <ul className="text-sm space-y-2 text-muted-foreground">
+                <ul className="text-sm space-y-2 text-gray-600 dark:text-muted-foreground">
                   <li className="flex items-start space-x-2">
                     <span className="text-green-500 mt-1">•</span>
                     <span>Implement automatic reconnection on connection loss</span>
@@ -571,9 +611,9 @@ wsManager.connect()
                 </ul>
               </div>
               
-              <div className="bg-amber-500/10 border-0 rounded-lg p-4">
-                <h4 className="font-semibold mb-2 text-amber-500">Performance Considerations</h4>
-                <ul className="text-sm space-y-2 text-muted-foreground">
+              <div className="bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/20 rounded-xl p-4">
+                <h4 className="font-semibold mb-2 text-amber-600 dark:text-amber-500">Performance Considerations</h4>
+                <ul className="text-sm space-y-2 text-gray-600 dark:text-muted-foreground">
                   <li className="flex items-start space-x-2">
                     <span className="text-amber-500 mt-1">•</span>
                     <span>Process messages in background thread to avoid blocking UI</span>
@@ -589,9 +629,9 @@ wsManager.connect()
                 </ul>
               </div>
               
-              <div className="bg-secondary/10 border-0 rounded-lg p-4">
+              <div className="bg-gray-50 dark:bg-secondary/10 border border-gray-200 dark:border-white/10 rounded-xl p-4">
                 <h4 className="font-semibold mb-2 text-secondary">Error Handling</h4>
-                <ul className="text-sm space-y-2 text-muted-foreground">
+                <ul className="text-sm space-y-2 text-gray-600 dark:text-muted-foreground">
                   <li className="flex items-start space-x-2">
                     <span className="text-secondary mt-1">•</span>
                     <span>Catch and log connection and JSON parsing errors</span>
@@ -607,28 +647,26 @@ wsManager.connect()
                 </ul>
               </div>
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        </div>
 
         {/* Quick Start */}
-        <Card className="border-0">
-          <CardHeader>
-            <CardTitle className="flex items-center space-x-2 text-primary">
+        <div className="bg-white dark:bg-white/[0.03] border border-gray-200 dark:border-white/10 rounded-2xl overflow-hidden">
+          <div className="p-6">
+            <h2 className="flex items-center space-x-2 text-lg font-semibold text-primary mb-4">
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path>
               </svg>
               <span>Quick Start</span>
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
+            </h2>
             <div className="space-y-4">
-              <p className="text-muted-foreground">
+              <p className="text-gray-600 dark:text-muted-foreground">
                 To quickly test the integration:
               </p>
               
-              <div className="bg-background border-0 rounded-lg p-4">
-                <h4 className="font-semibold mb-2">Steps:</h4>
-                <ol className="text-sm space-y-2 text-muted-foreground">
+              <div className="bg-gray-100 dark:bg-black/30 border border-gray-200 dark:border-white/10 rounded-xl p-4">
+                <h4 className="font-semibold mb-2 text-gray-900 dark:text-white">Steps:</h4>
+                <ol className="text-sm space-y-2 text-gray-600 dark:text-muted-foreground">
                   <li className="flex items-start space-x-2">
                     <span className="font-bold text-primary">1.</span>
                     <span>Copy the WebSocket connection code to your Swift project</span>
@@ -652,23 +690,22 @@ wsManager.connect()
                 </ol>
               </div>
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        </div>
 
         {/* Dynamic Components Documentation */}
-        <Card className="border-0 bg-gradient-to-br from-blue-500/10 to-purple-500/10">
-          <CardHeader>
-            <CardTitle className="flex items-center space-x-2 text-2xl">
-              <svg className="w-8 h-8 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <div className="bg-white dark:bg-white/[0.03] border border-gray-200 dark:border-white/10 rounded-2xl overflow-hidden bg-gradient-to-br from-gray-50/50 dark:from-white/5 to-gray-50/50 dark:to-white/5">
+          <div className="p-6 space-y-6">
+            <h2 className="flex items-center space-x-2 text-2xl font-semibold text-gray-900 dark:text-white">
+              <svg className="w-8 h-8 text-gray-600 dark:text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z"></path>
               </svg>
               <span>Dynamic Components System</span>
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-6">
+            </h2>
+
             <div>
               <h3 className="text-lg font-semibold mb-3 text-primary">Overview</h3>
-              <p className="text-muted-foreground mb-4">
+              <p className="text-gray-600 dark:text-muted-foreground mb-4">
                 The Dynamic Components system allows you to display and control UI components in real-time from the admin panel. 
                 Components can be activated, deactivated, or updated without rebuilding your iOS app.
               </p>
@@ -676,18 +713,18 @@ wsManager.connect()
 
             <div>
               <h3 className="text-lg font-semibold mb-3 text-primary">Initial State - GET Active Components</h3>
-              <p className="text-muted-foreground mb-3">
+              <p className="text-gray-600 dark:text-muted-foreground mb-3">
                 When your app launches, fetch all active components for a campaign:
               </p>
-              <div className="bg-background rounded-lg p-4 mb-3">
-                <code className="text-green-400 text-sm">
+              <div className="bg-gray-100 dark:bg-black/30 border border-gray-200 dark:border-white/10 rounded-xl p-4 mb-3">
+                <code className="text-green-600 dark:text-green-400 text-sm">
                   GET {`${window.location.protocol}//${window.location.host}`}/api/campaigns/:id/active-components
                 </code>
               </div>
-              <p className="text-muted-foreground mb-3 text-sm">
+              <p className="text-gray-500 dark:text-white/40 mb-3 text-sm">
                 Response example:
               </p>
-              <pre className="bg-background rounded-lg p-4 overflow-x-auto text-xs">
+              <pre className="bg-gray-900 dark:bg-black/50 rounded-xl p-4 overflow-x-auto text-xs">
                 <code className="text-green-400">{`[
   {
     "componentId": "cmp_abc123",
@@ -714,17 +751,17 @@ wsManager.connect()
 
             <div>
               <h3 className="text-lg font-semibold mb-3 text-primary">Real-Time Updates via WebSocket</h3>
-              <p className="text-muted-foreground mb-3">
+              <p className="text-gray-600 dark:text-muted-foreground mb-3">
                 Your app receives two types of component events:
               </p>
               
               <div className="space-y-4">
-                <div className="bg-background rounded-lg p-4">
-                  <h4 className="font-semibold mb-2 text-blue-400">1. component_status_changed</h4>
-                  <p className="text-sm text-muted-foreground mb-2">
+                <div className="bg-gray-100 dark:bg-black/30 border border-gray-200 dark:border-white/10 rounded-xl p-4">
+                  <h4 className="font-semibold mb-2 text-gray-700 dark:text-gray-300">1. component_status_changed</h4>
+                  <p className="text-sm text-gray-600 dark:text-muted-foreground mb-2">
                     Fired when a component is activated or deactivated:
                   </p>
-                  <pre className="bg-gray-900 rounded p-3 overflow-x-auto text-xs">
+                  <pre className="bg-gray-900 dark:bg-black/50 rounded-xl p-3 overflow-x-auto text-xs">
                     <code className="text-green-400">{`{
   "type": "component_status_changed",
   "campaignId": 10,
@@ -740,12 +777,12 @@ wsManager.connect()
                   </pre>
                 </div>
 
-                <div className="bg-background rounded-lg p-4">
-                  <h4 className="font-semibold mb-2 text-purple-400">2. component_config_updated</h4>
-                  <p className="text-sm text-muted-foreground mb-2">
+                <div className="bg-gray-100 dark:bg-black/30 border border-gray-200 dark:border-white/10 rounded-xl p-4">
+                  <h4 className="font-semibold mb-2 text-gray-700 dark:text-gray-300">2. component_config_updated</h4>
+                  <p className="text-sm text-gray-600 dark:text-muted-foreground mb-2">
                     Fired when a component's configuration is edited:
                   </p>
-                  <pre className="bg-gray-900 rounded p-3 overflow-x-auto text-xs">
+                  <pre className="bg-gray-900 dark:bg-black/50 rounded-xl p-3 overflow-x-auto text-xs">
                     <code className="text-green-400">{`{
   "type": "component_config_updated",
   "campaignId": 10,
@@ -767,13 +804,13 @@ wsManager.connect()
 
             <div>
               <h3 className="text-lg font-semibold mb-3 text-primary">Offer Banner Component (XXL)</h3>
-              <p className="text-muted-foreground mb-3">
+              <p className="text-gray-600 dark:text-muted-foreground mb-3">
                 The Offer Banner is a premium promotional component with countdown timer, discount badge, and CTA button.
               </p>
 
-              <div className="bg-background rounded-lg p-4 mb-3">
-                <h4 className="font-semibold mb-2">Complete JSON Example:</h4>
-                <pre className="bg-gray-900 rounded p-3 overflow-x-auto text-xs">
+              <div className="bg-gray-100 dark:bg-black/30 border border-gray-200 dark:border-white/10 rounded-xl p-4 mb-3">
+                <h4 className="font-semibold mb-2 text-gray-900 dark:text-white">Complete JSON Example:</h4>
+                <pre className="bg-gray-900 dark:bg-black/50 rounded-xl p-3 overflow-x-auto text-xs">
                   <code className="text-green-400">{`{
   "componentId": "cmp_abc123",
   "type": "offer_banner",
@@ -796,9 +833,9 @@ wsManager.connect()
                 </pre>
               </div>
               
-              <div className="bg-background rounded-lg p-4 mb-3">
-                <h4 className="font-semibold mb-2">Swift Data Model:</h4>
-                <pre className="bg-gray-900 rounded p-3 overflow-x-auto text-xs">
+              <div className="bg-gray-100 dark:bg-black/30 border border-gray-200 dark:border-white/10 rounded-xl p-4 mb-3">
+                <h4 className="font-semibold mb-2 text-gray-900 dark:text-white">Swift Data Model:</h4>
+                <pre className="bg-gray-900 dark:bg-black/50 rounded-xl p-3 overflow-x-auto text-xs">
                   <code className="text-green-400">{`struct OfferBannerConfig: Codable {
     let logoUrl: String
     let title: String
@@ -814,9 +851,9 @@ wsManager.connect()
                 </pre>
               </div>
 
-              <div className="bg-background rounded-lg p-4 mb-3">
-                <h4 className="font-semibold mb-2">Usage Example:</h4>
-                <pre className="bg-gray-900 rounded p-3 overflow-x-auto text-xs">
+              <div className="bg-gray-100 dark:bg-black/30 border border-gray-200 dark:border-white/10 rounded-xl p-4 mb-3">
+                <h4 className="font-semibold mb-2 text-gray-900 dark:text-white">Usage Example:</h4>
+                <pre className="bg-gray-900 dark:bg-black/50 rounded-xl p-3 overflow-x-auto text-xs">
                   <code className="text-green-400">{`// Decode component from WebSocket or API
 if component.type == "offer_banner" {
     let config = try JSONDecoder().decode(
@@ -841,9 +878,9 @@ if component.type == "offer_banner" {
                 </pre>
               </div>
               
-              <div className="bg-background rounded-lg p-4">
-                <h4 className="font-semibold mb-2">Handling Deeplinks (CTA Button Tap):</h4>
-                <pre className="bg-gray-900 rounded p-3 overflow-x-auto text-xs">
+              <div className="bg-gray-100 dark:bg-black/30 border border-gray-200 dark:border-white/10 rounded-xl p-4">
+                <h4 className="font-semibold mb-2 text-gray-900 dark:text-white">Handling Deeplinks (CTA Button Tap):</h4>
+                <pre className="bg-gray-900 dark:bg-black/50 rounded-xl p-3 overflow-x-auto text-xs">
                   <code className="text-green-400">{`func handleCTAButtonTap(config: OfferBannerConfig) {
     // Priority: Deeplink > Web Link
     if let deeplink = config.deeplink, 
@@ -879,47 +916,411 @@ func openWebLink(_ link: String?) {
               </div>
             </div>
 
-            <div className="bg-blue-500/10 rounded-lg p-4">
-              <h4 className="font-semibold mb-2 text-blue-400">Component Types Available</h4>
-              <ul className="text-sm space-y-1 text-muted-foreground">
+            <div className="bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/20 rounded-xl p-4">
+              <h4 className="font-semibold mb-2 text-gray-700 dark:text-gray-300">Component Types Available</h4>
+              <ul className="text-sm space-y-1 text-gray-600 dark:text-muted-foreground">
                 <li className="flex items-center space-x-2">
-                  <span className="text-blue-500">•</span>
-                  <span><code className="text-blue-300">banner</code> - Simple promotional banner</span>
+                  <span className="text-gray-500">•</span>
+                  <span><code className="text-gray-600 dark:text-gray-300">banner</code> - Simple promotional banner</span>
                 </li>
                 <li className="flex items-center space-x-2">
-                  <span className="text-purple-500">•</span>
-                  <span><code className="text-purple-300">offer_banner</code> - Premium banner with countdown and badges</span>
+                  <span className="text-gray-500">•</span>
+                  <span><code className="text-gray-600 dark:text-gray-300">offer_banner</code> - Premium banner with countdown and badges</span>
                 </li>
                 <li className="flex items-center space-x-2">
                   <span className="text-green-500">•</span>
-                  <span><code className="text-green-300">countdown</code> - Standalone countdown timer</span>
+                  <span><code className="text-green-600 dark:text-green-300">countdown</code> - Standalone countdown timer</span>
                 </li>
                 <li className="flex items-center space-x-2">
                   <span className="text-amber-500">•</span>
-                  <span><code className="text-amber-300">carousel_auto</code> - Auto product carousel</span>
+                  <span><code className="text-amber-600 dark:text-amber-300">carousel_auto</code> - Auto product carousel</span>
                 </li>
                 <li className="flex items-center space-x-2">
                   <span className="text-red-500">•</span>
-                  <span><code className="text-red-300">carousel_manual</code> - Manual product carousel</span>
+                  <span><code className="text-red-600 dark:text-red-300">carousel_manual</code> - Manual product carousel</span>
                 </li>
                 <li className="flex items-center space-x-2">
                   <span className="text-cyan-500">•</span>
-                  <span><code className="text-cyan-300">product_spotlight</code> - Highlight specific product</span>
+                  <span><code className="text-cyan-600 dark:text-cyan-300">product_spotlight</code> - Highlight specific product</span>
                 </li>
                 <li className="flex items-center space-x-2">
                   <span className="text-pink-500">•</span>
-                  <span><code className="text-pink-300">offer_badge</code> - Small promotional badge</span>
+                  <span><code className="text-pink-600 dark:text-pink-300">offer_badge</code> - Small promotional badge</span>
                 </li>
               </ul>
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        </div>
+
+        {/* Geographic Targeting & User Segmentation */}
+        <div className="bg-white dark:bg-white/[0.03] border border-gray-200 dark:border-white/10 rounded-2xl overflow-hidden bg-gradient-to-br from-green-50/50 dark:from-green-500/10 to-gray-50/50 dark:to-white/5">
+          <div className="p-6 space-y-6">
+            <h2 className="flex items-center space-x-2 text-2xl font-semibold text-gray-900 dark:text-white">
+              <svg className="w-8 h-8 text-green-600 dark:text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path>
+              </svg>
+              <span>Geographic Targeting & User Segmentation</span>
+            </h2>
+
+            <div>
+              <h3 className="text-lg font-semibold mb-3 text-green-600 dark:text-green-500">Overview</h3>
+              <p className="text-gray-600 dark:text-muted-foreground mb-4">
+                Target campaigns to specific users based on geography and user percentage. Perfect for A/B testing, regional campaigns, and market testing.
+              </p>
+            </div>
+
+            <div className="bg-gray-100 dark:bg-black/30 border border-gray-200 dark:border-white/10 rounded-xl p-4">
+              <h4 className="font-semibold mb-2 text-green-700 dark:text-green-400">Enable Segmentation in Campaign Settings</h4>
+              <p className="text-sm text-gray-600 dark:text-muted-foreground mb-3">
+                1. Go to Campaign Dashboard → Settings tab<br />
+                2. Find "Targeting & Segmentation" section<br />
+                3. Toggle "Enable segmentation for this campaign"<br />
+                4. Select countries and set user percentage<br />
+                5. Save settings
+              </p>
+            </div>
+
+            <div className="space-y-3">
+              <div className="bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/20 rounded-xl p-4">
+                <h4 className="font-semibold mb-2 text-gray-700 dark:text-gray-300">🌍 Geographic Targeting</h4>
+                <p className="text-sm text-gray-600 dark:text-muted-foreground mb-2">
+                  Select which countries can see your campaign:
+                </p>
+                <p className="text-xs text-gray-500 dark:text-white/40">
+                  Supported: US, MX, AR, CO, BR, ES, CA, DE, FR, GB, IT, JP, AU, NZ, SG, IN, KR, CN
+                </p>
+              </div>
+
+              <div className="bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/20 rounded-xl p-4">
+                <h4 className="font-semibold mb-2 text-gray-700 dark:text-gray-300">User Percentage (A/B Testing)</h4>
+                <p className="text-sm text-gray-600 dark:text-muted-foreground">
+                  Set 1-100% to control how many users see the campaign. Uses deterministic hashing to ensure the same user always gets the same result.
+                </p>
+              </div>
+            </div>
+
+            <div className="bg-gray-100 dark:bg-black/30 border border-gray-200 dark:border-white/10 rounded-xl p-4">
+              <h4 className="font-semibold mb-2 text-gray-900 dark:text-white">How to Pass Targeting Data from iOS</h4>
+              <p className="text-sm text-gray-600 dark:text-muted-foreground mb-3">
+                Your app should pass userId and userCountry parameters when requesting offers:
+              </p>
+              <pre className="bg-gray-900 dark:bg-black/50 rounded-xl p-3 overflow-x-auto text-xs mb-3">
+                <code className="text-green-400">{`// Swift Example
+let userId = UserDefaults.standard.string(forKey: "userId") ?? "user123"
+let userCountry = Locale.current.region?.identifier ?? "US" // "MX", "US", etc.
+
+let urlString = """
+${window.location.protocol}//${window.location.host}/v1/offers?\\
+apiKey=xxx&\\
+campaignId=14&\\
+userId=\\(userId)&\\
+userCountry=\\(userCountry)
+"""
+
+// Make request with these parameters
+let url = URL(string: urlString)!
+URLSession.shared.dataTask(with: url) { data, response, error in
+    // Handle response
+}.resume()`}</code>
+              </pre>
+              <p className="text-sm text-gray-600 dark:text-muted-foreground">
+                If the user doesn't match targeting criteria, the endpoint returns an empty offers array (graceful degradation).
+              </p>
+            </div>
+
+            <div className="space-y-3">
+              <h4 className="font-semibold text-gray-900 dark:text-white">Use Cases</h4>
+              <div className="space-y-2">
+                <div className="bg-gray-50/50 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-lg p-3">
+                  <p className="text-sm font-medium text-primary">A/B Testing</p>
+                  <p className="text-xs text-gray-500 dark:text-white/40">Enable segmentation, set percentage to 50%, reach all countries</p>
+                </div>
+                <div className="bg-gray-50/50 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-lg p-3">
+                  <p className="text-sm font-medium text-primary">Regional Campaign</p>
+                  <p className="text-xs text-gray-500 dark:text-white/40">Enable segmentation, select Mexico (MX), set percentage to 100%</p>
+                </div>
+                <div className="bg-gray-50/50 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-lg p-3">
+                  <p className="text-sm font-medium text-primary">Market Testing</p>
+                  <p className="text-xs text-gray-500 dark:text-white/40">Enable segmentation, select multiple countries (BR, CO, AR), set percentage to 25%</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/20 rounded-xl p-4">
+              <h4 className="font-semibold mb-2 text-amber-600 dark:text-amber-500">Important Notes</h4>
+              <ul className="text-sm space-y-2 text-gray-600 dark:text-muted-foreground">
+                <li className="flex items-start space-x-2">
+                  <span className="text-amber-500 mt-1">•</span>
+                  <span>When segmentation is disabled, all users see the campaign (no geographic or percentage restrictions)</span>
+                </li>
+                <li className="flex items-start space-x-2">
+                  <span className="text-amber-500 mt-1">•</span>
+                  <span>Deterministic hashing ensures the same user always gets consistent results</span>
+                </li>
+                <li className="flex items-start space-x-2">
+                  <span className="text-amber-500 mt-1">•</span>
+                  <span>Changes to targeting settings take effect immediately</span>
+                </li>
+                <li className="flex items-start space-x-2">
+                  <span className="text-amber-500 mt-1">•</span>
+                  <span>Missing userId or userCountry parameters result in empty offers (graceful degradation)</span>
+                </li>
+              </ul>
+            </div>
+          </div>
+        </div>
+
+        {/* Dynamic Configuration System */}
+        <div className="bg-white dark:bg-white/[0.03] border border-gray-200 dark:border-white/10 rounded-2xl overflow-hidden bg-gradient-to-br from-gray-50/50 dark:from-white/5 to-gray-50/50 dark:to-white/5">
+          <div className="p-6 space-y-6">
+            <h2 className="flex items-center space-x-2 text-2xl font-semibold text-gray-900 dark:text-white">
+              <svg className="w-8 h-8 text-gray-600 dark:text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path>
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
+              </svg>
+              <span>Dynamic Configuration System</span>
+            </h2>
+
+            <div>
+              <h3 className="text-lg font-semibold mb-3 text-gray-600 dark:text-gray-300">Overview</h3>
+              <p className="text-gray-600 dark:text-muted-foreground mb-4">
+                The Dynamic Configuration System allows you to customize brand identity, engagement settings, UI themes, and feature flags for each campaign. All configurations are accessible via SDK endpoints and update in real-time via WebSocket.
+              </p>
+            </div>
+
+            {/* SDK Endpoints */}
+            <div className="space-y-4">
+              <h4 className="font-semibold text-lg text-gray-900 dark:text-white">SDK Configuration Endpoints</h4>
+              
+              <div className="bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/20 rounded-xl p-4">
+                <h5 className="font-semibold mb-2 text-gray-700 dark:text-gray-300">GET /v1/campaigns/:campaignId/config</h5>
+                <p className="text-sm text-gray-600 dark:text-muted-foreground mb-3">
+                  Returns the complete dynamic configuration for a campaign including brand, engagement, UI, and feature flags.
+                </p>
+                <pre className="bg-gray-900 dark:bg-black/50 rounded-xl p-3 overflow-x-auto text-xs">
+                  <code className="text-green-400">{`// Request
+GET ${window.location.protocol}//${window.location.host}/v1/campaigns/3/config?apiKey=YOUR_API_KEY
+
+// Response
+{
+  "campaignId": 3,
+  "version": "1.0.0",
+  "brand": {
+    "name": "My Campaign",
+    "iconAsset": "avatar_default",
+    "iconUrl": null,
+    "logoUrl": "https://example.com/logo.png",
+    "sponsorBadgeText": {
+      "no": "Sponset av",
+      "en": "Sponsored by",
+      "sv": "Sponsrad av"
+    }
+  },
+  "engagement": {
+    "demoMode": false,
+    "defaultPollDuration": 300,
+    "defaultContestDuration": 600,
+    "maxVotesPerPoll": 1,
+    "maxContestsPerMatch": 10,
+    "enableRealTimeUpdates": true,
+    "updateInterval": 1000
+  },
+  "ui": {
+    "theme": {
+      "primaryColor": "#007AFF",
+      "secondaryColor": "#5856D6"
+    },
+    "components": {}
+  },
+  "features": {
+    "enableLiveStreaming": true,
+    "enableProductCatalog": true,
+    "enableEngagement": true,
+    "enablePolls": true,
+    "enableContests": true
+  },
+  "cache": {
+    "ttl": 300,
+    "version": "1.0.0"
+  }
+}`}</code>
+                </pre>
+              </div>
+
+              <div className="bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/20 rounded-xl p-4">
+                <h5 className="font-semibold mb-2 text-gray-700 dark:text-gray-300">GET /v1/engagement/config</h5>
+                <p className="text-sm text-gray-600 dark:text-muted-foreground mb-3">
+                  Returns engagement configuration for a specific match. Useful for match-specific settings.
+                </p>
+                <pre className="bg-gray-900 dark:bg-black/50 rounded-xl p-3 overflow-x-auto text-xs">
+                  <code className="text-green-400">{`// Request
+GET ${window.location.protocol}//${window.location.host}/v1/engagement/config?apiKey=YOUR_API_KEY&matchId=MATCH_123
+
+// Response
+{
+  "matchId": "MATCH_123",
+  "engagement": {
+    "demoMode": false,
+    "defaultPollDuration": 300,
+    "defaultContestDuration": 600,
+    "enableRealTimeUpdates": true
+  }
+}`}</code>
+                </pre>
+              </div>
+
+              <div className="bg-green-50 dark:bg-green-500/10 border border-green-200 dark:border-green-500/20 rounded-xl p-4">
+                <h5 className="font-semibold mb-2 text-green-700 dark:text-green-400">GET /v1/localization/:language</h5>
+                <p className="text-sm text-gray-600 dark:text-muted-foreground mb-3">
+                  Returns localized strings for the SDK with priority system: match-specific → campaign-specific → global translations.
+                </p>
+                <pre className="bg-gray-900 dark:bg-black/50 rounded-xl p-3 overflow-x-auto text-xs">
+                  <code className="text-green-400">{`// Request
+GET ${window.location.protocol}//${window.location.host}/v1/localization/en?apiKey=YOUR_API_KEY&campaignId=3
+
+// Response
+{
+  "language": "en",
+  "strings": {
+    "sponsored_by": "Sponsored by",
+    "vote_now": "Vote Now",
+    "enter_contest": "Enter Contest",
+    "time_remaining": "Time Remaining"
+  },
+  "cache": {
+    "ttl": 3600,
+    "version": "1.0.0"
+  }
+}`}</code>
+                </pre>
+              </div>
+            </div>
+
+            {/* Configuration Sections */}
+            <div className="space-y-4">
+              <h4 className="font-semibold text-lg text-gray-900 dark:text-white">Configuration Sections</h4>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="bg-gray-100 dark:bg-black/30 border border-gray-200 dark:border-white/10 rounded-xl p-4">
+                  <h5 className="font-semibold mb-2 text-gray-700 dark:text-gray-300">🏢 Brand Configuration</h5>
+                  <ul className="text-sm space-y-1 text-gray-600 dark:text-muted-foreground">
+                    <li>• <strong>Brand Name:</strong> Display name for SDK</li>
+                    <li>• <strong>Icon Asset:</strong> Built-in icon identifier</li>
+                    <li>• <strong>Icon URL:</strong> Custom icon URL</li>
+                    <li>• <strong>Logo URL:</strong> Brand logo URL</li>
+                  </ul>
+                </div>
+
+                <div className="bg-gray-100 dark:bg-black/30 border border-gray-200 dark:border-white/10 rounded-xl p-4">
+                  <h5 className="font-semibold mb-2 text-gray-700 dark:text-gray-300">Engagement Settings</h5>
+                  <ul className="text-sm space-y-1 text-gray-600 dark:text-muted-foreground">
+                    <li>• <strong>Demo Mode:</strong> Test mode for development</li>
+                    <li>• <strong>Poll Duration:</strong> Default poll time (seconds)</li>
+                    <li>• <strong>Contest Duration:</strong> Default contest time</li>
+                    <li>• <strong>Real-Time Updates:</strong> Enable live updates</li>
+                    <li>• <strong>Update Interval:</strong> Refresh rate (ms)</li>
+                  </ul>
+                </div>
+
+                <div className="bg-gray-100 dark:bg-black/30 border border-gray-200 dark:border-white/10 rounded-xl p-4">
+                  <h5 className="font-semibold mb-2 text-gray-700 dark:text-gray-300">UI Theme</h5>
+                  <ul className="text-sm space-y-1 text-gray-600 dark:text-muted-foreground">
+                    <li>• <strong>Primary Color:</strong> Main accent color</li>
+                    <li>• <strong>Secondary Color:</strong> Secondary accent</li>
+                    <li>• <strong>Component Configs:</strong> Per-component styling</li>
+                  </ul>
+                </div>
+
+                <div className="bg-gray-100 dark:bg-black/30 border border-gray-200 dark:border-white/10 rounded-xl p-4">
+                  <h5 className="font-semibold mb-2 text-gray-700 dark:text-gray-300">Feature Flags</h5>
+                  <ul className="text-sm space-y-1 text-gray-600 dark:text-muted-foreground">
+                    <li>• <strong>Live Streaming:</strong> Enable/disable streaming</li>
+                    <li>• <strong>Product Catalog:</strong> Show products</li>
+                    <li>• <strong>Engagement:</strong> Enable interactions</li>
+                    <li>• <strong>Polls:</strong> Enable voting</li>
+                    <li>• <strong>Contests:</strong> Enable contests</li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+
+            {/* WebSocket Events */}
+            <div className="bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/20 rounded-xl p-4">
+              <h4 className="font-semibold mb-2 text-amber-600 dark:text-amber-500">📡 Real-Time Configuration Updates</h4>
+              <p className="text-sm text-gray-600 dark:text-muted-foreground mb-3">
+                When configuration changes are saved, a <code className="text-amber-600 dark:text-amber-300">config:updated</code> event is broadcast via WebSocket:
+              </p>
+              <pre className="bg-gray-900 dark:bg-black/50 rounded-xl p-3 overflow-x-auto text-xs">
+                <code className="text-green-400">{`{
+  "type": "config:updated",
+  "campaignId": 3,
+  "matchId": "MATCH_123",  // optional
+  "sections": ["engagement"],  // which sections changed
+  "version": "1.0.0",
+  "timestamp": "2026-02-02T12:00:00Z"
+}`}</code>
+              </pre>
+              <p className="text-sm text-gray-600 dark:text-muted-foreground mt-2">
+                Your app should listen for this event and re-fetch the configuration endpoint to get updated values.
+              </p>
+            </div>
+
+            {/* Swift Integration Example */}
+            <div className="bg-gray-100 dark:bg-black/30 border border-gray-200 dark:border-white/10 rounded-xl p-4">
+              <h4 className="font-semibold mb-2 text-gray-900 dark:text-white">Swift Integration Example</h4>
+              <pre className="bg-gray-900 dark:bg-black/50 rounded-xl p-3 overflow-x-auto text-xs">
+                <code className="text-green-400">{`// Fetch campaign configuration
+func fetchCampaignConfig(campaignId: Int, apiKey: String) async throws -> CampaignConfig {
+    let url = URL(string: "${window.location.protocol}//${window.location.host}/v1/campaigns/\\(campaignId)/config?apiKey=\\(apiKey)")!
+    let (data, _) = try await URLSession.shared.data(from: url)
+    return try JSONDecoder().decode(CampaignConfig.self, from: data)
+}
+
+// Handle config:updated WebSocket event
+private func handleConfigUpdated(_ json: [String: Any]) {
+    guard let sections = json["sections"] as? [String] else { return }
+    
+    Task {
+        // Re-fetch configuration
+        let config = try await fetchCampaignConfig(
+            campaignId: currentCampaignId,
+            apiKey: apiKey
+        )
+        
+        // Apply updated config
+        DispatchQueue.main.async {
+            self.applyConfiguration(config)
+        }
+    }
+}`}</code>
+              </pre>
+            </div>
+
+            <div className="space-y-3">
+              <h4 className="font-semibold text-gray-900 dark:text-white">Caching Guidelines</h4>
+              <div className="space-y-2">
+                <div className="bg-gray-50/50 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-lg p-3">
+                  <p className="text-sm font-medium text-primary">Configuration Endpoint</p>
+                  <p className="text-xs text-gray-500 dark:text-white/40">Cache-Control: max-age=300 (5 minutes)</p>
+                </div>
+                <div className="bg-gray-50/50 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-lg p-3">
+                  <p className="text-sm font-medium text-primary">Localization Endpoint</p>
+                  <p className="text-xs text-gray-500 dark:text-white/40">Cache-Control: max-age=3600 (1 hour)</p>
+                </div>
+                <div className="bg-gray-50/50 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-lg p-3">
+                  <p className="text-sm font-medium text-primary">Real-Time Updates</p>
+                  <p className="text-xs text-gray-500 dark:text-white/40">Listen for config:updated WebSocket events to invalidate cache</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
 
         {/* Footer Note */}
-        <div className="text-center text-sm text-muted-foreground pt-8 border-0">
+        <div className="text-center text-sm text-gray-500 dark:text-muted-foreground pt-8">
           <p>Need help? Check the <Link href="/"><Button variant="link" className="p-0 h-auto" data-testid="link-admin-footer">admin panel</Button></Link> to test events in real-time.</p>
         </div>
       </div>
-    </div>
+    </AppLayout>
   );
 }

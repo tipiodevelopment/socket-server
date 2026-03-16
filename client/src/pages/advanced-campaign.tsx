@@ -286,34 +286,6 @@ export default function AdvancedCampaign() {
                 </CardContent>
               </Card>
 
-              <Card className="bg-gray-800 border-0">
-                <CardHeader>
-                  <CardTitle className="text-white flex items-center gap-2">
-                    <Radio className="w-5 h-5" />
-                    Tipio.no Liveshow
-                  </CardTitle>
-                  <CardDescription className="text-gray-400">
-                    Connect this campaign to a Tipio liveshow
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div>
-                    <Label className="text-gray-300">Liveshow ID</Label>
-                    <Input 
-                      value={campaign.tipioLiveshowId || ''} 
-                      placeholder="No liveshow configured"
-                      className="bg-gray-700 border-0 text-white"
-                      disabled
-                      data-testid="input-tipio-liveshow-id"
-                    />
-                  </div>
-                  {campaign.tipioLiveshowId && (
-                    <Badge className="bg-purple-600 border-0" data-testid="badge-tipio-connected">
-                      ✓ Connected to Tipio
-                    </Badge>
-                  )}
-                </CardContent>
-              </Card>
             </TabsContent>
 
             {/* Components Tab */}
@@ -330,7 +302,7 @@ export default function AdvancedCampaign() {
                     <Dialog open={isAddScheduledOpen} onOpenChange={setIsAddScheduledOpen}>
                       <DialogTrigger asChild>
                         <Button 
-                          className="bg-blue-600 hover:bg-blue-700 border-0"
+                          className="bg-white hover:bg-gray-200 text-[#0a0e1a] border-0"
                           data-testid="button-add-component"
                         >
                           <Plus className="w-4 h-4 mr-2" />
@@ -512,7 +484,7 @@ function ScheduledComponentCard({
             variant="ghost"
             size="sm"
             onClick={() => setIsEditOpen(true)}
-            className="text-blue-400 hover:text-blue-300 hover:bg-blue-950"
+            className="text-gray-300 hover:text-gray-200 hover:bg-white/10"
             data-testid={`button-edit-${component.id}`}
           >
             <Pencil className="w-4 h-4" />
@@ -659,7 +631,7 @@ function DynamicComponentsTab({
   });
 
   const availableComponents = allComponents.filter(
-    (comp) => !campaignComponents.some((cc) => cc.componentId === comp.id)
+    (comp) => comp.isTemplate === 'true'
   );
 
   const getComponentTypeLabel = (type: string) => {
@@ -686,7 +658,7 @@ function DynamicComponentsTab({
           </div>
           <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
             <DialogTrigger asChild>
-              <Button className="bg-blue-600 hover:bg-blue-700 border-0" data-testid="button-add-dynamic-component">
+              <Button className="bg-white hover:bg-gray-200 text-[#0a0e1a] border-0" data-testid="button-add-dynamic-component">
                 <Plus className="w-4 h-4 mr-2" />
                 Add Component
               </Button>
@@ -729,7 +701,7 @@ function DynamicComponentsTab({
                     <Button
                       onClick={() => selectedComponentId && addComponentMutation.mutate(selectedComponentId)}
                       disabled={!selectedComponentId || addComponentMutation.isPending}
-                      className="w-full bg-blue-600 hover:bg-blue-700"
+                      className="w-full bg-white hover:bg-gray-200 text-[#0a0e1a]"
                       data-testid="button-confirm-add"
                     >
                       {addComponentMutation.isPending ? 'Adding...' : 'Add to Campaign'}
@@ -767,11 +739,11 @@ function DynamicComponentsTab({
                     <span className="text-white font-medium text-sm sm:text-base" data-testid={`name-${cc.id}`}>
                       {cc.component.name}
                     </span>
-                    <Badge className="bg-blue-600 border-0 text-xs" data-testid={`type-${cc.id}`}>
+                    <Badge className="bg-white/20 border-0 text-xs text-gray-100" data-testid={`type-${cc.id}`}>
                       {getComponentTypeLabel(cc.component.type)}
                     </Badge>
                     {cc.customConfig !== null && cc.customConfig !== undefined && (
-                      <Badge className="bg-purple-600 border-0 text-xs" data-testid={`badge-custom-${cc.id}`}>
+                      <Badge className="bg-white/20 border-0 text-xs" data-testid={`badge-custom-${cc.id}`}>
                         Customized
                       </Badge>
                     )}
@@ -825,7 +797,7 @@ function DynamicComponentsTab({
                     variant="ghost"
                     size="sm"
                     onClick={() => setEditingConfigFor(cc)}
-                    className="text-purple-400 hover:text-purple-300 hover:bg-purple-950"
+                    className="text-gray-300 hover:text-gray-200 hover:bg-white/10"
                     data-testid={`button-customize-${cc.id}`}
                     title="Customize for this campaign"
                   >
@@ -858,7 +830,7 @@ function DynamicComponentsTab({
                     <Button
                       variant="ghost"
                       size="sm"
-                      className="text-blue-400 hover:text-blue-300 hover:bg-blue-950"
+                      className="text-gray-300 hover:text-gray-200 hover:bg-white/10"
                       data-testid={`button-view-library-${cc.id}`}
                       title="View in Component Library"
                     >
@@ -940,7 +912,7 @@ function ComponentTypeCard({
       data-testid={`info-${type}`}
     >
       <div className="flex items-center gap-2 mb-2">
-        <div className="text-blue-400">{icon}</div>
+        <div className="text-gray-300">{icon}</div>
         <span className="text-white font-medium text-sm">{title}</span>
       </div>
       <p className="text-gray-400 text-xs">{description}</p>
@@ -985,11 +957,12 @@ function ScheduledComponentForm({
     initialData?.data ? (typeof initialData.data === 'object' ? initialData.data as Record<string, any> : {}) : {}
   );
 
-  // Fetch available components from library
-  const { data: availableComponents, isLoading: componentsLoading } = useQuery<Component[]>({
+  // Fetch available template components from library
+  const { data: allComponentsForForm, isLoading: componentsLoading } = useQuery<Component[]>({
     queryKey: ['/api/components'],
     enabled: type === 'custom_component'
   });
+  const availableComponents = allComponentsForForm?.filter(c => c.isTemplate === 'true');
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -1138,16 +1111,13 @@ function ScheduledComponentForm({
               <Label htmlFor="liveshowId" className="text-gray-300">Liveshow ID</Label>
               <Input
                 id="liveshowId"
-                placeholder={campaign?.tipioLiveshowId || 'liveshow_123'}
-                value={config.liveshowId || campaign?.tipioLiveshowId || ''}
+                placeholder="liveshow_123"
+                value={config.liveshowId || ''}
                 onChange={(e) => setConfig({ ...config, liveshowId: e.target.value })}
                 required
                 className="bg-gray-700 border-0 text-white"
                 data-testid="input-liveshowId"
               />
-              {campaign?.tipioLiveshowId && (
-                <p className="text-xs text-gray-400">Using campaign's Tipio liveshow ID by default</p>
-              )}
             </div>
           </>
         );
@@ -1295,7 +1265,7 @@ function ScheduledComponentForm({
         <Button 
           type="submit" 
           disabled={isLoading} 
-          className="flex-1 bg-blue-600 hover:bg-blue-700" 
+          className="flex-1 bg-white hover:bg-gray-200 text-[#0a0e1a]" 
           data-testid="button-submit"
         >
           {isLoading ? 'Scheduling...' : 'Schedule Component'}
@@ -1319,8 +1289,8 @@ function StatCard({
   testId: string;
 }) {
   const colorClasses = {
-    blue: 'bg-blue-600/20 text-blue-400 border-blue-600/30',
-    purple: 'bg-purple-600/20 text-purple-400 border-purple-600/30',
+    blue: 'bg-white/10 text-gray-300 border-white/20',
+    purple: 'bg-white/10 text-gray-300 border-white/20',
     green: 'bg-green-600/20 text-green-400 border-green-600/30',
     yellow: 'bg-yellow-600/20 text-yellow-400 border-yellow-600/30',
   };
@@ -1725,7 +1695,7 @@ function ComponentForm({
         <Button 
           type="submit" 
           disabled={isLoading} 
-          className="flex-1 bg-blue-600 hover:bg-blue-700" 
+          className="flex-1 bg-white hover:bg-gray-200 text-[#0a0e1a]" 
           data-testid="button-submit"
         >
           {isLoading ? 'Saving...' : component ? 'Update Component' : 'Create Component'}
@@ -2077,8 +2047,8 @@ function CampaignComponentConfigForm({
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
-      <div className="bg-blue-900/30 border border-blue-700/50 rounded-lg p-3 mb-4">
-        <p className="text-xs text-blue-300">
+      <div className="bg-white/5 border border-white/20 rounded-lg p-3 mb-4">
+        <p className="text-xs text-gray-300">
           <strong>Note:</strong> Changes here only affect this campaign. The original template and other campaigns remain unchanged.
         </p>
       </div>
@@ -2091,7 +2061,7 @@ function CampaignComponentConfigForm({
           <strong className="text-white">Type:</strong> {component.type}
         </div>
         {campaignComponent.customConfig !== null && campaignComponent.customConfig !== undefined && (
-          <Badge className="bg-purple-600 border-0 text-xs">
+          <Badge className="bg-white/20 border-0 text-xs">
             Currently using custom configuration
           </Badge>
         )}
@@ -2125,7 +2095,7 @@ function CampaignComponentConfigForm({
         <Button 
           type="submit" 
           disabled={isLoading} 
-          className="flex-1 bg-purple-600 hover:bg-purple-700" 
+          className="flex-1 bg-white hover:bg-gray-200 text-[#0a0e1a]" 
           data-testid="button-submit"
         >
           {isLoading ? 'Saving...' : 'Save Customization'}

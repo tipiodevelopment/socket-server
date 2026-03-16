@@ -8,51 +8,31 @@ channel = "stable-24_05"
 [deployment]
 deploymentTarget = "autoscale"
 build = ["npm", "run", "build"]
-run = ["npm", "run", "start"]
+run = ["node", "dist/index.js"]
 
 [[ports]]
 localPort = 5000
 externalPort = 80
 
 [[ports]]
-localPort = 38899
-externalPort = 3003
-
-[[ports]]
-localPort = 42337
-externalPort = 4200
-
-[[ports]]
-localPort = 44781
-externalPort = 5173
-
-[[ports]]
-localPort = 45189
+localPort = 5001
 externalPort = 3001
 
 [[ports]]
-localPort = 45459
+localPort = 5002
 externalPort = 3002
 
 [[ports]]
-localPort = 45749
-externalPort = 6000
-
-[[ports]]
-localPort = 46017
+localPort = 5003
 externalPort = 3000
 
 [[ports]]
-localPort = 46303
-externalPort = 5000
+localPort = 5005
+externalPort = 4200
 
 [[ports]]
-localPort = 46317
-externalPort = 8008
-
-[[ports]]
-localPort = 46521
-externalPort = 8000
+localPort = 5006
+externalPort = 3003
 
 [env]
 PORT = "5000"
@@ -80,3 +60,11 @@ author = "agent"
 task = "shell.exec"
 args = "npm run dev"
 waitForPort = 5000
+
+[userenv]
+
+[userenv.shared]
+APNS_KEY_ID = "7RCV68L77Z"
+APNS_TEAM_ID = "U4R2B2U7E6"
+APNS_BUNDLE_ID = "viodev.tv2demo"
+COMMERCE_API_KEY = "KCXF10Y-W5T4PCR-GG5119A-Z64SQ9S"

@@ -1,0 +1,107 @@
+# Revisión de cambios de Replit - contentId y validación
+
+Revisión de los cambios subidos por Replit al socket-server (23 commits).
+
+---
+
+## Resumen de implementación
+
+| Cambio | Estado | Ubicación |
+|--------|--------|-----------|
+| Columna `externalId` en broadcasts | ✅ | `shared/schema.ts` L205 |
+| Índice `(externalId, campaignId)` | ✅ | `shared/schema.ts` L218 |
+| `getBroadcastByExternalId(externalId, clientAppId)` | ✅ | `server/storage.ts` L946 |
+| `GET /v1/sdk/broadcast?contentId=&country=` | ✅ | `server/routes.ts` L3784 |
+| Campo External ID en formulario de broadcast | ✅ | `client/src/pages/campaign-dashboard.tsx` |
+| CRUD broadcasts con externalId | ✅ | POST/PUT `/v1/broadcasts`, `/api/broadcasts` |
+| Eventos WebSocket `broadcast_started`, `broadcast_ended` | ✅ | `replit.md` L79 |
+| Documentación CURSOR_SDK_INFRASTRUCTURE | ✅ | Flujo de dos pasos, endpoint 5.1b |
+| Documentación .cursorrules | ✅ | Actualizado con arquitectura |
+
+---
+
+## Flujo implementado
+
+### 1. Resolución contentId → broadcast
+
+```
+GET /v1/sdk/broadcast?contentId=viaplay-12345&country=NO
+X-App-Bundle-ID: com.viaplay.nordic  (o apiKey)
+```
+
+- Busca broadcast con `externalId = contentId` en campañas del clientApp (vía campaign→channel→clientApp)
+- Valida campaña activa, fechas, país
+- Devuelve `hasEngagement: true` con broadcastId, campaignComponents, broadcastComponents (polls, contests, chat)
+
+### 2. Caché
+
+- `hasEngagement: false` → `Cache-Control: public, max-age=30`
+- `hasEngagement: true` → `Cache-Control: private, max-age=10` + ETag
+
+### 3. Estructura de respuesta (hasEngagement: true)
+
+```json
+{
+  "hasEngagement": true,
+  "broadcastId": "...",
+  "broadcastName": "...",
+  "status": "live",
+  "campaignId": 42,
+  "websocketChannel": "/ws/42",
+  "campaignComponents": [...],
+  "broadcastComponents": {
+    "chat": { "enabled": true },
+    "polls": [...],
+    "contests": [...]
+  }
+}
+```
+
+---
+
+## Preguntas / puntos a verificar
+
+### 1. `p.duration` en polls — **posible bug**
+
+En `routes.ts` L3881 se devuelve `duration: p.duration`. La tabla `polls` **no tiene** columna `duration` (solo `videoStartTime`, `videoEndTime`, `scheduledStartTime`, `scheduledEndTime`). Por tanto `p.duration` será siempre `undefined`. Opciones: (a) añadir columna `duration` a polls, o (b) calcularla en la respuesta a partir de `videoEndTime - videoStartTime` (o `scheduledEndTime - scheduledStartTime`).
+
+### 2. Campañas sin channel
+
+`getBroadcastByExternalId` hace `broadcasts → campaigns → channels` con INNER JOIN. Si una campaña tiene `channelId: null` (solo `clientAppId`), no se encontrará el broadcast. ¿Es intencional que las campañas siempre tengan channel?
+
+### 3. Índice vs query
+
+El índice es `(externalId, campaignId)` pero la query filtra por `externalId` + `clientAppId` (vía join). El índice ayuda en la parte de `externalId`; el filtro por `clientAppId` se resuelve en el join. Debería funcionar bien.
+
+### 4. broadcast_ads, broadcast_products, chat_messages
+
+`replit.md` menciona tablas nuevas (`broadcast_ads`, `broadcast_products`, `chat_messages`). No aparecen en el schema que revisé. ¿Están en otra rama o en migraciones pendientes?
+
+### 5. SDK Swift
+
+El VioSwiftSDK aún usa `discoverCampaigns(broadcastId:)` y no llama a `GET /v1/sdk/broadcast?contentId=`. Falta implementar en el SDK:
+
+- Llamar a `/v1/sdk/broadcast?contentId=xxx&country=yyy` al abrir un stream
+- Usar `hasEngagement` para decidir si renderizar componentes
+- Usar `broadcastId` de la respuesta para engagement (polls, contests)
+
+---
+
+## Próximos pasos sugeridos
+
+1. **SDK Swift**: Implementar `VioEngagementValidator` o similar que llame a `GET /v1/sdk/broadcast` y exponga `hasEngagement`, `broadcastId`, etc.
+2. **VioEngagementContainer**: Wrapper que reciba `contentId` + `country`, valide, y solo renderice hijos si `hasEngagement: true`.
+3. **Corregir `duration`**: Confirmar si polls deben tener `duration` o si se calcula a partir de `videoStartTime`/`videoEndTime`.
+
+---
+
+## Archivos modificados (principales)
+
+- `shared/schema.ts` — externalId, viewerCount, peakViewers en broadcasts
+- `server/storage.ts` — getBroadcastByExternalId
+- `server/routes.ts` — GET /v1/sdk/broadcast, CRUD con externalId
+- `client/src/pages/campaign-dashboard.tsx` — formulario External Content ID
+- `client/src/pages/broadcast-detail.tsx` — refactor
+- `.cursorrules` — arquitectura, design system
+- `CURSOR_SDK_INFRASTRUCTURE.md` — flujo de dos pasos, endpoint 5.1b
+- `replit.md` — SDK flow, WebSocket events

@@ -1,0 +1,96 @@
+2026-03-06 00:34:11.82
+b76afba9
+User
+[Scheduler] Checking scheduled components at 2026-03-05T23:34:11.825Z
+2026-03-06 00:35:11.82
+b76afba9
+User
+[Scheduler] Checking scheduled components at 2026-03-05T23:35:11.825Z
+2026-03-06 00:35:29.38
+b76afba9
+User
+Client disconnected from campaign 0
+2026-03-06 00:35:29.38
+b76afba9
+User
+Client disconnected from campaign 0
+2026-03-06 00:35:34.98
+b76afba9
+User
+Client connected to campaign 0
+2026-03-06 00:35:34.98
+b76afba9
+User
+Client connected to campaign 0
+2026-03-06 00:35:40.54
+b76afba9
+User
+Client disconnected from campaign 0
+2026-03-06 00:35:40.54
+b76afba9
+User
+Client disconnected from campaign 0
+2026-03-06 00:36:11.82
+b76afba9
+User
+[Scheduler] Checking scheduled components at 2026-03-05T23:36:11.826Z
+2026-03-06 00:36:32.92
+b76afba9
+User
+11:36:32 PM [express] GET /api/campaigns/0/active-components 404 in 97ms :: {"message":"Campaign not …
+2026-03-06 00:36:32.93
+b76afba9
+User
+11:36:32 PM [express] GET /api/campaigns/0/active-components 404 in 108ms :: {"message":"Campaign not…
+2026-03-06 00:36:33.23
+b76afba9
+User
+Client connected to campaign 0
+2026-03-06 00:36:33.24
+b76afba9
+User
+Client connected to campaign 0
+2026-03-06 00:36:40.92
+b76afba9
+User
+11:36:40 PM [express] POST /api/broadcasts/barcelona-psg-2026-03-03/shoppable-ad 200 in 539ms :: {"su…
+2026-03-06 00:36:49.38
+b76afba9
+User
+[CartIntent] APNs push failed: { reason: 'BadDeviceToken' }
+2026-03-06 00:36:49.38
+b76afba9
+User
+11:36:49 PM [express] POST /api/campaigns/36/cart-intent 200 in 642ms :: {"success":true}
+2026-03-06 00:37:11.82
+b76afba9
+User
+[Scheduler] Checking scheduled components at 2026-03-05T23:37:11.826Z
+2026-03-06 00:37:12.87
+b76afba9
+User
+11:37:12 PM [express] GET /api/campaigns/36/cart-intent 200 in 9ms
+2026-03-06 00:37:37.05
+b76afba9
+User
+Client disconnected from campaign 36
+2026-03-06 00:37:39.99
+b76afba9
+User
+Client connected to campaign 36
+2026-03-06 00:37:55.75
+b76afba9
+User
+11:37:55 PM [express] POST /api/broadcasts/barcelona-psg-2026-03-03/shoppable-ad 200 in 500ms :: {"su…
+2026-03-06 00:38:05.09
+b76afba9
+User
+[CartIntent] APNs push failed: { reason: 'BadDeviceToken' }
+2026-03-06 00:38:05.10
+b76afba9
+User
+11:38:05 PM [express] POST /api/campaigns/36/cart-intent 200 in 645ms :: {"success":true}
+2026-03-06 00:38:11.82
+b76afba9
+User
+[Scheduler] Checking scheduled components at 2026-03-05T23:38:11.827Z

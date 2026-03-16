@@ -1,7 +1,7 @@
-import { WebSocketEvent, Campaign, InsertCampaign, Event, InsertEvent, CampaignFormState, InsertFormState, ScheduledComponent, InsertScheduledComponent, Component, InsertComponent, CampaignComponent, InsertCampaignComponent, User, InsertUser } from "@shared/schema";
+import { WebSocketEvent, Campaign, InsertCampaign, Event, InsertEvent, CampaignFormState, InsertFormState, ScheduledComponent, InsertScheduledComponent, Component, InsertComponent, CampaignComponent, InsertCampaignComponent, AppComponent, InsertAppComponent, User, InsertUser, ClientApp, InsertClientApp, Channel, InsertChannel, CampaignTranslation, InsertCampaignTranslation, CampaignEngagementConfig, InsertCampaignEngagementConfig, CampaignUiConfig, InsertCampaignUiConfig, CampaignFeatureFlags, InsertCampaignFeatureFlags, SdkTranslation, InsertSdkTranslation, Broadcast, InsertBroadcast, Poll, InsertPoll, PollOptionRecord, InsertPollOption, PollVote, InsertPollVote, Contest, InsertContest, ContestParticipation, InsertContestParticipation, Sponsor, InsertSponsor, BroadcastAd, InsertBroadcastAd, BroadcastProduct, InsertBroadcastProduct, ChatMessage, InsertChatMessage, DeviceToken, InsertDeviceToken, SportmonksCache, type InsertCampaignSponsor, type InsertBroadcastSponsorSlot } from "@shared/schema";
 import { db } from "./db";
-import { campaigns, events, campaignFormState, scheduledComponents, components, campaignComponents, users } from "@shared/schema";
-import { eq, desc, and, gte, ne } from "drizzle-orm";
+import { campaigns, events, campaignFormState, scheduledComponents, components, campaignComponents, appComponents, users, clientApps, channels, campaignTranslations, campaignEngagementConfig, campaignUiConfig, campaignFeatureFlags, sdkTranslations, broadcasts, polls, pollOptions, pollVotes, contests, contestParticipations, sponsors, broadcastAds, broadcastProducts, chatMessages, deviceTokens, sportmonksCache, campaignSponsors, broadcastSponsorSlots } from "@shared/schema";
+import { eq, desc, and, or, gte, ne, isNull, isNotNull, sql, lte, inArray } from "drizzle-orm";
 
 export interface IStorage {
   addEvent(event: WebSocketEvent): Promise<void>;
@@ -14,10 +14,39 @@ export interface IStorage {
   getAllUsers(): Promise<User[]>;
   updateUser(id: number, user: Partial<InsertUser>): Promise<User | undefined>;
   
+  // Client App methods
+  createClientApp(clientApp: InsertClientApp): Promise<ClientApp>;
+  getClientApp(id: number): Promise<ClientApp | undefined>;
+  getClientAppByApiKey(apiKey: string): Promise<ClientApp | undefined>;
+  getClientAppByBundleId(bundleId: string): Promise<ClientApp | undefined>;
+  getUserClientApps(userId: number): Promise<ClientApp[]>;
+  getAllClientApps(): Promise<ClientApp[]>;
+  updateClientApp(id: number, clientApp: Partial<InsertClientApp>): Promise<ClientApp | undefined>;
+  deleteClientApp(id: number): Promise<void>;
+  
+  // Sponsor methods
+  createSponsor(sponsor: InsertSponsor): Promise<Sponsor>;
+  getSponsor(id: number): Promise<Sponsor | undefined>;
+  getUserSponsors(userId: number): Promise<Sponsor[]>;
+  updateSponsor(id: number, sponsor: Partial<InsertSponsor>): Promise<Sponsor | undefined>;
+  deleteSponsor(id: number): Promise<void>;
+
+  // Channel methods
+  createChannel(channel: InsertChannel): Promise<Channel>;
+  getChannel(id: number): Promise<Channel | undefined>;
+  getClientAppChannels(clientAppId: number): Promise<Channel[]>;
+  getUserChannels(userId: number): Promise<Channel[]>;
+  getAllChannels(): Promise<Channel[]>;
+  updateChannel(id: number, channel: Partial<InsertChannel>): Promise<Channel | undefined>;
+  deleteChannel(id: number): Promise<void>;
+  
   // Campaign methods
   createCampaign(campaign: InsertCampaign): Promise<Campaign>;
   getCampaign(id: number): Promise<Campaign | undefined>;
   getAllCampaigns(): Promise<Campaign[]>;
+  getChannelCampaigns(channelId: number): Promise<Campaign[]>;
+  getClientAppCampaigns(clientAppId: number): Promise<Campaign[]>;
+  getUserCampaigns(userId: number): Promise<Campaign[]>;
   updateCampaign(id: number, campaign: Partial<InsertCampaign>): Promise<Campaign | undefined>;
   deleteCampaign(id: number): Promise<void>;
   
@@ -48,11 +77,142 @@ export interface IStorage {
   
   // Campaign component methods
   getCampaignComponents(campaignId: number): Promise<Array<CampaignComponent & { component: Component }>>;
+  getComponentCountsForCampaigns(campaignIds: number[]): Promise<Map<number, number>>;
   addComponentToCampaign(campaignComponent: InsertCampaignComponent): Promise<CampaignComponent>;
   updateCampaignComponentStatus(campaignId: number, componentId: string, status: 'active' | 'inactive'): Promise<CampaignComponent | undefined>;
+  updateCampaignComponentLocationId(campaignId: number, componentId: string, locationId: string | null): Promise<CampaignComponent | undefined>;
   updateCampaignComponentConfig(campaignId: number, componentId: string, customConfig: any): Promise<CampaignComponent | undefined>;
   removeComponentFromCampaign(campaignId: number, componentId: string): Promise<void>;
-  validateComponentAvailability(componentId: string, campaignId?: number): Promise<{ available: boolean; activeCampaignId?: number }>;
+  validateComponentAvailability(componentId: string, isTemplate: boolean, campaignId?: number): Promise<{ available: boolean; activeCampaignId?: number }>;
+  
+  // App component methods
+  getAppComponents(clientAppId: number): Promise<Array<AppComponent & { component: Component }>>;
+  addComponentToApp(appComponent: InsertAppComponent): Promise<AppComponent>;
+  removeComponentFromApp(clientAppId: number, componentId: string): Promise<void>;
+
+  // Campaign translation methods
+  getCampaignTranslations(campaignId: number): Promise<CampaignTranslation[]>;
+  upsertCampaignTranslation(translation: InsertCampaignTranslation): Promise<CampaignTranslation>;
+  deleteCampaignTranslation(campaignId: number, languageCode: string): Promise<void>;
+  
+  // Campaign engagement config methods
+  getCampaignEngagementConfig(campaignId: number): Promise<CampaignEngagementConfig | undefined>;
+  upsertCampaignEngagementConfig(config: InsertCampaignEngagementConfig): Promise<CampaignEngagementConfig>;
+  
+  // Campaign UI config methods
+  getCampaignUiConfig(campaignId: number): Promise<CampaignUiConfig | undefined>;
+  upsertCampaignUiConfig(config: InsertCampaignUiConfig): Promise<CampaignUiConfig>;
+  
+  // Campaign feature flags methods
+  getCampaignFeatureFlags(campaignId: number): Promise<CampaignFeatureFlags | undefined>;
+  upsertCampaignFeatureFlags(flags: InsertCampaignFeatureFlags): Promise<CampaignFeatureFlags>;
+  
+  // SDK translations methods
+  getSdkTranslations(languageCode: string, campaignId?: number, matchId?: string): Promise<SdkTranslation[]>;
+  upsertSdkTranslation(translation: InsertSdkTranslation): Promise<SdkTranslation>;
+  deleteSdkTranslation(id: number): Promise<void>;
+  
+  // Full campaign config for SDK endpoints
+  getFullCampaignConfig(campaignId: number): Promise<{
+    campaign: Campaign;
+    translations: CampaignTranslation[];
+    engagementConfig: CampaignEngagementConfig | null;
+    uiConfig: CampaignUiConfig | null;
+    featureFlags: CampaignFeatureFlags | null;
+  } | null>;
+  
+  // Broadcast methods
+  createBroadcast(broadcast: InsertBroadcast): Promise<Broadcast>;
+  getBroadcast(broadcastId: string): Promise<Broadcast | undefined>;
+  getBroadcastByExternalId(externalId: string, clientAppId: number): Promise<Broadcast | undefined>;
+  getAllBroadcasts(filters?: { status?: string; campaignId?: number }): Promise<Broadcast[]>;
+  getCampaignBroadcasts(campaignId: number): Promise<Broadcast[]>;
+  updateBroadcast(broadcastId: string, data: Partial<InsertBroadcast>): Promise<Broadcast | undefined>;
+  deleteBroadcast(broadcastId: string): Promise<void>;
+  getBroadcastsByStatus(status: string): Promise<Broadcast[]>;
+
+  // Poll methods  
+  createPoll(poll: InsertPoll): Promise<Poll>;
+  getPoll(id: number): Promise<Poll | undefined>;
+  getBroadcastPolls(broadcastId: string): Promise<Array<Poll & { options: PollOptionRecord[] }>>;
+  updatePoll(id: number, data: Partial<InsertPoll>): Promise<Poll | undefined>;
+  deletePoll(id: number): Promise<void>;
+
+  // Poll option methods
+  createPollOption(option: InsertPollOption): Promise<PollOptionRecord>;
+  updatePollOptionVoteCount(optionId: number, increment: number): Promise<void>;
+
+  // Poll vote methods
+  createPollVote(vote: InsertPollVote): Promise<PollVote>;
+  createPollVoteWithCountUpdate(vote: InsertPollVote, optionId: number): Promise<PollVote>;
+  hasUserVoted(pollId: number, userId: string): Promise<boolean>;
+  getPollResults(pollId: number): Promise<{ poll: Poll; options: PollOptionRecord[] } | null>;
+
+  // Contest methods
+  createContest(contest: InsertContest): Promise<Contest>;
+  getContest(id: number): Promise<Contest | undefined>;
+  getBroadcastContests(broadcastId: string): Promise<Contest[]>;
+  getScheduledPollsForLiveBroadcasts(): Promise<Array<Poll & { campaignId: number | null }>>;
+  getScheduledContestsForLiveBroadcasts(): Promise<Array<Contest & { campaignId: number | null }>>;
+  updateContest(id: number, data: Partial<InsertContest>): Promise<Contest | undefined>;
+  deleteContest(id: number): Promise<void>;
+
+  // Contest participation methods
+  createContestParticipation(participation: InsertContestParticipation): Promise<ContestParticipation>;
+  createContestParticipationAtomic(participation: InsertContestParticipation): Promise<ContestParticipation>;
+  hasUserParticipated(contestId: number, userId: string): Promise<boolean>;
+  getContestParticipations(contestId: number): Promise<ContestParticipation[]>;
+
+  // Pagination support
+  getBroadcastPollsPaginated(broadcastId: string, options: { limit: number; offset: number }): Promise<Array<Poll & { options: PollOptionRecord[] }>>;
+  getBroadcastPollsCount(broadcastId: string): Promise<number>;
+  getBroadcastContestsPaginated(broadcastId: string, options: { limit: number; offset: number }): Promise<Contest[]>;
+  getBroadcastContestsCount(broadcastId: string): Promise<number>;
+
+  // Enrichment: poll/contest counts for multiple broadcasts
+  getBroadcastEngagementCounts(broadcastIds: string[]): Promise<Map<string, { pollCount: number; activePollCount: number; contestCount: number }>>;
+  getCampaignEngagementTotals(campaignIds: number[]): Promise<Map<number, number>>;
+
+  // Broadcast Ads methods
+  getBroadcastAds(broadcastId: string): Promise<BroadcastAd[]>;
+  createBroadcastAd(ad: InsertBroadcastAd): Promise<BroadcastAd>;
+  updateBroadcastAd(id: number, data: Partial<InsertBroadcastAd>): Promise<BroadcastAd | undefined>;
+  deleteBroadcastAd(id: number): Promise<void>;
+
+  // Broadcast Products methods
+  getBroadcastProducts(broadcastId: string): Promise<BroadcastProduct[]>;
+  createBroadcastProduct(product: InsertBroadcastProduct): Promise<BroadcastProduct>;
+  updateBroadcastProduct(id: number, data: Partial<InsertBroadcastProduct>): Promise<BroadcastProduct | undefined>;
+  deleteBroadcastProduct(id: number): Promise<void>;
+
+  // Chat Messages methods
+  getChatMessages(broadcastId: string, limit?: number): Promise<ChatMessage[]>;
+  createChatMessage(message: InsertChatMessage): Promise<ChatMessage>;
+  deleteChatMessage(id: number): Promise<void>;
+  seedPollVotes(pollId: number, options: { id: number; voteCount: number }[]): Promise<Poll | undefined>;
+
+  // Device Token methods
+  upsertDeviceToken(campaignId: number, userId: string, deviceToken: string, platform: string): Promise<DeviceToken>;
+  getDeviceToken(campaignId: number, userId: string): Promise<DeviceToken | undefined>;
+
+  // Sportmonks cache methods
+  getSportmonksCache(cacheType: string, leagueId?: number | null, dateFrom?: string | null, dateTo?: string | null): Promise<SportmonksCache | undefined>;
+  upsertSportmonksCache(cacheType: string, data: any, leagueId?: number | null, dateFrom?: string | null, dateTo?: string | null): Promise<SportmonksCache>;
+
+  // Campaign Sponsors methods
+  getCampaignSponsors(campaignId: number): Promise<Array<{ id: number; sponsorId: number; campaignId: number; role: string; name: string; logoUrl: string | null; primaryColor: string | null; secondaryColor: string | null }>>;
+  addCampaignSponsor(data: { campaignId: number; sponsorId: number; role: string }): Promise<any>;
+  removeCampaignSponsor(campaignId: number, sponsorId: number): Promise<void>;
+
+  // Broadcast Sponsor Slots methods
+  getBroadcastSponsorSlots(broadcastId: string): Promise<any[]>;
+  getBroadcastSponsorSlot(id: number): Promise<any | undefined>;
+  createBroadcastSponsorSlot(data: any): Promise<any>;
+  updateBroadcastSponsorSlot(id: number, data: any): Promise<any | undefined>;
+  deleteBroadcastSponsorSlot(id: number): Promise<void>;
+
+  // getBroadcastsByCampaign alias
+  getBroadcastsByCampaign(campaignId: number): Promise<Broadcast[]>;
 }
 
 export class MemStorage implements IStorage {
@@ -98,6 +258,122 @@ export class MemStorage implements IStorage {
     return updated || undefined;
   }
 
+  // Client App methods (database-backed)
+  async createClientApp(clientApp: InsertClientApp): Promise<ClientApp> {
+    const [newClientApp] = await db.insert(clientApps).values(clientApp).returning();
+    return newClientApp;
+  }
+
+  async getClientApp(id: number): Promise<ClientApp | undefined> {
+    const [clientApp] = await db.select().from(clientApps).where(eq(clientApps.id, id));
+    return clientApp || undefined;
+  }
+
+  async getClientAppByApiKey(apiKey: string): Promise<ClientApp | undefined> {
+    const [clientApp] = await db.select().from(clientApps).where(eq(clientApps.apiKey, apiKey));
+    return clientApp || undefined;
+  }
+
+  async getClientAppByBundleId(bundleId: string): Promise<ClientApp | undefined> {
+    const [clientApp] = await db.select().from(clientApps).where(eq(clientApps.bundleId, bundleId));
+    return clientApp || undefined;
+  }
+
+  async getUserClientApps(userId: number): Promise<ClientApp[]> {
+    return await db.select().from(clientApps)
+      .where(eq(clientApps.userId, userId))
+      .orderBy(desc(clientApps.createdAt));
+  }
+
+  async getAllClientApps(): Promise<ClientApp[]> {
+    return await db.select().from(clientApps).orderBy(desc(clientApps.createdAt));
+  }
+
+  async updateClientApp(id: number, clientApp: Partial<InsertClientApp>): Promise<ClientApp | undefined> {
+    const [updated] = await db.update(clientApps)
+      .set(clientApp)
+      .where(eq(clientApps.id, id))
+      .returning();
+    return updated || undefined;
+  }
+
+  async deleteClientApp(id: number): Promise<void> {
+    await db.delete(clientApps).where(eq(clientApps.id, id));
+  }
+
+  // Sponsor methods (database-backed)
+  async createSponsor(sponsor: InsertSponsor): Promise<Sponsor> {
+    const [newSponsor] = await db.insert(sponsors).values(sponsor).returning();
+    return newSponsor;
+  }
+
+  async getSponsor(id: number): Promise<Sponsor | undefined> {
+    const [sponsor] = await db.select().from(sponsors).where(eq(sponsors.id, id));
+    return sponsor || undefined;
+  }
+
+  async getUserSponsors(userId: number): Promise<Sponsor[]> {
+    return await db.select().from(sponsors)
+      .where(eq(sponsors.userId, userId))
+      .orderBy(desc(sponsors.createdAt));
+  }
+
+  async updateSponsor(id: number, data: Partial<InsertSponsor>): Promise<Sponsor | undefined> {
+    const [updated] = await db.update(sponsors)
+      .set(data)
+      .where(eq(sponsors.id, id))
+      .returning();
+    return updated || undefined;
+  }
+
+  async deleteSponsor(id: number): Promise<void> {
+    await db.delete(sponsors).where(eq(sponsors.id, id));
+  }
+
+  // Channel methods (database-backed)
+  async createChannel(channel: InsertChannel): Promise<Channel> {
+    const [newChannel] = await db.insert(channels).values(channel).returning();
+    return newChannel;
+  }
+
+  async getChannel(id: number): Promise<Channel | undefined> {
+    const [channel] = await db.select().from(channels).where(eq(channels.id, id));
+    return channel || undefined;
+  }
+
+  async getClientAppChannels(clientAppId: number): Promise<Channel[]> {
+    return await db.select().from(channels)
+      .where(eq(channels.clientAppId, clientAppId))
+      .orderBy(desc(channels.createdAt));
+  }
+
+  async getUserChannels(userId: number): Promise<Channel[]> {
+    const userApps = await db.select().from(clientApps)
+      .where(eq(clientApps.userId, userId));
+    const appIds = userApps.map(app => app.id);
+    if (appIds.length === 0) return [];
+    
+    const results = await db.select().from(channels)
+      .orderBy(desc(channels.createdAt));
+    return results.filter(ch => appIds.includes(ch.clientAppId));
+  }
+
+  async getAllChannels(): Promise<Channel[]> {
+    return await db.select().from(channels).orderBy(desc(channels.createdAt));
+  }
+
+  async updateChannel(id: number, channel: Partial<InsertChannel>): Promise<Channel | undefined> {
+    const [updated] = await db.update(channels)
+      .set(channel)
+      .where(eq(channels.id, id))
+      .returning();
+    return updated || undefined;
+  }
+
+  async deleteChannel(id: number): Promise<void> {
+    await db.delete(channels).where(eq(channels.id, id));
+  }
+
   // Campaign methods (database-backed)
   async createCampaign(campaign: InsertCampaign): Promise<Campaign> {
     const [newCampaign] = await db.insert(campaigns).values(campaign).returning();
@@ -111,6 +387,34 @@ export class MemStorage implements IStorage {
 
   async getAllCampaigns(): Promise<Campaign[]> {
     return await db.select().from(campaigns).orderBy(desc(campaigns.createdAt));
+  }
+
+  async getChannelCampaigns(channelId: number): Promise<Campaign[]> {
+    return await db.select().from(campaigns)
+      .where(eq(campaigns.channelId, channelId))
+      .orderBy(desc(campaigns.createdAt));
+  }
+
+  async getClientAppCampaigns(clientAppId: number): Promise<Campaign[]> {
+    return await db.select().from(campaigns)
+      .where(eq(campaigns.clientAppId, clientAppId))
+      .orderBy(desc(campaigns.createdAt));
+  }
+
+  async getUserCampaigns(userId: number): Promise<Campaign[]> {
+    return await db.select().from(campaigns)
+      .where(eq(campaigns.userId, userId))
+      .orderBy(desc(campaigns.createdAt));
+  }
+
+  async getBroadcastCountsForCampaigns(campaignIds: number[]): Promise<Map<number, number>> {
+    if (campaignIds.length === 0) return new Map();
+    const rows = await db
+      .select({ campaignId: broadcasts.campaignId, count: sql<number>`count(*)::int` })
+      .from(broadcasts)
+      .where(inArray(broadcasts.campaignId, campaignIds))
+      .groupBy(broadcasts.campaignId);
+    return new Map(rows.map(r => [r.campaignId!, r.count]));
   }
 
   async updateCampaign(id: number, campaign: Partial<InsertCampaign>): Promise<Campaign | undefined> {
@@ -297,6 +601,16 @@ export class MemStorage implements IStorage {
     }));
   }
 
+  async getComponentCountsForCampaigns(campaignIds: number[]): Promise<Map<number, number>> {
+    if (campaignIds.length === 0) return new Map();
+    const rows = await db
+      .select({ campaignId: campaignComponents.campaignId, count: sql<number>`count(*)::int` })
+      .from(campaignComponents)
+      .where(inArray(campaignComponents.campaignId, campaignIds))
+      .groupBy(campaignComponents.campaignId);
+    return new Map(rows.map(r => [r.campaignId!, r.count]));
+  }
+
   async addComponentToCampaign(campaignComponent: InsertCampaignComponent): Promise<CampaignComponent> {
     const [newCampaignComponent] = await db.insert(campaignComponents).values(campaignComponent).returning();
     return newCampaignComponent;
@@ -325,6 +639,19 @@ export class MemStorage implements IStorage {
     return updated || undefined;
   }
 
+  async updateCampaignComponentLocationId(campaignId: number, componentId: string, locationId: string | null): Promise<CampaignComponent | undefined> {
+    const [updated] = await db.update(campaignComponents)
+      .set({ locationId, updatedAt: new Date() })
+      .where(
+        and(
+          eq(campaignComponents.campaignId, campaignId),
+          eq(campaignComponents.componentId, componentId)
+        )
+      )
+      .returning();
+    return updated || undefined;
+  }
+
   async updateCampaignComponentConfig(campaignId: number, componentId: string, customConfig: any): Promise<CampaignComponent | undefined> {
     const [updated] = await db.update(campaignComponents)
       .set({ 
@@ -342,17 +669,39 @@ export class MemStorage implements IStorage {
   }
 
   async removeComponentFromCampaign(campaignId: number, componentId: string): Promise<void> {
+    // componentId is actually the campaign component instance ID (from campaignComponents.id)
     await db.delete(campaignComponents)
       .where(
         and(
           eq(campaignComponents.campaignId, campaignId),
-          eq(campaignComponents.componentId, componentId)
+          eq(campaignComponents.id, parseInt(componentId))
         )
       );
   }
 
-  async validateComponentAvailability(componentId: string, campaignId?: number): Promise<{ available: boolean; activeCampaignId?: number }> {
-    // Check if component is active in any other campaign
+  /**
+   * Validates if a component is available to be activated in a campaign.
+   * 
+   * Preconditions:
+   * - Caller must provide the true isTemplate value from the component
+   * - Caller is responsible for verifying component exists before calling this
+   * 
+   * Rules:
+   * - Template components (isTemplate=true) can be active in multiple campaigns simultaneously
+   * - Regular components (isTemplate=false) can only be active in one campaign at a time
+   * 
+   * @param componentId - ID of the component to validate
+   * @param isTemplate - Whether the component is a template (must be truthful value from component.isTemplate === 'true')
+   * @param campaignId - Optional campaign ID to exclude from the check (when updating existing component)
+   * @returns Object with available flag and optional activeCampaignId if not available
+   */
+  async validateComponentAvailability(componentId: string, isTemplate: boolean, campaignId?: number): Promise<{ available: boolean; activeCampaignId?: number }> {
+    // Templates can be used in multiple campaigns - always available
+    if (isTemplate) {
+      return { available: true };
+    }
+    
+    // Regular components: check if active in any other campaign
     const conditions = [
       eq(campaignComponents.componentId, componentId),
       eq(campaignComponents.status, 'active')
@@ -376,6 +725,846 @@ export class MemStorage implements IStorage {
     }
     
     return { available: true };
+  }
+  
+  // App component methods
+  async getAppComponents(clientAppId: number): Promise<Array<AppComponent & { component: Component }>> {
+    const results = await db.select()
+      .from(appComponents)
+      .innerJoin(components, eq(appComponents.componentId, components.id))
+      .where(eq(appComponents.clientAppId, clientAppId));
+    return results.map(r => ({ ...r.app_components, component: r.components }));
+  }
+
+  async addComponentToApp(appComponent: InsertAppComponent): Promise<AppComponent> {
+    const [result] = await db.insert(appComponents).values(appComponent).returning();
+    return result;
+  }
+
+  async removeComponentFromApp(clientAppId: number, componentId: string): Promise<void> {
+    await db.delete(appComponents)
+      .where(and(
+        eq(appComponents.clientAppId, clientAppId),
+        eq(appComponents.componentId, componentId)
+      ));
+  }
+
+  // Campaign translation methods
+  async getCampaignTranslations(campaignId: number): Promise<CampaignTranslation[]> {
+    return db.select()
+      .from(campaignTranslations)
+      .where(eq(campaignTranslations.campaignId, campaignId));
+  }
+  
+  async upsertCampaignTranslation(translation: InsertCampaignTranslation): Promise<CampaignTranslation> {
+    const existing = await db.select()
+      .from(campaignTranslations)
+      .where(and(
+        eq(campaignTranslations.campaignId, translation.campaignId),
+        eq(campaignTranslations.languageCode, translation.languageCode)
+      ))
+      .limit(1);
+    
+    if (existing.length > 0) {
+      const [updated] = await db.update(campaignTranslations)
+        .set(translation)
+        .where(eq(campaignTranslations.id, existing[0].id))
+        .returning();
+      return updated;
+    }
+    
+    const [created] = await db.insert(campaignTranslations).values(translation).returning();
+    return created;
+  }
+  
+  async deleteCampaignTranslation(campaignId: number, languageCode: string): Promise<void> {
+    await db.delete(campaignTranslations)
+      .where(and(
+        eq(campaignTranslations.campaignId, campaignId),
+        eq(campaignTranslations.languageCode, languageCode)
+      ));
+  }
+  
+  // Campaign engagement config methods
+  async getCampaignEngagementConfig(campaignId: number): Promise<CampaignEngagementConfig | undefined> {
+    const [config] = await db.select()
+      .from(campaignEngagementConfig)
+      .where(eq(campaignEngagementConfig.campaignId, campaignId))
+      .limit(1);
+    return config;
+  }
+  
+  async upsertCampaignEngagementConfig(config: InsertCampaignEngagementConfig): Promise<CampaignEngagementConfig> {
+    const existing = await db.select()
+      .from(campaignEngagementConfig)
+      .where(eq(campaignEngagementConfig.campaignId, config.campaignId))
+      .limit(1);
+    
+    if (existing.length > 0) {
+      const [updated] = await db.update(campaignEngagementConfig)
+        .set(config)
+        .where(eq(campaignEngagementConfig.id, existing[0].id))
+        .returning();
+      return updated;
+    }
+    
+    const [created] = await db.insert(campaignEngagementConfig).values(config).returning();
+    return created;
+  }
+  
+  // Campaign UI config methods
+  async getCampaignUiConfig(campaignId: number): Promise<CampaignUiConfig | undefined> {
+    const [config] = await db.select()
+      .from(campaignUiConfig)
+      .where(eq(campaignUiConfig.campaignId, campaignId))
+      .limit(1);
+    return config;
+  }
+  
+  async upsertCampaignUiConfig(config: InsertCampaignUiConfig): Promise<CampaignUiConfig> {
+    const existing = await db.select()
+      .from(campaignUiConfig)
+      .where(eq(campaignUiConfig.campaignId, config.campaignId))
+      .limit(1);
+    
+    if (existing.length > 0) {
+      const [updated] = await db.update(campaignUiConfig)
+        .set(config)
+        .where(eq(campaignUiConfig.id, existing[0].id))
+        .returning();
+      return updated;
+    }
+    
+    const [created] = await db.insert(campaignUiConfig).values(config).returning();
+    return created;
+  }
+  
+  // Campaign feature flags methods
+  async getCampaignFeatureFlags(campaignId: number): Promise<CampaignFeatureFlags | undefined> {
+    const [flags] = await db.select()
+      .from(campaignFeatureFlags)
+      .where(eq(campaignFeatureFlags.campaignId, campaignId))
+      .limit(1);
+    return flags;
+  }
+  
+  async upsertCampaignFeatureFlags(flags: InsertCampaignFeatureFlags): Promise<CampaignFeatureFlags> {
+    const existing = await db.select()
+      .from(campaignFeatureFlags)
+      .where(eq(campaignFeatureFlags.campaignId, flags.campaignId))
+      .limit(1);
+    
+    if (existing.length > 0) {
+      const [updated] = await db.update(campaignFeatureFlags)
+        .set(flags)
+        .where(eq(campaignFeatureFlags.id, existing[0].id))
+        .returning();
+      return updated;
+    }
+    
+    const [created] = await db.insert(campaignFeatureFlags).values(flags).returning();
+    return created;
+  }
+  
+  // SDK translations methods - with priority: match > campaign > global
+  async getSdkTranslations(languageCode: string, campaignId?: number, matchId?: string): Promise<SdkTranslation[]> {
+    let translations: SdkTranslation[] = [];
+    
+    // First get global translations (where campaignId and matchId are null)
+    const globalTranslations = await db.select()
+      .from(sdkTranslations)
+      .where(and(
+        eq(sdkTranslations.languageCode, languageCode),
+        isNull(sdkTranslations.campaignId),
+        isNull(sdkTranslations.matchId)
+      ));
+    translations = globalTranslations;
+    
+    // Then get campaign-specific translations if campaignId provided
+    if (campaignId) {
+      const campaignTranslationsResult = await db.select()
+        .from(sdkTranslations)
+        .where(and(
+          eq(sdkTranslations.languageCode, languageCode),
+          eq(sdkTranslations.campaignId, campaignId),
+          isNull(sdkTranslations.matchId)
+        ));
+      
+      // Merge campaign translations (override global)
+      for (const ct of campaignTranslationsResult) {
+        const idx = translations.findIndex(t => t.translationKey === ct.translationKey);
+        if (idx >= 0) {
+          translations[idx] = ct;
+        } else {
+          translations.push(ct);
+        }
+      }
+    }
+    
+    // Finally get match-specific translations if matchId provided
+    if (matchId && campaignId) {
+      const matchTranslations = await db.select()
+        .from(sdkTranslations)
+        .where(and(
+          eq(sdkTranslations.languageCode, languageCode),
+          eq(sdkTranslations.campaignId, campaignId),
+          eq(sdkTranslations.matchId, matchId)
+        ));
+      
+      // Merge match translations (override campaign and global)
+      for (const mt of matchTranslations) {
+        const idx = translations.findIndex(t => t.translationKey === mt.translationKey);
+        if (idx >= 0) {
+          translations[idx] = mt;
+        } else {
+          translations.push(mt);
+        }
+      }
+    }
+    
+    return translations;
+  }
+  
+  async upsertSdkTranslation(translation: InsertSdkTranslation): Promise<SdkTranslation> {
+    // Build conditions for finding existing translation
+    const conditions = [
+      eq(sdkTranslations.languageCode, translation.languageCode),
+      eq(sdkTranslations.translationKey, translation.translationKey)
+    ];
+    
+    if (translation.campaignId) {
+      conditions.push(eq(sdkTranslations.campaignId, translation.campaignId));
+    } else {
+      conditions.push(isNull(sdkTranslations.campaignId));
+    }
+    
+    if (translation.matchId) {
+      conditions.push(eq(sdkTranslations.matchId, translation.matchId));
+    } else {
+      conditions.push(isNull(sdkTranslations.matchId));
+    }
+    
+    const existing = await db.select()
+      .from(sdkTranslations)
+      .where(and(...conditions))
+      .limit(1);
+    
+    if (existing.length > 0) {
+      const [updated] = await db.update(sdkTranslations)
+        .set(translation)
+        .where(eq(sdkTranslations.id, existing[0].id))
+        .returning();
+      return updated;
+    }
+    
+    const [created] = await db.insert(sdkTranslations).values(translation).returning();
+    return created;
+  }
+  
+  async deleteSdkTranslation(id: number): Promise<void> {
+    await db.delete(sdkTranslations).where(eq(sdkTranslations.id, id));
+  }
+  
+  // Full campaign config for SDK endpoints
+  async getFullCampaignConfig(campaignId: number): Promise<{
+    campaign: Campaign;
+    translations: CampaignTranslation[];
+    engagementConfig: CampaignEngagementConfig | null;
+    uiConfig: CampaignUiConfig | null;
+    featureFlags: CampaignFeatureFlags | null;
+  } | null> {
+    const campaign = await this.getCampaign(campaignId);
+    if (!campaign) return null;
+    
+    const [translations, engagementConfig, uiConfig, featureFlagsResult] = await Promise.all([
+      this.getCampaignTranslations(campaignId),
+      this.getCampaignEngagementConfig(campaignId),
+      this.getCampaignUiConfig(campaignId),
+      this.getCampaignFeatureFlags(campaignId)
+    ]);
+    
+    return {
+      campaign,
+      translations,
+      engagementConfig: engagementConfig || null,
+      uiConfig: uiConfig || null,
+      featureFlags: featureFlagsResult || null
+    };
+  }
+
+  // Broadcast methods (database-backed)
+  async createBroadcast(broadcast: InsertBroadcast): Promise<Broadcast> {
+    const [newBroadcast] = await db.insert(broadcasts).values(broadcast).returning();
+    return newBroadcast;
+  }
+
+  async getBroadcast(broadcastId: string): Promise<Broadcast | undefined> {
+    const [broadcast] = await db.select().from(broadcasts).where(eq(broadcasts.broadcastId, broadcastId));
+    return broadcast || undefined;
+  }
+
+  async getBroadcastByExternalId(externalId: string, clientAppId: number): Promise<Broadcast | undefined> {
+    const result = await db
+      .select({ broadcast: broadcasts })
+      .from(broadcasts)
+      .innerJoin(campaigns, eq(broadcasts.campaignId, campaigns.id))
+      .leftJoin(channels, eq(campaigns.channelId, channels.id))
+      .where(and(
+        eq(broadcasts.externalId, externalId),
+        or(
+          eq(channels.clientAppId, clientAppId),
+          eq(campaigns.clientAppId, clientAppId)
+        )
+      ))
+      .limit(1);
+    return result[0]?.broadcast || undefined;
+  }
+
+  async getAllBroadcasts(filters?: { status?: string; campaignId?: number }): Promise<Broadcast[]> {
+    const conditions: any[] = [];
+    if (filters?.status) {
+      conditions.push(eq(broadcasts.status, filters.status));
+    }
+    if (filters?.campaignId) {
+      conditions.push(eq(broadcasts.campaignId, filters.campaignId));
+    }
+    if (conditions.length > 0) {
+      return await db.select().from(broadcasts).where(and(...conditions)).orderBy(desc(broadcasts.createdAt));
+    }
+    return await db.select().from(broadcasts).orderBy(desc(broadcasts.createdAt));
+  }
+
+  async getCampaignBroadcasts(campaignId: number): Promise<Broadcast[]> {
+    return await db.select().from(broadcasts)
+      .where(eq(broadcasts.campaignId, campaignId))
+      .orderBy(desc(broadcasts.createdAt));
+  }
+
+  async updateBroadcast(broadcastId: string, data: Partial<InsertBroadcast>): Promise<Broadcast | undefined> {
+    const [updated] = await db.update(broadcasts)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(broadcasts.broadcastId, broadcastId))
+      .returning();
+    return updated || undefined;
+  }
+
+  async deleteBroadcast(broadcastId: string): Promise<void> {
+    await db.delete(broadcasts).where(eq(broadcasts.broadcastId, broadcastId));
+  }
+
+  async getBroadcastsByStatus(status: string): Promise<Broadcast[]> {
+    return await db.select().from(broadcasts)
+      .where(eq(broadcasts.status, status))
+      .orderBy(desc(broadcasts.createdAt));
+  }
+
+  // Poll methods (database-backed)
+  async createPoll(poll: InsertPoll): Promise<Poll> {
+    const [newPoll] = await db.insert(polls).values(poll).returning();
+    return newPoll;
+  }
+
+  async getPoll(id: number): Promise<Poll | undefined> {
+    const [poll] = await db.select().from(polls).where(eq(polls.id, id));
+    return poll || undefined;
+  }
+
+  async getBroadcastPolls(broadcastId: string): Promise<Array<Poll & { options: PollOptionRecord[] }>> {
+    const broadcastPolls = await db.select().from(polls)
+      .where(eq(polls.broadcastId, broadcastId))
+      .orderBy(desc(polls.createdAt));
+    
+    const result: Array<Poll & { options: PollOptionRecord[] }> = [];
+    for (const poll of broadcastPolls) {
+      const options = await db.select().from(pollOptions)
+        .where(eq(pollOptions.pollId, poll.id))
+        .orderBy(pollOptions.displayOrder);
+      result.push({ ...poll, options });
+    }
+    return result;
+  }
+
+  async updatePoll(id: number, data: Partial<InsertPoll>): Promise<Poll | undefined> {
+    const [updated] = await db.update(polls)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(polls.id, id))
+      .returning();
+    return updated || undefined;
+  }
+
+  async deletePoll(id: number): Promise<void> {
+    await db.delete(polls).where(eq(polls.id, id));
+  }
+
+  // Poll option methods (database-backed)
+  async createPollOption(option: InsertPollOption): Promise<PollOptionRecord> {
+    const [newOption] = await db.insert(pollOptions).values(option).returning();
+    return newOption;
+  }
+
+  async updatePollOptionVoteCount(optionId: number, increment: number): Promise<void> {
+    await db.update(pollOptions)
+      .set({ voteCount: sql`${pollOptions.voteCount} + ${increment}` })
+      .where(eq(pollOptions.id, optionId));
+  }
+
+  // Poll vote methods (database-backed)
+  async createPollVote(vote: InsertPollVote): Promise<PollVote> {
+    const [newVote] = await db.insert(pollVotes).values(vote).returning();
+    await db.update(polls)
+      .set({ totalVotes: sql`${polls.totalVotes} + 1` })
+      .where(eq(polls.id, vote.pollId));
+    return newVote;
+  }
+
+  async createPollVoteWithCountUpdate(vote: InsertPollVote, optionId: number): Promise<PollVote> {
+    return await db.transaction(async (tx) => {
+      // 1. Check duplicate inside transaction to prevent race conditions
+      const [existing] = await tx.select().from(pollVotes)
+        .where(and(eq(pollVotes.pollId, vote.pollId), eq(pollVotes.userId, vote.userId!)))
+        .limit(1);
+      if (existing) {
+        throw new Error('User has already voted on this poll');
+      }
+      // 2. Insert vote
+      const [newVote] = await tx.insert(pollVotes).values(vote).returning();
+      // 3. Increment option count
+      await tx.update(pollOptions)
+        .set({ voteCount: sql`${pollOptions.voteCount} + 1` })
+        .where(eq(pollOptions.id, optionId));
+      // 4. Increment poll total
+      await tx.update(polls)
+        .set({ totalVotes: sql`${polls.totalVotes} + 1` })
+        .where(eq(polls.id, vote.pollId));
+      return newVote;
+    });
+  }
+
+  async hasUserVoted(pollId: number, userId: string): Promise<boolean> {
+    const [vote] = await db.select().from(pollVotes)
+      .where(and(
+        eq(pollVotes.pollId, pollId),
+        eq(pollVotes.userId, userId)
+      ))
+      .limit(1);
+    return !!vote;
+  }
+
+  async getPollResults(pollId: number): Promise<{ poll: Poll; options: PollOptionRecord[] } | null> {
+    const [poll] = await db.select().from(polls).where(eq(polls.id, pollId));
+    if (!poll) return null;
+    const options = await db.select().from(pollOptions)
+      .where(eq(pollOptions.pollId, pollId))
+      .orderBy(pollOptions.displayOrder);
+    return { poll, options };
+  }
+
+  // Contest methods (database-backed)
+  async createContest(contest: InsertContest): Promise<Contest> {
+    const [newContest] = await db.insert(contests).values(contest).returning();
+    return newContest;
+  }
+
+  async getContest(id: number): Promise<Contest | undefined> {
+    const [contest] = await db.select().from(contests).where(eq(contests.id, id));
+    return contest || undefined;
+  }
+
+  async getBroadcastContests(broadcastId: string): Promise<Contest[]> {
+    return await db.select().from(contests)
+      .where(eq(contests.broadcastId, broadcastId))
+      .orderBy(desc(contests.createdAt));
+  }
+
+  async getScheduledPollsForLiveBroadcasts(): Promise<Array<Poll & { campaignId: number | null }>> {
+    const rows = await db
+      .select({ poll: polls, campaignId: broadcasts.campaignId })
+      .from(polls)
+      .innerJoin(broadcasts, eq(polls.broadcastId, broadcasts.broadcastId))
+      .where(and(eq(broadcasts.status, 'live'), isNotNull(polls.scheduledStartTime)));
+    return rows.map(r => ({ ...r.poll, campaignId: r.campaignId }));
+  }
+
+  async getScheduledContestsForLiveBroadcasts(): Promise<Array<Contest & { campaignId: number | null }>> {
+    const rows = await db
+      .select({ contest: contests, campaignId: broadcasts.campaignId })
+      .from(contests)
+      .innerJoin(broadcasts, eq(contests.broadcastId, broadcasts.broadcastId))
+      .where(and(eq(broadcasts.status, 'live'), isNotNull(contests.scheduledStartTime)));
+    return rows.map(r => ({ ...r.contest, campaignId: r.campaignId }));
+  }
+
+  async updateContest(id: number, data: Partial<InsertContest>): Promise<Contest | undefined> {
+    const [updated] = await db.update(contests)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(contests.id, id))
+      .returning();
+    return updated || undefined;
+  }
+
+  async deleteContest(id: number): Promise<void> {
+    await db.delete(contests).where(eq(contests.id, id));
+  }
+
+  // Contest participation methods (database-backed)
+  async createContestParticipation(participation: InsertContestParticipation): Promise<ContestParticipation> {
+    const [newParticipation] = await db.insert(contestParticipations).values(participation).returning();
+    return newParticipation;
+  }
+
+  async createContestParticipationAtomic(participation: InsertContestParticipation): Promise<ContestParticipation> {
+    return await db.transaction(async (tx) => {
+      const [newParticipation] = await tx.insert(contestParticipations).values(participation).returning();
+      return newParticipation;
+    });
+  }
+
+  async hasUserParticipated(contestId: number, userId: string): Promise<boolean> {
+    const [participation] = await db.select().from(contestParticipations)
+      .where(and(
+        eq(contestParticipations.contestId, contestId),
+        eq(contestParticipations.userId, userId)
+      ))
+      .limit(1);
+    return !!participation;
+  }
+
+  async getContestParticipations(contestId: number): Promise<ContestParticipation[]> {
+    return await db.select().from(contestParticipations)
+      .where(eq(contestParticipations.contestId, contestId))
+      .orderBy(desc(contestParticipations.createdAt));
+  }
+
+  // Pagination support methods
+  async getBroadcastPollsPaginated(broadcastId: string, options: { limit: number; offset: number }): Promise<Array<Poll & { options: PollOptionRecord[] }>> {
+    const broadcastPolls = await db.select().from(polls)
+      .where(eq(polls.broadcastId, broadcastId))
+      .orderBy(desc(polls.createdAt))
+      .limit(options.limit)
+      .offset(options.offset);
+
+    const result: Array<Poll & { options: PollOptionRecord[] }> = [];
+    for (const poll of broadcastPolls) {
+      const opts = await db.select().from(pollOptions)
+        .where(eq(pollOptions.pollId, poll.id))
+        .orderBy(pollOptions.displayOrder);
+      result.push({ ...poll, options: opts });
+    }
+    return result;
+  }
+
+  async getBroadcastPollsCount(broadcastId: string): Promise<number> {
+    const [result] = await db.select({ count: sql<number>`count(*)::int` })
+      .from(polls)
+      .where(eq(polls.broadcastId, broadcastId));
+    return result?.count ?? 0;
+  }
+
+  async getBroadcastContestsPaginated(broadcastId: string, options: { limit: number; offset: number }): Promise<Contest[]> {
+    return await db.select().from(contests)
+      .where(eq(contests.broadcastId, broadcastId))
+      .orderBy(desc(contests.createdAt))
+      .limit(options.limit)
+      .offset(options.offset);
+  }
+
+  async getBroadcastContestsCount(broadcastId: string): Promise<number> {
+    const [result] = await db.select({ count: sql<number>`count(*)::int` })
+      .from(contests)
+      .where(eq(contests.broadcastId, broadcastId));
+    return result?.count ?? 0;
+  }
+
+  async getBroadcastEngagementCounts(broadcastIds: string[]): Promise<Map<string, { pollCount: number; activePollCount: number; contestCount: number }>> {
+    const result = new Map<string, { pollCount: number; activePollCount: number; contestCount: number }>();
+    if (broadcastIds.length === 0) return result;
+
+    const pollCounts = await db
+      .select({
+        broadcastId: polls.broadcastId,
+        total: sql<number>`count(*)::int`,
+        active: sql<number>`count(*) filter (where ${polls.isActive} = true)::int`,
+      })
+      .from(polls)
+      .where(inArray(polls.broadcastId, broadcastIds))
+      .groupBy(polls.broadcastId);
+
+    const contestCounts = await db
+      .select({
+        broadcastId: contests.broadcastId,
+        total: sql<number>`count(*)::int`,
+      })
+      .from(contests)
+      .where(inArray(contests.broadcastId, broadcastIds))
+      .groupBy(contests.broadcastId);
+
+    const contestMap = new Map(contestCounts.map(c => [c.broadcastId, c.total]));
+
+    for (const id of broadcastIds) {
+      const pollRow = pollCounts.find(p => p.broadcastId === id);
+      result.set(id, {
+        pollCount: pollRow?.total ?? 0,
+        activePollCount: pollRow?.active ?? 0,
+        contestCount: contestMap.get(id) ?? 0,
+      });
+    }
+
+    return result;
+  }
+
+  async getCampaignEngagementTotals(campaignIds: number[]): Promise<Map<number, number>> {
+    const result = new Map<number, number>();
+    if (campaignIds.length === 0) return result;
+
+    // Get votes per campaign (via broadcasts and polls)
+    const votesCount = await db
+      .select({
+        campaignId: broadcasts.campaignId,
+        total: sql<number>`count(${pollVotes.id})::int`,
+      })
+      .from(pollVotes)
+      .innerJoin(polls, eq(pollVotes.pollId, polls.id))
+      .innerJoin(broadcasts, eq(polls.broadcastId, broadcasts.broadcastId))
+      .where(inArray(broadcasts.campaignId, campaignIds))
+      .groupBy(broadcasts.campaignId);
+
+    // Get participations per campaign (via broadcasts and contests)
+    const participationCount = await db
+      .select({
+        campaignId: broadcasts.campaignId,
+        total: sql<number>`count(${contestParticipations.id})::int`,
+      })
+      .from(contestParticipations)
+      .innerJoin(contests, eq(contestParticipations.contestId, contests.id))
+      .innerJoin(broadcasts, eq(contests.broadcastId, broadcasts.broadcastId))
+      .where(inArray(broadcasts.campaignId, campaignIds))
+      .groupBy(broadcasts.campaignId);
+
+    for (const id of campaignIds) {
+      const v = votesCount.find(r => r.campaignId === id)?.total ?? 0;
+      const p = participationCount.find(r => r.campaignId === id)?.total ?? 0;
+      result.set(id, v + p);
+    }
+
+    return result;
+  }
+
+  // Broadcast Ads
+  async getBroadcastAds(broadcastId: string): Promise<BroadcastAd[]> {
+    return db.select().from(broadcastAds)
+      .where(eq(broadcastAds.broadcastId, broadcastId))
+      .orderBy(broadcastAds.displayOrder, broadcastAds.createdAt);
+  }
+
+  async createBroadcastAd(ad: InsertBroadcastAd): Promise<BroadcastAd> {
+    const [created] = await db.insert(broadcastAds).values(ad).returning();
+    return created;
+  }
+
+  async updateBroadcastAd(id: number, data: Partial<InsertBroadcastAd>): Promise<BroadcastAd | undefined> {
+    const [updated] = await db.update(broadcastAds).set(data).where(eq(broadcastAds.id, id)).returning();
+    return updated;
+  }
+
+  async deleteBroadcastAd(id: number): Promise<void> {
+    await db.delete(broadcastAds).where(eq(broadcastAds.id, id));
+  }
+
+  // Broadcast Products
+  async getBroadcastProducts(broadcastId: string): Promise<BroadcastProduct[]> {
+    return db.select().from(broadcastProducts)
+      .where(eq(broadcastProducts.broadcastId, broadcastId))
+      .orderBy(broadcastProducts.displayOrder, broadcastProducts.createdAt);
+  }
+
+  async createBroadcastProduct(product: InsertBroadcastProduct): Promise<BroadcastProduct> {
+    const [created] = await db.insert(broadcastProducts).values(product).returning();
+    return created;
+  }
+
+  async updateBroadcastProduct(id: number, data: Partial<InsertBroadcastProduct>): Promise<BroadcastProduct | undefined> {
+    const [updated] = await db.update(broadcastProducts).set(data).where(eq(broadcastProducts.id, id)).returning();
+    return updated;
+  }
+
+  async deleteBroadcastProduct(id: number): Promise<void> {
+    await db.delete(broadcastProducts).where(eq(broadcastProducts.id, id));
+  }
+
+  // Chat Messages
+  async getChatMessages(broadcastId: string, limit = 50): Promise<ChatMessage[]> {
+    const messages = await db.select().from(chatMessages)
+      .where(eq(chatMessages.broadcastId, broadcastId))
+      .orderBy(desc(chatMessages.createdAt))
+      .limit(limit);
+    return messages.reverse();
+  }
+
+  async createChatMessage(message: InsertChatMessage): Promise<ChatMessage> {
+    const [created] = await db.insert(chatMessages).values(message).returning();
+    return created;
+  }
+
+  async deleteChatMessage(id: number): Promise<void> {
+    await db.delete(chatMessages).where(eq(chatMessages.id, id));
+  }
+
+  async seedPollVotes(pollId: number, options: { id: number; voteCount: number }[]): Promise<Poll | undefined> {
+    for (const opt of options) {
+      await db.update(pollOptions)
+        .set({ voteCount: opt.voteCount })
+        .where(eq(pollOptions.id, opt.id));
+    }
+    const totalVotes = options.reduce((sum, o) => sum + o.voteCount, 0);
+    const [updated] = await db.update(polls)
+      .set({ totalVotes })
+      .where(eq(polls.id, pollId))
+      .returning();
+    return updated;
+  }
+
+  // Device Tokens (APNs push notifications)
+  async upsertDeviceToken(campaignId: number, userId: string, deviceToken: string, platform: string): Promise<DeviceToken> {
+    const [result] = await db.insert(deviceTokens)
+      .values({ campaignId, userId, deviceToken, platform, updatedAt: new Date() })
+      .onConflictDoUpdate({
+        target: [deviceTokens.campaignId, deviceTokens.userId],
+        set: { deviceToken, platform, updatedAt: new Date() },
+      })
+      .returning();
+    return result;
+  }
+
+  async getDeviceToken(campaignId: number, userId: string): Promise<DeviceToken | undefined> {
+    const [token] = await db.select().from(deviceTokens)
+      .where(and(eq(deviceTokens.campaignId, campaignId), eq(deviceTokens.userId, userId)));
+    return token;
+  }
+
+  async getSportmonksCache(cacheType: string, leagueId?: number | null, dateFrom?: string | null, dateTo?: string | null): Promise<SportmonksCache | undefined> {
+    const conditions = [eq(sportmonksCache.cacheType, cacheType)];
+    if (leagueId != null) conditions.push(eq(sportmonksCache.leagueId, leagueId));
+    if (dateFrom != null) conditions.push(eq(sportmonksCache.dateFrom, dateFrom));
+    if (dateTo != null) conditions.push(eq(sportmonksCache.dateTo, dateTo));
+    const [row] = await db.select().from(sportmonksCache).where(and(...conditions));
+    return row;
+  }
+
+  async upsertSportmonksCache(cacheType: string, data: any, leagueId?: number | null, dateFrom?: string | null, dateTo?: string | null): Promise<SportmonksCache> {
+    const existing = await this.getSportmonksCache(cacheType, leagueId, dateFrom, dateTo);
+    if (existing) {
+      const [updated] = await db.update(sportmonksCache)
+        .set({ data, updatedAt: new Date() })
+        .where(eq(sportmonksCache.id, existing.id))
+        .returning();
+      return updated;
+    }
+    const [created] = await db.insert(sportmonksCache)
+      .values({ cacheType, leagueId: leagueId ?? null, dateFrom: dateFrom ?? null, dateTo: dateTo ?? null, data })
+      .returning();
+    return created;
+  }
+
+  async getCampaignSponsors(campaignId: number) {
+    const rows = await db
+      .select({
+        id: campaignSponsors.id,
+        sponsorId: campaignSponsors.sponsorId,
+        campaignId: campaignSponsors.campaignId,
+        role: campaignSponsors.role,
+        name: sponsors.name,
+        logoUrl: sponsors.logoUrl,
+        primaryColor: sponsors.primaryColor,
+        secondaryColor: sponsors.secondaryColor,
+      })
+      .from(campaignSponsors)
+      .innerJoin(sponsors, eq(campaignSponsors.sponsorId, sponsors.id))
+      .where(eq(campaignSponsors.campaignId, campaignId));
+    return rows;
+  }
+
+  async addCampaignSponsor(data: { campaignId: number; sponsorId: number; role: string }) {
+    const [row] = await db.insert(campaignSponsors).values(data).returning();
+    return row;
+  }
+
+  async removeCampaignSponsor(campaignId: number, sponsorId: number) {
+    await db.delete(campaignSponsors).where(
+      and(eq(campaignSponsors.campaignId, campaignId), eq(campaignSponsors.sponsorId, sponsorId))
+    );
+  }
+
+  async getBroadcastSponsorSlots(broadcastId: string) {
+    const rows = await db
+      .select({
+        id: broadcastSponsorSlots.id,
+        broadcastId: broadcastSponsorSlots.broadcastId,
+        sponsorId: broadcastSponsorSlots.sponsorId,
+        campaignId: broadcastSponsorSlots.campaignId,
+        role: broadcastSponsorSlots.role,
+        type: broadcastSponsorSlots.type,
+        config: broadcastSponsorSlots.config,
+        triggerType: broadcastSponsorSlots.triggerType,
+        triggerValue: broadcastSponsorSlots.triggerValue,
+        autoExecute: broadcastSponsorSlots.autoExecute,
+        productIds: broadcastSponsorSlots.productIds,
+        status: broadcastSponsorSlots.status,
+        executedAt: broadcastSponsorSlots.executedAt,
+        createdAt: broadcastSponsorSlots.createdAt,
+        sponsorName: sponsors.name,
+        sponsorLogoUrl: sponsors.logoUrl,
+        sponsorPrimaryColor: sponsors.primaryColor,
+      })
+      .from(broadcastSponsorSlots)
+      .innerJoin(sponsors, eq(broadcastSponsorSlots.sponsorId, sponsors.id))
+      .where(eq(broadcastSponsorSlots.broadcastId, broadcastId))
+      .orderBy(broadcastSponsorSlots.createdAt);
+    return rows;
+  }
+
+  async getBroadcastSponsorSlot(id: number) {
+    const [row] = await db
+      .select({
+        id: broadcastSponsorSlots.id,
+        broadcastId: broadcastSponsorSlots.broadcastId,
+        sponsorId: broadcastSponsorSlots.sponsorId,
+        campaignId: broadcastSponsorSlots.campaignId,
+        role: broadcastSponsorSlots.role,
+        type: broadcastSponsorSlots.type,
+        config: broadcastSponsorSlots.config,
+        triggerType: broadcastSponsorSlots.triggerType,
+        triggerValue: broadcastSponsorSlots.triggerValue,
+        autoExecute: broadcastSponsorSlots.autoExecute,
+        productIds: broadcastSponsorSlots.productIds,
+        status: broadcastSponsorSlots.status,
+        executedAt: broadcastSponsorSlots.executedAt,
+        createdAt: broadcastSponsorSlots.createdAt,
+        sponsorName: sponsors.name,
+        sponsorLogoUrl: sponsors.logoUrl,
+        sponsorPrimaryColor: sponsors.primaryColor,
+      })
+      .from(broadcastSponsorSlots)
+      .innerJoin(sponsors, eq(broadcastSponsorSlots.sponsorId, sponsors.id))
+      .where(eq(broadcastSponsorSlots.id, id));
+    return row;
+  }
+
+  async createBroadcastSponsorSlot(data: InsertBroadcastSponsorSlot) {
+    const [row] = await db.insert(broadcastSponsorSlots).values(data).returning();
+    return row;
+  }
+
+  async updateBroadcastSponsorSlot(id: number, data: Partial<InsertBroadcastSponsorSlot>) {
+    const [row] = await db.update(broadcastSponsorSlots).set(data).where(eq(broadcastSponsorSlots.id, id)).returning();
+    return row;
+  }
+
+  async deleteBroadcastSponsorSlot(id: number) {
+    await db.delete(broadcastSponsorSlots).where(eq(broadcastSponsorSlots.id, id));
+  }
+
+  async getBroadcastsByCampaign(campaignId: number): Promise<Broadcast[]> {
+    return this.getCampaignBroadcasts(campaignId);
   }
 }
 

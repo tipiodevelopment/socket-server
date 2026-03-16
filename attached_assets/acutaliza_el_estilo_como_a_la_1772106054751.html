@@ -1,0 +1,711 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Client Apps</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script> window.FontAwesomeConfig = { autoReplaceSvg: 'nest'};</script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/js/all.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        ::-webkit-scrollbar { display: none;}
+        * { font-family: 'Inter', sans-serif; }
+    </style>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        dark: {
+                            950: '#05070a',
+                            900: '#0a0e1a',
+                            800: '#141824',
+                            700: '#1e2433',
+                            600: '#2a3142',
+                            500: '#4b5563',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-black text-gray-100 font-sans antialiased selection:bg-white selection:text-black">
+
+<div class="flex h-screen overflow-hidden">
+    
+    <aside id="sidebar" class="w-16 bg-black border-r border-white/10 flex flex-col items-center py-6">
+        <div class="mb-8">
+            <div class="w-8 h-8 bg-white rounded flex items-center justify-center">
+                <i class="fa-solid fa-tower-broadcast text-black text-sm"></i>
+            </div>
+        </div>
+        
+        <nav class="flex flex-col items-center space-y-4 flex-grow">
+            <a href="#" class="w-10 h-10 flex items-center justify-center rounded hover:bg-white/10 text-gray-400 hover:text-white transition">
+                <i class="fa-solid fa-house text-sm"></i>
+            </a>
+            <a href="#" class="w-10 h-10 flex items-center justify-center rounded bg-white text-black">
+                <i class="fa-solid fa-mobile-screen text-sm"></i>
+            </a>
+            <a href="#" class="w-10 h-10 flex items-center justify-center rounded hover:bg-white/10 text-gray-400 hover:text-white transition">
+                <i class="fa-solid fa-bullhorn text-sm"></i>
+            </a>
+            <a href="#" class="w-10 h-10 flex items-center justify-center rounded hover:bg-white/10 text-gray-400 hover:text-white transition">
+                <i class="fa-solid fa-signal text-sm"></i>
+            </a>
+            <a href="#" class="w-10 h-10 flex items-center justify-center rounded hover:bg-white/10 text-gray-400 hover:text-white transition">
+                <i class="fa-solid fa-puzzle-piece text-sm"></i>
+            </a>
+            <a href="#" class="w-10 h-10 flex items-center justify-center rounded hover:bg-white/10 text-gray-400 hover:text-white transition">
+                <i class="fa-solid fa-chart-line text-sm"></i>
+            </a>
+        </nav>
+        
+        <div class="mt-auto space-y-4">
+            <a href="#" class="w-10 h-10 flex items-center justify-center rounded hover:bg-white/10 text-gray-400 hover:text-white transition">
+                <i class="fa-solid fa-gear text-sm"></i>
+            </a>
+            <div class="w-8 h-8 rounded overflow-hidden border border-white/20">
+                <img src="https://storage.googleapis.com/uxpilot-auth.appspot.com/avatars/avatar-3.jpg" alt="User" class="w-full h-full object-cover">
+            </div>
+        </div>
+    </aside>
+
+    <div class="flex-1 flex flex-col overflow-hidden bg-black">
+        
+        <header id="header" class="h-24 flex items-center justify-between px-8 bg-black border-b border-white/10">
+            <div class="flex items-center space-x-4">
+                <button id="backButton" class="w-8 h-8 flex items-center justify-center rounded hover:bg-white/10 text-gray-400 hover:text-white transition">
+                    <i class="fa-solid fa-arrow-left text-sm"></i>
+                </button>
+                <div>
+                    <div class="flex items-center space-x-3 mb-1">
+                        <h1 class="text-2xl font-bold text-white">LaLiga Fan App</h1>
+                        <span class="px-2 py-0.5 bg-white text-black text-[10px] uppercase font-bold rounded-full border border-white">Active</span>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="flex items-center space-x-4">
+                <div class="relative">
+                    <input type="text" placeholder="Search..." class="bg-transparent border border-white/20 rounded px-4 py-2 pl-10 w-64 text-sm focus:outline-none focus:border-white/40 transition-colors placeholder-gray-500 text-gray-200">
+                    <i class="fa-solid fa-search absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500"></i>
+                </div>
+                
+                <button class="relative w-10 h-10 flex items-center justify-center rounded hover:bg-white/10 transition text-gray-400 hover:text-white">
+                    <i class="fa-regular fa-bell text-lg"></i>
+                    <span class="absolute top-2 right-2 w-2 h-2 bg-white rounded-full border-2 border-black"></span>
+                </button>
+            </div>
+        </header>
+
+        <main class="flex-1 overflow-y-auto p-8">
+            
+            <section id="app-overview" class="mb-8">
+                <div class="grid grid-cols-4 gap-6 mb-8">
+                    <div class="bg-transparent border border-white/10 rounded-lg p-5">
+                        <div class="text-xs text-gray-400 mb-1 uppercase font-medium">Active Campaigns</div>
+                        <div class="text-2xl font-bold text-white">5</div>
+                        <div class="text-xs text-gray-500 mt-1">+12% vs last month</div>
+                    </div>
+
+                    <div class="bg-transparent border border-white/10 rounded-lg p-5">
+                        <div class="text-xs text-gray-400 mb-1 uppercase font-medium">Live Broadcasts</div>
+                        <div class="text-2xl font-bold text-white">3</div>
+                        <div class="text-xs text-gray-500 mt-1">+8% vs last month</div>
+                    </div>
+
+                    <div class="bg-transparent border border-white/10 rounded-lg p-5">
+                        <div class="text-xs text-gray-400 mb-1 uppercase font-medium">Total Viewers</div>
+                        <div class="text-2xl font-bold text-white">48.2K</div>
+                        <div class="text-xs text-gray-500 mt-1">+24% vs last month</div>
+                    </div>
+
+                    <div class="bg-transparent border border-white/10 rounded-lg p-5">
+                        <div class="text-xs text-gray-400 mb-1 uppercase font-medium">Engagement Rate</div>
+                        <div class="text-2xl font-bold text-white">75%</div>
+                        <div class="text-xs text-gray-500 mt-1">+18% vs last month</div>
+                    </div>
+                </div>
+            </section>
+
+            <div class="grid grid-cols-3 gap-6">
+                
+                <div class="col-span-2">
+                    <section id="app-details" class="bg-transparent border border-white/10 rounded-lg p-6 mb-6">
+                        <div class="flex items-center justify-between mb-6">
+                            <h2 class="text-sm font-semibold text-gray-400 uppercase">App Details</h2>
+                            <button id="editDetailsBtn" class="px-4 py-1.5 bg-white hover:bg-gray-200 text-black rounded text-xs transition font-medium flex items-center space-x-2">
+                                <i class="fa-solid fa-pen text-xs"></i>
+                                <span>Edit Details</span>
+                            </button>
+                        </div>
+
+                        <div class="space-y-4">
+                            <div class="flex items-start">
+                                <div class="w-32 text-xs text-gray-500 uppercase font-medium">App Name</div>
+                                <div class="flex-1 text-sm text-gray-200">LaLiga Fan App</div>
+                            </div>
+                            <div class="flex items-start">
+                                <div class="w-32 text-xs text-gray-500 uppercase font-medium">Bundle ID</div>
+                                <div class="flex-1 text-sm font-mono bg-white/5 border border-white/10 px-3 py-2 rounded inline-block text-gray-200">com.laliga.fanapp</div>
+                            </div>
+                            <div class="flex items-start">
+                                <div class="w-32 text-xs text-gray-500 uppercase font-medium">API Key</div>
+                                <div class="flex-1 text-sm">
+                                    <div class="flex items-center space-x-2">
+                                        <span class="font-mono bg-white/5 border border-white/10 px-3 py-2 rounded text-gray-200">sk_live_••••••••••••••••</span>
+                                        <button class="px-3 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded text-xs transition">
+                                            <i class="fa-solid fa-copy"></i>
+                                        </button>
+                                        <button class="px-3 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded text-xs transition">
+                                            <i class="fa-solid fa-eye"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="flex items-start">
+                                <div class="w-32 text-xs text-gray-500 uppercase font-medium">Status</div>
+                                <div class="flex-1">
+                                    <span class="px-2 py-0.5 bg-white text-black text-[10px] uppercase font-bold rounded-full">Active</span>
+                                </div>
+                            </div>
+                            <div class="flex items-start">
+                                <div class="w-32 text-xs text-gray-500 uppercase font-medium">Created</div>
+                                <div class="flex-1 text-sm text-gray-300">January 15, 2024</div>
+                            </div>
+                            <div class="flex items-start">
+                                <div class="w-32 text-xs text-gray-500 uppercase font-medium">Last Modified</div>
+                                <div class="flex-1 text-sm text-gray-300">February 12, 2026</div>
+                            </div>
+                        </div>
+                    </section>
+
+                    <section id="channels-section" class="bg-transparent border border-white/10 rounded-lg p-6 mb-6">
+                        <div class="flex items-center justify-between mb-6">
+                            <div>
+                                <h2 class="text-sm font-semibold text-gray-400 uppercase mb-1">Channels</h2>
+                                <p class="text-xs text-gray-500">Organize campaigns into channels</p>
+                            </div>
+                            <button class="px-4 py-1.5 bg-white hover:bg-gray-200 text-black rounded text-xs transition font-medium flex items-center space-x-2">
+                                <i class="fa-solid fa-plus text-xs"></i>
+                                <span>Add Channel</span>
+                            </button>
+                        </div>
+
+                        <div class="space-y-3">
+                            <div class="bg-transparent border border-white/10 rounded-lg p-4 hover:border-white/30 transition cursor-pointer">
+                                <div class="flex items-center justify-between">
+                                    <div class="flex items-center space-x-4 flex-1">
+                                        <div class="w-10 h-10 bg-white/10 rounded flex items-center justify-center">
+                                            <i class="fa-solid fa-hashtag text-white"></i>
+                                        </div>
+                                        <div class="flex-1">
+                                            <h3 class="font-semibold text-sm mb-1 text-white">Match Day Experience</h3>
+                                            <p class="text-xs text-gray-500">3 campaigns • 8 broadcasts</p>
+                                        </div>
+                                    </div>
+                                    <div class="flex items-center space-x-2">
+                                        <span class="px-2 py-0.5 bg-white text-black text-[10px] uppercase font-bold rounded-full">Active</span>
+                                        <button class="w-8 h-8 flex items-center justify-center rounded hover:bg-white/10 text-gray-400 hover:text-white transition">
+                                            <i class="fa-solid fa-chevron-right text-xs"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="bg-transparent border border-white/10 rounded-lg p-4 hover:border-white/30 transition cursor-pointer">
+                                <div class="flex items-center justify-between">
+                                    <div class="flex items-center space-x-4 flex-1">
+                                        <div class="w-10 h-10 bg-white/10 rounded flex items-center justify-center">
+                                            <i class="fa-solid fa-hashtag text-white"></i>
+                                        </div>
+                                        <div class="flex-1">
+                                            <h3 class="font-semibold text-sm mb-1 text-white">Season Highlights</h3>
+                                            <p class="text-xs text-gray-500">2 campaigns • 5 broadcasts</p>
+                                        </div>
+                                    </div>
+                                    <div class="flex items-center space-x-2">
+                                        <span class="px-2 py-0.5 bg-white text-black text-[10px] uppercase font-bold rounded-full">Active</span>
+                                        <button class="w-8 h-8 flex items-center justify-center rounded hover:bg-white/10 text-gray-400 hover:text-white transition">
+                                            <i class="fa-solid fa-chevron-right text-xs"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </section>
+
+                    <section id="campaigns-section" class="bg-transparent border border-white/10 rounded-lg p-6">
+                        <div class="flex items-center justify-between mb-6">
+                            <div>
+                                <h2 class="text-sm font-semibold text-gray-400 uppercase mb-1">Active Campaigns</h2>
+                                <p class="text-xs text-gray-500">Recent campaign activity</p>
+                            </div>
+                            <button class="px-4 py-1.5 bg-white hover:bg-gray-200 text-black rounded text-xs transition font-medium flex items-center space-x-2">
+                                <i class="fa-solid fa-plus text-xs"></i>
+                                <span>New Campaign</span>
+                            </button>
+                        </div>
+
+                        <div class="space-y-3">
+                            <div class="bg-transparent border border-white/10 rounded-lg p-4 hover:border-white/30 transition cursor-pointer">
+                                <div class="flex items-center justify-between mb-3">
+                                    <div class="flex items-center space-x-3">
+                                        <div class="w-10 h-10 bg-white/10 rounded flex items-center justify-center">
+                                            <i class="fa-solid fa-futbol text-white text-sm"></i>
+                                        </div>
+                                        <div>
+                                            <h3 class="font-semibold text-sm text-white">El Clásico 2026</h3>
+                                            <p class="text-xs text-gray-500">Match Day Experience</p>
+                                        </div>
+                                    </div>
+                                    <span class="px-2 py-0.5 bg-white text-black text-[10px] uppercase font-bold rounded-full">Live</span>
+                                </div>
+                                <div class="flex items-center justify-between text-xs text-gray-500">
+                                    <div class="flex items-center space-x-4">
+                                        <span><i class="fa-solid fa-signal mr-1"></i> 2 broadcasts</span>
+                                        <span><i class="fa-solid fa-users mr-1"></i> 32.5K viewers</span>
+                                    </div>
+                                    <button class="text-white hover:text-gray-300">View Details →</button>
+                                </div>
+                            </div>
+
+                            <div class="bg-transparent border border-white/10 rounded-lg p-4 hover:border-white/30 transition cursor-pointer">
+                                <div class="flex items-center justify-between mb-3">
+                                    <div class="flex items-center space-x-3">
+                                        <div class="w-10 h-10 bg-white/10 rounded flex items-center justify-center">
+                                            <i class="fa-solid fa-trophy text-white text-sm"></i>
+                                        </div>
+                                        <div>
+                                            <h3 class="font-semibold text-sm text-white">Champions League Final</h3>
+                                            <p class="text-xs text-gray-500">Season Highlights</p>
+                                        </div>
+                                    </div>
+                                    <span class="px-2 py-0.5 bg-white/10 text-gray-300 text-[10px] uppercase font-bold rounded-full border border-white/20">Upcoming</span>
+                                </div>
+                                <div class="flex items-center justify-between text-xs text-gray-500">
+                                    <div class="flex items-center space-x-4">
+                                        <span><i class="fa-solid fa-signal mr-1"></i> 1 broadcast</span>
+                                        <span><i class="fa-solid fa-calendar mr-1"></i> Feb 28, 2026</span>
+                                    </div>
+                                    <button class="text-white hover:text-gray-300">View Details →</button>
+                                </div>
+                            </div>
+
+                            <div class="bg-transparent border border-white/10 rounded-lg p-4 hover:border-white/30 transition cursor-pointer">
+                                <div class="flex items-center justify-between mb-3">
+                                    <div class="flex items-center space-x-3">
+                                        <div class="w-10 h-10 bg-white/10 rounded flex items-center justify-center">
+                                            <i class="fa-solid fa-star text-white text-sm"></i>
+                                        </div>
+                                        <div>
+                                            <h3 class="font-semibold text-sm text-white">Player of the Month</h3>
+                                            <p class="text-xs text-gray-500">Match Day Experience</p>
+                                        </div>
+                                    </div>
+                                    <span class="px-2 py-0.5 bg-white text-black text-[10px] uppercase font-bold rounded-full">Active</span>
+                                </div>
+                                <div class="flex items-center justify-between text-xs text-gray-500">
+                                    <div class="flex items-center space-x-4">
+                                        <span><i class="fa-solid fa-signal mr-1"></i> 0 broadcasts</span>
+                                        <span><i class="fa-solid fa-users mr-1"></i> 15.7K viewers</span>
+                                    </div>
+                                    <button class="text-white hover:text-gray-300">View Details →</button>
+                                </div>
+                            </div>
+                        </div>
+                    </section>
+                </div>
+
+                <div class="col-span-1">
+                    <section id="settings-menu" class="bg-transparent border border-white/10 rounded-lg p-6 mb-6">
+                        <h2 class="text-sm font-semibold text-gray-400 uppercase mb-6">Quick Actions</h2>
+                        
+                        <div class="space-y-2">
+                            <button id="settingsBtn" class="w-full flex items-center space-x-3 px-4 py-3 rounded hover:bg-white/10 transition text-left">
+                                <div class="w-10 h-10 bg-white/10 rounded flex items-center justify-center">
+                                    <i class="fa-solid fa-gear text-white"></i>
+                                </div>
+                                <div class="flex-1">
+                                    <div class="text-sm font-medium text-white">App Settings</div>
+                                    <div class="text-xs text-gray-500">Configuration & preferences</div>
+                                </div>
+                                <i class="fa-solid fa-chevron-right text-gray-500 text-xs"></i>
+                            </button>
+
+                            <button class="w-full flex items-center space-x-3 px-4 py-3 rounded hover:bg-white/10 transition text-left">
+                                <div class="w-10 h-10 bg-white/10 rounded flex items-center justify-center">
+                                    <i class="fa-solid fa-key text-white"></i>
+                                </div>
+                                <div class="flex-1">
+                                    <div class="text-sm font-medium text-white">API Keys</div>
+                                    <div class="text-xs text-gray-500">Manage authentication</div>
+                                </div>
+                                <i class="fa-solid fa-chevron-right text-gray-500 text-xs"></i>
+                            </button>
+
+                            <button class="w-full flex items-center space-x-3 px-4 py-3 rounded hover:bg-white/10 transition text-left">
+                                <div class="w-10 h-10 bg-white/10 rounded flex items-center justify-center">
+                                    <i class="fa-solid fa-palette text-white"></i>
+                                </div>
+                                <div class="flex-1">
+                                    <div class="text-sm font-medium text-white">Branding</div>
+                                    <div class="text-xs text-gray-500">Colors & themes</div>
+                                </div>
+                                <i class="fa-solid fa-chevron-right text-gray-500 text-xs"></i>
+                            </button>
+
+                            <button class="w-full flex items-center space-x-3 px-4 py-3 rounded hover:bg-white/10 transition text-left">
+                                <div class="w-10 h-10 bg-white/10 rounded flex items-center justify-center">
+                                    <i class="fa-solid fa-users text-white"></i>
+                                </div>
+                                <div class="flex-1">
+                                    <div class="text-sm font-medium text-white">Team Access</div>
+                                    <div class="text-xs text-gray-500">Manage permissions</div>
+                                </div>
+                                <i class="fa-solid fa-chevron-right text-gray-500 text-xs"></i>
+                            </button>
+
+                            <button class="w-full flex items-center space-x-3 px-4 py-3 rounded hover:bg-white/10 transition text-left">
+                                <div class="w-10 h-10 bg-white/10 rounded flex items-center justify-center">
+                                    <i class="fa-solid fa-plug text-white"></i>
+                                </div>
+                                <div class="flex-1">
+                                    <div class="text-sm font-medium text-white">Integrations</div>
+                                    <div class="text-xs text-gray-500">Connect services</div>
+                                </div>
+                                <i class="fa-solid fa-chevron-right text-gray-500 text-xs"></i>
+                            </button>
+
+                            <button class="w-full flex items-center space-x-3 px-4 py-3 rounded hover:bg-white/10 transition text-left">
+                                <div class="w-10 h-10 bg-white/10 rounded flex items-center justify-center">
+                                    <i class="fa-solid fa-shield-halved text-white"></i>
+                                </div>
+                                <div class="flex-1">
+                                    <div class="text-sm font-medium text-white">Security</div>
+                                    <div class="text-xs text-gray-500">Authentication & logs</div>
+                                </div>
+                                <i class="fa-solid fa-chevron-right text-gray-500 text-xs"></i>
+                            </button>
+                        </div>
+                    </section>
+
+                    <section id="activity-log" class="bg-transparent border border-white/10 rounded-lg p-6">
+                        <h2 class="text-sm font-semibold text-gray-400 uppercase mb-6">Recent Activity</h2>
+                        
+                        <div class="space-y-4">
+                            <div class="flex items-start space-x-3">
+                                <div class="w-8 h-8 bg-white/10 rounded flex items-center justify-center flex-shrink-0">
+                                    <i class="fa-solid fa-check text-white text-xs"></i>
+                                </div>
+                                <div class="flex-1">
+                                    <p class="text-sm text-white">Campaign created</p>
+                                    <p class="text-xs text-gray-400">El Clásico 2026</p>
+                                    <p class="text-xs text-gray-500 mt-1">2 hours ago</p>
+                                </div>
+                            </div>
+
+                            <div class="flex items-start space-x-3">
+                                <div class="w-8 h-8 bg-white/10 rounded flex items-center justify-center flex-shrink-0">
+                                    <i class="fa-solid fa-pen text-white text-xs"></i>
+                                </div>
+                                <div class="flex-1">
+                                    <p class="text-sm text-white">Settings updated</p>
+                                    <p class="text-xs text-gray-400">Branding colors changed</p>
+                                    <p class="text-xs text-gray-500 mt-1">5 hours ago</p>
+                                </div>
+                            </div>
+
+                            <div class="flex items-start space-x-3">
+                                <div class="w-8 h-8 bg-white/10 rounded flex items-center justify-center flex-shrink-0">
+                                    <i class="fa-solid fa-signal text-white text-xs"></i>
+                                </div>
+                                <div class="flex-1">
+                                    <p class="text-sm text-white">Broadcast started</p>
+                                    <p class="text-xs text-gray-400">Match Day Live Stream</p>
+                                    <p class="text-xs text-gray-500 mt-1">1 day ago</p>
+                                </div>
+                            </div>
+
+                            <div class="flex items-start space-x-3">
+                                <div class="w-8 h-8 bg-white/10 rounded flex items-center justify-center flex-shrink-0">
+                                    <i class="fa-solid fa-users text-white text-xs"></i>
+                                </div>
+                                <div class="flex-1">
+                                    <p class="text-sm text-white">Team member added</p>
+                                    <p class="text-xs text-gray-400">john@laliga.com</p>
+                                    <p class="text-xs text-gray-500 mt-1">2 days ago</p>
+                                </div>
+                            </div>
+                        </div>
+                    </section>
+                </div>
+            </div>
+
+        </main>
+    </div>
+</div>
+
+<div id="editModal" class="hidden fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-8">
+    <div class="bg-black border border-white/10 rounded-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+        <div class="sticky top-0 bg-black border-b border-white/10 px-6 py-4 flex items-center justify-between">
+            <h2 class="text-xl font-semibold text-white">Edit App Details</h2>
+            <button id="closeEditModal" class="w-8 h-8 flex items-center justify-center rounded hover:bg-white/10 text-gray-400 hover:text-white transition">
+                <i class="fa-solid fa-times"></i>
+            </button>
+        </div>
+        
+        <div class="p-6 space-y-6">
+            <div>
+                <label class="block text-sm font-medium mb-2 text-gray-400">App Name</label>
+                <input type="text" value="LaLiga Fan App" class="w-full bg-transparent border border-white/20 rounded px-4 py-3 text-sm focus:outline-none focus:border-white/40 transition-colors text-white">
+            </div>
+
+            <div>
+                <label class="block text-sm font-medium mb-2 text-gray-400">Bundle ID</label>
+                <input type="text" value="com.laliga.fanapp" class="w-full bg-transparent border border-white/20 rounded px-4 py-3 text-sm focus:outline-none focus:border-white/40 transition-colors font-mono text-white">
+                <p class="text-xs text-gray-500 mt-1">Cannot be changed after creation</p>
+            </div>
+
+            <div>
+                <label class="block text-sm font-medium mb-2 text-gray-400">Description</label>
+                <textarea rows="4" class="w-full bg-transparent border border-white/20 rounded px-4 py-3 text-sm focus:outline-none focus:border-white/40 transition-colors text-white" placeholder="Enter app description..."></textarea>
+            </div>
+
+            <div>
+                <label class="block text-sm font-medium mb-2 text-gray-400">Status</label>
+                <select class="w-full bg-transparent border border-white/20 rounded px-4 py-3 text-sm focus:outline-none focus:border-white/40 transition-colors text-white">
+                    <option>Active</option>
+                    <option>Paused</option>
+                    <option>Archived</option>
+                </select>
+            </div>
+
+            <div>
+                <label class="block text-sm font-medium mb-2 text-gray-400">App Icon</label>
+                <div class="flex items-center space-x-4">
+                    <div class="w-20 h-20 bg-white rounded-xl flex items-center justify-center">
+                        <i class="fa-solid fa-futbol text-black text-2xl"></i>
+                    </div>
+                    <button class="px-4 py-2 bg-white/10 hover:bg-white/20 border border-white/20 text-white rounded text-sm transition">
+                        <i class="fa-solid fa-upload mr-2"></i>
+                        Upload New Icon
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div class="sticky bottom-0 bg-black border-t border-white/10 px-6 py-4 flex items-center justify-end space-x-3">
+            <button id="cancelEdit" class="px-6 py-2 bg-transparent border border-white/20 hover:border-white/40 text-white rounded text-sm transition">
+                Cancel
+            </button>
+            <button class="px-6 py-2 bg-white hover:bg-gray-200 text-black rounded text-sm transition font-medium">
+                Save Changes
+            </button>
+        </div>
+    </div>
+</div>
+
+<div id="settingsModal" class="hidden fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-8">
+    <div class="bg-black border border-white/10 rounded-xl w-full max-w-4xl max-h-[90vh] overflow-hidden flex">
+        <div class="w-64 bg-black border-r border-white/10 p-6">
+            <h2 class="text-lg font-semibold mb-6 text-white">Settings</h2>
+            <nav class="space-y-1">
+                <a href="#" class="flex items-center space-x-3 px-4 py-3 rounded bg-white/10 text-white">
+                    <i class="fa-solid fa-sliders text-sm"></i>
+                    <span class="text-sm">General</span>
+                </a>
+                <a href="#" class="flex items-center space-x-3 px-4 py-3 rounded hover:bg-white/10 text-gray-400 hover:text-white transition">
+                    <i class="fa-solid fa-key text-sm"></i>
+                    <span class="text-sm">API Keys</span>
+                </a>
+                <a href="#" class="flex items-center space-x-3 px-4 py-3 rounded hover:bg-white/10 text-gray-400 hover:text-white transition">
+                    <i class="fa-solid fa-palette text-sm"></i>
+                    <span class="text-sm">Branding</span>
+                </a>
+                <a href="#" class="flex items-center space-x-3 px-4 py-3 rounded hover:bg-white/10 text-gray-400 hover:text-white transition">
+                    <i class="fa-solid fa-bell text-sm"></i>
+                    <span class="text-sm">Notifications</span>
+                </a>
+                <a href="#" class="flex items-center space-x-3 px-4 py-3 rounded hover:bg-white/10 text-gray-400 hover:text-white transition">
+                    <i class="fa-solid fa-shield-halved text-sm"></i>
+                    <span class="text-sm">Security</span>
+                </a>
+                <a href="#" class="flex items-center space-x-3 px-4 py-3 rounded hover:bg-white/10 text-gray-400 hover:text-white transition">
+                    <i class="fa-solid fa-plug text-sm"></i>
+                    <span class="text-sm">Integrations</span>
+                </a>
+            </nav>
+        </div>
+
+        <div class="flex-1 flex flex-col">
+            <div class="border-b border-white/10 px-6 py-4 flex items-center justify-between">
+                <h3 class="text-lg font-semibold text-white">General Settings</h3>
+                <button id="closeSettingsModal" class="w-8 h-8 flex items-center justify-center rounded hover:bg-white/10 text-gray-400 hover:text-white transition">
+                    <i class="fa-solid fa-times"></i>
+                </button>
+            </div>
+
+            <div class="flex-1 overflow-y-auto p-6 space-y-6">
+                <div>
+                    <h4 class="text-sm font-semibold mb-4 text-gray-400 uppercase">WebSocket Configuration</h4>
+                    <div class="space-y-4">
+                        <div>
+                            <label class="block text-sm mb-2 text-gray-400">WebSocket URL</label>
+                            <input type="text" value="wss://api.laliga-fanapp.com/ws" class="w-full bg-transparent border border-white/20 rounded px-4 py-3 text-sm focus:outline-none focus:border-white/40 transition-colors font-mono text-white">
+                        </div>
+                        <div>
+                            <label class="block text-sm mb-2 text-gray-400">Reconnection Timeout (ms)</label>
+                            <input type="number" value="5000" class="w-full bg-transparent border border-white/20 rounded px-4 py-3 text-sm focus:outline-none focus:border-white/40 transition-colors text-white">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="border-t border-white/10 pt-6">
+                    <h4 class="text-sm font-semibold mb-4 text-gray-400 uppercase">SDK Configuration</h4>
+                    <div class="space-y-4">
+                        <div>
+                            <label class="block text-sm mb-2 text-gray-400">SDK Version</label>
+                            <select class="w-full bg-transparent border border-white/20 rounded px-4 py-3 text-sm focus:outline-none focus:border-white/40 transition-colors text-white">
+                                <option>v2.4.1 (Latest)</option>
+                                <option>v2.4.0</option>
+                                <option>v2.3.5</option>
+                            </select>
+                        </div>
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <div class="text-sm font-medium text-white">Auto-update SDK</div>
+                                <div class="text-xs text-gray-500">Automatically update to latest version</div>
+                            </div>
+                            <label class="relative inline-flex items-center cursor-pointer">
+                                <input type="checkbox" class="sr-only peer" checked>
+                                <div class="w-11 h-6 bg-white/20 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-white"></div>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="border-t border-white/10 pt-6">
+                    <h4 class="text-sm font-semibold mb-4 text-gray-400 uppercase">Feature Flags</h4>
+                    <div class="space-y-4">
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <div class="text-sm font-medium text-white">Enable Polls</div>
+                                <div class="text-xs text-gray-500">Allow interactive polls during broadcasts</div>
+                            </div>
+                            <label class="relative inline-flex items-center cursor-pointer">
+                                <input type="checkbox" class="sr-only peer" checked>
+                                <div class="w-11 h-6 bg-white/20 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-white"></div>
+                            </label>
+                        </div>
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <div class="text-sm font-medium text-white">Enable Contests</div>
+                                <div class="text-xs text-gray-500">Allow contests and trivias</div>
+                            </div>
+                            <label class="relative inline-flex items-center cursor-pointer">
+                                <input type="checkbox" class="sr-only peer" checked>
+                                <div class="w-11 h-6 bg-white/20 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-white"></div>
+                            </label>
+                        </div>
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <div class="text-sm font-medium text-white">Enable Analytics</div>
+                                <div class="text-xs text-gray-500">Collect engagement metrics</div>
+                            </div>
+                            <label class="relative inline-flex items-center cursor-pointer">
+                                <input type="checkbox" class="sr-only peer" checked>
+                                <div class="w-11 h-6 bg-white/20 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-white"></div>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="border-t border-white/10 pt-6">
+                    <h4 class="text-sm font-semibold mb-4 text-white uppercase">Danger Zone</h4>
+                    <div class="space-y-3">
+                        <button class="w-full flex items-center justify-between px-4 py-3 bg-transparent border border-white/20 rounded hover:bg-white/10 transition">
+                            <div class="text-left">
+                                <div class="text-sm font-medium text-white">Archive App</div>
+                                <div class="text-xs text-gray-500">Hide app from active list</div>
+                            </div>
+                            <i class="fa-solid fa-archive text-white"></i>
+                        </button>
+                        <button class="w-full flex items-center justify-between px-4 py-3 bg-transparent border border-white/20 rounded hover:bg-white/10 transition">
+                            <div class="text-left">
+                                <div class="text-sm font-medium text-white">Delete App</div>
+                                <div class="text-xs text-gray-500">Permanently delete this app</div>
+                            </div>
+                            <i class="fa-solid fa-trash text-white"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="border-t border-white/10 px-6 py-4 flex items-center justify-end space-x-3">
+                <button id="cancelSettings" class="px-6 py-2 bg-transparent border border-white/20 hover:border-white/40 text-white rounded text-sm transition">
+                    Cancel
+                </button>
+                <button class="px-6 py-2 bg-white hover:bg-gray-200 text-black rounded text-sm transition font-medium">
+                    Save Changes
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+window.addEventListener('load', function() {
+    const editModal = document.getElementById('editModal');
+    const settingsModal = document.getElementById('settingsModal');
+    const editDetailsBtn = document.getElementById('editDetailsBtn');
+    const settingsBtn = document.getElementById('settingsBtn');
+    const closeEditModal = document.getElementById('closeEditModal');
+    const closeSettingsModal = document.getElementById('closeSettingsModal');
+    const cancelEdit = document.getElementById('cancelEdit');
+    const cancelSettings = document.getElementById('cancelSettings');
+
+    editDetailsBtn.addEventListener('click', function() {
+        editModal.classList.remove('hidden');
+    });
+
+    settingsBtn.addEventListener('click', function() {
+        settingsModal.classList.remove('hidden');
+    });
+
+    closeEditModal.addEventListener('click', function() {
+        editModal.classList.add('hidden');
+    });
+
+    closeSettingsModal.addEventListener('click', function() {
+        settingsModal.classList.add('hidden');
+    });
+
+    cancelEdit.addEventListener('click', function() {
+        editModal.classList.add('hidden');
+    });
+
+    cancelSettings.addEventListener('click', function() {
+        settingsModal.classList.add('hidden');
+    });
+
+    editModal.addEventListener('click', function(e) {
+        if (e.target === editModal) {
+            editModal.classList.add('hidden');
+        }
+    });
+
+    settingsModal.addEventListener('click', function(e) {
+        if (e.target === settingsModal) {
+            settingsModal.classList.add('hidden');
+        }
+    });
+});
+</script>
+
+</body>
+</html>

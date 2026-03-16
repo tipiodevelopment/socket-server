@@ -1,0 +1,28 @@
+Directrices para el backend
+Formato de respuesta de la API REST
+Endpoint: GET /api/campaigns/{campaignId}/active-components
+Respuesta esperada:
+[  {    "id": "31",    "type": "countdown",    "name": "Countdown Timer",    "status": "active",    "config": {      "endDate": "2025-11-30T23:59:59.000Z",      "title": "Black Friday Ends In:",      "style": "full",      "logoUrl": "https://example.com/logo.png",      "subtitle": "Get 20% off on all products",      "backgroundImageUrl": "https://example.com/bg.jpg",      "backgroundColor": "#FF6F61",      "discountBadgeText": "20% OFF",      "ctaText": "Shop Now",      "ctaLink": "https://example.com/shop",      "overlayOpacity": 0.6,      "buttonColor": "#FFFFFF"    }  }]
+Formato de mensaje WebSocket
+Evento: component_status_changed
+Mensaje esperado:
+{  "type": "component_status_changed",  "data": {    "component": {      "id": "31",      "type": "countdown",      "name": "Countdown Timer",      "status": "active",      "config": {        "endDate": "2025-11-30T23:59:59.000Z",        "title": "Black Friday Ends In:",        "style": "full",        "logoUrl": "https://example.com/logo.png",        "subtitle": "Get 20% off on all products",        "backgroundImageUrl": "https://example.com/bg.jpg",        "backgroundColor": "#FF6F61",        "discountBadgeText": "20% OFF",        "ctaText": "Shop Now",        "ctaLink": "https://example.com/shop",        "overlayOpacity": 0.6,        "buttonColor": "#FFFFFF"      }    }  }}
+Campos requeridos y opcionales
+Requeridos:
+id: String
+type: String (debe ser "countdown" para banners con countdown)
+status: String ("active" o "inactive")
+config.endDate: String (ISO 8601 timestamp)
+config.title: String
+Opcionales:
+config.style: String ("full" o "compact")
+config.logoUrl: String
+config.subtitle: String
+config.backgroundImageUrl: String (si no está, se usa backgroundColor)
+config.backgroundColor: String (hex color, ej: "#FF6F61")
+config.discountBadgeText: String
+config.ctaText: String
+config.ctaLink: String
+config.overlayOpacity: Number (0.0-1.0)
+config.buttonColor: String (hex color)
+Regla: Si no hay backgroundImageUrl, debe haber backgroundColor (o viceversa)

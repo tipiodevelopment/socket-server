@@ -1,105 +1,63 @@
-# Real-Time Event Broadcasting System
+# Vio - Real-Time Event Broadcasting Platform
 
 ## Overview
-
-This project is a real-time event broadcasting application designed for multi-campaign management. It allows administrators to create and manage campaigns, broadcasting various real-time events (products, polls, contests) to viewers. The system features a modern full-stack TypeScript environment with a React frontend (Vite), an Express backend, and WebSocket-based communication. Key capabilities include isolated WebSocket channels per campaign, persistent configuration and event storage in PostgreSQL, and a dynamic UI component library built with shadcn/ui. The project aims to provide a robust, scalable solution for interactive real-time audience engagement.
+Vio is a multi-tenant SaaS platform for managing real-time event broadcasts with interactive audience engagement features like polls, contests, ads, and shoppable products. It allows administrators to create and manage broadcasts with custom sponsor branding. The platform supports multi-tenant use cases for agencies and brands, ensuring data isolation for client applications, channels, and campaigns. The business vision is to provide a comprehensive solution for interactive live event broadcasting, enhancing audience engagement and offering significant market potential for brands and content creators.
 
 ## User Preferences
-
-Preferred communication style: Simple, everyday language.
+- Preferred communication style: Simple, everyday language (Spanish).
+- Publishing rule: Every time the app is published, update the `.cursorrules` file with the latest project details, architecture changes, new endpoints, and any relevant implementation notes.
 
 ## System Architecture
 
-### UI/UX Decisions
-The frontend utilizes React 18 with TypeScript and Vite, styled with Tailwind CSS, and uses Radix UI primitives with shadcn/ui for components. The design aesthetic features a premium gradient background, glass morphism, vibrant blue accents, Inter font, and a borderless design. It is fully responsive across mobile and desktop breakpoints (320px - 768px), adapting layouts and interactive elements for optimal viewing and touch interactions.
+### Design System
+The platform utilizes a monochromatic dark theme:
+- **Background:** `#0a0e1a`
+- **Cards/Surfaces:** `#141824` with `border-white/10`
+- **Text:** White primary, `text-gray-400` secondary, `text-gray-500` muted
+- **Accent:** White background with black text for active elements
+- **Status Badges:** Teal for Live (with pulse), bordered for Upcoming, low opacity for Ended
+- **Broadcast Element Colors:** Blue for polls, Purple for contests, Green for ads
+- **Icons:** Lucide React
+- **Font:** Inter
 
-### Technical Implementations
-**Frontend:**
-- **State Management:** TanStack Query.
-- **Routing:** Wouter.
-- **Real-time:** Custom `useWebSocket` hook handles connection and reconnection logic.
-- **Type Safety:** Shared Zod schemas ensure type-safe event structures.
-- **Localization:** English translation.
-- **Navigation:** Back buttons on all sub-pages.
+### Technical Stack
+**Frontend:** React 18, Vite, TypeScript, Tailwind CSS, Radix UI, shadcn/ui, TanStack Query v5, Wouter routing, React Hook Form, Zod, Lucide React, Recharts, Uppy.
+**Backend:** Node.js, Express.js, TypeScript, PostgreSQL (Neon Serverless) via Drizzle ORM, `ws` WebSockets, in-memory scheduler.
+**Auth:** Session-based for Dashboard (`/api/*`), JWT Bearer tokens for Admin APIs (`/v1/*`), API key for SDK APIs (`/v1/sdk/*`, `/v1/engagement/*`).
 
-**Backend:**
-- **Runtime:** Node.js with Express.js.
-- **WebSockets:** `ws` library for real-time communication.
-- **Database:** PostgreSQL with Drizzle ORM for data persistence.
-- **Build:** esbuild.
-- **URL Normalization:** Object storage URLs are automatically converted to absolute URLs for external client compatibility, detecting the base URL from environment variables or the first HTTP request.
-- **Logging:** Custom middleware for API request logging.
-- **Validation:** Server-side validation for campaign IDs.
-- **Scheduler Service:** Automatic component activation/deactivation based on scheduled times. Configurable interval via `SCHEDULER_INTERVAL_MINUTES` environment variable (default: 1 minute). Sends identical WebSocket events whether components are activated manually or automatically.
+### Project Structure
+The project is structured with a `shared` directory for schemas, `server` for API logic and services, and `client` for the React frontend. Key components include `App.tsx` for routing, `AppLayout.tsx` for the main shell, and dedicated directories for UI components, dashboard features, and pages.
+
+### Data Model Hierarchy
+The data model is organized hierarchically: `Users → Client Apps → Campaigns → Broadcasts → Polls / Contests / Ads / Products` and `Campaign Components`. Sponsors are linked to campaigns.
+
+### API Architecture
+- **Dashboard APIs (`/api/*`):** Session-based, internal CRUD operations.
+- **Admin APIs (`/v1/*`):** JWT authenticated, full control over broadcast elements.
+- **SDK APIs (`/v1/sdk/*`, `/v1/engagement/*`):** API key authenticated, for campaign discovery, configuration, and engagement actions.
+- **Analytics APIs (`/api/analytics/*`):** Session-based, for hierarchical analytics data.
 
 ### Feature Specifications
-- **Campaign Management:** Administrators can create, manage, and delete campaigns. Each campaign can have associated integrations (Reachu.io, Tipio). Campaigns have a lifecycle defined by `startDate` and `endDate`.
-- **WebSocket Architecture:** Each campaign (`/ws/:campaignId`) has an isolated WebSocket channel, ensuring events are broadcast only to relevant clients, managed by a `Map<campaignId, Set<WebSocket>>`.
-- **Dynamic Component Management:**
-    - A library of reusable UI components (e.g., Banner, Countdown, Carousel, Product Spotlight, Offer Badge, Offer Banner) configurable via a REST API.
-    - Components can be activated/deactivated manually or scheduled for automatic display within specific campaigns.
-    - **Component Type Uniqueness:** Only ONE component of each type can be active at any given time within a campaign. This ensures iOS apps can reliably import components by type without ambiguity (e.g., `activeComponents.first { $0.type == "banner" }` is guaranteed to return at most one result).
-        - **Dynamic Components:** Backend validates that no other component of the same type is active before allowing activation
-        - **Scheduled Components:** Backend validates that no other component of the same type has overlapping time ranges before allowing creation/update
-        - **Error Handling:** Returns 409 Conflict with clear English error messages specifying the conflicting component/schedule
-    - **Campaign-Specific Customization:** Each campaign can personalize component configurations (texts, images, links) without affecting the original template or other campaigns. Custom configurations are stored per campaign in `campaignComponents.customConfig`.
-        - **UI Controls:** Purple "Customize" button (pencil icon) opens a dialog with all configurable fields
-        - **Visual Indicators:** "Customized" badge (purple) appears on components with custom configurations
-        - **Revert Functionality:** "Revert to Original" button sets customConfig to null, restoring template defaults
-        - **Field Pre-population:** Dialog pre-fills with current values (customConfig || template.config)
-        - **Immediate Updates:** Changes reflect in UI immediately after successful mutation
-    - Real-time updates via WebSockets (`component_status_changed`, `component_config_updated`, `campaign_ended`) for dynamic display in client applications (e.g., iOS).
-    - Prevents a component from being active in multiple campaigns simultaneously.
-    - **Deeplink Support:** Components with CTAs (Banner, Offer Banner) support optional deeplinks for in-app navigation. When specified, deeplinks take priority over web links, enabling seamless transitions to specific app screens (e.g., `myapp://offers/weekly`). Supports both custom URL schemes and universal links.
-    - Integration documentation with Swift code examples is provided for client-side implementation.
-- **Event Broadcasting:** Supports Product, Poll, and Contest events, validated by Zod schemas, stored in PostgreSQL, and broadcast to campaign-specific WebSocket clients in real-time. Historical events are also retrievable.
+- **Campaign Management:** Multi-tenant support with sponsor branding and audience targeting.
+- **Broadcast Management:** Real-time scheduling, activation, monitoring, and integration with Sportmonks fixtures.
+- **Interactive Components:** Real-time polls, contests, shoppable ads, and banners via WebSockets.
+- **Event Timeline:** Horizontal 0'-90' scrubber merging Sportmonks and engagement events.
+- **Commerce Integration:** Sponsor-specific Commerce API keys for shoppable ads.
+- **Sportmonks Integration:** Fixture selection, server-side proxy with caching, and display of match data.
+- **Location Slot System:** `campaign_components.locationId` for dynamic SDK content placement.
+- **User Segmentation:** Server-side geographic targeting.
+- **Analytics:** Drill-down from global to specific broadcast levels.
+- **SDK:** Two-step initialization for campaign and broadcast content.
 
-### System Design Choices
-- **Database Schema:**
-    - `Users`: Stores user information (id, reachuUserId, firebaseToken) for multi-user architecture.
-    - `Campaigns`: Stores campaign details (name, user, logo, description, scheduling, integration IDs).
-    - `Components`: Reusable UI component library with `id`, `type`, `name`, and `config` (JSON).
-    - `Campaign Components`: Links `Components` to `Campaigns` for both manual and automatic activation/deactivation. Includes:
-        - `status`: Current activation state ('active' or 'inactive')
-        - `scheduledTime` (nullable): Optional ISO timestamp for automatic activation
-        - `endTime` (nullable): Optional ISO timestamp for automatic deactivation
-        - `customConfig` (JSON, nullable): Campaign-specific configuration overrides. When null, uses the template's default config; when set, takes priority over template config.
-        - Supports both manual toggle controls and automatic scheduler-based display in a unified table structure.
-- **Page Structure:**
-    - **Campaigns Page:** Dashboard for campaign administration.
-    - **New Campaign Page:** Form for campaign creation.
-    - **Campaign Admin Page:** Campaign-specific dashboard for event broadcasting.
-    - **Campaign Viewer Page:** Real-time event display for end-users.
-    - **Advanced Campaign Page:** Tabbed interface for Overview, Integrations, Scheduled Components (timeline view), Dynamic Components (real-time toggle controls), and Library (integrated component management).
-    - **Components Library Page:** Standalone page for managing reusable components.
-    - **Docs Page:** Integration documentation with Swift code examples.
+### Key Pages
+Core routes include a dashboard, client app management, campaign lists and detailed views, broadcast lists and details, sponsor management, component library, and analytics. Campaign details feature tabs for Overview, Broadcasts, Components, Sponsors, Analytics, and Settings.
 
 ## External Dependencies
 
-### UI & Styling
-- **Radix UI:** Accessible component primitives.
-- **Tailwind CSS:** Utility-first CSS framework.
-- **class-variance-authority & clsx:** Dynamic styling.
-- **Lucide React:** Icon library.
-
-### Data & State Management
-- **TanStack Query:** Server state management.
-- **React Hook Form:** Form state management.
-- **Zod:** Schema validation.
-- **Drizzle ORM & Drizzle Zod:** PostgreSQL ORM and schema integration.
-
-### Real-time Communication
-- **ws:** WebSocket server library.
-
-### File Upload & Object Storage
-- **Uppy:** File uploader with `uppy/react` and `uppy/aws-s3`.
-- **Replit Object Storage:** Built-in cloud storage (via `@google-cloud/storage`).
-
-### Development Tools
-- **Vite:** Frontend development and build.
-- **esbuild:** Backend bundling.
-- **tsx:** TypeScript execution for development.
-
-### Database
-- **Neon Serverless PostgreSQL:** Configured via `@neondatabase/serverless` for campaign and event storage.
-- **Drizzle Kit:** Migrations and schema management.
+- **UI:** Radix UI, Tailwind CSS, shadcn/ui, Lucide React, Recharts
+- **Data Management:** TanStack Query v5, React Hook Form, Zod, Drizzle ORM, Drizzle Zod, Drizzle Kit
+- **Real-time:** `ws` WebSocket library
+- **File Upload:** Uppy (`uppy/react`, `uppy/aws-s3`), Replit Object Storage
+- **Database:** Neon Serverless PostgreSQL (`@neondatabase/serverless`)
+- **Sports Data:** Sportmonks API v3 (`SPORTMONKS_API_TOKEN`)
+- **Commerce:** External GraphQL API at `graph-ql-dev.vio.live/graphql`

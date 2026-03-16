@@ -1,0 +1,59 @@
+# Respuestas a las preguntas de Replit - contentId y Validación
+
+Documento con las respuestas a las 4 preguntas que Replit formuló tras analizar el documento de preguntas inicial.
+
+---
+
+## Pregunta 1 — Unicidad de externalId: ¿por app o global?
+
+**Respuesta:** Unicidad **por app** (`externalId` + `clientAppId`).
+
+- Viaplay Norway y Viaplay Sweden son clientApps distintos.
+- El mismo `contentId` puede referir a contenidos diferentes en cada app.
+- Cada app tiene sus propias campañas y broadcasts.
+- Índice único: `UNIQUE(externalId, clientAppId)`.
+
+---
+
+## Pregunta 2 — ¿El broadcast se crea ANTES del stream o en paralelo?
+
+**Respuesta:** El broadcast se crea **antes** de que empiece el stream.
+
+- El admin configura el broadcast con `externalId` y eventos programados.
+- El endpoint puede devolver `status: "upcoming"` con `hasEngagement: true` si queremos mostrar "engagement próximamente".
+- Si preferimos no mostrar nada hasta que esté live: `hasEngagement: false` cuando `status === "upcoming"`, o un flag explícito (ej. `showUpcoming: true/false`).
+
+---
+
+## Pregunta 3 — broadcast_ended: ¿oculta solo broadcast o también campaign-level?
+
+**Respuesta:** Solo componentes de **broadcast** (polls, contests, chat).
+
+- `broadcast_ended` = fin del evento live.
+- Los componentes de campaña (banners, carruseles) siguen activos hasta que termine la campaña.
+- El SDK oculta solo lo que viene de `broadcastComponents`.
+- Si queremos ocultar todo: usar `campaign_ended` o un evento específico de "fin de sesión".
+
+---
+
+## Pregunta 4 — ¿Más de un broadcast live simultáneo por campaña?
+
+**Respuesta:** Sí, puede haber varios broadcasts live por campaña.
+
+- El SDK elige por `contentId`: el broadcast cuyo `externalId` coincide con el `contentId` que envía la app.
+- Si hay varios broadcasts live en la misma campaña, la resolución es por `contentId` → `externalId`.
+- No hace falta lógica de "el más reciente"; el `contentId` identifica el stream concreto.
+
+---
+
+## Resumen de decisiones (de Replit)
+
+| Tema | Decisión |
+|------|----------|
+| Mapeo contentId | Columna `externalId` en `broadcasts`, índice `UNIQUE(externalId, clientAppId)` |
+| Endpoint | Nuevo `GET /v1/sdk/broadcast?contentId=xxx&country=NO` |
+| País | Filtrar por `targetCountries`; null/empty = todos |
+| WebSocket | Implementar `broadcast_ended` y `broadcast_started` |
+| Caché | `hasEngagement: false` → 30s; `true` → 10s + ETag; invalidar con WebSocket |
+| Dashboard | Campo "External ID / Content ID" en formulario de broadcast |
+| Flujo | `/v1/sdk/campaigns` (componentes campaña) + `/v1/sdk/broadcast?contentId=` (componentes broadcast) |

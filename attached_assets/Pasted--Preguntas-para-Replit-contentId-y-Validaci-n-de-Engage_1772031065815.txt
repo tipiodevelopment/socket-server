@@ -1,0 +1,133 @@
+# Preguntas para Replit - contentId y Validación de Engagement
+
+Documento con preguntas para implementar en el socket-server el flujo donde la app pasa `contentId` (ID del evento/contenido) y el SDK valida si hay engagement activo antes de renderizar componentes.
+
+---
+
+## Contexto
+
+- **App** (ej. Viaplay): tiene un `contentId` por cada stream/evento (partido, programa, etc.)
+- **SDK**: debe validar con el backend si ese `contentId` tiene broadcast activo
+- **Si hay broadcast**: cargar componentes (chat, sponsor, polls, contests)
+- **Si no hay**: no renderizar nada; la app debe saberlo para ocultar botones (ej. chat)
+- **Jerarquía**: App → muchas campañas → campaña tiene muchos broadcasts → broadcast tiene polls/contests
+- **Componentes**: a nivel campaña (banners, carrusel, programables) y a nivel broadcast (polls, contests)
+
+---
+
+## 1. Mapeo contentId → broadcast
+
+¿Cómo relacionamos el ID del contenido externo (Viaplay, etc.) con nuestro broadcast?
+
+- **Opción A**: Columna `content_id` (o `external_id`) en tabla `broadcasts`
+- **Opción B**: Tabla nueva `broadcast_content_mappings(content_id, broadcast_id, client_app_id)`
+- **Opción C**: Usar `broadcasts.metadata` (JSON) para guardar `contentId`
+
+¿Cuál prefieren? ¿O tienen otra propuesta?
+
+---
+
+## 2. Endpoint de validación
+
+¿Crear endpoint nuevo o extender el existente?
+
+**Opción A – Nuevo endpoint** `GET /v1/sdk/validate?contentId=xxx&country=NO`  
+- Respuesta: `{ hasEngagement: true, broadcastId, campaignId, components }` o `{ hasEngagement: false }`
+
+**Opción B – Extender** `GET /v1/sdk/campaigns` para aceptar `contentId`  
+- Si viene `contentId`, resolver a `broadcastId` y filtrar por ese broadcast  
+- Si no viene, mantener comportamiento actual (matchId/broadcastId)
+
+¿Cuál encaja mejor con su arquitectura?
+
+---
+
+## 3. Filtro por país
+
+Las campañas tienen `targetCountries`. Para la validación con `country`:
+
+- ¿Se filtra por `targetCountries` cuando el SDK envía `country`?
+- ¿Si `targetCountries` es null/empty se considera “todos los países”?
+
+---
+
+## 4. Componentes a nivel campaña vs broadcast
+
+- **Campaña**: banners, carrusel, product spot (programables, disparo manual)
+- **Broadcast**: polls, contests (por evento live)
+
+¿El endpoint debe devolver ambos tipos? Ejemplo:
+
+```json
+{
+  "hasEngagement": true,
+  "broadcastId": "...",
+  "campaignId": 123,
+  "campaignComponents": ["banner", "carousel"],
+  "broadcastComponents": ["polls", "contests", "chat"]
+}
+```
+
+¿O prefieren otra estructura?
+
+---
+
+## 5. WebSocket: eventos para ocultar campaña
+
+Para “ocultar al 100% la campaña” en tiempo real, ¿qué eventos deben existir?
+
+- `campaign_ended` (¿ya existe?)
+- `broadcast_ended`
+- `campaign_paused` / `campaign_deactivated`
+
+¿Cuáles están implementados y cuáles faltan?
+
+---
+
+## 6. Caché en el SDK
+
+El SDK hará GET al abrir y mantendrá el estado hasta que llegue un evento por WebSocket.
+
+- ¿El backend soporta headers de caché (ETag, Cache-Control) para el endpoint de validación/discovery?
+- ¿O la caché es solo responsabilidad del SDK?
+
+---
+
+## 7. Creación de broadcasts con contentId
+
+Al crear un broadcast desde el dashboard/admin:
+
+- ¿Habrá un campo para el `contentId` del partner (ej. Viaplay)?
+- ¿O el mapeo se hará en otro flujo (import, API, etc.)?
+
+---
+
+## 8. Múltiples campañas por app
+
+Una app puede tener varias campañas. Para componentes a nivel de campaña (sin contentId):
+
+- ¿Cómo sabe el SDK qué campaña usar? ¿`campaignId` en config?
+- ¿O hay un concepto de “campaña activa por contexto” (ej. sección deportes) que el backend resuelve?
+
+---
+
+## Flujo objetivo (SDK)
+
+```
+App abre evento → pasa contentId + country al SDK
+       ↓
+SDK llama GET /v1/sdk/validate?contentId=xxx&country=NO
+       ↓
+Backend: ¿existe broadcast con contentId? ¿campaña activa? ¿país válido?
+       ↓
+hasEngagement: true  → SDK carga componentes, usa broadcastId internamente
+hasEngagement: false → SDK no renderiza nada, notifica a la app
+```
+
+---
+
+## Referencias
+
+- Schema actual: `shared/schema.ts` (broadcasts, campaigns, polls, contests)
+- Auto-discovery actual: `GET /v1/sdk/campaigns` en `server/routes.ts` ~L3424
+- WebSocket: `/ws/:campaignId`, eventos `campaign_ended`, `campaign_started`
