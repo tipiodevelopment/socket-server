@@ -7,7 +7,6 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    environment: develop
 
     steps:
       - name: Checkout code
@@ -45,13 +44,13 @@ jobs:
             SV_TENANT_ID=${{ secrets.SV_TENANT_ID }}
             AZ_STORAGE=${{ secrets.AZ_STORAGE }}
 
-      - name: Set up kubectl
-        uses: azure/setup-kubectl@v3
-
       - name: Login to Azure
         uses: azure/login@v1
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v3
 
       - name: Get AKS credentials
         run: |
@@ -61,28 +60,21 @@ jobs:
             --subscription 3d276f7e-0783-4581-8a49-ad0a2c432c63 \
             --overwrite-existing
 
-      - name: Setup Helm
-        uses: azure/setup-helm@v3
-
-      - name: Deploy with Helm (rolling restart)
+      - name: Deploy (rolling restart)
         run: |
           kubectl rollout restart deployment/socket-server -n default
           kubectl rollout status deployment/socket-server -n default --timeout=5m
 
-      - name: Notify Discord on success
+      - name: Notify on success
         if: success()
-        env:
-          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
         run: |
-          curl -s -X POST "$DISCORD_WEBHOOK" \
-            -H "Content-Type: application/json" \
-            -d "{\"content\": \"✅ **socket-server** deployado en Azure — commit \`${{ github.sha }}\` por **${{ github.actor }}**\"}"
+          curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage" \
+            -d "chat_id=${{ secrets.TELEGRAM_CHAT_ID }}" \
+            -d "text=✅ socket-server deployado en Azure%0ACommit: ${{ github.sha }}%0APor: ${{ github.actor }}"
 
-      - name: Notify Discord on failure
+      - name: Notify on failure
         if: failure()
-        env:
-          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
         run: |
-          curl -s -X POST "$DISCORD_WEBHOOK" \
-            -H "Content-Type: application/json" \
-            -d "{\"content\": \"❌ **Deploy falló** en socket-server — commit \`${{ github.sha }}\` por **${{ github.actor }}** — revisar logs: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}\"}"
+          curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage" \
+            -d "chat_id=${{ secrets.TELEGRAM_CHAT_ID }}" \
+            -d "text=❌ Deploy FALLÓ en socket-server%0ACommit: ${{ github.sha }}%0APor: ${{ github.actor }}%0ALogs: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
