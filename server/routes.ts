@@ -83,7 +83,7 @@ function toAbsoluteUrl(pathOrUrl: string | undefined, req: Request): string | un
   // Handle comma-separated values from multiple proxies by taking the first one
   const forwardedProto = req.get('x-forwarded-proto');
   const protocol = forwardedProto?.split(',')[0].trim() || req.protocol || 'https';
-  const host = req.get('host') || 'localhost:5000';
+  const host = req.get('host') || `localhost:${process.env.PORT || 5001}`;
   
   return `${protocol}://${host}${pathOrUrl.startsWith('/') ? pathOrUrl : '/' + pathOrUrl}`;
 }
@@ -5125,6 +5125,8 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       }
 
       const baseUrl = `${req.protocol}://${req.get('host')}`;
+      const wsProtocol = req.protocol === 'https' ? 'wss' : 'ws';
+      const wsBase = `${wsProtocol}://${req.get('host')}`;
       const COMMERCE_GRAPHQL = 'https://graph-ql-dev.vio.live/graphql';
 
       return res.json({
@@ -5136,7 +5138,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
         },
         endpoints: {
           restBase: baseUrl,
-          webSocketBase: baseUrl,
+          webSocketBase: wsBase,
           commerceGraphQL: COMMERCE_GRAPHQL,
         },
         features: {
@@ -5455,18 +5457,28 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       const userId = req.query.userId as string | undefined;
       const userCountry = req.query.userCountry as string | undefined;
       
-      // Require campaignId for proper campaign-level scoping
-      if (!campaignIdParam) {
-        return res.status(400).json({ 
-          message: 'campaignId query parameter is required'
-        });
+      // campaignId is optional — if not provided, resolve from the clientApp's active campaign
+      let requestedCampaignId: number;
+      if (campaignIdParam) {
+        const parsed = parseInt(campaignIdParam);
+        if (isNaN(parsed)) {
+          return res.status(400).json({ message: 'Invalid campaignId parameter' });
+        }
+        requestedCampaignId = parsed;
+      } else {
+        const now = new Date();
+        const appCampaigns = await storage.getClientAppCampaigns(clientApp.id);
+        const activeCampaign = appCampaigns.find(c =>
+          c.isPaused !== 'true' &&
+          (!c.startDate || new Date(c.startDate) <= now) &&
+          (!c.endDate || new Date(c.endDate) >= now)
+        ) || appCampaigns[0] || null;
+        if (!activeCampaign) {
+          return res.status(404).json({ message: 'No active campaign found for this API key' });
+        }
+        requestedCampaignId = activeCampaign.id;
       }
-      
-      const requestedCampaignId = parseInt(campaignIdParam);
-      if (isNaN(requestedCampaignId)) {
-        return res.status(400).json({ message: 'Invalid campaignId parameter' });
-      }
-      
+
       // Get the campaign
       const campaign = await storage.getCampaign(requestedCampaignId);
       
@@ -5684,8 +5696,18 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
         const cid = parseInt(campaignIdParam);
         if (!isNaN(cid)) targetCampaignIds = [cid];
       } else {
+        // Only include active campaigns to avoid returning stale data from old campaigns
+        const now = new Date();
         const appCampaigns = await storage.getClientAppCampaigns(clientApp.id);
-        targetCampaignIds = appCampaigns.map(c => c.id);
+        const activeCampaigns = appCampaigns.filter(c =>
+          c.isPaused !== 'true' &&
+          (!c.startDate || new Date(c.startDate) <= now) &&
+          (!c.endDate || new Date(c.endDate) >= now)
+        );
+        // Fall back to most recent campaign if none are strictly active
+        targetCampaignIds = activeCampaigns.length > 0
+          ? activeCampaigns.map(c => c.id)
+          : appCampaigns.slice(0, 1).map(c => c.id);
       }
 
       const result: any[] = [];
@@ -5704,7 +5726,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
             locationId: cc.locationId || null,
             instanceName: cc.instanceName || null,
             type: cc.component?.type || null,
-            config: cc.customConfig || cc.component?.config || null,
+            config: normalizeUrls(cc.customConfig || cc.component?.config || null, req.protocol, req.get('host')),
           });
         }
       }
