@@ -1,126 +1,88 @@
-name: Build & Deploy Azure Kubernetes
+name: Deploy to Azure AKS
 
 on:
   push:
-    branches:
-      - pre-develop
-      - develop
-      # - main
+    branches: [develop]
 
 jobs:
-
-  # ✅ BUILD & PUSH IMAGE
-  build-azure:
+  deploy:
     runs-on: ubuntu-latest
-    services:
-      docker:
-        image: docker:dind
-        options: --privileged
-
-    env:
-      APP_PREFIX: ${{ secrets.APP_PREFIX }}
-      CI_PIPELINE_ID: ${{ github.run_number }}
-      CI_COMMIT_BRANCH: ${{ github.ref_name }}
+    environment: develop
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-      - name: Setup branch env variables
-        run: |
-          if [ "$CI_COMMIT_BRANCH" == "pre-develop" ]; then
-            echo "ACR_PROD=${{ secrets.ACR_STAGING }}" >> $GITHUB_ENV
-            echo "SV_APP_ID_PROD=${{ secrets.SV_APP_ID_STAGING }}" >> $GITHUB_ENV
-            echo "SV_PASSWORD_PROD=${{ secrets.SV_PASSWORD_STAGING }}" >> $GITHUB_ENV
-            echo "SV_TENANT_ID_PROD=${{ secrets.SV_TENANT_ID_STAGING }}" >> $GITHUB_ENV
-            echo "AZ_STORAGE_PROD=${{ secrets.AZ_STORAGE_STAGING }}" >> $GITHUB_ENV
-          fi
-          if [ "$CI_COMMIT_BRANCH" == "develop" ]; then
-            echo "ACR_PROD=${{ secrets.ACR_QA }}" >> $GITHUB_ENV
-            echo "SV_APP_ID_PROD=${{ secrets.SV_APP_ID_QA }}" >> $GITHUB_ENV
-            echo "SV_PASSWORD_PROD=${{ secrets.SV_PASSWORD_QA }}" >> $GITHUB_ENV
-            echo "SV_TENANT_ID_PROD=${{ secrets.SV_TENANT_ID_QA }}" >> $GITHUB_ENV
-            echo "AZ_STORAGE_PROD=${{ secrets.AZ_STORAGE_QA }}" >> $GITHUB_ENV
-          fi
-          if [ "$CI_COMMIT_BRANCH" == "main" ]; then
-            echo "ACR_PROD=${{ secrets.ACR_PROD }}" >> $GITHUB_ENV
-            echo "SV_APP_ID_PROD=${{ secrets.SV_APP_ID_PROD }}" >> $GITHUB_ENV
-            echo "SV_PASSWORD_PROD=${{ secrets.SV_PASSWORD_PROD }}" >> $GITHUB_ENV
-            echo "SV_TENANT_ID_PROD=${{ secrets.SV_TENANT_ID_PROD }}" >> $GITHUB_ENV
-            echo "AZ_STORAGE_PROD=${{ secrets.AZ_STORAGE_PROD }}" >> $GITHUB_ENV
-          fi
-
-      - name: Docker login
-        run: echo $SV_PASSWORD_PROD | docker login $ACR_PROD -u $SV_APP_ID_PROD --password-stdin
-
-      - name: Build image
-        run: |
-          docker build \
-            -t $ACR_PROD/$APP_PREFIX:latest \
-            -t $ACR_PROD/$APP_PREFIX:$CI_PIPELINE_ID \
-            . \
-            --build-arg SV_APP_ID=$SV_APP_ID_PROD \
-            --build-arg SV_PASSWORD=$SV_PASSWORD_PROD \
-            --build-arg SV_TENANT_ID=$SV_TENANT_ID_PROD \
-            --build-arg AZ_STORAGE="$AZ_STORAGE_PROD"
-
-      - name: Push docker image
-        run: |
-          docker push $ACR_PROD/$APP_PREFIX:$CI_PIPELINE_ID
-          docker push $ACR_PROD/$APP_PREFIX:latest
-
-  # ✅ DEPLOY TO AKS ON SUCCESS
-  deploy-to-kubernetes:
-    needs: build-azure
-    runs-on: ubuntu-latest
-    env:
-      APP_PREFIX: ${{ secrets.APP_PREFIX }}
-      CI_COMMIT_BRANCH: ${{ github.ref_name }}
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Setup branch env variables
-        run: |
-          if [ "$CI_COMMIT_BRANCH" == "pre-develop" ]; then
-            echo "SV_APP_ID_PROD=${{ secrets.SV_APP_ID_STAGING }}" >> $GITHUB_ENV
-            echo "SV_PASSWORD_PROD=${{ secrets.SV_PASSWORD_STAGING }}" >> $GITHUB_ENV
-            echo "SV_TENANT_ID_PROD=${{ secrets.SV_TENANT_ID_STAGING }}" >> $GITHUB_ENV
-            echo "AZ_KUB_NAME_PROD=${{ secrets.AZ_KUB_NAME_STAGING }}" >> $GITHUB_ENV
-            echo "AZ_RG_PROD=${{ secrets.AZ_RG_STAGING }}" >> $GITHUB_ENV
-          fi
-          if [ "$CI_COMMIT_BRANCH" == "develop" ]; then
-            echo "SV_APP_ID_PROD=${{ secrets.SV_APP_ID_QA }}" >> $GITHUB_ENV
-            echo "SV_PASSWORD_PROD=${{ secrets.SV_PASSWORD_QA }}" >> $GITHUB_ENV
-            echo "SV_TENANT_ID_PROD=${{ secrets.SV_TENANT_ID_QA }}" >> $GITHUB_ENV
-            echo "AZ_KUB_NAME_PROD=${{ secrets.AZ_KUB_NAME_QA }}" >> $GITHUB_ENV
-            echo "AZ_RG_PROD=${{ secrets.AZ_RG_QA }}" >> $GITHUB_ENV
-          fi
-          if [ "$CI_COMMIT_BRANCH" == "main" ]; then
-            echo "SV_APP_ID_PROD=${{ secrets.SV_APP_ID_PROD }}" >> $GITHUB_ENV
-            echo "SV_PASSWORD_PROD=${{ secrets.SV_PASSWORD_PROD }}" >> $GITHUB_ENV
-            echo "SV_TENANT_ID_PROD=${{ secrets.SV_TENANT_ID_PROD }}" >> $GITHUB_ENV
-            echo "AZ_KUB_NAME_PROD=${{ secrets.AZ_KUB_NAME_PROD }}" >> $GITHUB_ENV
-            echo "AZ_RG_PROD=${{ secrets.AZ_RG_PROD }}" >> $GITHUB_ENV
-          fi
-
-      - name: Azure CLI Login Manual
-        uses: azure/cli@v2
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
         with:
-          inlineScript: |
-            tdnf makecache
-            tdnf install -y tar
-            tdnf install -y kubernetes-client
+          node-version: '20'
 
-            az login --service-principal --username "${{ env.SV_APP_ID_PROD }}" --password "${{ env.SV_PASSWORD_PROD }}" --tenant "${{ env.SV_TENANT_ID_PROD }}"
-            az account set --subscription "${{ secrets.SV_SUBSCRIPTION_ID }}"
+      - name: Install dependencies
+        run: yarn install
 
-            az aks get-credentials -g $AZ_RG_PROD -n $AZ_KUB_NAME_PROD --overwrite-existing --admin
-            
-            curl -L https://get.helm.sh/helm-v3.13.1-linux-amd64.tar.gz -o helm.tar.gz
-            tar -xvf helm.tar.gz
+      - name: Run database migrations
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: npx drizzle-kit push
 
-            mv linux-amd64/helm /usr/local/bin
-            rm -rf linux-amd64 helm.tar.gz
+      - name: Login to Azure Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: reachuqa2.azurecr.io
+          username: ${{ secrets.AZURE_REGISTRY_USERNAME }}
+          password: ${{ secrets.AZURE_REGISTRY_PASSWORD }}
 
-            helm upgrade --install $APP_PREFIX ./charts/$APP_PREFIX-0.1.0.tgz
-            kubectl delete pod -l app.kubernetes.io/instance=$APP_PREFIX
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: reachuqa2.azurecr.io/socket-server:latest
+          build-args: |
+            SV_APP_ID=${{ secrets.SV_APP_ID }}
+            SV_PASSWORD=${{ secrets.SV_PASSWORD }}
+            SV_TENANT_ID=${{ secrets.SV_TENANT_ID }}
+            AZ_STORAGE=${{ secrets.AZ_STORAGE }}
+
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v3
+
+      - name: Login to Azure
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Get AKS credentials
+        run: |
+          az aks get-credentials \
+            --name kubernetesqa \
+            --resource-group qa \
+            --subscription 3d276f7e-0783-4581-8a49-ad0a2c432c63 \
+            --overwrite-existing
+
+      - name: Setup Helm
+        uses: azure/setup-helm@v3
+
+      - name: Deploy with Helm (rolling restart)
+        run: |
+          kubectl rollout restart deployment/socket-server -n default
+          kubectl rollout status deployment/socket-server -n default --timeout=5m
+
+      - name: Notify Discord on success
+        if: success()
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+        run: |
+          curl -s -X POST "$DISCORD_WEBHOOK" \
+            -H "Content-Type: application/json" \
+            -d "{\"content\": \"✅ **socket-server** deployado en Azure — commit \`${{ github.sha }}\` por **${{ github.actor }}**\"}"
+
+      - name: Notify Discord on failure
+        if: failure()
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+        run: |
+          curl -s -X POST "$DISCORD_WEBHOOK" \
+            -H "Content-Type: application/json" \
+            -d "{\"content\": \"❌ **Deploy falló** en socket-server — commit \`${{ github.sha }}\` por **${{ github.actor }}** — revisar logs: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}\"}"
