@@ -5128,6 +5128,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       const COMMERCE_GRAPHQL = 'https://graph-ql-dev.vio.live/graphql';
 
       return res.json({
+        sdkVersion: "0.2.0",
         clientApp: {
           id: clientApp.id,
           name: clientApp.name,
