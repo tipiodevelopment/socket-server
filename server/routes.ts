@@ -4870,25 +4870,16 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   // Discovers all active campaigns using API key or Bundle ID
   app.get('/v1/sdk/campaigns', async (req, res) => {
     try {
-      // Priority 1: Identification by X-App-Bundle-ID header
-      const bundleId = req.headers['x-app-bundle-id'] as string;
-      // Priority 2: API key in query parameter (backward compatibility)
+      // Auth: API key only (bundle ID reserved for future use)
       const apiKey = req.query.apiKey as string || req.headers['x-api-key'] as string;
       
-      let clientApp;
+      if (!apiKey) {
+        return res.status(401).json({ message: 'API key required' });
+      }
       
-      if (bundleId) {
-        clientApp = await storage.getClientAppByBundleId(bundleId);
-        if (!clientApp) {
-          return res.status(401).json({ message: 'Bundle ID not found' });
-        }
-      } else if (apiKey) {
-        clientApp = await storage.getClientAppByApiKey(apiKey);
-        if (!clientApp) {
-          return res.status(401).json({ message: 'Invalid API key' });
-        }
-      } else {
-        return res.status(401).json({ message: 'API key or X-App-Bundle-ID header required' });
+      const clientApp = await storage.getClientAppByApiKey(apiKey);
+      if (!clientApp) {
+        return res.status(401).json({ message: 'Invalid API key' });
       }
 
       const matchIdFilter = req.query.matchId as string | undefined;
@@ -4983,7 +4974,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   // SDK calls this when a user opens a specific stream/content
   app.get('/v1/sdk/broadcast', async (req, res) => {
     try {
-      const bundleId = req.headers['x-app-bundle-id'] as string;
+      // Auth: API key only (bundle ID reserved for future use)
       const apiKey = req.query.apiKey as string || req.headers['x-api-key'] as string;
       const contentId = req.query.contentId as string | undefined;
       const country = req.query.country as string | undefined;
@@ -4992,15 +4983,13 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
         return res.status(400).json({ message: 'contentId query parameter is required' });
       }
 
-      let clientApp;
-      if (bundleId) {
-        clientApp = await storage.getClientAppByBundleId(bundleId);
-        if (!clientApp) return res.status(401).json({ message: 'Bundle ID not found' });
-      } else if (apiKey) {
-        clientApp = await storage.getClientAppByApiKey(apiKey);
-        if (!clientApp) return res.status(401).json({ message: 'Invalid API key' });
-      } else {
-        return res.status(401).json({ message: 'API key or X-App-Bundle-ID header required' });
+      if (!apiKey) {
+        return res.status(401).json({ message: 'API key required' });
+      }
+
+      const clientApp = await storage.getClientAppByApiKey(apiKey);
+      if (!clientApp) {
+        return res.status(401).json({ message: 'Invalid API key' });
       }
 
       const broadcast = await storage.getBroadcastByExternalId(contentId, clientApp.id);
