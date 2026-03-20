@@ -47,6 +47,7 @@ export function ImageUploadWithPreview({
       // Get upload URL from server
       const response = await apiRequest('POST', '/api/objects/upload', {
         fileName: file.name,
+        type: file.type,
       });
       const { uploadURL } = (await response.json()) as { uploadURL: string };
 
@@ -56,19 +57,22 @@ export function ImageUploadWithPreview({
         body: file,
         headers: {
           'Content-Type': file.type,
+          'x-ms-blob-type': 'BlockBlob',
         },
       });
 
+      const realPath = uploadURL.split('?')[0];
+
       // Normalize the URL to get the public path
       const normalizeResponse = await apiRequest('PUT', '/api/campaign-logo', {
-        logoURL: uploadURL,
+        logoURL: realPath,
       });
-      const { objectPath } = (await normalizeResponse.json()) as {
-        objectPath: string;
-      };
+      // const { objectPath } = (await normalizeResponse.json()) as {
+      //   objectPath: string;
+      // };
 
       // Update the value
-      onChange(objectPath);
+      onChange(realPath);
     } catch (error) {
       console.error('Upload error:', error);
       setUploadError('Failed to upload file');
@@ -91,7 +95,7 @@ export function ImageUploadWithPreview({
   return (
     <div className="space-y-2">
       <Label>{label}</Label>
-      
+
       <div className="flex gap-2">
         <Input
           type="text"

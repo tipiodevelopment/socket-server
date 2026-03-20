@@ -313,7 +313,7 @@ Dashboard → Apps → Campaigns → Sponsors → Broadcasts → Components → 
 
 - Dev server: `npm run dev` (Express + Vite on port 5000)
 - DB: PostgreSQL via `DATABASE_URL`
-- Object storage: Replit built-in, env vars `PUBLIC_OBJECT_SEARCH_PATHS`, `PRIVATE_OBJECT_DIR`
+- Object storage: Replit built-in, env vars `PUBLIC_OBJECT_SEARCH_PATHS`, `AZURE_CONTAINER`
 - Session: `SESSION_SECRET` env var
 - Auth: JWT tokens use `SESSION_SECRET` for signing
 

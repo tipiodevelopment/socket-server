@@ -1,7 +1,7 @@
 // ObjectUploader component - based on blueprint:javascript_object_storage
 import { useState, useEffect, useRef } from "react";
 import Uppy from "@uppy/core";
-import AwsS3 from "@uppy/aws-s3";
+import XHRUpload from "@uppy/xhr-upload";
 import { Dashboard } from "@uppy/react";
 import { apiRequest } from "@/lib/queryClient";
 
@@ -21,6 +21,7 @@ export function ObjectUploader({
   maxFileSize = 10 * 1024 * 1024, // 10MB default
   allowedFileTypes = ["image/*"],
 }: ObjectUploaderProps) {
+  console.log("***** ObjectUploader *****")
   // Use refs to store latest callback versions without triggering re-renders
   const onUploadCompleteRef = useRef(onUploadComplete);
   const onUploadErrorRef = useRef(onUploadError);
@@ -43,32 +44,70 @@ export function ObjectUploader({
   );
 
   useEffect(() => {
-    uppy.use(AwsS3, {
-      id: "AwsS3", // Add ID to make it removable
-      shouldUseMultipart: false,
-      async getUploadParameters(file) {
+    uppy.use(XHRUpload, {
+      id: "AzureStorage",
+      method: "PUT",
+      formData: false,
+
+      async endpoint(file: any) {
         const response = await apiRequest(
           "POST",
           "/api/objects/upload",
-          { fileName: file.name }
+          {
+            fileName: file.name,
+            type: file.type,
+          }
         );
 
         const data = await response.json() as { uploadURL: string };
 
-        return {
-          method: "PUT",
-          url: data.uploadURL,
-          headers: {
-            "Content-Type": file.type || "application/octet-stream",
-          },
-        };
+        const realPath = data.uploadURL.split('?')[0];
+
+        // guardamos para después
+        file.meta.uploadURL = realPath;
+
+        return realPath;
       },
+
+      headers: (file) => ({
+        "Content-Type": file.type || "application/octet-stream",
+        "x-ms-blob-type": "BlockBlob",
+      }),
     });
 
-    const handleUploadSuccess = async (file: any, response: any) => {
+    // Custom logic to fetch signed URL before upload using Uppy pre-processor
+    const handleBeforeUpload = async (fileIDs: string[]) => {
+      for (const fileID of fileIDs) {
+        const file = uppy.getFile(fileID);
+        try {
+          const response = await apiRequest(
+            "POST",
+            "/api/objects/upload",
+            { fileName: file.name }
+          );
+          const data = await response.json() as { uploadURL: string };
+
+          // Set the dynamically fetched URL as the endpoint for this file
+          uppy.setFileState(fileID, {
+            xhrUpload: {
+              endpoint: data.uploadURL,
+            },
+            meta: {
+              ...file.meta,
+              uploadURL: data.uploadURL // Save for success handler
+            }
+          } as any);
+        } catch (error) {
+          console.error("Error getting upload URL:", error);
+          throw error;
+        }
+      }
+    };
+
+    const handleUploadSuccess = async (file: any) => {
       if (!file) return;
 
-      const uploadURL = response?.uploadURL;
+      const uploadURL = file.meta?.uploadURL;
       if (!uploadURL) return;
 
       try {
@@ -97,15 +136,16 @@ export function ObjectUploader({
       );
     };
 
+    //uppy.addPreProcessor(handleBeforeUpload);
     uppy.on("upload-success", handleUploadSuccess);
     uppy.on("upload-error", handleUploadError);
 
     return () => {
+      //uppy.removePreProcessor(handleBeforeUpload);
       uppy.off("upload-success", handleUploadSuccess);
       uppy.off("upload-error", handleUploadError);
       uppy.cancelAll();
-      // Remove the AwsS3 plugin to prevent leaks
-      const plugin = uppy.getPlugin("AwsS3");
+      const plugin = uppy.getPlugin("AzureStorage");
       if (plugin) {
         uppy.removePlugin(plugin);
       }
