@@ -4445,7 +4445,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
 
       let product: any = null;
       try {
-        const gqlRes = await fetch('https://graph-ql-dev.vio.live/graphql', {
+        const gqlRes = await fetch(process.env.COMMERCE_GRAPHQL_URL || 'http://graph-ql.default.svc.cluster.local/graphql', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -4519,7 +4519,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       let product: any = null;
       try {
         const gqlQuery = `{ Channel { GetProductsByIds(product_ids: [${productId}]) { id title images { url order } price { amount amount_incl_taxes currency_code } } } }`;
-        const gqlRes = await fetch('https://graph-ql-dev.vio.live/graphql', {
+        const gqlRes = await fetch(process.env.COMMERCE_GRAPHQL_URL || 'http://graph-ql.default.svc.cluster.local/graphql', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Authorization': commerceApiKey },
           body: JSON.stringify({ query: gqlQuery }),
@@ -4642,7 +4642,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       if (productIds.length > 0) {
         try {
           const gqlQuery = `{ Channel { GetProductsByIds(product_ids: [${productIds[0]}]) { id title images { url order } price { amount amount_incl_taxes currency_code } } } }`;
-          const gqlRes = await fetch('https://graph-ql-dev.vio.live/graphql', {
+          const gqlRes = await fetch(process.env.COMMERCE_GRAPHQL_URL || 'http://graph-ql.default.svc.cluster.local/graphql', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'Authorization': commerceApiKey },
             body: JSON.stringify({ query: gqlQuery }),
@@ -4711,7 +4711,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       }
 
       const gqlQuery = `{ Channel { GetProductsByIds(product_ids: [${productIds.join(',')}]) { id title images { url order } price { amount amount_incl_taxes currency_code } } } }`;
-      const gqlRes = await fetch('https://graph-ql-dev.vio.live/graphql', {
+      const gqlRes = await fetch(process.env.COMMERCE_GRAPHQL_URL || 'http://graph-ql.default.svc.cluster.local/graphql', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': commerceApiKey },
         body: JSON.stringify({ query: gqlQuery }),
@@ -4790,7 +4790,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
         try {
           const commerceApiKey = process.env.COMMERCE_API_KEY || 'KCXF10Y-W5T4PCR-GG5119A-Z64SQ9S';
           const gqlQuery = `{ Channel { GetProductsByIds(product_ids: [${productId}]) { id title images { url order } price { amount amount_incl_taxes currency_code } } } }`;
-          const gqlRes = await fetch('https://graph-ql-dev.vio.live/graphql', {
+          const gqlRes = await fetch(process.env.COMMERCE_GRAPHQL_URL || 'http://graph-ql.default.svc.cluster.local/graphql', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'Authorization': commerceApiKey },
             body: JSON.stringify({ query: gqlQuery }),
@@ -5119,7 +5119,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       const baseUrl = `${req.protocol}://${req.get('host')}`;
       const wsProtocol = req.protocol === 'https' ? 'wss' : 'ws';
       const wsBase = `${wsProtocol}://${req.get('host')}`;
-      const COMMERCE_GRAPHQL = 'https://graph-ql-dev.vio.live/graphql';
+      const COMMERCE_GRAPHQL = process.env.COMMERCE_GRAPHQL_URL || 'http://graph-ql.default.svc.cluster.local/graphql';
 
       return res.json({
         sdkVersion: "0.2.0",
