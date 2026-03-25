@@ -69,6 +69,20 @@ describe('GET /v1/sdk/config', () => {
       expect(typeof endpoints.webSocketBase).toBe('string');
     });
 
+    it('webSocketBase uses ws:// or wss:// protocol (not http/https)', () => {
+      const { webSocketBase } = res.body.endpoints;
+      expect(webSocketBase).toMatch(/^wss?:\/\//);
+    });
+
+    it('webSocketBase uses wss:// on production/staging (secure)', () => {
+      // api-dev.vio.live is TLS-terminated → must use wss://, not ws://
+      // This test documents the EXPECTED behavior. Currently fails: server returns ws://
+      // Bug: webSocketBase = "ws://api-dev.vio.live" → should be "wss://api-dev.vio.live"
+      // 🏷️ @JhonyDev
+      const { webSocketBase } = res.body.endpoints;
+      expect(webSocketBase).toMatch(/^wss:\/\//);
+    });
+
     it('includes features object with boolean flags', () => {
       const { features } = res.body;
       expect(features).toBeDefined();
