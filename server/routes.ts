@@ -36,6 +36,8 @@ import { voteQueue, contestParticipationQueue, isQueueEnabled } from "./queue/qu
 import { createRateLimiter, rateLimitPresets } from "./middleware/rate-limiter";
 import { validateBroadcastId } from "./middleware/broadcast-validator";
 import { setVoteBroadcastFunction } from "./services/vote-processor";
+import { sendFCMs } from "./services/android-flow";
+import { sendAPNs } from "./services/ios-flow";
 
 const JWT_SECRET = process.env.SESSION_SECRET || 'default-dev-secret';
 
@@ -4730,18 +4732,19 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
     }
   });
 
-  // POST /api/campaigns/:id/register-device — Register APNs device token for push notifications
+  // POST /api/campaigns/:id/register-device — Register device token for push notifications
   app.post('/api/campaigns/:campaignId/register-device', validateApiKey, async (req, res) => {
     try {
       const campaignId = parseInt(req.params.campaignId);
-      const { userId, deviceToken, platform = 'ios' } = req.body;
+      const { userId, deviceToken, platform = 'ios', deviceId } = req.body;
+      console.log("[RegisterDevice] Received registration:", { campaignId, userId, platform, deviceId });
 
-      if (!userId || !deviceToken) {
-        return res.status(400).json({ error: 'userId and deviceToken are required' });
+      if (!userId || !deviceToken || !deviceId) {
+        return res.status(400).json({ error: 'userId, deviceToken, and deviceId are required' });
       }
 
-      await storage.upsertDeviceToken(campaignId, userId, deviceToken, platform);
-      console.log(`[APNs] Device registered: campaign=${campaignId} userId=${userId} platform=${platform}`);
+      await storage.upsertDeviceToken(campaignId, userId, deviceToken, platform, deviceId);
+      console.log(`[RegisterDevice] Device registered: campaign=${campaignId} userId=${userId} platform=${platform} deviceId=${deviceId}`);
       res.json({ success: true });
     } catch (error) {
       console.error('[RegisterDevice] Error:', error);
@@ -4749,11 +4752,12 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
     }
   });
 
-  // POST /api/campaigns/:id/cart-intent — Apple TV adds to cart → webhook or APNs push
+  // POST /api/campaigns/:id/cart-intent — Apple TV / Adndoid TV adds to cart → webhook or APNs/FCMs push
   app.post('/api/campaigns/:campaignId/cart-intent', validateApiKey, async (req, res) => {
     try {
       const campaignId = parseInt(req.params.campaignId);
       const { productId, userId, productName } = req.body;
+      console.log("[CartIntent] Received cart intent:", { campaignId, userId, productId, productName });
 
       if (!productId || !userId) {
         return res.status(400).json({ error: 'productId and userId are required' });
@@ -4778,12 +4782,12 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
 
       // Demo mode: APNs direct push
       // Look up device token for this user
-      const deviceRecord = await storage.getDeviceToken(campaignId, userId);
-      if (!deviceRecord) {
-        console.warn(`[CartIntent] No device token found for userId=${userId} campaignId=${campaignId}`);
-        return res.json({ success: true, note: 'no_device_registered' });
-      }
+      const devices = await storage.getDeviceTokens(campaignId, userId);
+      console.log("[CartIntent] Registered devices for user:", devices);
+      const iosDevices = devices.filter(d => d.platform === 'ios');
+      const androidDevices = devices.filter((d) => d.platform === 'android');
 
+      let notes = [];
       // Resolve product name if not provided
       let resolvedName = productName || `Product ${productId}`;
       if (!productName) {
@@ -4803,66 +4807,33 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
         }
       }
 
-      // Send APNs push notification
-      const _rawApnsKey = process.env.APNS_KEY || '';
-      // Replit secrets store multiline values with spaces — reconstruct proper PEM format
-      let apnsKeyContent: string | undefined;
-      if (_rawApnsKey) {
-        const match = _rawApnsKey.replace(/\\n/g, '\n').match(/-----BEGIN PRIVATE KEY-----([\s\S]+?)-----END PRIVATE KEY-----/);
-        if (match) {
-          const b64 = match[1].replace(/\s+/g, '');
-          apnsKeyContent = `-----BEGIN PRIVATE KEY-----\n${b64}\n-----END PRIVATE KEY-----\n`;
-        } else {
-          apnsKeyContent = _rawApnsKey.replace(/\\n/g, '\n');
-        }
-      }
-      const apnsKeyId = process.env.APNS_KEY_ID;
-      const apnsTeamId = process.env.APNS_TEAM_ID;
-      const apnsBundleId = process.env.APNS_BUNDLE_ID || 'viodev.tv2demo';
-
-      if (!apnsKeyContent || !apnsKeyId || !apnsTeamId) {
-        console.log(`[CartIntent] APNs not configured — logging intent: userId=${userId} productId=${productId} productName="${resolvedName}"`);
-        return res.json({ success: true, note: 'apns_not_configured' });
-      }
-
-      try {
-        const apnProvider = new apn.Provider({
-          token: {
-            key: apnsKeyContent,
-            keyId: apnsKeyId,
-            teamId: apnsTeamId,
-          },
-          production: false, // sandbox — change to true when using production APNs certificates
-        });
-
-        const notification = new apn.Notification();
-        notification.expiry = Math.floor(Date.now() / 1000) + 3600;
-        notification.badge = 1;
-        notification.sound = 'default';
-        notification.alert = {
-          title: 'Produkt lagt til',
-          body: `${resolvedName} — trykk for å kjøpe`,
-        };
-        notification.payload = {
-          productId: String(productId),
+      if (!iosDevices.length) {
+        console.warn(`[CartIntent] No IOS devices for userId=${userId}`);
+        notes.push('no_ios_device_registered');
+      } else {
+        const iosNotes: string [] = await sendAPNs(iosDevices, {
           campaignId,
-          action: 'open_product',
-        };
-        notification.topic = apnsBundleId;
+          productId,
+          resolvedName,
+          userId,
+        }); 
+        notes.push(...iosNotes);
+      } 
 
-        const result = await apnProvider.send(notification, deviceRecord.deviceToken);
-        apnProvider.shutdown();
-
-        if (result.failed?.length > 0) {
-          console.error('[CartIntent] APNs push failed:', result.failed[0].response);
-        } else {
-          console.log(`[CartIntent] Push sent: userId=${userId} product="${resolvedName}"`);
-        }
-      } catch (apnsErr) {
-        console.error('[CartIntent] APNs error:', apnsErr);
+      if(!androidDevices.length) {
+        console.warn(`[CartIntent] No ANDROID devices for userId=${userId}`);
+        notes.push('no_android_device_registered');
+      } else {
+         const androidNotes: string [] = await sendFCMs(androidDevices, {
+          campaignId,
+          productId,
+          resolvedName,
+        })
+        notes.push(...androidNotes);
       }
+      
 
-      res.json({ success: true });
+      res.json({ success: true, notes });
     } catch (error) {
       console.error('[CartIntent] Error:', error);
       res.status(500).json({ error: 'Failed to process cart intent' });
