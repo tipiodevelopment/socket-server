@@ -383,6 +383,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
     if (clients) {
       clients.forEach((client) => {
         if (client.readyState === WebSocket.OPEN) {
+          console.log("Message Send!  Campaign:", campaignId, "Message:", message);
           client.send(message);
         }
       });

@@ -57,10 +57,12 @@ export async function setupApp(
 
     res.on('finish', () => {
       if (reqPath.startsWith('/api')) {
-        let logLine = `${req.method} ${reqPath} ${res.statusCode} in ${Date.now() - start}ms`;
-        if (capturedJsonResponse) logLine += ` :: ${JSON.stringify(capturedJsonResponse)}`;
-        if (logLine.length > 80) logLine = logLine.slice(0, 79) + '…';
-        log(logLine);
+        if(reqPath != '/api/status'){
+          let logLine = `${req.method} ${reqPath} ${res.statusCode} in ${Date.now() - start}ms`;
+          if (capturedJsonResponse) logLine += ` :: ${JSON.stringify(capturedJsonResponse)}`;
+          if (logLine.length > 80) logLine = logLine.slice(0, 79) + '…';
+          log(logLine);
+        }
       }
     });
     next();
