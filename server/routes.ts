@@ -4,7 +4,6 @@ import { WebSocketServer, WebSocket } from "ws";
 import { createHash } from "crypto";
 import jwt from "jsonwebtoken";
 import Stripe from "stripe";
-import apn from "@parse/node-apn";
 import { storage } from "./storage";
 import {
   webSocketEventSchema,
@@ -36,8 +35,6 @@ import { voteQueue, contestParticipationQueue, isQueueEnabled } from "./queue/qu
 import { createRateLimiter, rateLimitPresets } from "./middleware/rate-limiter";
 import { validateBroadcastId } from "./middleware/broadcast-validator";
 import { setVoteBroadcastFunction } from "./services/vote-processor";
-import { sendFCMs } from "./services/android-flow";
-import { sendAPNs } from "./services/ios-flow";
 
 const JWT_SECRET = process.env.SESSION_SECRET || 'default-dev-secret';
 
@@ -4732,27 +4729,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
     }
   });
 
-  // POST /api/campaigns/:id/register-device — Register device token for push notifications
-  app.post('/api/campaigns/:campaignId/register-device', validateApiKey, async (req, res) => {
-    try {
-      const campaignId = parseInt(req.params.campaignId);
-      const { userId, deviceToken, platform = 'ios', deviceId } = req.body;
-      console.log("[RegisterDevice] Received registration:", { campaignId, userId, platform, deviceId });
-
-      if (!userId || !deviceToken || !deviceId) {
-        return res.status(400).json({ error: 'userId, deviceToken, and deviceId are required' });
-      }
-
-      await storage.upsertDeviceToken(campaignId, userId, deviceToken, platform, deviceId);
-      console.log(`[RegisterDevice] Device registered: campaign=${campaignId} userId=${userId} platform=${platform} deviceId=${deviceId}`);
-      res.json({ success: true });
-    } catch (error) {
-      console.error('[RegisterDevice] Error:', error);
-      res.status(500).json({ error: 'Failed to register device' });
-    }
-  });
-
-  // POST /api/campaigns/:id/cart-intent — Apple TV / Adndoid TV adds to cart → webhook or APNs/FCMs push
+  // POST /api/campaigns/:id/cart-intent — TV adds to cart -> broadcast WS cart_intent
   app.post('/api/campaigns/:campaignId/cart-intent', validateApiKey, async (req, res) => {
     try {
       const campaignId = parseInt(req.params.campaignId);
@@ -4763,32 +4740,6 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
         return res.status(400).json({ error: 'productId and userId are required' });
       }
 
-      const campaign = await storage.getCampaign(campaignId);
-
-      // Webhook-first: if broadcaster has a webhookUrl, call it and skip APNs entirely
-      if (campaign?.webhookUrl) {
-        try {
-          const webhookRes = await fetch(campaign.webhookUrl, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ userId, productId, campaignId, action: 'cart_intent' }),
-          });
-          console.log(`[CartIntent] Webhook called: ${campaign.webhookUrl} → ${webhookRes.status}`);
-        } catch (webhookErr) {
-          console.error('[CartIntent] Webhook error:', webhookErr);
-        }
-        return res.json({ success: true, mode: 'webhook' });
-      }
-
-      // Demo mode: APNs direct push
-      // Look up device token for this user
-      const devices = await storage.getDeviceTokens(campaignId, userId);
-      console.log("[CartIntent] Registered devices for user:", devices);
-      const iosDevices = devices.filter(d => d.platform === 'ios');
-      const androidDevices = devices.filter((d) => d.platform === 'android');
-
-      let notes = [];
-      // Resolve product name if not provided
       let resolvedName = productName || `Product ${productId}`;
       if (!productName) {
         try {
@@ -4807,33 +4758,19 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
         }
       }
 
-      if (!iosDevices.length) {
-        console.warn(`[CartIntent] No IOS devices for userId=${userId}`);
-        notes.push('no_ios_device_registered');
-      } else {
-        const iosNotes: string [] = await sendAPNs(iosDevices, {
-          campaignId,
-          productId,
-          resolvedName,
-          userId,
-        }); 
-        notes.push(...iosNotes);
-      } 
+      const wsEvent = {
+        type: 'cart_intent',
+        campaignId,
+        userId,
+        productId: String(productId),
+        productName: resolvedName,
+        timestamp: new Date().toISOString(),
+      };
 
-      if(!androidDevices.length) {
-        console.warn(`[CartIntent] No ANDROID devices for userId=${userId}`);
-        notes.push('no_android_device_registered');
-      } else {
-         const androidNotes: string [] = await sendFCMs(androidDevices, {
-          campaignId,
-          productId,
-          resolvedName,
-        })
-        notes.push(...androidNotes);
-      }
-      
+      broadcastToCampaign(campaignId, JSON.stringify(wsEvent));
+      console.log('[CartIntent] WS event broadcasted:', wsEvent);
 
-      res.json({ success: true, notes });
+      res.json({ success: true, mode: 'websocket' });
     } catch (error) {
       console.error('[CartIntent] Error:', error);
       res.status(500).json({ error: 'Failed to process cart intent' });
