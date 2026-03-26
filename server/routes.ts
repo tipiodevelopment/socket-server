@@ -4757,7 +4757,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
     }
   });
 
-  // POST /api/campaigns/:id/cart-intent — Apple TV adds to cart → webhook or local WS notification
+  // POST /api/campaigns/:id/cart-intent — TV adds to cart -> broadcast WS cart_intent
   app.post('/api/campaigns/:campaignId/cart-intent', validateApiKey, async (req, res) => {
     try {
       const campaignId = parseInt(req.params.campaignId);
@@ -4767,40 +4767,37 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
         return res.status(400).json({ error: 'productId and userId are required' });
       }
 
-      const campaign = await storage.getCampaign(campaignId);
-
-      // Webhook-first: if broadcaster has a webhookUrl, call it
-      if (campaign?.webhookUrl) {
+      let resolvedName = productName || `Product ${productId}`;
+      if (!productName) {
         try {
-          const webhookRes = await fetch(campaign.webhookUrl, {
+          const commerceApiKey = process.env.COMMERCE_API_KEY || 'KCXF10Y-W5T4PCR-GG5119A-Z64SQ9S';
+          const gqlQuery = `{ Channel { GetProductsByIds(product_ids: [${productId}]) { id title images { url order } price { amount amount_incl_taxes currency_code } } } }`;
+          const gqlRes = await fetch(process.env.COMMERCE_GRAPHQL_URL || 'http://graph-ql.default.svc.cluster.local/graphql', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ userId, productId, campaignId, action: 'cart_intent' }),
+            headers: { 'Content-Type': 'application/json', 'Authorization': commerceApiKey },
+            body: JSON.stringify({ query: gqlQuery }),
           });
-          console.log(`[CartIntent] Webhook called: ${campaign.webhookUrl} → ${webhookRes.status}`);
-        } catch (webhookErr) {
-          console.error('[CartIntent] Webhook error:', webhookErr);
+          const gqlData = await gqlRes.json() as any;
+          const name = gqlData?.data?.Channel?.GetProductsByIds?.[0]?.title;
+          if (name) resolvedName = name;
+        } catch (err) {
+          console.warn('[CartIntent] Commerce lookup failed:', err);
         }
-        return res.json({ success: true, mode: 'webhook' });
       }
 
-      // Local WS notification: find the connected WebSocket for this userId
-      const userWs = wsUserMap.get(String(userId));
-      if (userWs && userWs.readyState === WebSocket.OPEN) {
-        userWs.send(JSON.stringify({
-          type: 'cart_intent',
-          campaignId,
-          productId,
-          productName: productName || null,
-          timestamp: Date.now(),
-        }));
-        console.log(`[CartIntent] WS notification sent: userId=${userId} productId=${productId}`);
-        return res.json({ success: true, mode: 'ws' });
-      }
+      const wsEvent = {
+        type: 'cart_intent',
+        campaignId,
+        userId,
+        productId: String(productId),
+        productName: resolvedName,
+        timestamp: new Date().toISOString(),
+      };
 
-      // User not connected via WS
-      console.log(`[CartIntent] No active WS for userId=${userId} — intent logged`);
-      res.json({ success: true, note: 'user_not_connected' });
+      broadcastToCampaign(campaignId, JSON.stringify(wsEvent));
+      console.log('[CartIntent] WS event broadcasted:', wsEvent);
+
+      res.json({ success: true, mode: 'websocket' });
     } catch (error) {
       console.error('[CartIntent] Error:', error);
       res.status(500).json({ error: 'Failed to process cart intent' });
