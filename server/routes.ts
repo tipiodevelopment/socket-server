@@ -325,6 +325,16 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       clientAlive.set(ws, true);
     });
 
+    ws.on('message', (data) => {
+      try {
+        const msg = JSON.parse(data.toString());
+        if (msg.type === 'identify' && msg.userId) {
+          wsUserMap.set(msg.userId, ws);
+          console.log(`[WS] identify recibido: userId=${msg.userId} en campaign ${campaignId}`);
+        }
+      } catch { /* ignorar mensajes no-JSON */ }
+    });
+
     ws.on('close', () => {
       // Clear ping interval
       const interval = clientPingIntervals.get(ws);
