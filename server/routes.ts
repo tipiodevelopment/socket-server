@@ -4,7 +4,6 @@ import { WebSocketServer, WebSocket } from "ws";
 import { createHash } from "crypto";
 import jwt from "jsonwebtoken";
 import Stripe from "stripe";
-import apn from "@parse/node-apn";
 import { storage } from "./storage";
 import {
   webSocketEventSchema,
@@ -166,6 +165,9 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   // Track if client is alive (responded to last ping)
   const clientAlive = new WeakMap<WebSocket, boolean>();
 
+  // Map userId → WebSocket for direct user notifications (cart-intent, etc.)
+  const wsUserMap = new Map<string, WebSocket>();
+
   // Handle WebSocket upgrade requests
   httpServer.on('upgrade', (request, socket, head) => {
     try {
@@ -204,6 +206,14 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       campaignClients.set(campaignId, new Set());
     }
     campaignClients.get(campaignId)!.add(ws);
+
+    // Register userId → ws for direct notifications (cart-intent)
+    const connUrl = new URL(request.url || '', `http://${request.headers.host}`);
+    const connUserId = connUrl.searchParams.get('userId');
+    if (connUserId) {
+      wsUserMap.set(connUserId, ws);
+      console.log(`[WS] userId=${connUserId} registered on campaign ${campaignId}`);
+    }
 
     console.log(`Client connected to campaign ${campaignId}`);
 
@@ -330,6 +340,13 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
           campaignClients.delete(campaignId);
         }
       }
+
+      // Clean up userId map
+      if (connUserId && wsUserMap.get(connUserId) === ws) {
+        wsUserMap.delete(connUserId);
+        console.log(`[WS] userId=${connUserId} removed from map (disconnected)`);
+      }
+
       console.log(`Client disconnected from campaign ${campaignId}`);
     });
 
@@ -4730,26 +4747,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
     }
   });
 
-  // POST /api/campaigns/:id/register-device — Register APNs device token for push notifications
-  app.post('/api/campaigns/:campaignId/register-device', validateApiKey, async (req, res) => {
-    try {
-      const campaignId = parseInt(req.params.campaignId);
-      const { userId, deviceToken, platform = 'ios' } = req.body;
-
-      if (!userId || !deviceToken) {
-        return res.status(400).json({ error: 'userId and deviceToken are required' });
-      }
-
-      await storage.upsertDeviceToken(campaignId, userId, deviceToken, platform);
-      console.log(`[APNs] Device registered: campaign=${campaignId} userId=${userId} platform=${platform}`);
-      res.json({ success: true });
-    } catch (error) {
-      console.error('[RegisterDevice] Error:', error);
-      res.status(500).json({ error: 'Failed to register device' });
-    }
-  });
-
-  // POST /api/campaigns/:id/cart-intent — Apple TV adds to cart → webhook or APNs push
+  // POST /api/campaigns/:id/cart-intent — Apple TV adds to cart → webhook or local WS notification
   app.post('/api/campaigns/:campaignId/cart-intent', validateApiKey, async (req, res) => {
     try {
       const campaignId = parseInt(req.params.campaignId);
@@ -4761,7 +4759,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
 
       const campaign = await storage.getCampaign(campaignId);
 
-      // Webhook-first: if broadcaster has a webhookUrl, call it and skip APNs entirely
+      // Webhook-first: if broadcaster has a webhookUrl, call it
       if (campaign?.webhookUrl) {
         try {
           const webhookRes = await fetch(campaign.webhookUrl, {
@@ -4776,93 +4774,23 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
         return res.json({ success: true, mode: 'webhook' });
       }
 
-      // Demo mode: APNs direct push
-      // Look up device token for this user
-      const deviceRecord = await storage.getDeviceToken(campaignId, userId);
-      if (!deviceRecord) {
-        console.warn(`[CartIntent] No device token found for userId=${userId} campaignId=${campaignId}`);
-        return res.json({ success: true, note: 'no_device_registered' });
-      }
-
-      // Resolve product name if not provided
-      let resolvedName = productName || `Product ${productId}`;
-      if (!productName) {
-        try {
-          const commerceApiKey = process.env.COMMERCE_API_KEY || 'KCXF10Y-W5T4PCR-GG5119A-Z64SQ9S';
-          const gqlQuery = `{ Channel { GetProductsByIds(product_ids: [${productId}]) { id title images { url order } price { amount amount_incl_taxes currency_code } } } }`;
-          const gqlRes = await fetch(process.env.COMMERCE_GRAPHQL_URL || 'http://graph-ql.default.svc.cluster.local/graphql', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'Authorization': commerceApiKey },
-            body: JSON.stringify({ query: gqlQuery }),
-          });
-          const gqlData = await gqlRes.json() as any;
-          const name = gqlData?.data?.Channel?.GetProductsByIds?.[0]?.title;
-          if (name) resolvedName = name;
-        } catch (err) {
-          console.warn('[CartIntent] Commerce lookup failed:', err);
-        }
-      }
-
-      // Send APNs push notification
-      const _rawApnsKey = process.env.APNS_KEY || '';
-      // Replit secrets store multiline values with spaces — reconstruct proper PEM format
-      let apnsKeyContent: string | undefined;
-      if (_rawApnsKey) {
-        const match = _rawApnsKey.replace(/\\n/g, '\n').match(/-----BEGIN PRIVATE KEY-----([\s\S]+?)-----END PRIVATE KEY-----/);
-        if (match) {
-          const b64 = match[1].replace(/\s+/g, '');
-          apnsKeyContent = `-----BEGIN PRIVATE KEY-----\n${b64}\n-----END PRIVATE KEY-----\n`;
-        } else {
-          apnsKeyContent = _rawApnsKey.replace(/\\n/g, '\n');
-        }
-      }
-      const apnsKeyId = process.env.APNS_KEY_ID;
-      const apnsTeamId = process.env.APNS_TEAM_ID;
-      const apnsBundleId = process.env.APNS_BUNDLE_ID || 'viodev.tv2demo';
-
-      if (!apnsKeyContent || !apnsKeyId || !apnsTeamId) {
-        console.log(`[CartIntent] APNs not configured — logging intent: userId=${userId} productId=${productId} productName="${resolvedName}"`);
-        return res.json({ success: true, note: 'apns_not_configured' });
-      }
-
-      try {
-        const apnProvider = new apn.Provider({
-          token: {
-            key: apnsKeyContent,
-            keyId: apnsKeyId,
-            teamId: apnsTeamId,
-          },
-          production: false, // sandbox — change to true when using production APNs certificates
-        });
-
-        const notification = new apn.Notification();
-        notification.expiry = Math.floor(Date.now() / 1000) + 3600;
-        notification.badge = 1;
-        notification.sound = 'default';
-        notification.alert = {
-          title: 'Produkt lagt til',
-          body: `${resolvedName} — trykk for å kjøpe`,
-        };
-        notification.payload = {
-          productId: String(productId),
+      // Local WS notification: find the connected WebSocket for this userId
+      const userWs = wsUserMap.get(String(userId));
+      if (userWs && userWs.readyState === WebSocket.OPEN) {
+        userWs.send(JSON.stringify({
+          type: 'cart_intent',
           campaignId,
-          action: 'open_product',
-        };
-        notification.topic = apnsBundleId;
-
-        const result = await apnProvider.send(notification, deviceRecord.deviceToken);
-        apnProvider.shutdown();
-
-        if (result.failed?.length > 0) {
-          console.error('[CartIntent] APNs push failed:', result.failed[0].response);
-        } else {
-          console.log(`[CartIntent] Push sent: userId=${userId} product="${resolvedName}"`);
-        }
-      } catch (apnsErr) {
-        console.error('[CartIntent] APNs error:', apnsErr);
+          productId,
+          productName: productName || null,
+          timestamp: Date.now(),
+        }));
+        console.log(`[CartIntent] WS notification sent: userId=${userId} productId=${productId}`);
+        return res.json({ success: true, mode: 'ws' });
       }
 
-      res.json({ success: true });
+      // User not connected via WS
+      console.log(`[CartIntent] No active WS for userId=${userId} — intent logged`);
+      res.json({ success: true, note: 'user_not_connected' });
     } catch (error) {
       console.error('[CartIntent] Error:', error);
       res.status(500).json({ error: 'Failed to process cart intent' });
