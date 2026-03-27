@@ -4798,7 +4798,36 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       broadcastToCampaign(campaignId, JSON.stringify(wsEvent));
       console.log('[CartIntent] WS event broadcasted:', wsEvent);
 
-      res.json({ success: true, mode: 'websocket' });
+      // If user is not connected via WS, call campaign webhook (client handles push with their own keys)
+      const directWs = wsUserMap.get(String(userId));
+      const isUserConnected = directWs && directWs.readyState === WebSocket.OPEN;
+      if (!isUserConnected) {
+        const campaign = await storage.getCampaign(campaignId);
+        const webhookUrl = campaign?.webhookUrl;
+        if (webhookUrl) {
+          const payload = {
+            event: 'cart_intent',
+            productName: resolvedName,
+            productId: String(productId),
+            campaignId,
+            userId: String(userId),
+          };
+          try {
+            const webhookRes = await fetch(webhookUrl, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(payload),
+            });
+            console.log(`[CartIntent] Webhook called: ${webhookUrl} → ${webhookRes.status}`);
+          } catch (webhookErr) {
+            console.error('[CartIntent] Webhook error:', webhookErr);
+          }
+        } else {
+          console.log('[CartIntent] User offline and no webhookUrl configured');
+        }
+      }
+
+      res.json({ success: true, mode: 'websocket', userConnected: Boolean(isUserConnected) });
     } catch (error) {
       console.error('[CartIntent] Error:', error);
       res.status(500).json({ error: 'Failed to process cart intent' });
