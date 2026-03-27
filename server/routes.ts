@@ -4759,10 +4759,11 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   });
 
   // POST /api/campaigns/:id/cart-intent — TV adds to cart -> broadcast WS cart_intent
+  // Flow: if userId has active WS → deliver directly. If offline → call pushWebhookUrl fallback.
   app.post('/api/campaigns/:campaignId/cart-intent', validateApiKey, async (req, res) => {
     try {
       const campaignId = parseInt(req.params.campaignId);
-      const { productId, userId, productName } = req.body;
+      const { productId, userId, productName, pushWebhookUrl } = req.body;
 
       if (!productId || !userId) {
         return res.status(400).json({ error: 'productId and userId are required' });
@@ -4788,6 +4789,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
 
       const wsEvent = {
         type: 'cart_intent',
+        event: 'cart_intent',
         campaignId,
         userId,
         productId: String(productId),
@@ -4795,14 +4797,73 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
         timestamp: new Date().toISOString(),
       };
 
-      broadcastToCampaign(campaignId, JSON.stringify(wsEvent));
-      console.log('[CartIntent] WS event broadcasted:', wsEvent);
+      // Check if userId has active WebSocket connection
+      const userWs = wsUserMap.get(String(userId));
+      const isUserOnline = userWs && userWs.readyState === 1; // WebSocket.OPEN = 1
 
-      res.json({ success: true, mode: 'websocket' });
+      if (isUserOnline) {
+        // Direct delivery via WebSocket
+        userWs!.send(JSON.stringify(wsEvent));
+        console.log('[CartIntent] ✅ Delivered via WS to userId:', userId);
+        return res.json({ success: true, delivered: true, mode: 'websocket' });
+      }
+
+      // User offline — attempt webhook fallback
+      console.log('[CartIntent] User offline, attempting webhook fallback for userId:', userId);
+
+      // Determine webhook URL: from request body, env var, or default to mock endpoint
+      const webhookTarget = pushWebhookUrl
+        || process.env.CART_INTENT_WEBHOOK_URL
+        || `${req.protocol}://${req.get('host')}/test/push-fallback`;
+
+      try {
+        const webhookRes = await fetch(webhookTarget, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(wsEvent),
+        });
+        const webhookOk = webhookRes.ok;
+        console.log(`[CartIntent] Webhook ${webhookTarget} → ${webhookRes.status}`);
+        return res.json({
+          success: true,
+          delivered: false,
+          mode: 'webhook',
+          webhookCalled: webhookTarget,
+          webhookStatus: webhookRes.status,
+          webhookOk,
+        });
+      } catch (webhookErr) {
+        console.error('[CartIntent] Webhook failed:', webhookErr);
+        return res.json({
+          success: true,
+          delivered: false,
+          mode: 'webhook_failed',
+          webhookCalled: webhookTarget,
+          error: 'Webhook unreachable',
+        });
+      }
     } catch (error) {
       console.error('[CartIntent] Error:', error);
       res.status(500).json({ error: 'Failed to process cart intent' });
     }
+  });
+
+  // POST /test/push-fallback — Mock endpoint simulating host app (TV2/Viaplay) webhook receiver
+  // Receives cart_intent payload and logs it. For dev/testing only.
+  // In production, TV2/Viaplay would replace this with their own push notification endpoint.
+  const pushFallbackLog: Array<{ receivedAt: string; payload: any }> = [];
+  app.post('/test/push-fallback', (req, res) => {
+    const payload = req.body;
+    const entry = { receivedAt: new Date().toISOString(), payload };
+    pushFallbackLog.unshift(entry);
+    if (pushFallbackLog.length > 50) pushFallbackLog.pop(); // keep last 50
+    console.log('[MockWebhook] 📲 cart_intent received for offline user:', JSON.stringify(payload, null, 2));
+    res.json({ ok: true, message: 'Mock host app received cart_intent — would send push notification', payload });
+  });
+
+  // GET /test/push-fallback — View recent mock webhook calls (for debugging)
+  app.get('/test/push-fallback', (req, res) => {
+    res.json({ count: pushFallbackLog.length, entries: pushFallbackLog });
   });
 
   // GET /v1/sdk/campaigns - Auto-Discovery endpoint
