@@ -5052,8 +5052,11 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
         }
       }
 
-      const baseUrl = `${req.protocol}://${req.get('host')}`;
-      const wsProtocol = req.protocol === 'https' ? 'wss' : 'ws';
+      // Trust X-Forwarded-Proto when behind TLS-terminating proxy (Cloudflare, AKS ingress)
+      const forwardedProto = (req.headers['x-forwarded-proto'] as string)?.split(',')[0]?.trim();
+      const effectiveProtocol = forwardedProto || req.protocol;
+      const baseUrl = `${effectiveProtocol}://${req.get('host')}`;
+      const wsProtocol = effectiveProtocol === 'https' ? 'wss' : 'ws';
       const wsBase = `${wsProtocol}://${req.get('host')}`;
       const COMMERCE_GRAPHQL = process.env.COMMERCE_GRAPHQL_URL || 'http://graph-ql.default.svc.cluster.local/graphql';
 
