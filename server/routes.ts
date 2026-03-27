@@ -4846,6 +4846,14 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
         }
       }
 
+      const normalizedUserId = String(userId).trim();
+      const directWs = wsUserMap.get(normalizedUserId);
+      const isConnectedLocal = Boolean(directWs && directWs.readyState === WebSocket.OPEN);
+      const isConnectedCluster = isRedisEnabled()
+        ? await isUserConnectedAcrossCluster(normalizedUserId)
+        : false;
+      const isUserConnected = isConnectedLocal || isConnectedCluster;
+
       const wsEvent = {
         type: 'cart_intent',
         campaignId,
@@ -4855,18 +4863,12 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
         timestamp: new Date().toISOString(),
       };
 
-      broadcastToCampaign(campaignId, JSON.stringify(wsEvent));
-      console.log('[CartIntent] WS event broadcasted:', wsEvent);
-
-      // If user is not connected via WS, call campaign webhook (client handles push with their own keys)
-      const normalizedUserId = String(userId).trim();
-      const directWs = wsUserMap.get(normalizedUserId);
-      const isConnectedLocal = Boolean(directWs && directWs.readyState === WebSocket.OPEN);
-      const isConnectedCluster = isRedisEnabled()
-        ? await isUserConnectedAcrossCluster(normalizedUserId)
-        : false;
-      const isUserConnected = isConnectedLocal || isConnectedCluster;
-      if (!isUserConnected) {
+      if (isConnectedLocal && directWs) {
+        // Send via local socket only (private)
+        directWs.send(JSON.stringify(wsEvent));
+        console.log('[CartIntent] Sent via local socket to userId:', userId);
+      } else {
+        // User is offline OR on another cluster node -> Webhook/Push fallback
         const campaign = await storage.getCampaign(campaignId);
         const webhookUrl = campaign?.webhookUrl;
         if (webhookUrl) {
@@ -4883,12 +4885,12 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify(payload),
             });
-            console.log(`[CartIntent] Webhook called: ${webhookUrl} → ${webhookRes.status}`);
+            console.log(`[CartIntent] Webhook fallback called (offline/remote user): ${webhookUrl} → ${webhookRes.status}`);
           } catch (webhookErr) {
             console.error('[CartIntent] Webhook error:', webhookErr);
           }
         } else {
-          console.log('[CartIntent] User offline and no webhookUrl configured');
+          console.log('[CartIntent] User offline/remote and no webhookUrl configured');
         }
       }
 
