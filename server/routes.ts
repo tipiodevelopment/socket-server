@@ -1,3 +1,4 @@
+import "./env";
 import type { Express, Request } from "express";
 import { createServer, type Server } from "http";
 import { WebSocketServer, WebSocket } from "ws";
@@ -37,6 +38,13 @@ import { validateBroadcastId } from "./middleware/broadcast-validator";
 import { setVoteBroadcastFunction } from "./services/vote-processor";
 import { sendAPNs } from "./services/ios-flow";
 import { sendFCMs } from "./services/android-flow";
+import {
+  clearUserPresence,
+  isRedisEnabled,
+  isUserConnectedAcrossCluster,
+  refreshUserPresence,
+  setUserPresence,
+} from "./redis";
 
 const JWT_SECRET = process.env.SESSION_SECRET || 'default-dev-secret';
 
@@ -169,6 +177,8 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
 
   // Map userId → WebSocket for direct user notifications (cart-intent, etc.)
   const wsUserMap = new Map<string, WebSocket>();
+  // Map WebSocket → user connection binding for Redis-backed presence
+  const clientUserBindings = new WeakMap<WebSocket, { userId: string; connectionId: string }>();
 
   // Handle WebSocket upgrade requests
   httpServer.on('upgrade', (request, socket, head) => {
@@ -203,6 +213,39 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
 
   // WebSocket connection handling
   wss.on('connection', async (ws: WebSocket, request: any, campaignId: number) => {
+    const connectionId = randomUUID();
+
+    const bindUserToSocket = async (userIdRaw: string) => {
+      const userId = String(userIdRaw).trim();
+      if (!userId) return;
+
+      const existingBinding = clientUserBindings.get(ws);
+      if (existingBinding?.userId && wsUserMap.get(existingBinding.userId) === ws) {
+        wsUserMap.delete(existingBinding.userId);
+      }
+
+      wsUserMap.set(userId, ws);
+      clientUserBindings.set(ws, { userId, connectionId });
+
+      if (isRedisEnabled()) {
+        try {
+          await setUserPresence(userId, connectionId);
+        } catch (error) {
+          console.error(`[WS] Failed to set Redis presence for userId=${userId}:`, error);
+        }
+      }
+    };
+
+    const refreshSocketPresence = async () => {
+      const binding = clientUserBindings.get(ws);
+      if (!binding || !isRedisEnabled()) return;
+      try {
+        await refreshUserPresence(binding.userId, binding.connectionId);
+      } catch (error) {
+        console.error(`[WS] Failed to refresh Redis presence for userId=${binding.userId}:`, error);
+      }
+    };
+
     // Add client to campaign room
     if (!campaignClients.has(campaignId)) {
       campaignClients.set(campaignId, new Set());
@@ -213,7 +256,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
     const connUrl = new URL(request.url || '', `http://${request.headers.host}`);
     const connUserId = connUrl.searchParams.get('userId');
     if (connUserId) {
-      wsUserMap.set(connUserId, ws);
+      await bindUserToSocket(connUserId);
       console.log(`[WS] userId=${connUserId} registered on campaign ${campaignId}`);
     }
 
@@ -237,6 +280,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
 
       if (ws.readyState === WebSocket.OPEN) {
         ws.ping();
+        void refreshSocketPresence();
       }
     }, 30000);
 
@@ -325,14 +369,15 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
     ws.on('pong', () => {
       // Client responded to ping, mark as alive
       clientAlive.set(ws, true);
+      void refreshSocketPresence();
     });
 
     ws.on('message', (data) => {
       try {
         const msg = JSON.parse(data.toString());
         if (msg.type === 'identify' && msg.userId) {
-          wsUserMap.set(msg.userId, ws);
-          console.log(`[WS] identify recibido: userId=${msg.userId} en campaign ${campaignId}`);
+          void bindUserToSocket(msg.userId);
+          console.log(`[WS] identify recibido: userId=${String(msg.userId)} en campaign ${campaignId}`);
         }
       } catch { /* ignorar mensajes no-JSON */ }
     });
@@ -354,9 +399,15 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       }
 
       // Clean up userId map
-      if (connUserId && wsUserMap.get(connUserId) === ws) {
-        wsUserMap.delete(connUserId);
-        console.log(`[WS] userId=${connUserId} removed from map (disconnected)`);
+      const userBinding = clientUserBindings.get(ws);
+      if (userBinding?.userId && wsUserMap.get(userBinding.userId) === ws) {
+        wsUserMap.delete(userBinding.userId);
+        console.log(`[WS] userId=${userBinding.userId} removed from map (disconnected)`);
+      }
+      if (userBinding && isRedisEnabled()) {
+        void clearUserPresence(userBinding.userId, userBinding.connectionId).catch((error) => {
+          console.error(`[WS] Failed to clear Redis presence for userId=${userBinding.userId}:`, error);
+        });
       }
 
       console.log(`Client disconnected from campaign ${campaignId}`);
@@ -375,6 +426,13 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       const clients = campaignClients.get(campaignId);
       if (clients) {
         clients.delete(ws);
+      }
+
+      const userBinding = clientUserBindings.get(ws);
+      if (userBinding && isRedisEnabled()) {
+        void clearUserPresence(userBinding.userId, userBinding.connectionId).catch((clearError) => {
+          console.error(`[WS] Failed to clear Redis presence on error for userId=${userBinding.userId}:`, clearError);
+        });
       }
     });
   });
@@ -4801,8 +4859,13 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       console.log('[CartIntent] WS event broadcasted:', wsEvent);
 
       // If user is not connected via WS, call campaign webhook (client handles push with their own keys)
-      const directWs = wsUserMap.get(String(userId));
-      const isUserConnected = directWs && directWs.readyState === WebSocket.OPEN;
+      const normalizedUserId = String(userId).trim();
+      const directWs = wsUserMap.get(normalizedUserId);
+      const isConnectedLocal = Boolean(directWs && directWs.readyState === WebSocket.OPEN);
+      const isConnectedCluster = isRedisEnabled()
+        ? await isUserConnectedAcrossCluster(normalizedUserId)
+        : false;
+      const isUserConnected = isConnectedLocal || isConnectedCluster;
       if (!isUserConnected) {
         const campaign = await storage.getCampaign(campaignId);
         const webhookUrl = campaign?.webhookUrl;
