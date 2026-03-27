@@ -374,6 +374,7 @@ export const deviceTokens = pgTable("device_tokens", {
   id: serial("id").primaryKey(),
   campaignId: integer("campaign_id").notNull().references(() => campaigns.id, { onDelete: 'cascade' }),
   userId: varchar("user_id", { length: 255 }).notNull(),
+  deviceId: varchar("device_id", { length: 255 }).notNull(),
   deviceToken: varchar("device_token", { length: 512 }).notNull(),
   platform: varchar("platform", { length: 20 }).notNull().default('ios'),
   createdAt: timestamp("created_at").defaultNow().notNull(),

@@ -35,6 +35,8 @@ import { voteQueue, contestParticipationQueue, isQueueEnabled } from "./queue/qu
 import { createRateLimiter, rateLimitPresets } from "./middleware/rate-limiter";
 import { validateBroadcastId } from "./middleware/broadcast-validator";
 import { setVoteBroadcastFunction } from "./services/vote-processor";
+import { sendAPNs } from "./services/ios-flow";
+import { sendFCMs } from "./services/android-flow";
 
 const JWT_SECRET = process.env.SESSION_SECRET || 'default-dev-secret';
 
@@ -4831,6 +4833,50 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
     } catch (error) {
       console.error('[CartIntent] Error:', error);
       res.status(500).json({ error: 'Failed to process cart intent' });
+    }
+  });
+
+  app.post("/api/campaigns/test/webhook", validateApiKey, async (req, res) => {
+    try {
+      const { productId, userId, productName, campaignId } = req.body;
+
+      const devices = await storage.getDeviceTokens(campaignId, userId);
+      console.log("[WebhookTest] Registered devices for user:", devices);
+      const iosDevices = devices.filter((d) => d.platform === "ios");
+      const androidDevices = devices.filter((d) => d.platform === "android");
+      const notes: string[] = [];
+
+      if (!iosDevices.length) {
+        console.warn(`[WebhookTest] No IOS devices for userId=${userId}`);
+        notes.push("no_ios_device_registered");
+      } else {
+        const iosNotes: string[] = await sendAPNs(iosDevices, {
+          campaignId,
+          productId,
+          resolvedName: productName,
+          userId,
+        });
+        notes.push(...iosNotes);
+      }
+
+      if (!androidDevices.length) {
+        console.warn(`[WebhookTest] No ANDROID devices for userId=${userId}`);
+        notes.push("no_android_device_registered");
+      } else {
+        const androidNotes: string[] = await sendFCMs(androidDevices, {
+          campaignId,
+          productId,
+          resolvedName: productName,
+        });
+        notes.push(...androidNotes);
+      }
+
+      res.json({ success: true, notes });
+    } catch (error) {
+      console.error("[WebhookTest] Error:", error);
+      res
+        .status(500)
+        .json({ error: "Failed to send webhook test notifications" });
     }
   });
 
