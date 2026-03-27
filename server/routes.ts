@@ -4836,7 +4836,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
     }
   });
 
-  app.post("/api/campaigns/test/webhook", validateApiKey, async (req, res) => {
+  app.post("/api/campaigns/test/webhook", async (req, res) => {
     try {
       const { productId, userId, productName, campaignId } = req.body;
 
