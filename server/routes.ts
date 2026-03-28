@@ -4848,11 +4848,16 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
 
       const normalizedUserId = String(userId).trim();
       const directWs = wsUserMap.get(normalizedUserId);
+      console.log('[CartIntent] directWs', directWs);
       const isConnectedLocal = Boolean(directWs && directWs.readyState === WebSocket.OPEN);
+      console.log('[CartIntent] isConnectedLocal', isConnectedLocal);
+      console.log('[CartIntent] isRedisEnabled', isRedisEnabled());
+      console.log('[CartIntent] isUserConnectedAcrossCluster', await isUserConnectedAcrossCluster(normalizedUserId));
       const isConnectedCluster = isRedisEnabled()
         ? await isUserConnectedAcrossCluster(normalizedUserId)
         : false;
       const isUserConnected = isConnectedLocal || isConnectedCluster;
+      console.log('[CartIntent] isUserConnected', isUserConnected);
 
       const wsEvent = {
         type: 'cart_intent',
