@@ -113,7 +113,67 @@ export async function clearUserPresence(userId: string, connectionId: string): P
 export async function isUserConnectedAcrossCluster(userId: string): Promise<boolean> {
   if (!redis || !userId) return false;
   const pattern = `${PRESENCE_KEY_PREFIX}:${userId}:*`;
-  const result = await redis.scan("0", "MATCH", pattern, "COUNT", 1);
-  const keys = result[1] || [];
-  return keys.length > 0;
+  let cursor = "0";
+  do {
+    const result = await redis.scan(cursor, "MATCH", pattern, "COUNT", 100);
+    cursor = result[0];
+    const keys = result[1] || [];
+    if (keys.length > 0) return true;
+  } while (cursor !== "0");
+  return false;
 }
+
+// ── Pub/Sub for cross-node messaging ────────────────────────────────────────
+
+const redisSub = CACHE_ENABLED
+  ? new Redis({
+      ...redisConfig,
+      username: CACHE_USER || undefined,
+      password: CACHE_PASSWORD || undefined,
+      db: 0,
+      retryStrategy: (times: number) => Math.min(times * 50, 2000),
+      lazyConnect: false,
+      enableReadyCheck: true,
+      maxRetriesPerRequest: null,
+    })
+  : null;
+
+if (redisSub) {
+  redisSub.on("error", (err: Error) => {
+    console.error("[RedisSub] connection error:", err.message);
+  });
+}
+
+/**
+ * Publishes an event to a Redis channel for all cluster nodes to see.
+ */
+export async function publishEvent(channel: string, message: any): Promise<void> {
+  if (!redis) return;
+  try {
+    const payload = typeof message === "string" ? message : JSON.stringify(message);
+    await redis.publish(channel, payload);
+  } catch (error) {
+    console.error(`[Redis] Failed to publish to channel ${channel}:`, error);
+  }
+}
+
+/**
+ * Subscribes to a Redis channel and calls the callback when a message is received.
+ */
+export function subscribeToEvents(channel: string, callback: (message: string) => void): void {
+  if (!redisSub) return;
+  redisSub.subscribe(channel, (err) => {
+    if (err) {
+      console.error(`[RedisSub] Failed to subscribe to channel ${channel}:`, err.message);
+    } else {
+      console.log(`[RedisSub] Subscribed to channel ${channel}`);
+    }
+  });
+
+  redisSub.on("message", (chan, message) => {
+    if (chan === channel) {
+      callback(message);
+    }
+  });
+}
+

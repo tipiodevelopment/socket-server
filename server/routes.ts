@@ -44,6 +44,8 @@ import {
   isUserConnectedAcrossCluster,
   refreshUserPresence,
   setUserPresence,
+  publishEvent,
+  subscribeToEvents,
 } from "./redis";
 
 const JWT_SECRET = process.env.SESSION_SECRET || 'default-dev-secret';
@@ -179,6 +181,24 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   const wsUserMap = new Map<string, WebSocket>();
   // Map WebSocket → user connection binding for Redis-backed presence
   const clientUserBindings = new WeakMap<WebSocket, { userId: string; connectionId: string }>();
+  
+  // Subscribe to cross-node events via Redis Pub/Sub
+  if (isRedisEnabled()) {
+    subscribeToEvents("ws:events:forward", (messageStr) => {
+      try {
+        const event = JSON.parse(messageStr);
+        if (event.type === 'cart_intent' && event.userId) {
+          const targetWs = wsUserMap.get(String(event.userId).trim());
+          if (targetWs && targetWs.readyState === WebSocket.OPEN) {
+            targetWs.send(JSON.stringify(event));
+            console.log(`[WS] Forwarded cart_intent delivered locally to userId=${event.userId}`);
+          }
+        }
+      } catch (err) {
+        console.error('[WS] Error processing cross-node event:', err);
+      }
+    });
+  }
 
   // Handle WebSocket upgrade requests
   httpServer.on('upgrade', (request, socket, head) => {
@@ -4869,11 +4889,15 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       };
 
       if (isConnectedLocal && directWs) {
-        // Send via local socket only (private)
+        // Send via local socket
         directWs.send(JSON.stringify(wsEvent));
         console.log('[CartIntent] Sent via local socket to userId:', userId);
+      } else if (isConnectedCluster) {
+        // User is on another cluster node -> Forward via Redis Pub/Sub
+        await publishEvent("ws:events:forward", wsEvent);
+        console.log('[CartIntent] Forwarded via Redis Pub/Sub to cluster for userId:', userId);
       } else {
-        // User is offline OR on another cluster node -> Webhook/Push fallback
+        // User is offline -> Webhook/Push fallback
         const campaign = await storage.getCampaign(campaignId);
         const webhookUrl = campaign?.webhookUrl;
         if (webhookUrl) {
