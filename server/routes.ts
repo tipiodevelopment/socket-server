@@ -295,11 +295,12 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
         return;
       }
 
-      // Mark as potentially dead, will be set to true if pong received
+      // Mark as potentially dead, will be set to true if app-level pong received
       clientAlive.set(ws, false);
 
       if (ws.readyState === WebSocket.OPEN) {
-        ws.ping();
+        // App-level ping — compatible with iOS/Android SDKs that don't handle WS protocol PING frames
+        ws.send(JSON.stringify({ type: 'ping' }));
         void refreshSocketPresence();
       }
     }, 30000);
@@ -386,16 +387,14 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       }
     }
 
-    ws.on('pong', () => {
-      // Client responded to ping, mark as alive
-      clientAlive.set(ws, true);
-      void refreshSocketPresence();
-    });
-
     ws.on('message', (data) => {
       try {
         const msg = JSON.parse(data.toString());
-        if (msg.type === 'identify' && msg.userId) {
+        if (msg.type === 'pong') {
+          // Client responded to app-level ping, mark as alive
+          clientAlive.set(ws, true);
+          void refreshSocketPresence();
+        } else if (msg.type === 'identify' && msg.userId) {
           void bindUserToSocket(msg.userId);
           console.log(`[WS] identify recibido: userId=${String(msg.userId)} en campaign ${campaignId}`);
         }
