@@ -5255,6 +5255,16 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
           accentColor: (activeCampaign as any)?.accentColor || null,
         },
         markets: [],
+        campaign: activeCampaign ? {
+          id: activeCampaign.id,
+          campaignId: activeCampaign.id,
+          campaignName: (activeCampaign as any).name || null,
+          campaignLogo: (activeCampaign as any).logoUrl || null,
+          isActive: activeCampaign.status === 'active',
+          isPaused: (activeCampaign as any).isPaused ?? false,
+          startDate: (activeCampaign as any).startDate || null,
+          endDate: (activeCampaign as any).endDate || null,
+        } : null,
       });
     } catch (error) {
       console.error('Error fetching SDK config:', error);
