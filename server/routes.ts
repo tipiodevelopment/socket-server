@@ -5002,7 +5002,9 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
           continue;
         }
 
-        // Check if campaign is active
+        // Compute isActive — do NOT skip expired/paused campaigns.
+        // Returning [] when end_date passes breaks SDK initialization silently.
+        // SDKs use isActive to decide rendering; they should receive data always.
         const isPaused = campaign.isPaused === 'true';
         const startDate = campaign.startDate ? new Date(campaign.startDate) : null;
         const endDate = campaign.endDate ? new Date(campaign.endDate) : null;
@@ -5010,12 +5012,8 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
         const isWithinDates = (!startDate || startDate <= now) && (!endDate || endDate >= now);
         const isActive = !isPaused && isWithinDates;
 
-        if (!isActive) {
-          continue;
-        }
-
-        // Get active components for this campaign
-        const components = await storage.getCampaignComponents(campaign.id);
+        // Get active components for this campaign (only when active to avoid unnecessary DB calls)
+        const components = isActive ? await storage.getCampaignComponents(campaign.id) : [];
         const activeComponents = components
           .filter(c => c.status === 'active')
           .map(cc => {
@@ -5042,7 +5040,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
           campaignId: campaign.id,
           campaignName: campaign.name,
           campaignLogo: campaign.logo ? toAbsoluteUrl(campaign.logo, req) : null,
-          isActive: true,
+          isActive,
           startDate: campaign.startDate,
           endDate: campaign.endDate,
           isPaused: isPaused,
