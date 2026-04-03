@@ -177,6 +177,15 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   // Track if client is alive (responded to last ping)
   const clientAlive = new WeakMap<WebSocket, boolean>();
 
+  // Track consecutive missed pings per client
+  const clientMissedPings = new WeakMap<WebSocket, number>();
+
+  // Track connection start time (ms) for uptime calculation
+  const clientConnectTime = new WeakMap<WebSocket, number>();
+
+  // Flag: true when the server intentionally terminated the socket (zombie)
+  const clientTerminatedByServer = new WeakMap<WebSocket, boolean>();
+
   // Map userId → WebSocket for direct user notifications (cart-intent, etc.)
   const wsUserMap = new Map<string, WebSocket>();
   // Map WebSocket → user connection binding for Redis-backed presence
@@ -284,26 +293,52 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
 
     // Mark client as alive initially
     clientAlive.set(ws, true);
+    clientMissedPings.set(ws, 0);
+    clientConnectTime.set(ws, Date.now());
+    clientTerminatedByServer.set(ws, false);
 
-    // Setup heartbeat to keep connection alive and detect zombies (check every 30 seconds)
+    // Heartbeat: ping every 20s, tolerate up to 3 consecutive missed pongs (60s window)
+    // Uses app-level JSON ping/pong for iOS/Android SDK compatibility
+    const PING_INTERVAL_MS = 20000;
+    const MAX_MISSED_PINGS = 3;
+
     const pingInterval = setInterval(() => {
-      // Check if client responded to last ping
       if (clientAlive.get(ws) === false) {
-        // Client didn't respond to last ping, terminate connection
-        console.log(`Terminating zombie WebSocket connection for campaign ${campaignId}`);
-        ws.terminate();
-        return;
+        // Client didn't respond to last ping — increment miss counter
+        const missed = (clientMissedPings.get(ws) ?? 0) + 1;
+        clientMissedPings.set(ws, missed);
+
+        if (missed >= MAX_MISSED_PINGS) {
+          // Exceeded tolerance — terminate as zombie
+          const uptime = Date.now() - (clientConnectTime.get(ws) ?? Date.now());
+          const userId = clientUserBindings.get(ws)?.userId ?? null;
+          console.log(JSON.stringify({
+            event: 'zombie_terminated',
+            campaignId,
+            userId,
+            missedPings: missed,
+            uptimeMs: uptime,
+          }));
+          clientTerminatedByServer.set(ws, true);
+          ws.terminate();
+          return;
+        }
+
+        // Still within tolerance — warn and keep alive
+        console.log(`[WS] Missed ping ${missed}/${MAX_MISSED_PINGS} for campaign ${campaignId} — still alive`);
+      } else {
+        // Pong received — reset miss counter
+        clientMissedPings.set(ws, 0);
       }
 
-      // Mark as potentially dead, will be set to true if app-level pong received
+      // Mark as potentially dead; will be reset to true when pong arrives
       clientAlive.set(ws, false);
 
       if (ws.readyState === WebSocket.OPEN) {
-        // App-level ping — compatible with iOS/Android SDKs that don't handle WS protocol PING frames
         ws.send(JSON.stringify({ type: 'ping' }));
         void refreshSocketPresence();
       }
-    }, 30000);
+    }, PING_INTERVAL_MS);
 
     clientPingIntervals.set(ws, pingInterval);
 
@@ -401,7 +436,26 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       } catch { /* ignorar mensajes no-JSON */ }
     });
 
-    ws.on('close', () => {
+    ws.on('close', (code: number) => {
+      // Structured disconnect log — distinguish zombie vs voluntary close
+      const wasZombie = clientTerminatedByServer.get(ws) === true;
+      const uptimeMs = Date.now() - (clientConnectTime.get(ws) ?? Date.now());
+      const userId = clientUserBindings.get(ws)?.userId ?? null;
+
+      if (!wasZombie) {
+        // code 1000 = normal closure, 1001 = going away (client navigated/backgrounded)
+        const closeType = (code === 1000 || code === 1001) ? 'clean' : 'unexpected';
+        console.log(JSON.stringify({
+          event: 'client_disconnected',
+          campaignId,
+          userId,
+          code,
+          closeType,
+          uptimeMs,
+        }));
+      }
+      // zombie_terminated already logged at terminate() time — no duplicate log here
+
       // Clear ping interval
       const interval = clientPingIntervals.get(ws);
       if (interval) {
@@ -428,8 +482,6 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
           console.error(`[WS] Failed to clear Redis presence for userId=${userBinding.userId}:`, error);
         });
       }
-
-      console.log(`Client disconnected from campaign ${campaignId}`);
     });
 
     ws.on('error', (error) => {
