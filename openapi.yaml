@@ -4118,6 +4118,111 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
+  /api/campaigns/{campaignId}/cart-intent:
+    post:
+      tags:
+        - Dashboard - Campaigns
+      summary: Cart intent (second screen / shoppable)
+      description: |
+        Triggers cart intent for a user: if the campaign has `webhookUrl`, Vio POSTs a canonical JSON body to that URL (partner sends push). Otherwise, when APNs and a device token are configured, Vio may send a demo push.
+
+        **Partner webhook body** includes `vio_notification_version`, `vio_event_type`, `userId`, `productId`, `campaignId`, `action`, optional `productName`.
+
+        **APNs / app `userInfo` (when partner pushes):** include the same envelope plus `vio_cartIntent_*` keys — see Vio Swift SDK `VioNotificationUserInfoKeys` and `CartIntentNotificationKeys`.
+      security:
+        - ApiKeyQuery: []
+        - ApiKeyHeader: []
+      parameters:
+        - name: campaignId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - userId
+                - productId
+              properties:
+                userId:
+                  type: string
+                  description: Must match SDK/WebSocket user id
+                productId:
+                  type: string
+                productName:
+                  type: string
+                  nullable: true
+      responses:
+        '200':
+          description: Processed — webhook called and/or push attempted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  mode:
+                    type: string
+                    enum: [webhook]
+                  note:
+                    type: string
+                    description: e.g. no_device_registered, apns_not_configured
+        '400':
+          description: Bad request
+        '401':
+          description: API key required or invalid
+
+  /api/campaigns/{campaignId}/register-device:
+    post:
+      tags:
+        - Dashboard - Campaigns
+      summary: Register APNs device token for cart-intent demo push
+      security:
+        - ApiKeyQuery: []
+        - ApiKeyHeader: []
+      parameters:
+        - name: campaignId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - userId
+                - deviceToken
+              properties:
+                userId:
+                  type: string
+                deviceToken:
+                  type: string
+                platform:
+                  type: string
+                  default: ios
+      responses:
+        '200':
+          description: Registered
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+        '400':
+          description: Missing userId or deviceToken
+        '401':
+          description: API key required or invalid
+
   /api/campaigns/{id}/events:
     get:
       tags:

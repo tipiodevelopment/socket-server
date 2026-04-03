@@ -4952,25 +4952,41 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
         const campaign = await storage.getCampaign(campaignId);
         const webhookUrl = campaign?.webhookUrl;
         if (webhookUrl) {
-          const payload = {
-            event: 'cart_intent',
-            productName: resolvedName,
+          const webhookBody = {
+            vio_notification_version: 1,
+            vio_event_type: 'cart_intent',
+            userId: String(userId),
             productId: String(productId),
             campaignId,
-            userId: String(userId),
+            productName: resolvedName,
+            action: 'cart_intent',
+            event: 'cart_intent',
           };
           try {
             const webhookRes = await fetch(webhookUrl, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(payload),
+              body: JSON.stringify(webhookBody),
             });
             console.log(`[CartIntent] Webhook fallback called (offline/remote user): ${webhookUrl} → ${webhookRes.status}`);
           } catch (webhookErr) {
             console.error('[CartIntent] Webhook error:', webhookErr);
           }
         } else {
-          console.log('[CartIntent] User offline/remote and no webhookUrl configured');
+          const devices = await storage.getDeviceTokens(campaignId, String(userId));
+          const iosDevices = devices.filter((d) => d.platform === 'ios');
+          if (iosDevices.length > 0) {
+            const pid =
+              typeof productId === 'number' ? productId : parseInt(String(productId), 10);
+            await sendAPNs(iosDevices, {
+              campaignId,
+              productId: Number.isFinite(pid) ? pid : 0,
+              resolvedName,
+              userId: String(userId),
+            });
+          } else {
+            console.log('[CartIntent] User offline/remote and no webhookUrl or iOS device registered');
+          }
         }
       }
 
