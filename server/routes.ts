@@ -222,6 +222,37 @@ async function notifyCartIntentPartnerFallback(params: {
   }
 }
 
+/**
+ * Commerce GraphQL credentials from sponsors only:
+ * `campaign_sponsors` (first with `commerceApiKey`), else primary `campaign.sponsorId`.
+ * Does not use `campaigns.reachu_api_key` (legacy).
+ */
+async function resolveCommerceFromCampaignSponsors(
+  campaign: { id: number; sponsorId: number | null } | null,
+): Promise<{ apiKey: string | null; channelId: string | null }> {
+  if (!campaign) return { apiKey: null, channelId: null };
+  const campaignSponsors = await storage.getCampaignSponsors(campaign.id);
+  for (const cs of campaignSponsors) {
+    const sp = await storage.getSponsor(cs.sponsorId);
+    if (sp?.commerceApiKey) {
+      return {
+        apiKey: sp.commerceApiKey,
+        channelId: sp.commerceChannelId || null,
+      };
+    }
+  }
+  if (campaign.sponsorId != null) {
+    const sp = await storage.getSponsor(campaign.sponsorId);
+    if (sp?.commerceApiKey) {
+      return {
+        apiKey: sp.commerceApiKey,
+        channelId: sp.commerceChannelId || null,
+      };
+    }
+  }
+  return { apiKey: null, channelId: null };
+}
+
 // Export broadcastToCampaign function (will be set during registerRoutes)
 export let broadcastToCampaign: (campaignId: number, message: string) => void = () => {
   console.warn('[WebSocket] broadcastToCampaign called before initialization');
@@ -5370,15 +5401,14 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
         (!c.endDate || new Date(c.endDate) >= now)
       ) || appCampaigns[0] || null;
 
-      // Commerce API key — from campaign sponsors first, then legacy campaign field
-      let commerceApiKey: string | null = (activeCampaign as any)?.reachuApiKey || null;
-      if (activeCampaign) {
-        const campaignSponsors = await storage.getCampaignSponsors(activeCampaign.id);
-        for (const cs of campaignSponsors) {
-          const sp = await storage.getSponsor(cs.sponsorId);
-          if (sp?.commerceApiKey) { commerceApiKey = sp.commerceApiKey; break; }
-        }
-      }
+      const { apiKey: commerceApiKey } = await resolveCommerceFromCampaignSponsors(
+        activeCampaign
+          ? {
+              id: activeCampaign.id,
+              sponsorId: activeCampaign.sponsorId ?? null,
+            }
+          : null,
+      );
 
       // Trust X-Forwarded-Proto when behind TLS-terminating proxy (Cloudflare, AKS ingress)
       const forwardedProto = (req.headers['x-forwarded-proto'] as string)?.split(',')[0]?.trim();
@@ -5547,14 +5577,13 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
         };
       }
 
-      // Commerce integration — get key from campaign sponsors first, fallback to campaign legacy key
-      const sdkCampaignSponsors2 = await storage.getCampaignSponsors(campaign.id);
-      let sdkCommerceApiKey2: string | null = campaign.reachuApiKey || null;
-      let sdkCommerceChannelId2: string | null = campaign.reachuChannelId || null;
-      for (const cs of sdkCampaignSponsors2) {
-        const sp = await storage.getSponsor(cs.sponsorId);
-        if (sp?.commerceApiKey) { sdkCommerceApiKey2 = sp.commerceApiKey; sdkCommerceChannelId2 = sp.commerceChannelId || null; break; }
-      }
+      const {
+        apiKey: sdkCommerceApiKey2,
+        channelId: sdkCommerceChannelId2,
+      } = await resolveCommerceFromCampaignSponsors({
+        id: campaign.id,
+        sponsorId: campaign.sponsorId ?? null,
+      });
       config.integrations = {
         commerce: {
           enabled: !!(sdkCommerceApiKey2),
