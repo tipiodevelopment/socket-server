@@ -1,5 +1,23 @@
 # Testing Cart-Intent Flow (E2E)
 
+## E2E SDK (TV2 iPhone + Apple TV)
+
+Para **`cart_intent` por WebSocket**, REST y WS del iPhone deben ser **el mismo backend** que recibe el `POST .../cart-intent` del TV (`wsUserMap` vive ahí).
+
+- **Apple TV** (`InteractiveAds-vio`): por defecto `https://api-dev.vio.live` / `wss://api-dev.vio.live/ws/...`.
+- **TV2 iPhone** (`VioSwiftSDK` demo, `environment: development`): el repo apunta a **socket-server en local** — `devRestAPIBaseURL` y **`devWsBaseURL`** en `http://127.0.0.1:5001` y `ws://127.0.0.1:5001` (mismo puerto que Express + WS). Usa `api-dev` en ambos solo si pruebas contra el TV en `api-dev`.
+- **Regla:** no mezcles REST local con WS remoto; si no, el TV puede ver 200 y el iPhone no recibe `cart_intent` por WS.
+
+Mismo **`userId`** en ambos lados (`tv2_demo_user` en los demos) y la **misma campaña** que devuelve el backend para la API key TV2 (p. ej. id **36** vía `GET /v1/sdk/campaigns`).
+
+**TV2 iPhone (`register-device`, zero-config):** la app llama `CampaignManager.shared.submitApnsDeviceTokenForVioRegister(hex)` desde `AppDelegate`; el manager hace `POST .../register-device` **solo cuando ya hay `currentCampaign`** tras `discoverCampaigns` (misma fuente que el WS). Sin `campaignId` en `vio-config.json`.
+
+### Verificación api-dev (API pública, sin DB)
+
+- `GET https://api-dev.vio.live/v1/sdk/campaigns?apiKey=<TV2>` devuelve **`campaignId`: 36** ("Tv2 Demo Campaign", `isActive: true`) — comprobado vía curl.
+- **`webhookUrl` / `partnerDeviceRegisterUrl`:** no están en respuestas SDK; revisar ClientApp TV2 en dashboard o DB (`partner_device_register_url` tras migración).
+- **Mismo host WS + REST** en el iPhone que el proceso donde corre `cart-intent` (local: `127.0.0.1:5001`; remoto con TV: `api-dev` en ambos).
+
 ## Resumen de cambios implementados
 
 ### ✅ Fase 1: Firebase/FCM eliminado
@@ -195,12 +213,13 @@ Flujo: **Apple TV** (`InteractiveAds-vio` tv2demo-appletv) envía `cart-intent` 
 
 - Tabla `DeviceRegistration` en Azure Table Storage; variables `STORAGE_ACCOUNT_NAME`, `STORAGE_ACCOUNT_KEY`.
 - APNs: `APNS_P8_CONTENT`, `APNS_KEY_ID`, `APNS_TEAM_ID`, `APNS_BUNDLE_ID` = bundle de la app iOS demo (`viodev.tv2demo`), entorno coherente con sandbox/producción del mock.
-- **Vio ClientApp (TV2)**: `webhookUrl` = `https://viopartnermockv2.azurewebsites.net/api/v1/partner/webhook` (o la URL desplegada actual).
+- **Vio ClientApp (TV2)**: `webhookUrl` = `https://viopartnermockv2.azurewebsites.net/api/v1/partner/webhook` y `partnerDeviceRegisterUrl` = `https://viopartnermockv2.azurewebsites.net/api/v1/partner/devices/register` (Apps → Settings → Integrations, o `npx tsx scripts/setup-webhook-clientapps.ts`).
 
 ### iPhone (tv2demo)
 
-- Tras el primer lanzamiento, la app solicita permiso de notificaciones y registra el token APNs; envía el token al **backend Vio** con `VioCampaignPartnerAPI.registerDevice` → `POST /api/campaigns/:campaignId/register-device` (`x-api-key`). La campaña por defecto se toma de `campaigns.deviceRegistrationCampaignId` en `vio-config.json` (p. ej. `36`).
-- Los tokens se guardan en la tabla `device_tokens` (Postgres). Esa ruta la usa Vio para **APNs directo** en `cart-intent` cuando el ClientApp **no** tiene `webhookUrl`. Si el flujo de producción usa **solo** el partner webhook + push desde el partner, el partner debe registrar tokens en su propio sistema (p. ej. mock Azure Table); el registro en Vio sigue siendo útil para fallback sin webhook o entornos de prueba híbridos.
+- Tras el primer lanzamiento, la app solicita permiso de notificaciones y registra el token APNs; el demo enruta el hex a **`CampaignManager.submitApnsDeviceTokenForVioRegister`**, que llama a `VioCampaignPartnerAPI.registerDevice` cuando **`discoverCampaigns`** ya fijó la campaña (zero-config).
+- Vio persiste en `device_tokens` y, si el ClientApp tiene **`partnerDeviceRegisterUrl`**, hace un POST server-to-server al partner con el mismo cuerpo (`userId`, `deviceToken`, `platform`). Si el forward falla, la API sigue respondiendo **200** tras el upsert (solo se loguea el error).
+- Sin `webhookUrl`, Vio puede usar `device_tokens` para **APNs directo** en `cart-intent` offline. Con `webhookUrl` + `partnerDeviceRegisterUrl`, el push suele ir desde el partner tras el webhook de `cart_intent`.
 
 ### Forzar rama webhook en Vio (no solo WebSocket)
 
@@ -209,14 +228,15 @@ Si el iPhone tiene WebSocket de campaña identificado con el mismo `userId`, Vio
 ### Apple TV
 
 - `VioTV.configure(..., userId: "tv2_demo_user")` alineado con iPhone.
-- `vio-config.json`: `apiKey` TV2, `campaignId` (p. ej. 36), `backendURL` = mismo backend Vio donde está configurado el webhook.
+- `vio-config.json` (iPhone): `apiKey` TV2 y URLs; **sin** `campaignId` fijo para register-device. Apple TV sigue pudiendo llevar `campaignId` en su JSON para el POST `cart-intent`.
 
 ### Checklist
 
 | Paso | Verificación |
 |------|----------------|
 | Registro Vio | Log `[RegisterDevice]` y fila en `device_tokens` (mismo `campaignId` + `userId`) |
-| Registro mock (solo si el push lo envía el partner Azure) | Fila en Table `DeviceRegistration` con `PartitionKey = tv2_demo_user` |
+| Forward partner | Log `Partner device register forward → ... HTTP` |
+| Registro mock (Table) | Con `partnerDeviceRegisterUrl` configurada: fila `PartitionKey = tv2_demo_user` |
 | TV → Vio | Log: `[CartIntent] Partner webhook called ... → 2xx` |
 | Mock | Log Azure: APNs enviado / `devices_notified` > 0 |
 | iPhone | Banner; overlay de producto al abrir o en foreground (`TV2NotificationCenterDelegate`) |

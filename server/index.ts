@@ -1,6 +1,7 @@
 import express, { type Request, Response, NextFunction } from "express";
 import type * as httpTypes from "http";
 import cors from "cors";
+import morgan from "morgan";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
 import { detectAndCacheBaseUrl } from "./utils";
@@ -36,6 +37,11 @@ export async function setupApp(
     verify: (req, _res, buf) => { req.rawBody = buf; },
   }));
   app.use(express.urlencoded({ extended: false }));
+
+  // HTTP request logger (all requests)
+  if (process.env.NODE_ENV === 'development') {
+    app.use(morgan('dev'));
+  }
 
   // Health endpoints — also handled by preserver before express is ready
   app.get('/health', (_req, res) =>

@@ -137,6 +137,13 @@ components:
         bannerUrl:
           type: string
           nullable: true
+        webhookUrl:
+          type: string
+          nullable: true
+        partnerDeviceRegisterUrl:
+          type: string
+          nullable: true
+          description: URL where Vio POSTs userId, deviceToken, platform after SDK register-device
         createdAt:
           type: string
           format: date-time
@@ -167,6 +174,12 @@ components:
           type: string
         bannerUrl:
           type: string
+        webhookUrl:
+          type: string
+          nullable: true
+        partnerDeviceRegisterUrl:
+          type: string
+          nullable: true
 
     Channel:
       type: object
