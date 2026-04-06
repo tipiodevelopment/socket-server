@@ -5113,9 +5113,10 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
         timestamp: new Date().toISOString(),
       };
 
-      // Set CART_INTENT_DUAL_DELIVERY=true to also run partner webhook / APNs when WS already delivered
-      // (iOS often does not process WS frames until foreground — push reaches the user in background).
-      const dualDelivery = process.env.CART_INTENT_DUAL_DELIVERY === "true";
+      // Default: **dual delivery** — after WS (local or cluster), also run partner webhook / APNs so push
+      // reaches the device when the app is backgrounded (WS may not run on iOS until foreground).
+      // Opt out: `CART_INTENT_DUAL_DELIVERY=false` (saves duplicate partner calls when you only want WS).
+      const dualDelivery = process.env.CART_INTENT_DUAL_DELIVERY !== "false";
 
       if (isConnectedLocal && directWs) {
         // Send via local socket

@@ -20,9 +20,12 @@ Mismo **`userId`** en ambos lados (`tv2_demo_user` en los demos) y la **misma ca
 
 ## Dual delivery (background + WebSocket)
 
-Si el iPhone tiene **WebSocket conectado**, el servidor envía `cart_intent` solo por WS (`Sent via local socket`). En segundo plano iOS a menudo **no procesa** el mensaje hasta volver a primer plano, así que no hay banner ni overlay a tiempo.
+Si el iPhone tiene **WebSocket conectado**, el servidor **por defecto** envía `cart_intent` por **WS y además** por partner (`webhookUrl` o APNs directo sin webhook). Así el push puede llegar **aun en segundo plano**, donde iOS a menudo no procesa el WS hasta volver a primer plano.
 
-**Opción:** variable de entorno **`CART_INTENT_DUAL_DELIVERY=true`** en el proceso Express (`socket-server`). Cuando está activa, tras enviar por WS (local **o** Redis cluster) el servidor **también** ejecuta el mismo fallback que el usuario offline: `webhookUrl` del ClientApp o, si no hay webhook, APNs directo vía tokens en `register-device`.
+**Comportamiento por defecto:** dual activo **sin** variable de entorno.
+
+**Desactivar dual** (solo WS cuando hay conexión, como antes):  
+`CART_INTENT_DUAL_DELIVERY=false` en el proceso Express.
 
 **Logs esperados (dual):**
 
@@ -30,7 +33,7 @@ Si el iPhone tiene **WebSocket conectado**, el servidor envía `cart_intent` sol
 2. `[CartIntent] Dual delivery: also invoking partner fallback`
 3. `[CartIntent] Dual delivery: partner webhook: <url> → <status>` **o** `[CartIntent] Dual delivery: invoked direct APNs...` / logs de `ios-flow` (`Push sent`)
 
-**Aviso:** con la app en **primer plano** puedes recibir **WS (overlay)** y **push** casi a la vez (duplicado). En producción deja la variable sin definir o `false` para el comportamiento histórico (solo WS si hay conexión).
+**Aviso:** con la app en **primer plano** puedes recibir **WS (overlay)** y **push** casi a la vez. En el cliente SDK puedes deduplicar o suspender WS en background según producto.
 
 ## Resumen de cambios implementados
 
