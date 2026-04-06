@@ -4888,7 +4888,35 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
     }
   });
 
-  // POST /api/campaigns/:id/cart-intent — TV adds to cart -> broadcast WS cart_intent
+  // POST /api/campaigns/:id/register-device — Register APNs device token (SDK partner apps; used for Vio-side push fallback)
+  app.post('/api/campaigns/:campaignId/register-device', validateApiKey, async (req, res) => {
+    try {
+      const campaignId = parseInt(req.params.campaignId);
+      const clientApp = (req as any).clientApp;
+      const { userId, deviceToken, platform = 'ios' } = req.body;
+
+      if (!userId || !deviceToken) {
+        return res.status(400).json({ error: 'userId and deviceToken are required' });
+      }
+
+      const campaign = await storage.getCampaign(campaignId);
+      if (!campaign) {
+        return res.status(404).json({ error: 'Campaign not found' });
+      }
+      if (campaign.clientAppId !== clientApp.id) {
+        return res.status(403).json({ error: 'Campaign does not belong to this API key' });
+      }
+
+      await storage.upsertDeviceToken(campaignId, String(userId), String(deviceToken), String(platform));
+      console.log(`[RegisterDevice] campaign=${campaignId} userId=${userId} platform=${platform}`);
+      res.json({ success: true });
+    } catch (error) {
+      console.error('[RegisterDevice] Error:', error);
+      res.status(500).json({ error: 'Failed to register device' });
+    }
+  });
+
+  // POST /api/campaigns/:id/cart-intent — TV adds to cart -> broadcast WS or webhook (partner-first)
   app.post('/api/campaigns/:campaignId/cart-intent', validateApiKey, async (req, res) => {
     try {
       const campaignId = parseInt(req.params.campaignId);
@@ -4957,9 +4985,10 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
         await publishEvent("ws:events:forward", wsEvent);
         console.log('[CartIntent] Forwarded via Redis Pub/Sub to cluster for userId:', userId);
       } else {
-        // User is offline -> Webhook/Push fallback
-        const campaign = await storage.getCampaign(campaignId);
-        const webhookUrl = campaign?.webhookUrl;
+        // User is offline -> Partner webhook fallback (Partner-first architecture)
+        // This webhook receives ALL offline events (cart_intent, polls, contests, etc.)
+        // Partner backend handles push notifications (APNs, FCM) to their own users
+        const webhookUrl = clientApp?.webhookUrl;
         if (webhookUrl) {
           const webhookBody = {
             vio_notification_version: 1,
@@ -4977,7 +5006,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify(webhookBody),
             });
-            console.log(`[CartIntent] Webhook fallback called (offline/remote user): ${webhookUrl} → ${webhookRes.status}`);
+            console.log(`[CartIntent] Partner webhook called (offline user): ${webhookUrl} → ${webhookRes.status}`);
           } catch (webhookErr) {
             console.error('[CartIntent] Webhook error:', webhookErr);
           }

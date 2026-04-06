@@ -59,6 +59,7 @@ export default function AppDetailPage() {
   const [editStatus, setEditStatus] = useState('active');
   const [editIconUrl, setEditIconUrl] = useState('');
   const [editBannerUrl, setEditBannerUrl] = useState('');
+  const [editWebhookUrl, setEditWebhookUrl] = useState('');
 
   const { data: app, isLoading: appLoading } = useQuery<ClientApp>({
     queryKey: ['/api/client-apps', appIdNum, userId],
@@ -204,6 +205,9 @@ export default function AppDetailPage() {
   };
 
   const openSettingsModal = (tab: string = 'general') => {
+    if (app) {
+      setEditWebhookUrl(app.webhookUrl || '');
+    }
     setSettingsTab(tab);
     setSettingsModalOpen(true);
   };
@@ -781,10 +785,40 @@ ReachuSDK.configure(
               )}
 
               {settingsTab === 'integrations' && (
-                <div className="space-y-4">
-                  <p className="text-sm text-gray-400">
-                    Integrations are configured at the campaign level. Open a campaign's Settings tab to configure Reachu and other integrations.
-                  </p>
+                <div className="space-y-6">
+                  <div>
+                    <Label className="text-gray-400 text-xs uppercase">Partner Webhook URL</Label>
+                    <Input
+                      value={editWebhookUrl}
+                      onChange={(e) => setEditWebhookUrl(e.target.value)}
+                      placeholder="https://your-backend.com/webhook/vio-events"
+                      className="bg-white/5 border-white/10 text-white font-mono text-sm mt-2"
+                      data-testid="input-webhook-url"
+                    />
+                    <p className="text-xs text-gray-500 mt-2">
+                      URL to receive all offline events from Vio (cart-intent, polls, contests, etc.). When users are offline, Vio sends events to your backend via webhook so you can deliver push notifications.
+                    </p>
+                    <p className="text-xs text-gray-600 mt-2">
+                      POST body (canonical envelope):{" "}
+                      <code className="text-gray-400">
+                        {"{ vio_notification_version: 1, vio_event_type: \"...\", action: \"...\", userId, campaignId, ...eventData }"}
+                      </code>
+                    </p>
+                    <p className="text-xs text-gray-600 mt-1">
+                      Event types: <code className="text-gray-400">cart_intent, poll_created, contest_started, broadcast_live, ...</code>
+                    </p>
+                  </div>
+                  <Button
+                    onClick={() => {
+                      updateAppMutation.mutate({ webhookUrl: editWebhookUrl || null });
+                      setSettingsModalOpen(false);
+                    }}
+                    disabled={updateAppMutation.isPending}
+                    className="bg-white hover:bg-gray-200 text-black"
+                    data-testid="button-save-webhook-url"
+                  >
+                    {updateAppMutation.isPending ? 'Saving...' : 'Save Webhook URL'}
+                  </Button>
                 </div>
               )}
             </div>

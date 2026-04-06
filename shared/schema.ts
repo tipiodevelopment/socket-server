@@ -25,6 +25,7 @@ export const clientApps = pgTable("client_apps", {
   status: varchar("status", { length: 20 }).notNull().default('active'),
   iconUrl: text("icon_url"),
   bannerUrl: text("banner_url"),
+  webhookUrl: varchar("webhook_url", { length: 512 }),
   createdAt: timestamp("created_at").defaultNow().notNull()
 });
 
