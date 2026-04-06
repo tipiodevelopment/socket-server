@@ -68,7 +68,7 @@ const requireBearerAuth = (req: Request, res: any, next: any) => {
       return res.status(401).json({ message: 'Bearer token required' });
     }
     const token = authHeader.split(' ')[1];
-    const decoded = jwt.verify(token, JWT_SECRET) as { userId: number; reachuUserId: string };
+    const decoded = jwt.verify(token, JWT_SECRET) as { clientAppId?: number; userId?: number };
     (req as any).authUser = decoded;
     next();
   } catch (error: any) {
@@ -1108,20 +1108,20 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
 
   app.post('/api/auth/token', async (req, res) => {
     try {
-      const { reachuUserId } = req.body;
-      if (!reachuUserId) {
-        return res.status(400).json({ message: 'reachuUserId is required' });
+      const { apiKey } = req.body;
+      if (!apiKey) {
+        return res.status(400).json({ message: 'apiKey is required' });
       }
-      const user = await storage.getUserByReachuId(reachuUserId);
-      if (!user) {
-        return res.status(404).json({ message: 'User not found' });
+      const clientApp = await storage.getClientAppByApiKey(apiKey);
+      if (!clientApp) {
+        return res.status(404).json({ message: 'Client app not found' });
       }
       const token = jwt.sign(
-        { userId: user.id, reachuUserId: user.reachuUserId },
+        { clientAppId: clientApp.id },
         JWT_SECRET,
         { expiresIn: '7d' }
       );
-      res.json({ token, userId: user.id, expiresIn: '7d' });
+      res.json({ token, clientAppId: clientApp.id, expiresIn: '7d' });
     } catch (error) {
       console.error('Error generating token:', error);
       res.status(500).json({ message: 'Error generating token' });
