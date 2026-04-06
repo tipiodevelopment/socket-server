@@ -37,7 +37,6 @@ import { createRateLimiter, rateLimitPresets } from "./middleware/rate-limiter";
 import { validateBroadcastId } from "./middleware/broadcast-validator";
 import { setVoteBroadcastFunction } from "./services/vote-processor";
 import { sendAPNs } from "./services/ios-flow";
-import { sendFCMs } from "./services/android-flow";
 import {
   clearUserPresence,
   isRedisEnabled,
@@ -4893,7 +4892,17 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   app.post('/api/campaigns/:campaignId/cart-intent', validateApiKey, async (req, res) => {
     try {
       const campaignId = parseInt(req.params.campaignId);
+      const clientApp = (req as any).clientApp;
       const { productId, userId, productName } = req.body;
+
+      // Validate campaign belongs to this API key's clientApp
+      const campaign = await storage.getCampaign(campaignId);
+      if (!campaign) {
+        return res.status(404).json({ error: 'Campaign not found' });
+      }
+      if (campaign.clientAppId !== clientApp.id) {
+        return res.status(403).json({ error: 'Campaign does not belong to this API key' });
+      }
 
       if (!productId || !userId) {
         return res.status(400).json({ error: 'productId and userId are required' });
@@ -4994,50 +5003,6 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
     } catch (error) {
       console.error('[CartIntent] Error:', error);
       res.status(500).json({ error: 'Failed to process cart intent' });
-    }
-  });
-
-  app.post("/api/campaigns/test/webhook", async (req, res) => {
-    try {
-      const { productId, userId, productName, campaignId } = req.body;
-
-      const devices = await storage.getDeviceTokens(campaignId, userId);
-      console.log("[WebhookTest] Registered devices for user:", devices);
-      const iosDevices = devices.filter((d) => d.platform === "ios");
-      const androidDevices = devices.filter((d) => d.platform === "android");
-      const notes: string[] = [];
-
-      if (!iosDevices.length) {
-        console.warn(`[WebhookTest] No IOS devices for userId=${userId}`);
-        notes.push("no_ios_device_registered");
-      } else {
-        const iosNotes: string[] = await sendAPNs(iosDevices, {
-          campaignId,
-          productId,
-          resolvedName: productName,
-          userId,
-        });
-        notes.push(...iosNotes);
-      }
-
-      if (!androidDevices.length) {
-        console.warn(`[WebhookTest] No ANDROID devices for userId=${userId}`);
-        notes.push("no_android_device_registered");
-      } else {
-        const androidNotes: string[] = await sendFCMs(androidDevices, {
-          campaignId,
-          productId,
-          resolvedName: productName,
-        });
-        notes.push(...androidNotes);
-      }
-
-      res.json({ success: true, notes });
-    } catch (error) {
-      console.error("[WebhookTest] Error:", error);
-      res
-        .status(500)
-        .json({ error: "Failed to send webhook test notifications" });
     }
   });
 
@@ -5765,10 +5730,19 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   // ========================================
   app.get('/v1/sdk/broadcasts/:broadcastId/chat', validateApiKey, async (req, res) => {
     try {
+      const clientApp = (req as any).clientApp;
       const { broadcastId } = req.params;
       const limit = req.query.limit ? parseInt(req.query.limit as string) : 50;
       const broadcast = await storage.getBroadcast(broadcastId);
       if (!broadcast) return res.status(404).json({ message: 'Broadcast not found' });
+
+      // Validate broadcast's campaign belongs to this API key's clientApp
+      if (broadcast.campaignId) {
+        const campaign = await storage.getCampaign(broadcast.campaignId);
+        if (campaign && campaign.clientAppId !== clientApp.id) {
+          return res.status(403).json({ error: 'Broadcast does not belong to this API key' });
+        }
+      }
       const messages = await storage.getChatMessages(broadcastId, limit);
       res.json({ broadcastId, messages, count: messages.length });
     } catch (error) {
@@ -5782,9 +5756,18 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   // ========================================
   app.get('/v1/sdk/broadcasts/:broadcastId/score', validateApiKey, async (req, res) => {
     try {
+      const clientApp = (req as any).clientApp;
       const { broadcastId } = req.params;
       const broadcast = await storage.getBroadcast(broadcastId);
       if (!broadcast) return res.status(404).json({ message: 'Broadcast not found' });
+
+      // Validate broadcast's campaign belongs to this API key's clientApp
+      if (broadcast.campaignId) {
+        const campaign = await storage.getCampaign(broadcast.campaignId);
+        if (campaign && campaign.clientAppId !== clientApp.id) {
+          return res.status(403).json({ error: 'Broadcast does not belong to this API key' });
+        }
+      }
       const meta = (broadcast.metadata as any) || {};
       const matchData = meta.matchData || null;
       if (!matchData) return res.json({ broadcastId, hasScore: false });
@@ -5808,9 +5791,18 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   // ========================================
   app.get('/v1/sdk/broadcasts/:broadcastId/stats', validateApiKey, async (req, res) => {
     try {
+      const clientApp = (req as any).clientApp;
       const { broadcastId } = req.params;
       const broadcast = await storage.getBroadcast(broadcastId);
       if (!broadcast) return res.status(404).json({ message: 'Broadcast not found' });
+
+      // Validate broadcast's campaign belongs to this API key's clientApp
+      if (broadcast.campaignId) {
+        const campaign = await storage.getCampaign(broadcast.campaignId);
+        if (campaign && campaign.clientAppId !== clientApp.id) {
+          return res.status(403).json({ error: 'Broadcast does not belong to this API key' });
+        }
+      }
       const meta = (broadcast.metadata as any) || {};
       const matchData = meta.matchData || null;
       if (!matchData?.stats) return res.json({ broadcastId, hasStats: false });
