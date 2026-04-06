@@ -60,6 +60,7 @@ export default function AppDetailPage() {
   const [editIconUrl, setEditIconUrl] = useState('');
   const [editBannerUrl, setEditBannerUrl] = useState('');
   const [editWebhookUrl, setEditWebhookUrl] = useState('');
+  const [editPartnerDeviceRegisterUrl, setEditPartnerDeviceRegisterUrl] = useState('');
 
   const { data: app, isLoading: appLoading } = useQuery<ClientApp>({
     queryKey: ['/api/client-apps', appIdNum, userId],
@@ -207,6 +208,7 @@ export default function AppDetailPage() {
   const openSettingsModal = (tab: string = 'general') => {
     if (app) {
       setEditWebhookUrl(app.webhookUrl || '');
+      setEditPartnerDeviceRegisterUrl(app.partnerDeviceRegisterUrl || '');
     }
     setSettingsTab(tab);
     setSettingsModalOpen(true);
@@ -808,16 +810,33 @@ ReachuSDK.configure(
                       Event types: <code className="text-gray-400">cart_intent, poll_created, contest_started, broadcast_live, ...</code>
                     </p>
                   </div>
+                  <div>
+                    <Label className="text-gray-400 text-xs uppercase">Partner device registration URL</Label>
+                    <Input
+                      value={editPartnerDeviceRegisterUrl}
+                      onChange={(e) => setEditPartnerDeviceRegisterUrl(e.target.value)}
+                      placeholder="https://partner.example.com/api/v1/partner/devices/register"
+                      className="bg-white/5 border-white/10 text-white font-mono text-sm mt-2"
+                      data-testid="input-partner-device-register-url"
+                    />
+                    <p className="text-xs text-gray-500 mt-2">
+                      After each SDK <code className="text-gray-400">register-device</code>, Vio stores the token and optionally POSTs the same body to this URL:{" "}
+                      <code className="text-gray-400">{"{ userId, deviceToken, platform }"}</code>. The partner keeps tokens in its own system for offline push. Leave empty to skip forward (Vio-only <code className="text-gray-400">device_tokens</code>).
+                    </p>
+                  </div>
                   <Button
                     onClick={() => {
-                      updateAppMutation.mutate({ webhookUrl: editWebhookUrl || null });
+                      updateAppMutation.mutate({
+                        webhookUrl: editWebhookUrl || null,
+                        partnerDeviceRegisterUrl: editPartnerDeviceRegisterUrl || null,
+                      });
                       setSettingsModalOpen(false);
                     }}
                     disabled={updateAppMutation.isPending}
                     className="bg-white hover:bg-gray-200 text-black"
-                    data-testid="button-save-webhook-url"
+                    data-testid="button-save-integration-urls"
                   >
-                    {updateAppMutation.isPending ? 'Saving...' : 'Save Webhook URL'}
+                    {updateAppMutation.isPending ? 'Saving...' : 'Save integration URLs'}
                   </Button>
                 </div>
               )}

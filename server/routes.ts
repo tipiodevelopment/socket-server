@@ -4909,6 +4909,25 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
 
       await storage.upsertDeviceToken(campaignId, String(userId), String(deviceToken), String(platform));
       console.log(`[RegisterDevice] campaign=${campaignId} userId=${userId} platform=${platform}`);
+
+      const partnerRegisterUrl = clientApp.partnerDeviceRegisterUrl?.trim();
+      if (partnerRegisterUrl) {
+        try {
+          const fwd = await fetch(partnerRegisterUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              userId: String(userId),
+              deviceToken: String(deviceToken),
+              platform: String(platform),
+            }),
+          });
+          console.log(`[RegisterDevice] Partner device register forward → ${partnerRegisterUrl} HTTP ${fwd.status}`);
+        } catch (forwardErr) {
+          console.error('[RegisterDevice] Partner device register forward failed:', forwardErr);
+        }
+      }
+
       res.json({ success: true });
     } catch (error) {
       console.error('[RegisterDevice] Error:', error);
