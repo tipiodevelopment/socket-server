@@ -145,6 +145,83 @@ function isUserEligibleForCampaign(
   return true;
 }
 
+/**
+ * When the user is offline (no WS) or dual-delivery is enabled: POST partner webhook
+ * or, if no webhook, Vio direct APNs via stored device tokens.
+ */
+async function notifyCartIntentPartnerFallback(params: {
+  clientApp: { webhookUrl?: string | null };
+  campaignId: number;
+  userId: string;
+  productId: unknown;
+  resolvedName: string;
+  context: "offline" | "dual";
+}): Promise<void> {
+  const { clientApp, campaignId, userId, productId, resolvedName, context } = params;
+  const webhookUrl = clientApp?.webhookUrl?.trim();
+  if (webhookUrl) {
+    const webhookBody = {
+      vio_notification_version: 1,
+      vio_event_type: "cart_intent",
+      userId: String(userId),
+      productId: String(productId),
+      campaignId,
+      productName: resolvedName,
+      action: "cart_intent",
+      event: "cart_intent",
+    };
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000);
+      const webhookRes = await fetch(webhookUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(webhookBody),
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
+      const label =
+        context === "dual"
+          ? "Dual delivery: partner webhook"
+          : "Partner webhook called (offline user)";
+      console.log(`[CartIntent] ${label}: ${webhookUrl} → ${webhookRes.status}`);
+    } catch (webhookErr: any) {
+      if (webhookErr.name === "AbortError") {
+        console.warn("[CartIntent] Webhook timeout (>10s)");
+      } else {
+        console.error("[CartIntent] Webhook error:", webhookErr);
+      }
+    }
+    return;
+  }
+
+  const devices = await storage.getDeviceTokens(campaignId, String(userId));
+  const iosDevices = devices.filter((d) => d.platform === "ios");
+  if (iosDevices.length > 0) {
+    const pid =
+      typeof productId === "number" ? productId : parseInt(String(productId), 10);
+    await sendAPNs(iosDevices, {
+      campaignId,
+      productId: Number.isFinite(pid) ? pid : 0,
+      resolvedName,
+      userId: String(userId),
+    });
+    if (context === "dual") {
+      console.log("[CartIntent] Dual delivery: invoked direct APNs (no webhook on client app)");
+    }
+  } else {
+    if (context === "dual") {
+      console.log(
+        "[CartIntent] Dual delivery: skipped — no webhookUrl and no iOS device registered",
+      );
+    } else {
+      console.log(
+        "[CartIntent] User offline/remote and no webhookUrl or iOS device registered",
+      );
+    }
+  }
+}
+
 // Export broadcastToCampaign function (will be set during registerRoutes)
 export let broadcastToCampaign: (campaignId: number, message: string) => void = () => {
   console.warn('[WebSocket] broadcastToCampaign called before initialization');
@@ -4975,14 +5052,24 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
 
       const normalizedUserId = String(userId).trim();
       const directWs = wsUserMap.get(normalizedUserId);
-      console.log('[CartIntent] directWs', directWs);
+      console.log('[CartIntent] directWs', directWs ? 'connected' : 'undefined');
       const isConnectedLocal = Boolean(directWs && directWs.readyState === WebSocket.OPEN);
       console.log('[CartIntent] isConnectedLocal', isConnectedLocal);
       console.log('[CartIntent] isRedisEnabled', isRedisEnabled());
-      console.log('[CartIntent] isUserConnectedAcrossCluster', await isUserConnectedAcrossCluster(normalizedUserId));
-      const isConnectedCluster = isRedisEnabled()
-        ? await isUserConnectedAcrossCluster(normalizedUserId)
-        : false;
+
+      // Check cluster with timeout to avoid hanging if Redis is down
+      let isConnectedCluster = false;
+      if (isRedisEnabled()) {
+        try {
+          isConnectedCluster = await Promise.race([
+            isUserConnectedAcrossCluster(normalizedUserId),
+            new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 1000))
+          ]);
+        } catch (err) {
+          console.warn('[CartIntent] isUserConnectedAcrossCluster error:', err);
+        }
+      }
+
       const isUserConnected = isConnectedLocal || isConnectedCluster;
       console.log('[CartIntent] isUserConnected', isUserConnected);
 
@@ -4995,56 +5082,50 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
         timestamp: new Date().toISOString(),
       };
 
+      // Set CART_INTENT_DUAL_DELIVERY=true to also run partner webhook / APNs when WS already delivered
+      // (iOS often does not process WS frames until foreground — push reaches the user in background).
+      const dualDelivery = process.env.CART_INTENT_DUAL_DELIVERY === "true";
+
       if (isConnectedLocal && directWs) {
         // Send via local socket
         directWs.send(JSON.stringify(wsEvent));
         console.log('[CartIntent] Sent via local socket to userId:', userId);
+        if (dualDelivery) {
+          console.log("[CartIntent] Dual delivery: also invoking partner fallback");
+          await notifyCartIntentPartnerFallback({
+            clientApp,
+            campaignId,
+            userId: String(userId),
+            productId,
+            resolvedName,
+            context: "dual",
+          });
+        }
       } else if (isConnectedCluster) {
         // User is on another cluster node -> Forward via Redis Pub/Sub
         await publishEvent("ws:events:forward", wsEvent);
         console.log('[CartIntent] Forwarded via Redis Pub/Sub to cluster for userId:', userId);
+        if (dualDelivery) {
+          console.log("[CartIntent] Dual delivery: also invoking partner fallback");
+          await notifyCartIntentPartnerFallback({
+            clientApp,
+            campaignId,
+            userId: String(userId),
+            productId,
+            resolvedName,
+            context: "dual",
+          });
+        }
       } else {
         // User is offline -> Partner webhook fallback (Partner-first architecture)
-        // This webhook receives ALL offline events (cart_intent, polls, contests, etc.)
-        // Partner backend handles push notifications (APNs, FCM) to their own users
-        const webhookUrl = clientApp?.webhookUrl;
-        if (webhookUrl) {
-          const webhookBody = {
-            vio_notification_version: 1,
-            vio_event_type: 'cart_intent',
-            userId: String(userId),
-            productId: String(productId),
-            campaignId,
-            productName: resolvedName,
-            action: 'cart_intent',
-            event: 'cart_intent',
-          };
-          try {
-            const webhookRes = await fetch(webhookUrl, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(webhookBody),
-            });
-            console.log(`[CartIntent] Partner webhook called (offline user): ${webhookUrl} → ${webhookRes.status}`);
-          } catch (webhookErr) {
-            console.error('[CartIntent] Webhook error:', webhookErr);
-          }
-        } else {
-          const devices = await storage.getDeviceTokens(campaignId, String(userId));
-          const iosDevices = devices.filter((d) => d.platform === 'ios');
-          if (iosDevices.length > 0) {
-            const pid =
-              typeof productId === 'number' ? productId : parseInt(String(productId), 10);
-            await sendAPNs(iosDevices, {
-              campaignId,
-              productId: Number.isFinite(pid) ? pid : 0,
-              resolvedName,
-              userId: String(userId),
-            });
-          } else {
-            console.log('[CartIntent] User offline/remote and no webhookUrl or iOS device registered');
-          }
-        }
+        await notifyCartIntentPartnerFallback({
+          clientApp,
+          campaignId,
+          userId: String(userId),
+          productId,
+          resolvedName,
+          context: "offline",
+        });
       }
 
       res.json({ success: true, mode: 'websocket', userConnected: Boolean(isUserConnected) });

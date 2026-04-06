@@ -18,6 +18,20 @@ Mismo **`userId`** en ambos lados (`tv2_demo_user` en los demos) y la **misma ca
 - **`webhookUrl` / `partnerDeviceRegisterUrl`:** no están en respuestas SDK; revisar ClientApp TV2 en dashboard o DB (`partner_device_register_url` tras migración).
 - **Mismo host WS + REST** en el iPhone que el proceso donde corre `cart-intent` (local: `127.0.0.1:5001`; remoto con TV: `api-dev` en ambos).
 
+## Dual delivery (background + WebSocket)
+
+Si el iPhone tiene **WebSocket conectado**, el servidor envía `cart_intent` solo por WS (`Sent via local socket`). En segundo plano iOS a menudo **no procesa** el mensaje hasta volver a primer plano, así que no hay banner ni overlay a tiempo.
+
+**Opción:** variable de entorno **`CART_INTENT_DUAL_DELIVERY=true`** en el proceso Express (`socket-server`). Cuando está activa, tras enviar por WS (local **o** Redis cluster) el servidor **también** ejecuta el mismo fallback que el usuario offline: `webhookUrl` del ClientApp o, si no hay webhook, APNs directo vía tokens en `register-device`.
+
+**Logs esperados (dual):**
+
+1. `[CartIntent] Sent via local socket to userId: ...` (o `Forwarded via Redis Pub/Sub...`)
+2. `[CartIntent] Dual delivery: also invoking partner fallback`
+3. `[CartIntent] Dual delivery: partner webhook: <url> → <status>` **o** `[CartIntent] Dual delivery: invoked direct APNs...` / logs de `ios-flow` (`Push sent`)
+
+**Aviso:** con la app en **primer plano** puedes recibir **WS (overlay)** y **push** casi a la vez (duplicado). En producción deja la variable sin definir o `false` para el comportamiento histórico (solo WS si hay conexión).
+
 ## Resumen de cambios implementados
 
 ### ✅ Fase 1: Firebase/FCM eliminado
