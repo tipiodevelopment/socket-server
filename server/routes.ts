@@ -5193,7 +5193,28 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
         deliveryMode = 'webhook';
       }
 
-      res.json({ success: true, mode: deliveryMode, userConnected: Boolean(isUserConnected) });
+      // Construct envelope for response (without internal WS fields)
+      const envelope = {
+        vio_notification_version: 1,
+        vio_user_id: String(userId),
+        vio_event_type: 'cart_intent',
+        vio_payload: {
+          product_id: String(productId),
+          campaign_id: String(campaignId),
+          product_name: resolvedName,
+          notification_title: resolvedName,
+          notification_body: `${resolvedName} – klikk for å kjøpe.`,
+          source,
+          deeplink,
+        },
+      };
+
+      res.json({
+        success: true,
+        mode: deliveryMode,
+        userConnected: Boolean(isUserConnected),
+        envelope,
+      });
     } catch (error) {
       console.error('[CartIntent] Error:', error);
       res.status(500).json({ error: 'Failed to process cart intent' });
