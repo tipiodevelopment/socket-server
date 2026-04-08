@@ -59,9 +59,12 @@ export async function sendAPNs(
         body: `${data.resolvedName} — trykk for å kjøpe`,
       };
       notification.payload = {
-        productId: String(data.productId),
-        campaignId: data.campaignId,
-        action: "open_product",
+        vio_notification_version: 1,
+        vio_event_type: "cart_intent",
+        vio_cartIntent_kind: "cart_intent",
+        vio_cartIntent_productId: String(data.productId),
+        vio_cartIntent_productName: data.resolvedName,
+        vio_cartIntent_campaignId: data.campaignId,
       };
       notification.topic = apnsBundleId;
 

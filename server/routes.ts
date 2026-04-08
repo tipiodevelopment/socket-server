@@ -37,7 +37,6 @@ import { createRateLimiter, rateLimitPresets } from "./middleware/rate-limiter";
 import { validateBroadcastId } from "./middleware/broadcast-validator";
 import { setVoteBroadcastFunction } from "./services/vote-processor";
 import { sendAPNs } from "./services/ios-flow";
-import { sendFCMs } from "./services/android-flow";
 import {
   clearUserPresence,
   isRedisEnabled,
@@ -144,6 +143,125 @@ function isUserEligibleForCampaign(
   }
 
   return true;
+}
+
+/**
+ * When the user is offline (no WS) or dual-delivery is enabled: POST partner webhook
+ * or, if no webhook, Vio direct APNs via stored device tokens.
+ */
+async function notifyCartIntentPartnerFallback(params: {
+  clientApp: { webhookUrl?: string | null; name: string };
+  campaignId: number;
+  userId: string;
+  productId: unknown;
+  resolvedName: string;
+  context: "offline" | "dual";
+}): Promise<void> {
+  const { clientApp, campaignId, userId, productId, resolvedName, context } = params;
+  const webhookUrl = clientApp?.webhookUrl?.trim();
+  if (webhookUrl) {
+    // Normalize clientApp name for source field (e.g., "TV2" -> "tv2")
+    const normalizedAppName = clientApp.name.toLowerCase().replace(/\s+/g, '_');
+    const source = `apptv_${normalizedAppName}`;
+    const deeplink = `product/${productId}?campaignId=${campaignId}`;
+
+    const webhookBody = {
+      vio_notification_version: 1,
+      vio_user_id: String(userId),
+      vio_event_type: "cart_intent",
+      vio_payload: {
+        product_id: String(productId),
+        campaign_id: String(campaignId),
+        product_name: resolvedName,
+        notification_title: resolvedName,
+        notification_body: `${resolvedName} – klikk for å kjøpe.`,
+        source,
+        deeplink,
+      },
+    };
+    console.log('[CartIntent] Webhook body BEFORE POST to mock:', JSON.stringify(webhookBody, null, 2));
+    console.log('[CartIntent] userId parameter received:', userId);
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000);
+      const webhookRes = await fetch(webhookUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(webhookBody),
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
+      const label =
+        context === "dual"
+          ? "Dual delivery: partner webhook"
+          : "Partner webhook called (offline user)";
+      console.log(`[CartIntent] ${label}: ${webhookUrl} → ${webhookRes.status}`);
+    } catch (webhookErr: any) {
+      if (webhookErr.name === "AbortError") {
+        console.warn("[CartIntent] Webhook timeout (>10s)");
+      } else {
+        console.error("[CartIntent] Webhook error:", webhookErr);
+      }
+    }
+    return;
+  }
+
+  const devices = await storage.getDeviceTokens(campaignId, String(userId));
+  const iosDevices = devices.filter((d) => d.platform === "ios");
+  if (iosDevices.length > 0) {
+    const pid =
+      typeof productId === "number" ? productId : parseInt(String(productId), 10);
+    await sendAPNs(iosDevices, {
+      campaignId,
+      productId: Number.isFinite(pid) ? pid : 0,
+      resolvedName,
+      userId: String(userId),
+    });
+    if (context === "dual") {
+      console.log("[CartIntent] Dual delivery: invoked direct APNs (no webhook on client app)");
+    }
+  } else {
+    if (context === "dual") {
+      console.log(
+        "[CartIntent] Dual delivery: skipped — no webhookUrl and no iOS device registered",
+      );
+    } else {
+      console.log(
+        "[CartIntent] User offline/remote and no webhookUrl or iOS device registered",
+      );
+    }
+  }
+}
+
+/**
+ * Commerce GraphQL credentials from sponsors only:
+ * `campaign_sponsors` (first with `commerceApiKey`), else primary `campaign.sponsorId`.
+ * Does not use `campaigns.reachu_api_key` (legacy).
+ */
+async function resolveCommerceFromCampaignSponsors(
+  campaign: { id: number; sponsorId: number | null } | null,
+): Promise<{ apiKey: string | null; channelId: string | null }> {
+  if (!campaign) return { apiKey: null, channelId: null };
+  const campaignSponsors = await storage.getCampaignSponsors(campaign.id);
+  for (const cs of campaignSponsors) {
+    const sp = await storage.getSponsor(cs.sponsorId);
+    if (sp?.commerceApiKey) {
+      return {
+        apiKey: sp.commerceApiKey,
+        channelId: sp.commerceChannelId || null,
+      };
+    }
+  }
+  if (campaign.sponsorId != null) {
+    const sp = await storage.getSponsor(campaign.sponsorId);
+    if (sp?.commerceApiKey) {
+      return {
+        apiKey: sp.commerceApiKey,
+        channelId: sp.commerceChannelId || null,
+      };
+    }
+  }
+  return { apiKey: null, channelId: null };
 }
 
 // Export broadcastToCampaign function (will be set during registerRoutes)
@@ -4889,11 +5007,68 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
     }
   });
 
-  // POST /api/campaigns/:id/cart-intent — TV adds to cart -> broadcast WS cart_intent
+  // POST /api/campaigns/:id/register-device — Register APNs device token (SDK partner apps; used for Vio-side push fallback)
+  app.post('/api/campaigns/:campaignId/register-device', validateApiKey, async (req, res) => {
+    try {
+      const campaignId = parseInt(req.params.campaignId);
+      const clientApp = (req as any).clientApp;
+      const { userId, deviceToken, platform = 'ios' } = req.body;
+
+      if (!userId || !deviceToken) {
+        return res.status(400).json({ error: 'userId and deviceToken are required' });
+      }
+
+      const campaign = await storage.getCampaign(campaignId);
+      if (!campaign) {
+        return res.status(404).json({ error: 'Campaign not found' });
+      }
+      if (campaign.clientAppId !== clientApp.id) {
+        return res.status(403).json({ error: 'Campaign does not belong to this API key' });
+      }
+
+      await storage.upsertDeviceToken(campaignId, String(userId), String(deviceToken), String(platform));
+      console.log(`[RegisterDevice] campaign=${campaignId} userId=${userId} platform=${platform}`);
+
+      const partnerRegisterUrl = clientApp.partnerDeviceRegisterUrl?.trim();
+      if (partnerRegisterUrl) {
+        try {
+          const fwd = await fetch(partnerRegisterUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              userId: String(userId),
+              deviceToken: String(deviceToken),
+              platform: String(platform),
+            }),
+          });
+          console.log(`[RegisterDevice] Partner device register forward → ${partnerRegisterUrl} HTTP ${fwd.status}`);
+        } catch (forwardErr) {
+          console.error('[RegisterDevice] Partner device register forward failed:', forwardErr);
+        }
+      }
+
+      res.json({ success: true });
+    } catch (error) {
+      console.error('[RegisterDevice] Error:', error);
+      res.status(500).json({ error: 'Failed to register device' });
+    }
+  });
+
+  // POST /api/campaigns/:id/cart-intent — TV adds to cart -> broadcast WS or webhook (partner-first)
   app.post('/api/campaigns/:campaignId/cart-intent', validateApiKey, async (req, res) => {
     try {
       const campaignId = parseInt(req.params.campaignId);
+      const clientApp = (req as any).clientApp;
       const { productId, userId, productName } = req.body;
+
+      // Validate campaign belongs to this API key's clientApp
+      const campaign = await storage.getCampaign(campaignId);
+      if (!campaign) {
+        return res.status(404).json({ error: 'Campaign not found' });
+      }
+      if (campaign.clientAppId !== clientApp.id) {
+        return res.status(403).json({ error: 'Campaign does not belong to this API key' });
+      }
 
       if (!productId || !userId) {
         return res.status(400).json({ error: 'productId and userId are required' });
@@ -4919,109 +5094,130 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
 
       const normalizedUserId = String(userId).trim();
       const directWs = wsUserMap.get(normalizedUserId);
-      console.log('[CartIntent] directWs', directWs);
+      console.log('[CartIntent] directWs', directWs ? 'connected' : 'undefined');
       const isConnectedLocal = Boolean(directWs && directWs.readyState === WebSocket.OPEN);
       console.log('[CartIntent] isConnectedLocal', isConnectedLocal);
       console.log('[CartIntent] isRedisEnabled', isRedisEnabled());
-      console.log('[CartIntent] isUserConnectedAcrossCluster', await isUserConnectedAcrossCluster(normalizedUserId));
-      const isConnectedCluster = isRedisEnabled()
-        ? await isUserConnectedAcrossCluster(normalizedUserId)
-        : false;
+
+      // Check cluster with timeout to avoid hanging if Redis is down
+      let isConnectedCluster = false;
+      if (isRedisEnabled()) {
+        try {
+          isConnectedCluster = await Promise.race([
+            isUserConnectedAcrossCluster(normalizedUserId),
+            new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 1000))
+          ]);
+        } catch (err) {
+          console.warn('[CartIntent] isUserConnectedAcrossCluster error:', err);
+        }
+      }
+
       const isUserConnected = isConnectedLocal || isConnectedCluster;
       console.log('[CartIntent] isUserConnected', isUserConnected);
 
+      // Normalize clientApp name for source field (e.g., "TV2" -> "tv2")
+      const normalizedAppName = clientApp.name.toLowerCase().replace(/\s+/g, '_');
+      const source = `apptv_${normalizedAppName}`;
+      const deeplink = `product/${productId}?campaignId=${campaignId}`;
+
       const wsEvent = {
         type: 'cart_intent',
-        campaignId,
-        userId,
-        productId: String(productId),
-        productName: resolvedName,
+        vio_notification_version: 1,
+        vio_user_id: String(userId),
+        vio_event_type: 'cart_intent',
+        vio_payload: {
+          product_id: String(productId),
+          campaign_id: String(campaignId),
+          product_name: resolvedName,
+          notification_title: resolvedName,
+          notification_body: `${resolvedName} – klikk for å kjøpe.`,
+          source,
+          deeplink,
+        },
         timestamp: new Date().toISOString(),
       };
+
+      // Default: **dual delivery** — after WS (local or cluster), also run partner webhook / APNs so push
+      // reaches the device when the app is backgrounded (WS may not run on iOS until foreground).
+      // Opt out: `CART_INTENT_DUAL_DELIVERY=false` (saves duplicate partner calls when you only want WS).
+      const dualDelivery = process.env.CART_INTENT_DUAL_DELIVERY !== "false";
+
+      let deliveryMode: 'websocket' | 'dual' | 'webhook';
 
       if (isConnectedLocal && directWs) {
         // Send via local socket
         directWs.send(JSON.stringify(wsEvent));
         console.log('[CartIntent] Sent via local socket to userId:', userId);
+        if (dualDelivery) {
+          console.log("[CartIntent] Dual delivery: also invoking partner fallback");
+          await notifyCartIntentPartnerFallback({
+            clientApp,
+            campaignId,
+            userId: String(userId),
+            productId,
+            resolvedName,
+            context: "dual",
+          });
+          deliveryMode = 'dual';
+        } else {
+          deliveryMode = 'websocket';
+        }
       } else if (isConnectedCluster) {
         // User is on another cluster node -> Forward via Redis Pub/Sub
         await publishEvent("ws:events:forward", wsEvent);
         console.log('[CartIntent] Forwarded via Redis Pub/Sub to cluster for userId:', userId);
-      } else {
-        // User is offline -> Webhook/Push fallback
-        const campaign = await storage.getCampaign(campaignId);
-        const webhookUrl = campaign?.webhookUrl;
-        if (webhookUrl) {
-          const payload = {
-            event: 'cart_intent',
-            productName: resolvedName,
-            productId: String(productId),
+        if (dualDelivery) {
+          console.log("[CartIntent] Dual delivery: also invoking partner fallback");
+          await notifyCartIntentPartnerFallback({
+            clientApp,
             campaignId,
             userId: String(userId),
-          };
-          try {
-            const webhookRes = await fetch(webhookUrl, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(payload),
-            });
-            console.log(`[CartIntent] Webhook fallback called (offline/remote user): ${webhookUrl} → ${webhookRes.status}`);
-          } catch (webhookErr) {
-            console.error('[CartIntent] Webhook error:', webhookErr);
-          }
+            productId,
+            resolvedName,
+            context: "dual",
+          });
+          deliveryMode = 'dual';
         } else {
-          console.log('[CartIntent] User offline/remote and no webhookUrl configured');
+          deliveryMode = 'websocket';
         }
+      } else {
+        // User is offline -> Partner webhook fallback (Partner-first architecture)
+        await notifyCartIntentPartnerFallback({
+          clientApp,
+          campaignId,
+          userId: String(userId),
+          productId,
+          resolvedName,
+          context: "offline",
+        });
+        deliveryMode = 'webhook';
       }
 
-      res.json({ success: true, mode: 'websocket', userConnected: Boolean(isUserConnected) });
+      // Construct envelope for response (without internal WS fields)
+      const envelope = {
+        vio_notification_version: 1,
+        vio_user_id: String(userId),
+        vio_event_type: 'cart_intent',
+        vio_payload: {
+          product_id: String(productId),
+          campaign_id: String(campaignId),
+          product_name: resolvedName,
+          notification_title: resolvedName,
+          notification_body: `${resolvedName} – klikk for å kjøpe.`,
+          source,
+          deeplink,
+        },
+      };
+
+      res.json({
+        success: true,
+        mode: deliveryMode,
+        userConnected: Boolean(isUserConnected),
+        envelope,
+      });
     } catch (error) {
       console.error('[CartIntent] Error:', error);
       res.status(500).json({ error: 'Failed to process cart intent' });
-    }
-  });
-
-  app.post("/api/campaigns/test/webhook", async (req, res) => {
-    try {
-      const { productId, userId, productName, campaignId } = req.body;
-
-      const devices = await storage.getDeviceTokens(campaignId, userId);
-      console.log("[WebhookTest] Registered devices for user:", devices);
-      const iosDevices = devices.filter((d) => d.platform === "ios");
-      const androidDevices = devices.filter((d) => d.platform === "android");
-      const notes: string[] = [];
-
-      if (!iosDevices.length) {
-        console.warn(`[WebhookTest] No IOS devices for userId=${userId}`);
-        notes.push("no_ios_device_registered");
-      } else {
-        const iosNotes: string[] = await sendAPNs(iosDevices, {
-          campaignId,
-          productId,
-          resolvedName: productName,
-          userId,
-        });
-        notes.push(...iosNotes);
-      }
-
-      if (!androidDevices.length) {
-        console.warn(`[WebhookTest] No ANDROID devices for userId=${userId}`);
-        notes.push("no_android_device_registered");
-      } else {
-        const androidNotes: string[] = await sendFCMs(androidDevices, {
-          campaignId,
-          productId,
-          resolvedName: productName,
-        });
-        notes.push(...androidNotes);
-      }
-
-      res.json({ success: true, notes });
-    } catch (error) {
-      console.error("[WebhookTest] Error:", error);
-      res
-        .status(500)
-        .json({ error: "Failed to send webhook test notifications" });
     }
   });
 
@@ -5260,15 +5456,14 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
         (!c.endDate || new Date(c.endDate) >= now)
       ) || appCampaigns[0] || null;
 
-      // Commerce API key — from campaign sponsors first, then legacy campaign field
-      let commerceApiKey: string | null = (activeCampaign as any)?.reachuApiKey || null;
-      if (activeCampaign) {
-        const campaignSponsors = await storage.getCampaignSponsors(activeCampaign.id);
-        for (const cs of campaignSponsors) {
-          const sp = await storage.getSponsor(cs.sponsorId);
-          if (sp?.commerceApiKey) { commerceApiKey = sp.commerceApiKey; break; }
-        }
-      }
+      const { apiKey: commerceApiKey } = await resolveCommerceFromCampaignSponsors(
+        activeCampaign
+          ? {
+              id: activeCampaign.id,
+              sponsorId: activeCampaign.sponsorId ?? null,
+            }
+          : null,
+      );
 
       // Trust X-Forwarded-Proto when behind TLS-terminating proxy (Cloudflare, AKS ingress)
       const forwardedProto = (req.headers['x-forwarded-proto'] as string)?.split(',')[0]?.trim();
@@ -5437,14 +5632,13 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
         };
       }
 
-      // Commerce integration — get key from campaign sponsors first, fallback to campaign legacy key
-      const sdkCampaignSponsors2 = await storage.getCampaignSponsors(campaign.id);
-      let sdkCommerceApiKey2: string | null = campaign.reachuApiKey || null;
-      let sdkCommerceChannelId2: string | null = campaign.reachuChannelId || null;
-      for (const cs of sdkCampaignSponsors2) {
-        const sp = await storage.getSponsor(cs.sponsorId);
-        if (sp?.commerceApiKey) { sdkCommerceApiKey2 = sp.commerceApiKey; sdkCommerceChannelId2 = sp.commerceChannelId || null; break; }
-      }
+      const {
+        apiKey: sdkCommerceApiKey2,
+        channelId: sdkCommerceChannelId2,
+      } = await resolveCommerceFromCampaignSponsors({
+        id: campaign.id,
+        sponsorId: campaign.sponsorId ?? null,
+      });
       config.integrations = {
         commerce: {
           enabled: !!(sdkCommerceApiKey2),
@@ -5749,10 +5943,19 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   // ========================================
   app.get('/v1/sdk/broadcasts/:broadcastId/chat', validateApiKey, async (req, res) => {
     try {
+      const clientApp = (req as any).clientApp;
       const { broadcastId } = req.params;
       const limit = req.query.limit ? parseInt(req.query.limit as string) : 50;
       const broadcast = await storage.getBroadcast(broadcastId);
       if (!broadcast) return res.status(404).json({ message: 'Broadcast not found' });
+
+      // Validate broadcast's campaign belongs to this API key's clientApp
+      if (broadcast.campaignId) {
+        const campaign = await storage.getCampaign(broadcast.campaignId);
+        if (campaign && campaign.clientAppId !== clientApp.id) {
+          return res.status(403).json({ error: 'Broadcast does not belong to this API key' });
+        }
+      }
       const messages = await storage.getChatMessages(broadcastId, limit);
       res.json({ broadcastId, messages, count: messages.length });
     } catch (error) {
@@ -5766,9 +5969,18 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   // ========================================
   app.get('/v1/sdk/broadcasts/:broadcastId/score', validateApiKey, async (req, res) => {
     try {
+      const clientApp = (req as any).clientApp;
       const { broadcastId } = req.params;
       const broadcast = await storage.getBroadcast(broadcastId);
       if (!broadcast) return res.status(404).json({ message: 'Broadcast not found' });
+
+      // Validate broadcast's campaign belongs to this API key's clientApp
+      if (broadcast.campaignId) {
+        const campaign = await storage.getCampaign(broadcast.campaignId);
+        if (campaign && campaign.clientAppId !== clientApp.id) {
+          return res.status(403).json({ error: 'Broadcast does not belong to this API key' });
+        }
+      }
       const meta = (broadcast.metadata as any) || {};
       const matchData = meta.matchData || null;
       if (!matchData) return res.json({ broadcastId, hasScore: false });
@@ -5792,9 +6004,18 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   // ========================================
   app.get('/v1/sdk/broadcasts/:broadcastId/stats', validateApiKey, async (req, res) => {
     try {
+      const clientApp = (req as any).clientApp;
       const { broadcastId } = req.params;
       const broadcast = await storage.getBroadcast(broadcastId);
       if (!broadcast) return res.status(404).json({ message: 'Broadcast not found' });
+
+      // Validate broadcast's campaign belongs to this API key's clientApp
+      if (broadcast.campaignId) {
+        const campaign = await storage.getCampaign(broadcast.campaignId);
+        if (campaign && campaign.clientAppId !== clientApp.id) {
+          return res.status(403).json({ error: 'Broadcast does not belong to this API key' });
+        }
+      }
       const meta = (broadcast.metadata as any) || {};
       const matchData = meta.matchData || null;
       if (!matchData?.stats) return res.json({ broadcastId, hasStats: false });
