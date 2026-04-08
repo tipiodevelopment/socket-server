@@ -150,7 +150,7 @@ function isUserEligibleForCampaign(
  * or, if no webhook, Vio direct APNs via stored device tokens.
  */
 async function notifyCartIntentPartnerFallback(params: {
-  clientApp: { webhookUrl?: string | null };
+  clientApp: { webhookUrl?: string | null; name: string };
   campaignId: number;
   userId: string;
   productId: unknown;
@@ -160,16 +160,25 @@ async function notifyCartIntentPartnerFallback(params: {
   const { clientApp, campaignId, userId, productId, resolvedName, context } = params;
   const webhookUrl = clientApp?.webhookUrl?.trim();
   if (webhookUrl) {
+    // Normalize clientApp name for source field (e.g., "TV2" -> "tv2")
+    const normalizedAppName = clientApp.name.toLowerCase().replace(/\s+/g, '_');
+    const source = `apptv_${normalizedAppName}`;
+    const deeplink = `product/${productId}?campaignId=${campaignId}`;
+
     const webhookBody = {
       vio_notification_version: 1,
+      vio_user_id: String(userId),
       vio_event_type: "cart_intent",
-      userId: String(userId),
-      productId: String(productId),
-      campaignId,
-      productName: resolvedName,
-      action: "cart_intent",
-      event: "cart_intent",
+      vio_payload: {
+        product_id: String(productId),
+        campaign_id: String(campaignId),
+        product_name: resolvedName,
+        source,
+        deeplink,
+      },
     };
+    console.log('[CartIntent] Webhook body BEFORE POST to mock:', JSON.stringify(webhookBody, null, 2));
+    console.log('[CartIntent] userId parameter received:', userId);
     try {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 10000);
@@ -5104,12 +5113,23 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       const isUserConnected = isConnectedLocal || isConnectedCluster;
       console.log('[CartIntent] isUserConnected', isUserConnected);
 
+      // Normalize clientApp name for source field (e.g., "TV2" -> "tv2")
+      const normalizedAppName = clientApp.name.toLowerCase().replace(/\s+/g, '_');
+      const source = `apptv_${normalizedAppName}`;
+      const deeplink = `product/${productId}?campaignId=${campaignId}`;
+
       const wsEvent = {
         type: 'cart_intent',
-        campaignId,
-        userId,
-        productId: String(productId),
-        productName: resolvedName,
+        vio_notification_version: 1,
+        vio_user_id: String(userId),
+        vio_event_type: 'cart_intent',
+        vio_payload: {
+          product_id: String(productId),
+          campaign_id: String(campaignId),
+          product_name: resolvedName,
+          source,
+          deeplink,
+        },
         timestamp: new Date().toISOString(),
       };
 
@@ -5117,6 +5137,8 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       // reaches the device when the app is backgrounded (WS may not run on iOS until foreground).
       // Opt out: `CART_INTENT_DUAL_DELIVERY=false` (saves duplicate partner calls when you only want WS).
       const dualDelivery = process.env.CART_INTENT_DUAL_DELIVERY !== "false";
+
+      let deliveryMode: 'websocket' | 'dual' | 'webhook';
 
       if (isConnectedLocal && directWs) {
         // Send via local socket
@@ -5132,6 +5154,9 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
             resolvedName,
             context: "dual",
           });
+          deliveryMode = 'dual';
+        } else {
+          deliveryMode = 'websocket';
         }
       } else if (isConnectedCluster) {
         // User is on another cluster node -> Forward via Redis Pub/Sub
@@ -5147,6 +5172,9 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
             resolvedName,
             context: "dual",
           });
+          deliveryMode = 'dual';
+        } else {
+          deliveryMode = 'websocket';
         }
       } else {
         // User is offline -> Partner webhook fallback (Partner-first architecture)
@@ -5158,9 +5186,10 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
           resolvedName,
           context: "offline",
         });
+        deliveryMode = 'webhook';
       }
 
-      res.json({ success: true, mode: 'websocket', userConnected: Boolean(isUserConnected) });
+      res.json({ success: true, mode: deliveryMode, userConnected: Boolean(isUserConnected) });
     } catch (error) {
       console.error('[CartIntent] Error:', error);
       res.status(500).json({ error: 'Failed to process cart intent' });
