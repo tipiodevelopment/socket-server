@@ -194,6 +194,7 @@ export interface IStorage {
   // Device Token methods
   upsertDeviceToken(campaignId: number, userId: string, deviceToken: string, platform: string): Promise<DeviceToken>;
   getDeviceToken(campaignId: number, userId: string): Promise<DeviceToken | undefined>;
+  getDeviceTokens(campaignId: number, userId: string): Promise<DeviceToken[]>;
 
   // Sportmonks cache methods
   getSportmonksCache(cacheType: string, leagueId?: number | null, dateFrom?: string | null, dateTo?: string | null): Promise<SportmonksCache | undefined>;
@@ -1425,11 +1426,12 @@ export class MemStorage implements IStorage {
 
   // Device Tokens (APNs push notifications)
   async upsertDeviceToken(campaignId: number, userId: string, deviceToken: string, platform: string): Promise<DeviceToken> {
+    const deviceId = deviceToken.length <= 255 ? deviceToken : deviceToken.slice(0, 255);
     const [result] = await db.insert(deviceTokens)
-      .values({ campaignId, userId, deviceToken, platform, updatedAt: new Date() })
+      .values({ campaignId, userId, deviceId, deviceToken, platform, updatedAt: new Date() })
       .onConflictDoUpdate({
         target: [deviceTokens.campaignId, deviceTokens.userId],
-        set: { deviceToken, platform, updatedAt: new Date() },
+        set: { deviceId, deviceToken, platform, updatedAt: new Date() },
       })
       .returning();
     return result;
@@ -1439,6 +1441,18 @@ export class MemStorage implements IStorage {
     const [token] = await db.select().from(deviceTokens)
       .where(and(eq(deviceTokens.campaignId, campaignId), eq(deviceTokens.userId, userId)));
     return token;
+  }
+
+  async getDeviceTokens(campaignId: number, userId: string): Promise<DeviceToken[]> {
+    return await db
+      .select()
+      .from(deviceTokens)
+      .where(
+        and(
+          eq(deviceTokens.campaignId, campaignId),
+          eq(deviceTokens.userId, userId)
+        )
+      );
   }
 
   async getSportmonksCache(cacheType: string, leagueId?: number | null, dateFrom?: string | null, dateTo?: string | null): Promise<SportmonksCache | undefined> {

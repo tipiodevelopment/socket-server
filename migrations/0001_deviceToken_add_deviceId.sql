@@ -1,0 +1,1 @@
+ALTER TABLE "device_tokens" ADD COLUMN "device_id" varchar(255) NOT NULL;

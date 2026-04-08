@@ -114,7 +114,7 @@ export function detectAndCacheBaseUrl(): void {
   
   // Development fallback
   if (process.env.NODE_ENV === 'development') {
-    cachedBaseUrl = 'http://localhost:5000';
+    cachedBaseUrl = `http://localhost:${process.env.PORT || 5001}`;
     console.log(`[Utils] Using development base URL: ${cachedBaseUrl}`);
     return;
   }
@@ -147,7 +147,7 @@ export function getBaseUrl(protocol?: string, host?: string): string {
   
   // Final fallback - this should only happen in misconfigured production
   console.error('[Utils] ERROR: Base URL not configured and no request context available. Using localhost fallback.');
-  return 'http://localhost:5000';
+  return `http://localhost:${process.env.PORT || 5001}`;
 }
 
 /**

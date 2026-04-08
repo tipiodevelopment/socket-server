@@ -1,13 +1,13 @@
+import "./env";
 import type { Express, Request } from "express";
 import { createServer, type Server } from "http";
 import { WebSocketServer, WebSocket } from "ws";
 import { createHash } from "crypto";
 import jwt from "jsonwebtoken";
 import Stripe from "stripe";
-import apn from "@parse/node-apn";
 import { storage } from "./storage";
-import { 
-  webSocketEventSchema, 
+import {
+  webSocketEventSchema,
   updateCampaignSchema,
   componentSDKNames,
   insertBroadcastSchema,
@@ -22,8 +22,8 @@ import {
   participateInputSchema,
   insertCampaignSponsorSchema,
   insertBroadcastSponsorSlotSchema,
-  type WebSocketEvent, 
-  type InsertScheduledComponent 
+  type WebSocketEvent,
+  type InsertScheduledComponent
 } from "@shared/schema";
 import { randomUUID } from "crypto";
 import {
@@ -36,6 +36,16 @@ import { voteQueue, contestParticipationQueue, isQueueEnabled } from "./queue/qu
 import { createRateLimiter, rateLimitPresets } from "./middleware/rate-limiter";
 import { validateBroadcastId } from "./middleware/broadcast-validator";
 import { setVoteBroadcastFunction } from "./services/vote-processor";
+import { sendAPNs } from "./services/ios-flow";
+import {
+  clearUserPresence,
+  isRedisEnabled,
+  isUserConnectedAcrossCluster,
+  refreshUserPresence,
+  setUserPresence,
+  publishEvent,
+  subscribeToEvents,
+} from "./redis";
 
 const JWT_SECRET = process.env.SESSION_SECRET || 'default-dev-secret';
 
@@ -71,20 +81,20 @@ const requireBearerAuth = (req: Request, res: any, next: any) => {
 // Helper function to convert relative paths to absolute URLs
 function toAbsoluteUrl(pathOrUrl: string | undefined, req: Request): string | undefined {
   if (!pathOrUrl) return undefined;
-  
+
   // If already a full URL, return as is
   if (pathOrUrl.startsWith('http://') || pathOrUrl.startsWith('https://')) {
     return pathOrUrl;
   }
-  
+
   // Detect protocol: check X-Forwarded-Proto header (set by reverse proxies) or use req.protocol
   // In production (Replit), X-Forwarded-Proto will be 'https'
   // In local dev, it will fall back to req.protocol which is 'http'
   // Handle comma-separated values from multiple proxies by taking the first one
   const forwardedProto = req.get('x-forwarded-proto');
   const protocol = forwardedProto?.split(',')[0].trim() || req.protocol || 'https';
-  const host = req.get('host') || 'localhost:5000';
-  
+  const host = req.get('host') || `localhost:${process.env.PORT || 5001}`;
+
   return `${protocol}://${host}${pathOrUrl.startsWith('/') ? pathOrUrl : '/' + pathOrUrl}`;
 }
 
@@ -135,6 +145,125 @@ function isUserEligibleForCampaign(
   return true;
 }
 
+/**
+ * When the user is offline (no WS) or dual-delivery is enabled: POST partner webhook
+ * or, if no webhook, Vio direct APNs via stored device tokens.
+ */
+async function notifyCartIntentPartnerFallback(params: {
+  clientApp: { webhookUrl?: string | null; name: string };
+  campaignId: number;
+  userId: string;
+  productId: unknown;
+  resolvedName: string;
+  context: "offline" | "dual";
+}): Promise<void> {
+  const { clientApp, campaignId, userId, productId, resolvedName, context } = params;
+  const webhookUrl = clientApp?.webhookUrl?.trim();
+  if (webhookUrl) {
+    // Normalize clientApp name for source field (e.g., "TV2" -> "tv2")
+    const normalizedAppName = clientApp.name.toLowerCase().replace(/\s+/g, '_');
+    const source = `apptv_${normalizedAppName}`;
+    const deeplink = `product/${productId}?campaignId=${campaignId}`;
+
+    const webhookBody = {
+      vio_notification_version: 1,
+      vio_user_id: String(userId),
+      vio_event_type: "cart_intent",
+      vio_payload: {
+        product_id: String(productId),
+        campaign_id: String(campaignId),
+        product_name: resolvedName,
+        notification_title: resolvedName,
+        notification_body: `${resolvedName} – klikk for å kjøpe.`,
+        source,
+        deeplink,
+      },
+    };
+    console.log('[CartIntent] Webhook body BEFORE POST to mock:', JSON.stringify(webhookBody, null, 2));
+    console.log('[CartIntent] userId parameter received:', userId);
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000);
+      const webhookRes = await fetch(webhookUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(webhookBody),
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
+      const label =
+        context === "dual"
+          ? "Dual delivery: partner webhook"
+          : "Partner webhook called (offline user)";
+      console.log(`[CartIntent] ${label}: ${webhookUrl} → ${webhookRes.status}`);
+    } catch (webhookErr: any) {
+      if (webhookErr.name === "AbortError") {
+        console.warn("[CartIntent] Webhook timeout (>10s)");
+      } else {
+        console.error("[CartIntent] Webhook error:", webhookErr);
+      }
+    }
+    return;
+  }
+
+  const devices = await storage.getDeviceTokens(campaignId, String(userId));
+  const iosDevices = devices.filter((d) => d.platform === "ios");
+  if (iosDevices.length > 0) {
+    const pid =
+      typeof productId === "number" ? productId : parseInt(String(productId), 10);
+    await sendAPNs(iosDevices, {
+      campaignId,
+      productId: Number.isFinite(pid) ? pid : 0,
+      resolvedName,
+      userId: String(userId),
+    });
+    if (context === "dual") {
+      console.log("[CartIntent] Dual delivery: invoked direct APNs (no webhook on client app)");
+    }
+  } else {
+    if (context === "dual") {
+      console.log(
+        "[CartIntent] Dual delivery: skipped — no webhookUrl and no iOS device registered",
+      );
+    } else {
+      console.log(
+        "[CartIntent] User offline/remote and no webhookUrl or iOS device registered",
+      );
+    }
+  }
+}
+
+/**
+ * Commerce GraphQL credentials from sponsors only:
+ * `campaign_sponsors` (first with `commerceApiKey`), else primary `campaign.sponsorId`.
+ * Does not use `campaigns.reachu_api_key` (legacy).
+ */
+async function resolveCommerceFromCampaignSponsors(
+  campaign: { id: number; sponsorId: number | null } | null,
+): Promise<{ apiKey: string | null; channelId: string | null }> {
+  if (!campaign) return { apiKey: null, channelId: null };
+  const campaignSponsors = await storage.getCampaignSponsors(campaign.id);
+  for (const cs of campaignSponsors) {
+    const sp = await storage.getSponsor(cs.sponsorId);
+    if (sp?.commerceApiKey) {
+      return {
+        apiKey: sp.commerceApiKey,
+        channelId: sp.commerceChannelId || null,
+      };
+    }
+  }
+  if (campaign.sponsorId != null) {
+    const sp = await storage.getSponsor(campaign.sponsorId);
+    if (sp?.commerceApiKey) {
+      return {
+        apiKey: sp.commerceApiKey,
+        channelId: sp.commerceChannelId || null,
+      };
+    }
+  }
+  return { apiKey: null, channelId: null };
+}
+
 // Export broadcastToCampaign function (will be set during registerRoutes)
 export let broadcastToCampaign: (campaignId: number, message: string) => void = () => {
   console.warn('[WebSocket] broadcastToCampaign called before initialization');
@@ -150,34 +279,66 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   // Register analytics routes
   const { registerAnalyticsRoutes } = await import("./analytics");
   registerAnalyticsRoutes(app);
-  
+
   // Create WebSocket server with noServer mode for custom path handling
   const wss = new WebSocketServer({ noServer: true });
 
   // Store connected clients organized by campaign ID
   const campaignClients = new Map<number, Set<WebSocket>>();
-  
+
   // Store campaign ID for each WebSocket
   const clientCampaigns = new WeakMap<WebSocket, number>();
-  
+
   // Store ping interval for each WebSocket
   const clientPingIntervals = new WeakMap<WebSocket, NodeJS.Timeout>();
-  
+
   // Track if client is alive (responded to last ping)
   const clientAlive = new WeakMap<WebSocket, boolean>();
+
+  // Track consecutive missed pings per client
+  const clientMissedPings = new WeakMap<WebSocket, number>();
+
+  // Track connection start time (ms) for uptime calculation
+  const clientConnectTime = new WeakMap<WebSocket, number>();
+
+  // Flag: true when the server intentionally terminated the socket (zombie)
+  const clientTerminatedByServer = new WeakMap<WebSocket, boolean>();
+
+  // Map userId → WebSocket for direct user notifications (cart-intent, etc.)
+  const wsUserMap = new Map<string, WebSocket>();
+  // Map WebSocket → user connection binding for Redis-backed presence
+  const clientUserBindings = new WeakMap<WebSocket, { userId: string; connectionId: string }>();
+  
+  // Subscribe to cross-node events via Redis Pub/Sub
+  if (isRedisEnabled()) {
+    subscribeToEvents("ws:events:forward", (messageStr) => {
+      try {
+        const event = JSON.parse(messageStr);
+        if (event.type === 'cart_intent' && event.userId) {
+          const targetWs = wsUserMap.get(String(event.userId).trim());
+          if (targetWs && targetWs.readyState === WebSocket.OPEN) {
+            targetWs.send(JSON.stringify(event));
+            console.log(`[WS] Forwarded cart_intent delivered locally to userId=${event.userId}`);
+          }
+        }
+      } catch (err) {
+        console.error('[WS] Error processing cross-node event:', err);
+      }
+    });
+  }
 
   // Handle WebSocket upgrade requests
   httpServer.on('upgrade', (request, socket, head) => {
     try {
       const url = new URL(request.url || '', `http://${request.headers.host}`);
-      
+
       // Extract campaign ID from path like /ws/123
       const pathMatch = url.pathname.match(/^\/ws\/(\d+)$/);
-      
+
       if (pathMatch) {
         // Campaign-specific WebSocket
         const campaignId = parseInt(pathMatch[1], 10);
-        
+
         wss.handleUpgrade(request, socket, head, (ws) => {
           clientCampaigns.set(ws, campaignId);
           wss.emit('connection', ws, request, campaignId);
@@ -199,35 +360,104 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
 
   // WebSocket connection handling
   wss.on('connection', async (ws: WebSocket, request: any, campaignId: number) => {
+    const connectionId = randomUUID();
+
+    const bindUserToSocket = async (userIdRaw: string) => {
+      const userId = String(userIdRaw).trim();
+      if (!userId) return;
+
+      const existingBinding = clientUserBindings.get(ws);
+      if (existingBinding?.userId && wsUserMap.get(existingBinding.userId) === ws) {
+        wsUserMap.delete(existingBinding.userId);
+      }
+
+      wsUserMap.set(userId, ws);
+      clientUserBindings.set(ws, { userId, connectionId });
+
+      if (isRedisEnabled()) {
+        try {
+          await setUserPresence(userId, connectionId);
+        } catch (error) {
+          console.error(`[WS] Failed to set Redis presence for userId=${userId}:`, error);
+        }
+      }
+    };
+
+    const refreshSocketPresence = async () => {
+      const binding = clientUserBindings.get(ws);
+      if (!binding || !isRedisEnabled()) return;
+      try {
+        await refreshUserPresence(binding.userId, binding.connectionId);
+      } catch (error) {
+        console.error(`[WS] Failed to refresh Redis presence for userId=${binding.userId}:`, error);
+      }
+    };
+
     // Add client to campaign room
     if (!campaignClients.has(campaignId)) {
       campaignClients.set(campaignId, new Set());
     }
     campaignClients.get(campaignId)!.add(ws);
-    
+
+    // Register userId → ws for direct notifications (cart-intent)
+    const connUrl = new URL(request.url || '', `http://${request.headers.host}`);
+    const connUserId = connUrl.searchParams.get('userId');
+    if (connUserId) {
+      await bindUserToSocket(connUserId);
+      console.log(`[WS] userId=${connUserId} registered on campaign ${campaignId}`);
+    }
+
     console.log(`Client connected to campaign ${campaignId}`);
 
     // Mark client as alive initially
     clientAlive.set(ws, true);
+    clientMissedPings.set(ws, 0);
+    clientConnectTime.set(ws, Date.now());
+    clientTerminatedByServer.set(ws, false);
 
-    // Setup heartbeat to keep connection alive and detect zombies (check every 30 seconds)
+    // Heartbeat: ping every 20s, tolerate up to 3 consecutive missed pongs (60s window)
+    // Uses app-level JSON ping/pong for iOS/Android SDK compatibility
+    const PING_INTERVAL_MS = 20000;
+    const MAX_MISSED_PINGS = 3;
+
     const pingInterval = setInterval(() => {
-      // Check if client responded to last ping
       if (clientAlive.get(ws) === false) {
-        // Client didn't respond to last ping, terminate connection
-        console.log(`Terminating zombie WebSocket connection for campaign ${campaignId}`);
-        ws.terminate();
-        return;
+        // Client didn't respond to last ping — increment miss counter
+        const missed = (clientMissedPings.get(ws) ?? 0) + 1;
+        clientMissedPings.set(ws, missed);
+
+        if (missed >= MAX_MISSED_PINGS) {
+          // Exceeded tolerance — terminate as zombie
+          const uptime = Date.now() - (clientConnectTime.get(ws) ?? Date.now());
+          const userId = clientUserBindings.get(ws)?.userId ?? null;
+          console.log(JSON.stringify({
+            event: 'zombie_terminated',
+            campaignId,
+            userId,
+            missedPings: missed,
+            uptimeMs: uptime,
+          }));
+          clientTerminatedByServer.set(ws, true);
+          ws.terminate();
+          return;
+        }
+
+        // Still within tolerance — warn and keep alive
+        console.log(`[WS] Missed ping ${missed}/${MAX_MISSED_PINGS} for campaign ${campaignId} — still alive`);
+      } else {
+        // Pong received — reset miss counter
+        clientMissedPings.set(ws, 0);
       }
-      
-      // Mark as potentially dead, will be set to true if pong received
+
+      // Mark as potentially dead; will be reset to true when pong arrives
       clientAlive.set(ws, false);
-      
+
       if (ws.readyState === WebSocket.OPEN) {
-        ws.ping();
+        ws.send(JSON.stringify({ type: 'ping' }));
+        void refreshSocketPresence();
       }
-    }, 30000);
-    
+    }, PING_INTERVAL_MS);
+
     clientPingIntervals.set(ws, pingInterval);
 
     // Check campaign status and immediately notify client
@@ -310,19 +540,47 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       }
     }
 
-    ws.on('pong', () => {
-      // Client responded to ping, mark as alive
-      clientAlive.set(ws, true);
+    ws.on('message', (data) => {
+      try {
+        const msg = JSON.parse(data.toString());
+        if (msg.type === 'pong') {
+          // Client responded to app-level ping, mark as alive
+          clientAlive.set(ws, true);
+          void refreshSocketPresence();
+        } else if (msg.type === 'identify' && msg.userId) {
+          void bindUserToSocket(msg.userId);
+          console.log(`[WS] identify recibido: userId=${String(msg.userId)} en campaign ${campaignId}`);
+        }
+      } catch { /* ignorar mensajes no-JSON */ }
     });
 
-    ws.on('close', () => {
+    ws.on('close', (code: number) => {
+      // Structured disconnect log — distinguish zombie vs voluntary close
+      const wasZombie = clientTerminatedByServer.get(ws) === true;
+      const uptimeMs = Date.now() - (clientConnectTime.get(ws) ?? Date.now());
+      const userId = clientUserBindings.get(ws)?.userId ?? null;
+
+      if (!wasZombie) {
+        // code 1000 = normal closure, 1001 = going away (client navigated/backgrounded)
+        const closeType = (code === 1000 || code === 1001) ? 'clean' : 'unexpected';
+        console.log(JSON.stringify({
+          event: 'client_disconnected',
+          campaignId,
+          userId,
+          code,
+          closeType,
+          uptimeMs,
+        }));
+      }
+      // zombie_terminated already logged at terminate() time — no duplicate log here
+
       // Clear ping interval
       const interval = clientPingIntervals.get(ws);
       if (interval) {
         clearInterval(interval);
         clientPingIntervals.delete(ws);
       }
-      
+
       const clients = campaignClients.get(campaignId);
       if (clients) {
         clients.delete(ws);
@@ -330,22 +588,40 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
           campaignClients.delete(campaignId);
         }
       }
-      console.log(`Client disconnected from campaign ${campaignId}`);
+
+      // Clean up userId map
+      const userBinding = clientUserBindings.get(ws);
+      if (userBinding?.userId && wsUserMap.get(userBinding.userId) === ws) {
+        wsUserMap.delete(userBinding.userId);
+        console.log(`[WS] userId=${userBinding.userId} removed from map (disconnected)`);
+      }
+      if (userBinding && isRedisEnabled()) {
+        void clearUserPresence(userBinding.userId, userBinding.connectionId).catch((error) => {
+          console.error(`[WS] Failed to clear Redis presence for userId=${userBinding.userId}:`, error);
+        });
+      }
     });
 
     ws.on('error', (error) => {
       console.error(`WebSocket error for campaign ${campaignId}:`, error);
-      
+
       // Clear ping interval
       const interval = clientPingIntervals.get(ws);
       if (interval) {
         clearInterval(interval);
         clientPingIntervals.delete(ws);
       }
-      
+
       const clients = campaignClients.get(campaignId);
       if (clients) {
         clients.delete(ws);
+      }
+
+      const userBinding = clientUserBindings.get(ws);
+      if (userBinding && isRedisEnabled()) {
+        void clearUserPresence(userBinding.userId, userBinding.connectionId).catch((clearError) => {
+          console.error(`[WS] Failed to clear Redis presence on error for userId=${userBinding.userId}:`, clearError);
+        });
       }
     });
   });
@@ -356,15 +632,16 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
     if (clients) {
       clients.forEach((client) => {
         if (client.readyState === WebSocket.OPEN) {
+          console.log("Message Send!  Campaign:", campaignId, "Message:", message);
           client.send(message);
         }
       });
     }
   };
-  
+
   broadcastToCampaign = broadcastToCampaignImpl;
   setVoteBroadcastFunction(broadcastToCampaignImpl);
-  
+
   // Legacy broadcast function (broadcasts to all campaigns)
   function broadcast(message: string) {
     campaignClients.forEach((clients) => {
@@ -381,7 +658,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
     try {
       const campaigns = await storage.getAllCampaigns();
       const now = new Date();
-      
+
       for (const campaign of campaigns) {
         if (campaign.endDate) {
           const endDate = new Date(campaign.endDate);
@@ -408,7 +685,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
     try {
       const campaigns = await storage.getAllCampaigns();
       const now = new Date();
-      
+
       for (const campaign of campaigns) {
         if (campaign.startDate) {
           const startDate = new Date(campaign.startDate);
@@ -441,12 +718,12 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   setInterval(checkAndNotifyStartedCampaigns, 30000);
 
   // HTTP API endpoints
-  
+
   // Get recent events
   app.get('/api/events', async (req, res) => {
     try {
       const campaignId = req.query.campaignId ? parseInt(req.query.campaignId as string) : undefined;
-      
+
       if (campaignId) {
         // Get events for specific campaign from database
         const dbEvents = await storage.getCampaignEvents(campaignId);
@@ -473,14 +750,14 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   app.get('/api/events/:campaignId', async (req, res) => {
     try {
       const campaignId = parseInt(req.params.campaignId);
-      
+
       if (isNaN(campaignId)) {
         return res.status(400).json({ message: 'Invalid campaign ID' });
       }
-      
+
       // Get events for specific campaign from database
       const dbEvents = await storage.getCampaignEvents(campaignId);
-      
+
       // Convert DB events to WebSocket events format
       const events = dbEvents.map(dbEvent => ({
         id: dbEvent.id,
@@ -489,13 +766,13 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
         campaignLogo: dbEvent.campaignLogo || undefined,
         timestamp: new Date(dbEvent.timestamp).getTime()
       }));
-      
+
       // Optional deduplication - show only most recent event per unique name
       const includeAll = req.query.includeAll === 'true';
       if (!includeAll) {
         // Group events by type and name, keep only most recent
         const eventMap = new Map<string, typeof events[0]>();
-        
+
         for (const event of events) {
           // Create unique key based on type and event name/question
           let eventName = '';
@@ -506,20 +783,20 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
           } else if (event.type === 'contest' && typeof event.data === 'object' && event.data !== null && 'name' in event.data) {
             eventName = String(event.data.name || '');
           }
-          
+
           const key = `${event.type}:${eventName}`;
           const existing = eventMap.get(key);
-          
+
           // Keep the one with the latest timestamp
           if (!existing || event.timestamp > existing.timestamp) {
             eventMap.set(key, event);
           }
         }
-        
+
         // Convert map back to array and sort by timestamp desc
         const dedupedEvents = Array.from(eventMap.values())
           .sort((a, b) => b.timestamp - a.timestamp);
-        
+
         res.json(dedupedEvents);
       } else {
         res.json(events);
@@ -543,7 +820,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   app.post('/api/events/product', async (req, res) => {
     try {
       const campaignId = req.body.campaignId;
-      
+
       // Validate campaignId if provided
       if (campaignId) {
         const campaign = await storage.getCampaign(campaignId);
@@ -551,7 +828,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
           return res.status(404).json({ message: 'Campaign not found' });
         }
       }
-      
+
       const productEvent: WebSocketEvent = {
         type: 'product',
         data: {
@@ -581,7 +858,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
           data: productEvent.data,
           campaignLogo: productEvent.campaignLogo || null
         });
-        
+
         // Broadcast to specific campaign
         broadcastToCampaignImpl(campaignId, JSON.stringify(productEvent));
       } else {
@@ -589,10 +866,10 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
         broadcast(JSON.stringify(productEvent));
       }
 
-      res.json({ success: true, event: productEvent});
+      res.json({ success: true, event: productEvent });
     } catch (error) {
       console.error('Error sending product event:', error);
-      res.status(400).json({ 
+      res.status(400).json({
         message: 'Error sending product event',
         error: error instanceof Error ? error.message : String(error)
       });
@@ -603,7 +880,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   app.post('/api/events/poll', async (req, res) => {
     try {
       const campaignId = req.body.campaignId;
-      
+
       // Validate campaignId if provided
       if (campaignId) {
         const campaign = await storage.getCampaign(campaignId);
@@ -611,7 +888,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
           return res.status(404).json({ message: 'Campaign not found' });
         }
       }
-      
+
       // Process options: convert comma-separated string to array or process objects
       let options;
       if (typeof req.body.options === 'string') {
@@ -631,8 +908,8 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       }
 
       // Process duration: convert to number
-      const duration = typeof req.body.duration === 'string' 
-        ? parseInt(req.body.duration, 10) 
+      const duration = typeof req.body.duration === 'string'
+        ? parseInt(req.body.duration, 10)
         : req.body.duration;
 
       const pollEvent: WebSocketEvent = {
@@ -663,7 +940,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
           data: pollEvent.data,
           campaignLogo: pollEvent.campaignLogo || null
         });
-        
+
         // Broadcast to specific campaign
         broadcastToCampaignImpl(campaignId, JSON.stringify(pollEvent));
       } else {
@@ -682,7 +959,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   app.post('/api/events/contest', async (req, res) => {
     try {
       const campaignId = req.body.campaignId;
-      
+
       // Validate campaignId if provided
       if (campaignId) {
         const campaign = await storage.getCampaign(campaignId);
@@ -690,7 +967,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
           return res.status(404).json({ message: 'Campaign not found' });
         }
       }
-      
+
       const contestEvent: WebSocketEvent = {
         type: 'contest',
         broadcastId: req.body.broadcastId || undefined,
@@ -719,7 +996,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
           data: contestEvent.data,
           campaignLogo: contestEvent.campaignLogo || null
         });
-        
+
         // Broadcast to specific campaign
         broadcastToCampaignImpl(campaignId, JSON.stringify(contestEvent));
       } else {
@@ -738,26 +1015,26 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   app.post('/api/events/:campaignId', async (req, res) => {
     try {
       const campaignId = parseInt(req.params.campaignId);
-      
+
       if (isNaN(campaignId)) {
         return res.status(400).json({ message: 'Invalid campaign ID' });
       }
-      
+
       // Validate campaign exists
       const campaign = await storage.getCampaign(campaignId);
       if (!campaign) {
         return res.status(404).json({ message: 'Campaign not found' });
       }
-      
+
       const { type, data } = req.body;
-      
+
       if (!type || !data) {
         return res.status(400).json({ message: 'Event type and data are required' });
       }
 
       // Create event based on type
       let event: WebSocketEvent;
-      
+
       if (type === 'product') {
         event = {
           type: 'product',
@@ -807,7 +1084,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
         data: event.data,
         campaignLogo: event.campaignLogo || null
       });
-      
+
       // Broadcast to specific campaign
       broadcastToCampaignImpl(campaignId, JSON.stringify(event));
 
@@ -819,7 +1096,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   });
 
   // Object Storage endpoints - based on blueprint:javascript_object_storage
-  
+
   // Serve uploaded objects (public access for campaign logos)
   app.get("/objects/:objectPath(*)", async (req, res) => {
     const objectStorageService = new ObjectStorageService();
@@ -839,8 +1116,11 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
 
   // Get upload URL for object (campaign logo)
   app.post("/api/objects/upload", async (req, res) => {
+    if (!req.body.type) {
+      return res.status(400).json({ error: "type is required" });
+    }
     const objectStorageService = new ObjectStorageService();
-    const uploadURL = await objectStorageService.getObjectEntityUploadURL();
+    const uploadURL = await objectStorageService.getObjectEntityUploadURL(req.body.type);
     res.json({ uploadURL });
   });
 
@@ -866,7 +1146,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   });
 
   // User CRUD endpoints
-  
+
   // Get all users
   app.get('/api/users', async (req, res) => {
     try {
@@ -911,14 +1191,14 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   app.post('/api/users/ensure', async (req, res) => {
     try {
       const { reachuUserId, email, name } = req.body;
-      
+
       if (!reachuUserId) {
         return res.status(400).json({ message: 'reachuUserId is required' });
       }
-      
+
       // Try to find existing user
       let user = await storage.getUserByReachuId(reachuUserId);
-      
+
       // If not found, create new user
       if (!user) {
         user = await storage.createUser({
@@ -927,7 +1207,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
           name: name || null
         });
       }
-      
+
       const token = jwt.sign(
         { userId: user.id, reachuUserId: user.reachuUserId },
         JWT_SECRET,
@@ -937,7 +1217,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       res.json({ ...user, token });
     } catch (error) {
       console.error('Error ensuring user exists:', error);
-      res.status(500).json({ 
+      res.status(500).json({
         message: 'Error ensuring user exists',
         error: error instanceof Error ? error.message : String(error)
       });
@@ -973,7 +1253,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       res.status(201).json(user);
     } catch (error) {
       console.error('Error creating user:', error);
-      res.status(400).json({ 
+      res.status(400).json({
         message: 'Error creating user',
         error: error instanceof Error ? error.message : String(error)
       });
@@ -1001,18 +1281,18 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   app.get('/api/client-apps', async (req, res) => {
     try {
       const userIdParam = req.query.userId as string | undefined;
-      
+
       if (!userIdParam) {
-        return res.status(400).json({ 
-          message: 'userId query parameter is required' 
+        return res.status(400).json({
+          message: 'userId query parameter is required'
         });
       }
-      
+
       const userId = parseInt(userIdParam);
       if (isNaN(userId)) {
         return res.status(400).json({ message: 'Invalid userId parameter' });
       }
-      
+
       const apps = await storage.getUserClientApps(userId);
       res.json(apps);
     } catch (error) {
@@ -1065,7 +1345,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
           });
         }
 
-        const engagementPercent = totalViewers > 0 
+        const engagementPercent = totalViewers > 0
           ? Number(((totalEngagement / totalViewers) * 100).toFixed(1))
           : 0;
 
@@ -1099,17 +1379,17 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       if (isNaN(userId)) {
         return res.status(400).json({ message: 'Invalid userId parameter' });
       }
-      
+
       const app = await storage.getClientApp(parseInt(req.params.id));
       if (!app) {
         return res.status(404).json({ message: 'Client app not found' });
       }
-      
+
       // Verify ownership
       if (app.userId !== userId) {
         return res.status(403).json({ message: 'Access denied' });
       }
-      
+
       res.json(app);
     } catch (error) {
       console.error('Error fetching client app:', error);
@@ -1207,19 +1487,19 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   app.post('/api/client-apps', async (req, res) => {
     try {
       const { userId, name, bundleId, iconUrl, bannerUrl, description } = req.body;
-      
+
       if (!userId || !name || !bundleId) {
-        return res.status(400).json({ 
-          message: 'userId, name, and bundleId are required' 
+        return res.status(400).json({
+          message: 'userId, name, and bundleId are required'
         });
       }
-      
+
       if (typeof userId !== 'number' || isNaN(userId)) {
         return res.status(400).json({ message: 'Invalid userId - must be a number' });
       }
-      
+
       const apiKey = `${name.toLowerCase().replace(/\s+/g, '_')}_api_key_${randomUUID().replace(/-/g, '').substring(0, 16)}`;
-      
+
       const app = await storage.createClientApp({
         userId,
         name,
@@ -1232,7 +1512,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       res.status(201).json(app);
     } catch (error) {
       console.error('Error creating client app:', error);
-      res.status(400).json({ 
+      res.status(400).json({
         message: 'Error creating client app',
         error: error instanceof Error ? error.message : String(error)
       });
@@ -1244,21 +1524,21 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
     try {
       const id = parseInt(req.params.id);
       const { userId, ...updateData } = req.body;
-      
+
       if (!userId) {
         return res.status(400).json({ message: 'userId is required in request body' });
       }
-      
+
       const existingApp = await storage.getClientApp(id);
       if (!existingApp) {
         return res.status(404).json({ message: 'Client app not found' });
       }
-      
+
       // Verify ownership
       if (existingApp.userId !== userId) {
         return res.status(403).json({ message: 'Access denied' });
       }
-      
+
       const app = await storage.updateClientApp(id, updateData);
       res.json(app);
     } catch (error) {
@@ -1272,25 +1552,25 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
     try {
       const id = parseInt(req.params.id);
       const { userId } = req.body;
-      
+
       if (!userId) {
         return res.status(400).json({ message: 'userId is required in request body' });
       }
-      
+
       const existingApp = await storage.getClientApp(id);
-      
+
       if (!existingApp) {
         return res.status(404).json({ message: 'Client app not found' });
       }
-      
+
       // Verify ownership
       if (existingApp.userId !== userId) {
         return res.status(403).json({ message: 'Access denied' });
       }
-      
+
       // Generate a new unique API key
       const newApiKey = `${existingApp.name.toLowerCase().replace(/\s+/g, '_')}_api_key_${randomUUID().replace(/-/g, '').substring(0, 16)}`;
-      
+
       const app = await storage.updateClientApp(id, { apiKey: newApiKey });
       res.json(app);
     } catch (error) {
@@ -1304,7 +1584,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
     try {
       const id = parseInt(req.params.id);
       const userIdParam = req.query.userId as string | undefined;
-      
+
       if (!userIdParam) {
         return res.status(400).json({ message: 'userId query parameter is required' });
       }
@@ -1312,18 +1592,18 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       if (isNaN(userId)) {
         return res.status(400).json({ message: 'Invalid userId parameter' });
       }
-      
+
       const app = await storage.getClientApp(id);
-      
+
       if (!app) {
         return res.status(404).json({ message: 'Client app not found' });
       }
-      
+
       // Verify ownership
       if (app.userId !== userId) {
         return res.status(403).json({ message: 'Access denied' });
       }
-      
+
       await storage.deleteClientApp(id);
       res.json({ message: 'Client app deleted successfully' });
     } catch (error) {
@@ -1408,18 +1688,18 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   app.get('/api/channels', async (req, res) => {
     try {
       const userIdParam = req.query.userId as string | undefined;
-      
+
       if (!userIdParam) {
-        return res.status(400).json({ 
-          message: 'userId query parameter is required' 
+        return res.status(400).json({
+          message: 'userId query parameter is required'
         });
       }
-      
+
       const userId = parseInt(userIdParam);
       if (isNaN(userId)) {
         return res.status(400).json({ message: 'Invalid userId' });
       }
-      
+
       const channels = await storage.getUserChannels(userId);
       res.json(channels);
     } catch (error) {
@@ -1429,18 +1709,18 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   });
 
   // Campaign CRUD endpoints
-  
+
   // Create campaign (requires userId for multi-tenant scoping)
   app.post('/api/campaigns', async (req, res) => {
     try {
       const { userId, clientAppId } = req.body;
-      
+
       if (!userId) {
-        return res.status(400).json({ 
-          message: 'userId is required in request body for multi-tenant scoping' 
+        return res.status(400).json({
+          message: 'userId is required in request body for multi-tenant scoping'
         });
       }
-      
+
       if (typeof userId !== 'number' || isNaN(userId)) {
         return res.status(400).json({ message: 'Invalid userId - must be a number' });
       }
@@ -1464,7 +1744,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
           return res.status(403).json({ message: 'Access denied - sponsor does not belong to this user' });
         }
       }
-      
+
       const campaignData = { ...req.body };
       if (campaignData.startDate) {
         campaignData.startDate = new Date(campaignData.startDate);
@@ -1480,7 +1760,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       res.status(201).json(campaign);
     } catch (error) {
       console.error('Error creating campaign:', error);
-      res.status(400).json({ 
+      res.status(400).json({
         message: 'Error creating campaign',
         error: error instanceof Error ? error.message : String(error)
       });
@@ -1491,18 +1771,18 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   app.get('/api/campaigns', async (req, res) => {
     try {
       const userIdParam = req.query.userId as string | undefined;
-      
+
       if (!userIdParam) {
-        return res.status(400).json({ 
-          message: 'userId query parameter is required for multi-tenant scoping' 
+        return res.status(400).json({
+          message: 'userId query parameter is required for multi-tenant scoping'
         });
       }
-      
+
       const userId = parseInt(userIdParam);
       if (isNaN(userId)) {
         return res.status(400).json({ message: 'Invalid userId parameter' });
       }
-      
+
       const userCampaigns = await storage.getUserCampaigns(userId);
       const campaignIds = userCampaigns.map(c => c.id);
       const [countMap, componentCountMap, engagementMap, sponsors] = await Promise.all([
@@ -1678,7 +1958,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
     try {
       // Validate request body with updateCampaignSchema
       const validatedData = updateCampaignSchema.parse(req.body);
-      
+
       // Convert ISO date strings to Date objects if present
       const updateData: any = { ...validatedData };
       if (updateData.startDate !== undefined) {
@@ -1703,16 +1983,16 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
           }
         }
       }
-      
+
       const campaign = await storage.updateCampaign(parseInt(req.params.id), updateData);
       if (!campaign) {
         return res.status(404).json({ message: 'Campaign not found' });
       }
-      
+
       res.json(campaign);
     } catch (error) {
       console.error('Error updating campaign:', error);
-      res.status(400).json({ 
+      res.status(400).json({
         message: 'Error updating campaign',
         error: error instanceof Error ? error.message : String(error)
       });
@@ -1735,7 +2015,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
     try {
       const campaignId = parseInt(req.params.id);
       const campaign = await storage.getCampaign(campaignId);
-      
+
       if (!campaign) {
         return res.status(404).json({ message: 'Campaign not found' });
       }
@@ -1762,7 +2042,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       res.json(updatedCampaign);
     } catch (error) {
       console.error('Error toggling campaign pause:', error);
-      res.status(500).json({ 
+      res.status(500).json({
         message: 'Error toggling campaign pause',
         error: error instanceof Error ? error.message : String(error)
       });
@@ -1789,7 +2069,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
         campaignId,
         ...req.body
       });
-      
+
       // Broadcast config:updated event
       const campaign = await storage.getCampaign(campaignId);
       broadcastToCampaign(campaignId, JSON.stringify({
@@ -1800,7 +2080,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
         version: '1.0.0',
         timestamp: new Date().toISOString()
       }));
-      
+
       res.json(config);
     } catch (error) {
       console.error('Error saving engagement config:', error);
@@ -1828,7 +2108,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
         campaignId,
         ...req.body
       });
-      
+
       // Broadcast config:updated event
       const campaign = await storage.getCampaign(campaignId);
       broadcastToCampaign(campaignId, JSON.stringify({
@@ -1839,7 +2119,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
         version: '1.0.0',
         timestamp: new Date().toISOString()
       }));
-      
+
       res.json(config);
     } catch (error) {
       console.error('Error saving UI config:', error);
@@ -1867,7 +2147,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
         campaignId,
         ...req.body
       });
-      
+
       // Broadcast config:updated event
       const campaign = await storage.getCampaign(campaignId);
       broadcastToCampaign(campaignId, JSON.stringify({
@@ -1878,7 +2158,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
         version: '1.0.0',
         timestamp: new Date().toISOString()
       }));
-      
+
       res.json(flags);
     } catch (error) {
       console.error('Error saving feature flags:', error);
@@ -1901,20 +2181,20 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   });
 
   // Scheduled Components Routes
-  
+
   // Get scheduled components for a campaign
   app.get('/api/campaigns/:id/scheduled-components', async (req, res) => {
     try {
       const components = await storage.getCampaignScheduledComponents(parseInt(req.params.id));
-      
+
       // Enrich custom components with component details
       const enrichedComponents = await Promise.all(
         components.map(async (comp) => {
-          if (comp.type === 'custom_component' && 
-              comp.data && 
-              typeof comp.data === 'object' && 
-              'componentId' in comp.data && 
-              typeof comp.data.componentId === 'string') {
+          if (comp.type === 'custom_component' &&
+            comp.data &&
+            typeof comp.data === 'object' &&
+            'componentId' in comp.data &&
+            typeof comp.data.componentId === 'string') {
             const componentDetails = await storage.getComponentById(comp.data.componentId);
             return {
               ...comp,
@@ -1924,7 +2204,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
           return comp;
         })
       );
-      
+
       res.json(enrichedComponents);
     } catch (error) {
       console.error('Error fetching scheduled components:', error);
@@ -1945,7 +2225,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       // Validate custom component exists and get its type
       let componentType = type;
       let componentName = type;
-      
+
       if (type === 'custom_component') {
         if (!data.componentId) {
           return res.status(400).json({ message: 'componentId is required for custom components' });
@@ -2029,7 +2309,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       res.status(201).json(component);
     } catch (error) {
       console.error('Error creating scheduled component:', error);
-      res.status(400).json({ 
+      res.status(400).json({
         message: 'Error creating scheduled component',
         error: error instanceof Error ? error.message : String(error)
       });
@@ -2051,7 +2331,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       // Determine the component type for validation
       let componentType = type || current.type;
       let componentName = componentType;
-      
+
       if (componentType === 'custom_component') {
         const componentId = data?.componentId || (current.data && typeof current.data === 'object' && 'componentId' in current.data ? current.data.componentId : null);
         if (componentId) {
@@ -2135,7 +2415,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       res.json(updated);
     } catch (error) {
       console.error('Error updating scheduled component:', error);
-      res.status(500).json({ 
+      res.status(500).json({
         message: 'Error updating scheduled component',
         error: error instanceof Error ? error.message : String(error)
       });
@@ -2154,12 +2434,12 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   });
 
   // Form state routes
-  
+
   // Save form state
   app.post('/api/form-state', async (req, res) => {
     try {
       const { campaignId, formType, formData } = req.body;
-      
+
       if (!campaignId || !formType || !formData) {
         return res.status(400).json({ message: 'Missing required fields' });
       }
@@ -2169,7 +2449,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
         formType,
         formData
       });
-      
+
       res.json(state);
     } catch (error) {
       console.error('Error saving form state:', error);
@@ -2184,11 +2464,11 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
         parseInt(req.params.campaignId),
         req.params.formType
       );
-      
+
       if (!state) {
         return res.status(404).json({ message: 'Form state not found' });
       }
-      
+
       res.json(state);
     } catch (error) {
       console.error('Error fetching form state:', error);
@@ -2218,7 +2498,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
         { id: 'ch_4', name: 'Sports Equipment', productCount: 92 },
         { id: 'ch_5', name: 'Beauty & Health', productCount: 178 }
       ];
-      
+
       res.json(mockChannels);
     } catch (error) {
       console.error('Error fetching Reachu channels:', error);
@@ -2227,7 +2507,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   });
 
   // Component Library Routes
-  
+
   // Get all components
   app.get('/api/components', async (req, res) => {
     try {
@@ -2254,7 +2534,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   app.post('/api/components', async (req, res) => {
     try {
       const { type, name, config } = req.body;
-      
+
       if (!type || !name || !config) {
         return res.status(400).json({ message: 'Missing required fields: type, name, config' });
       }
@@ -2271,11 +2551,11 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   app.get('/api/components/:id', async (req, res) => {
     try {
       const component = await storage.getComponentById(req.params.id);
-      
+
       if (!component) {
         return res.status(404).json({ message: 'Component not found' });
       }
-      
+
       res.json(component);
     } catch (error) {
       console.error('Error fetching component:', error);
@@ -2288,17 +2568,17 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
     try {
       const { type, name, config } = req.body;
       const updates: any = {};
-      
+
       if (type !== undefined) updates.type = type;
       if (name !== undefined) updates.name = name;
       if (config !== undefined) updates.config = config;
-      
+
       const component = await storage.updateComponent(req.params.id, updates);
-      
+
       if (!component) {
         return res.status(404).json({ message: 'Component not found' });
       }
-      
+
       // Broadcast config update to all campaigns using this component
       const allCampaigns = await storage.getAllCampaigns();
       for (const campaign of allCampaigns) {
@@ -2306,10 +2586,10 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
         if (!isCampaignActive(campaign)) {
           continue;
         }
-        
+
         const campaignComponents = await storage.getCampaignComponents(campaign.id);
         const isUsed = campaignComponents.some(cc => cc.componentId === req.params.id);
-        
+
         if (isUsed) {
           const campaignComponent = campaignComponents.find(cc => cc.componentId === req.params.id);
           const event: any = {
@@ -2332,7 +2612,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
           broadcastToCampaignImpl(campaign.id, JSON.stringify(event));
         }
       }
-      
+
       res.json(component);
     } catch (error) {
       console.error('Error updating component:', error);
@@ -2352,7 +2632,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   });
 
   // Campaign Component Routes
-  
+
   // Get components for a campaign
   app.get('/api/campaigns/:id/components', async (req, res) => {
     try {
@@ -2369,20 +2649,20 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   app.get('/api/campaigns/:id/active-components', async (req, res) => {
     try {
       const campaignId = parseInt(req.params.id);
-      
+
       // Check if campaign exists and is active
       const campaign = await storage.getCampaign(campaignId);
       if (!campaign) {
         return res.status(404).json({ message: 'Campaign not found' });
       }
-      
+
       if (!isCampaignActive(campaign)) {
         // Campaign has ended, return empty array
         return res.json([]);
       }
-      
+
       const allComponents = await storage.getCampaignComponents(campaignId);
-      
+
       // Filter only active components and format for iOS consumption
       const activeComponents = allComponents
         .filter(cc => cc.status === 'active')
@@ -2395,7 +2675,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
           status: cc.status,
           activatedAt: cc.activatedAt
         }));
-      
+
       res.json(activeComponents);
     } catch (error) {
       console.error('Error fetching active campaign components:', error);
@@ -2408,7 +2688,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
     try {
       const campaignId = parseInt(req.params.id);
       const { componentId, status, instanceName, locationId } = req.body;
-      
+
       if (!componentId) {
         return res.status(400).json({ message: 'Missing required field: componentId' });
       }
@@ -2425,11 +2705,11 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
         const existingComponents = await storage.getCampaignComponents(campaignId);
         const sameTemplateInstances = existingComponents.filter(cc => cc.componentId === componentId);
         const sdkName = componentSDKNames[component.type as keyof typeof componentSDKNames] || component.name;
-        
+
         // Find highest number in existing instance names
         const instancePattern = new RegExp(`^${sdkName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} (\\d+)$`);
         let maxNumber = 0;
-        
+
         for (const instance of sameTemplateInstances) {
           if (!instance.instanceName) continue;
           const match = instance.instanceName.match(instancePattern);
@@ -2438,7 +2718,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
             if (num > maxNumber) maxNumber = num;
           }
         }
-        
+
         // Generate next sequential name
         finalInstanceName = `${sdkName} ${maxNumber + 1}`;
       }
@@ -2447,7 +2727,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       if (status === 'active') {
         const availability = await storage.validateComponentAvailability(componentId, component.isTemplate === 'true', campaignId);
         if (!availability.available) {
-          return res.status(409).json({ 
+          return res.status(409).json({
             message: 'Component is already active in another campaign',
             activeCampaignId: availability.activeCampaignId
           });
@@ -2461,7 +2741,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
         status: status || 'inactive',
         locationId: locationId || null,
       });
-      
+
       res.status(201).json(campaignComponent);
     } catch (error) {
       console.error('Error adding component to campaign:', error);
@@ -2475,7 +2755,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       const campaignId = parseInt(req.params.id);
       const { componentId } = req.params;
       const { status, locationId } = req.body;
-      
+
       if (!status && locationId === undefined) {
         return res.status(400).json({ message: 'Provide "status" and/or "locationId"' });
       }
@@ -2493,7 +2773,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       if (status === 'active') {
         const availability = await storage.validateComponentAvailability(componentId, component.isTemplate === 'true', campaignId);
         if (!availability.available) {
-          return res.status(409).json({ 
+          return res.status(409).json({
             message: 'Component is already active in another campaign',
             activeCampaignId: availability.activeCampaignId
           });
@@ -2540,7 +2820,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
           broadcastToCampaignImpl(campaignId, JSON.stringify(event));
         }
       }
-      
+
       res.json(updated);
     } catch (error) {
       console.error('Error updating campaign component status:', error);
@@ -2554,14 +2834,14 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       const campaignId = parseInt(req.params.id);
       const { componentId } = req.params;
       const { customConfig } = req.body;
-      
+
       // Allow null/undefined to clear customConfig and revert to template defaults
       if (customConfig === undefined) {
         return res.status(400).json({ message: 'Missing required field: customConfig (use null to clear)' });
       }
 
       const updated = await storage.updateCampaignComponentConfig(campaignId, componentId, customConfig);
-      
+
       if (!updated) {
         return res.status(404).json({ message: 'Campaign component not found' });
       }
@@ -2571,10 +2851,10 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       if (campaign && isCampaignActive(campaign) && updated.status === 'active') {
         // Get full component details for broadcast
         const fullComponent = await storage.getComponentById(componentId);
-        
+
         // Broadcast config update via WebSocket
         const effectiveConfig = updated.customConfig || fullComponent?.config;
-        
+
         const event: any = {
           type: 'component_config_updated',
           campaignId,
@@ -2594,7 +2874,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
         }
         broadcastToCampaignImpl(campaignId, JSON.stringify(event));
       }
-      
+
       res.json(updated);
     } catch (error) {
       console.error('Error updating campaign component config:', error);
@@ -2607,7 +2887,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
     try {
       const campaignId = parseInt(req.params.id);
       const { componentId } = req.params;
-      
+
       await storage.removeComponentFromCampaign(campaignId, componentId);
       res.status(204).send();
     } catch (error) {
@@ -2621,13 +2901,13 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
     try {
       const componentId = req.params.id;
       const campaignId = req.query.campaignId ? parseInt(req.query.campaignId as string) : undefined;
-      
+
       // Verify component exists before checking availability
       const component = await storage.getComponentById(componentId);
       if (!component) {
         return res.status(404).json({ message: 'Component not found' });
       }
-      
+
       const availability = await storage.validateComponentAvailability(componentId, component.isTemplate === 'true', campaignId);
       res.json(availability);
     } catch (error) {
@@ -3068,8 +3348,8 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
 
       if (!result.success) {
         const statusCode = result.error?.includes('not found') ? 404 :
-                          result.error?.includes('already voted') ? 409 :
-                          result.error?.includes('not active') ? 400 : 500;
+          result.error?.includes('already voted') ? 409 :
+            result.error?.includes('not active') ? 400 : 500;
         return res.status(statusCode).json({ message: result.error });
       }
 
@@ -3171,8 +3451,8 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
 
       if (!result.success) {
         const statusCode = result.error?.includes('not found') ? 404 :
-                          result.error?.includes('already participated') ? 409 :
-                          result.error?.includes('not active') ? 400 : 500;
+          result.error?.includes('already participated') ? 409 :
+            result.error?.includes('not active') ? 400 : 500;
         return res.status(statusCode).json({ message: result.error });
       }
 
@@ -3290,7 +3570,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   app.post('/api/broadcasts', async (req, res) => {
     try {
       const { broadcastName, externalId, description, campaignId, channelId, startTime, endTime, metadata, createdBy,
-              sportmonksFixtureId, homeTeamName, homeTeamLogo, awayTeamName, awayTeamLogo, matchStartingAt, leagueName } = req.body;
+        sportmonksFixtureId, homeTeamName, homeTeamLogo, awayTeamName, awayTeamLogo, matchStartingAt, leagueName } = req.body;
 
       if (!broadcastName) {
         return res.status(400).json({ message: 'broadcastName is required' });
@@ -3335,8 +3615,8 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   app.put('/api/broadcasts/:broadcastId', async (req, res) => {
     try {
       const { broadcastName, externalId, description, campaignId, channelId, startTime, endTime, status, metadata,
-              sportmonksFixtureId, homeTeamName, homeTeamLogo, awayTeamName, awayTeamLogo, matchStartingAt, leagueName,
-              showLineup } = req.body;
+        sportmonksFixtureId, homeTeamName, homeTeamLogo, awayTeamName, awayTeamLogo, matchStartingAt, leagueName,
+        showLineup } = req.body;
       const existing = await storage.getBroadcast(req.params.broadcastId);
       if (!existing) return res.status(404).json({ message: 'Broadcast not found' });
 
@@ -3830,7 +4110,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   const SPORTMONKS_BASE = 'https://api.sportmonks.com/v3/football';
   const SPORTMONKS_TOKEN = process.env.SPORTMONKS_API_TOKEN || '';
   const FIXTURE_CACHE_TTL_MS = 6 * 60 * 60 * 1000;       // 6 hours — fixtures change frequently
-  const LEAGUE_CACHE_TTL_MS  = 2 * 24 * 60 * 60 * 1000;  // 2 days  — leagues are stable
+  const LEAGUE_CACHE_TTL_MS = 2 * 24 * 60 * 60 * 1000;  // 2 days  — leagues are stable
 
   const sportmonksFetch = async (path: string) => {
     const url = `${SPORTMONKS_BASE}${path}`;
@@ -4325,13 +4605,13 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   const validateApiKey = async (req: Request, res: any, next: any) => {
     try {
       const apiKey = req.query.apiKey as string || req.headers['x-api-key'] as string;
-      
+
       if (!apiKey) {
         return res.status(401).json({ message: 'API key required' });
       }
 
       const clientApp = await storage.getClientAppByApiKey(apiKey);
-      
+
       if (!clientApp) {
         return res.status(401).json({ message: 'Invalid API key' });
       }
@@ -4442,7 +4722,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
 
       let product: any = null;
       try {
-        const gqlRes = await fetch('https://graph-ql-dev.vio.live/graphql', {
+        const gqlRes = await fetch(process.env.COMMERCE_GRAPHQL_URL || 'http://graph-ql.default.svc.cluster.local/graphql', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -4516,7 +4796,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       let product: any = null;
       try {
         const gqlQuery = `{ Channel { GetProductsByIds(product_ids: [${productId}]) { id title images { url order } price { amount amount_incl_taxes currency_code } } } }`;
-        const gqlRes = await fetch('https://graph-ql-dev.vio.live/graphql', {
+        const gqlRes = await fetch(process.env.COMMERCE_GRAPHQL_URL || 'http://graph-ql.default.svc.cluster.local/graphql', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Authorization': commerceApiKey },
           body: JSON.stringify({ query: gqlQuery }),
@@ -4639,7 +4919,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       if (productIds.length > 0) {
         try {
           const gqlQuery = `{ Channel { GetProductsByIds(product_ids: [${productIds[0]}]) { id title images { url order } price { amount amount_incl_taxes currency_code } } } }`;
-          const gqlRes = await fetch('https://graph-ql-dev.vio.live/graphql', {
+          const gqlRes = await fetch(process.env.COMMERCE_GRAPHQL_URL || 'http://graph-ql.default.svc.cluster.local/graphql', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'Authorization': commerceApiKey },
             body: JSON.stringify({ query: gqlQuery }),
@@ -4708,7 +4988,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       }
 
       const gqlQuery = `{ Channel { GetProductsByIds(product_ids: [${productIds.join(',')}]) { id title images { url order } price { amount amount_incl_taxes currency_code } } } }`;
-      const gqlRes = await fetch('https://graph-ql-dev.vio.live/graphql', {
+      const gqlRes = await fetch(process.env.COMMERCE_GRAPHQL_URL || 'http://graph-ql.default.svc.cluster.local/graphql', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': commerceApiKey },
         body: JSON.stringify({ query: gqlQuery }),
@@ -4727,18 +5007,46 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
     }
   });
 
-  // POST /api/campaigns/:id/register-device — Register APNs device token for push notifications
+  // POST /api/campaigns/:id/register-device — Register APNs device token (SDK partner apps; used for Vio-side push fallback)
   app.post('/api/campaigns/:campaignId/register-device', validateApiKey, async (req, res) => {
     try {
       const campaignId = parseInt(req.params.campaignId);
+      const clientApp = (req as any).clientApp;
       const { userId, deviceToken, platform = 'ios' } = req.body;
 
       if (!userId || !deviceToken) {
         return res.status(400).json({ error: 'userId and deviceToken are required' });
       }
 
-      await storage.upsertDeviceToken(campaignId, userId, deviceToken, platform);
-      console.log(`[APNs] Device registered: campaign=${campaignId} userId=${userId} platform=${platform}`);
+      const campaign = await storage.getCampaign(campaignId);
+      if (!campaign) {
+        return res.status(404).json({ error: 'Campaign not found' });
+      }
+      if (campaign.clientAppId !== clientApp.id) {
+        return res.status(403).json({ error: 'Campaign does not belong to this API key' });
+      }
+
+      await storage.upsertDeviceToken(campaignId, String(userId), String(deviceToken), String(platform));
+      console.log(`[RegisterDevice] campaign=${campaignId} userId=${userId} platform=${platform}`);
+
+      const partnerRegisterUrl = clientApp.partnerDeviceRegisterUrl?.trim();
+      if (partnerRegisterUrl) {
+        try {
+          const fwd = await fetch(partnerRegisterUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              userId: String(userId),
+              deviceToken: String(deviceToken),
+              platform: String(platform),
+            }),
+          });
+          console.log(`[RegisterDevice] Partner device register forward → ${partnerRegisterUrl} HTTP ${fwd.status}`);
+        } catch (forwardErr) {
+          console.error('[RegisterDevice] Partner device register forward failed:', forwardErr);
+        }
+      }
+
       res.json({ success: true });
     } catch (error) {
       console.error('[RegisterDevice] Error:', error);
@@ -4746,48 +5054,32 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
     }
   });
 
-  // POST /api/campaigns/:id/cart-intent — Apple TV adds to cart → webhook or APNs push
+  // POST /api/campaigns/:id/cart-intent — TV adds to cart -> broadcast WS or webhook (partner-first)
   app.post('/api/campaigns/:campaignId/cart-intent', validateApiKey, async (req, res) => {
     try {
       const campaignId = parseInt(req.params.campaignId);
+      const clientApp = (req as any).clientApp;
       const { productId, userId, productName } = req.body;
+
+      // Validate campaign belongs to this API key's clientApp
+      const campaign = await storage.getCampaign(campaignId);
+      if (!campaign) {
+        return res.status(404).json({ error: 'Campaign not found' });
+      }
+      if (campaign.clientAppId !== clientApp.id) {
+        return res.status(403).json({ error: 'Campaign does not belong to this API key' });
+      }
 
       if (!productId || !userId) {
         return res.status(400).json({ error: 'productId and userId are required' });
       }
 
-      const campaign = await storage.getCampaign(campaignId);
-
-      // Webhook-first: if broadcaster has a webhookUrl, call it and skip APNs entirely
-      if (campaign?.webhookUrl) {
-        try {
-          const webhookRes = await fetch(campaign.webhookUrl, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ userId, productId, campaignId, action: 'cart_intent' }),
-          });
-          console.log(`[CartIntent] Webhook called: ${campaign.webhookUrl} → ${webhookRes.status}`);
-        } catch (webhookErr) {
-          console.error('[CartIntent] Webhook error:', webhookErr);
-        }
-        return res.json({ success: true, mode: 'webhook' });
-      }
-
-      // Demo mode: APNs direct push
-      // Look up device token for this user
-      const deviceRecord = await storage.getDeviceToken(campaignId, userId);
-      if (!deviceRecord) {
-        console.warn(`[CartIntent] No device token found for userId=${userId} campaignId=${campaignId}`);
-        return res.json({ success: true, note: 'no_device_registered' });
-      }
-
-      // Resolve product name if not provided
       let resolvedName = productName || `Product ${productId}`;
       if (!productName) {
         try {
           const commerceApiKey = process.env.COMMERCE_API_KEY || 'KCXF10Y-W5T4PCR-GG5119A-Z64SQ9S';
           const gqlQuery = `{ Channel { GetProductsByIds(product_ids: [${productId}]) { id title images { url order } price { amount amount_incl_taxes currency_code } } } }`;
-          const gqlRes = await fetch('https://graph-ql-dev.vio.live/graphql', {
+          const gqlRes = await fetch(process.env.COMMERCE_GRAPHQL_URL || 'http://graph-ql.default.svc.cluster.local/graphql', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'Authorization': commerceApiKey },
             body: JSON.stringify({ query: gqlQuery }),
@@ -4800,66 +5092,129 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
         }
       }
 
-      // Send APNs push notification
-      const _rawApnsKey = process.env.APNS_KEY || '';
-      // Replit secrets store multiline values with spaces — reconstruct proper PEM format
-      let apnsKeyContent: string | undefined;
-      if (_rawApnsKey) {
-        const match = _rawApnsKey.replace(/\\n/g, '\n').match(/-----BEGIN PRIVATE KEY-----([\s\S]+?)-----END PRIVATE KEY-----/);
-        if (match) {
-          const b64 = match[1].replace(/\s+/g, '');
-          apnsKeyContent = `-----BEGIN PRIVATE KEY-----\n${b64}\n-----END PRIVATE KEY-----\n`;
-        } else {
-          apnsKeyContent = _rawApnsKey.replace(/\\n/g, '\n');
+      const normalizedUserId = String(userId).trim();
+      const directWs = wsUserMap.get(normalizedUserId);
+      console.log('[CartIntent] directWs', directWs ? 'connected' : 'undefined');
+      const isConnectedLocal = Boolean(directWs && directWs.readyState === WebSocket.OPEN);
+      console.log('[CartIntent] isConnectedLocal', isConnectedLocal);
+      console.log('[CartIntent] isRedisEnabled', isRedisEnabled());
+
+      // Check cluster with timeout to avoid hanging if Redis is down
+      let isConnectedCluster = false;
+      if (isRedisEnabled()) {
+        try {
+          isConnectedCluster = await Promise.race([
+            isUserConnectedAcrossCluster(normalizedUserId),
+            new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 1000))
+          ]);
+        } catch (err) {
+          console.warn('[CartIntent] isUserConnectedAcrossCluster error:', err);
         }
       }
-      const apnsKeyId = process.env.APNS_KEY_ID;
-      const apnsTeamId = process.env.APNS_TEAM_ID;
-      const apnsBundleId = process.env.APNS_BUNDLE_ID || 'viodev.tv2demo';
 
-      if (!apnsKeyContent || !apnsKeyId || !apnsTeamId) {
-        console.log(`[CartIntent] APNs not configured — logging intent: userId=${userId} productId=${productId} productName="${resolvedName}"`);
-        return res.json({ success: true, note: 'apns_not_configured' });
-      }
+      const isUserConnected = isConnectedLocal || isConnectedCluster;
+      console.log('[CartIntent] isUserConnected', isUserConnected);
 
-      try {
-        const apnProvider = new apn.Provider({
-          token: {
-            key: apnsKeyContent,
-            keyId: apnsKeyId,
-            teamId: apnsTeamId,
-          },
-          production: false, // sandbox — change to true when using production APNs certificates
-        });
+      // Normalize clientApp name for source field (e.g., "TV2" -> "tv2")
+      const normalizedAppName = clientApp.name.toLowerCase().replace(/\s+/g, '_');
+      const source = `apptv_${normalizedAppName}`;
+      const deeplink = `product/${productId}?campaignId=${campaignId}`;
 
-        const notification = new apn.Notification();
-        notification.expiry = Math.floor(Date.now() / 1000) + 3600;
-        notification.badge = 1;
-        notification.sound = 'default';
-        notification.alert = {
-          title: 'Produkt lagt til',
-          body: `${resolvedName} — trykk for å kjøpe`,
-        };
-        notification.payload = {
-          productId: String(productId),
+      const wsEvent = {
+        type: 'cart_intent',
+        vio_notification_version: 1,
+        vio_user_id: String(userId),
+        vio_event_type: 'cart_intent',
+        vio_payload: {
+          product_id: String(productId),
+          campaign_id: String(campaignId),
+          product_name: resolvedName,
+          notification_title: resolvedName,
+          notification_body: `${resolvedName} – klikk for å kjøpe.`,
+          source,
+          deeplink,
+        },
+        timestamp: new Date().toISOString(),
+      };
+
+      // Default: **dual delivery** — after WS (local or cluster), also run partner webhook / APNs so push
+      // reaches the device when the app is backgrounded (WS may not run on iOS until foreground).
+      // Opt out: `CART_INTENT_DUAL_DELIVERY=false` (saves duplicate partner calls when you only want WS).
+      const dualDelivery = process.env.CART_INTENT_DUAL_DELIVERY !== "false";
+
+      let deliveryMode: 'websocket' | 'dual' | 'webhook';
+
+      if (isConnectedLocal && directWs) {
+        // Send via local socket
+        directWs.send(JSON.stringify(wsEvent));
+        console.log('[CartIntent] Sent via local socket to userId:', userId);
+        if (dualDelivery) {
+          console.log("[CartIntent] Dual delivery: also invoking partner fallback");
+          await notifyCartIntentPartnerFallback({
+            clientApp,
+            campaignId,
+            userId: String(userId),
+            productId,
+            resolvedName,
+            context: "dual",
+          });
+          deliveryMode = 'dual';
+        } else {
+          deliveryMode = 'websocket';
+        }
+      } else if (isConnectedCluster) {
+        // User is on another cluster node -> Forward via Redis Pub/Sub
+        await publishEvent("ws:events:forward", wsEvent);
+        console.log('[CartIntent] Forwarded via Redis Pub/Sub to cluster for userId:', userId);
+        if (dualDelivery) {
+          console.log("[CartIntent] Dual delivery: also invoking partner fallback");
+          await notifyCartIntentPartnerFallback({
+            clientApp,
+            campaignId,
+            userId: String(userId),
+            productId,
+            resolvedName,
+            context: "dual",
+          });
+          deliveryMode = 'dual';
+        } else {
+          deliveryMode = 'websocket';
+        }
+      } else {
+        // User is offline -> Partner webhook fallback (Partner-first architecture)
+        await notifyCartIntentPartnerFallback({
+          clientApp,
           campaignId,
-          action: 'open_product',
-        };
-        notification.topic = apnsBundleId;
-
-        const result = await apnProvider.send(notification, deviceRecord.deviceToken);
-        apnProvider.shutdown();
-
-        if (result.failed?.length > 0) {
-          console.error('[CartIntent] APNs push failed:', result.failed[0].response);
-        } else {
-          console.log(`[CartIntent] Push sent: userId=${userId} product="${resolvedName}"`);
-        }
-      } catch (apnsErr) {
-        console.error('[CartIntent] APNs error:', apnsErr);
+          userId: String(userId),
+          productId,
+          resolvedName,
+          context: "offline",
+        });
+        deliveryMode = 'webhook';
       }
 
-      res.json({ success: true });
+      // Construct envelope for response (without internal WS fields)
+      const envelope = {
+        vio_notification_version: 1,
+        vio_user_id: String(userId),
+        vio_event_type: 'cart_intent',
+        vio_payload: {
+          product_id: String(productId),
+          campaign_id: String(campaignId),
+          product_name: resolvedName,
+          notification_title: resolvedName,
+          notification_body: `${resolvedName} – klikk for å kjøpe.`,
+          source,
+          deeplink,
+        },
+      };
+
+      res.json({
+        success: true,
+        mode: deliveryMode,
+        userConnected: Boolean(isUserConnected),
+        envelope,
+      });
     } catch (error) {
       console.error('[CartIntent] Error:', error);
       res.status(500).json({ error: 'Failed to process cart intent' });
@@ -4870,25 +5225,16 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   // Discovers all active campaigns using API key or Bundle ID
   app.get('/v1/sdk/campaigns', async (req, res) => {
     try {
-      // Priority 1: Identification by X-App-Bundle-ID header
-      const bundleId = req.headers['x-app-bundle-id'] as string;
-      // Priority 2: API key in query parameter (backward compatibility)
+      // Auth: API key only (bundle ID reserved for future use)
       const apiKey = req.query.apiKey as string || req.headers['x-api-key'] as string;
-      
-      let clientApp;
-      
-      if (bundleId) {
-        clientApp = await storage.getClientAppByBundleId(bundleId);
-        if (!clientApp) {
-          return res.status(401).json({ message: 'Bundle ID not found' });
-        }
-      } else if (apiKey) {
-        clientApp = await storage.getClientAppByApiKey(apiKey);
-        if (!clientApp) {
-          return res.status(401).json({ message: 'Invalid API key' });
-        }
-      } else {
-        return res.status(401).json({ message: 'API key or X-App-Bundle-ID header required' });
+
+      if (!apiKey) {
+        return res.status(401).json({ message: 'API key required' });
+      }
+
+      const clientApp = await storage.getClientAppByApiKey(apiKey);
+      if (!clientApp) {
+        return res.status(401).json({ message: 'Invalid API key' });
       }
 
       const matchIdFilter = req.query.matchId as string | undefined;
@@ -4904,20 +5250,18 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
           continue;
         }
 
-        // Check if campaign is active
+        // Compute isActive — do NOT skip expired/paused campaigns.
+        // Returning [] when end_date passes breaks SDK initialization silently.
+        // SDKs use isActive to decide rendering; they should receive data always.
         const isPaused = campaign.isPaused === 'true';
         const startDate = campaign.startDate ? new Date(campaign.startDate) : null;
         const endDate = campaign.endDate ? new Date(campaign.endDate) : null;
-        
+
         const isWithinDates = (!startDate || startDate <= now) && (!endDate || endDate >= now);
         const isActive = !isPaused && isWithinDates;
 
-        if (!isActive) {
-          continue;
-        }
-
-        // Get active components for this campaign
-        const components = await storage.getCampaignComponents(campaign.id);
+        // Get active components for this campaign (only when active to avoid unnecessary DB calls)
+        const components = isActive ? await storage.getCampaignComponents(campaign.id) : [];
         const activeComponents = components
           .filter(c => c.status === 'active')
           .map(cc => {
@@ -4944,7 +5288,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
           campaignId: campaign.id,
           campaignName: campaign.name,
           campaignLogo: campaign.logo ? toAbsoluteUrl(campaign.logo, req) : null,
-          isActive: true,
+          isActive,
           startDate: campaign.startDate,
           endDate: campaign.endDate,
           isPaused: isPaused,
@@ -4983,7 +5327,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   // SDK calls this when a user opens a specific stream/content
   app.get('/v1/sdk/broadcast', async (req, res) => {
     try {
-      const bundleId = req.headers['x-app-bundle-id'] as string;
+      // Auth: API key only (bundle ID reserved for future use)
       const apiKey = req.query.apiKey as string || req.headers['x-api-key'] as string;
       const contentId = req.query.contentId as string | undefined;
       const country = req.query.country as string | undefined;
@@ -4992,15 +5336,13 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
         return res.status(400).json({ message: 'contentId query parameter is required' });
       }
 
-      let clientApp;
-      if (bundleId) {
-        clientApp = await storage.getClientAppByBundleId(bundleId);
-        if (!clientApp) return res.status(401).json({ message: 'Bundle ID not found' });
-      } else if (apiKey) {
-        clientApp = await storage.getClientAppByApiKey(apiKey);
-        if (!clientApp) return res.status(401).json({ message: 'Invalid API key' });
-      } else {
-        return res.status(401).json({ message: 'API key or X-App-Bundle-ID header required' });
+      if (!apiKey) {
+        return res.status(401).json({ message: 'API key required' });
+      }
+
+      const clientApp = await storage.getClientAppByApiKey(apiKey);
+      if (!clientApp) {
+        return res.status(401).json({ message: 'Invalid API key' });
       }
 
       const broadcast = await storage.getBroadcastByExternalId(contentId, clientApp.id);
@@ -5114,20 +5456,25 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
         (!c.endDate || new Date(c.endDate) >= now)
       ) || appCampaigns[0] || null;
 
-      // Commerce API key — from campaign sponsors first, then legacy campaign field
-      let commerceApiKey: string | null = (activeCampaign as any)?.reachuApiKey || null;
-      if (activeCampaign) {
-        const campaignSponsors = await storage.getCampaignSponsors(activeCampaign.id);
-        for (const cs of campaignSponsors) {
-          const sp = await storage.getSponsor(cs.sponsorId);
-          if (sp?.commerceApiKey) { commerceApiKey = sp.commerceApiKey; break; }
-        }
-      }
+      const { apiKey: commerceApiKey } = await resolveCommerceFromCampaignSponsors(
+        activeCampaign
+          ? {
+              id: activeCampaign.id,
+              sponsorId: activeCampaign.sponsorId ?? null,
+            }
+          : null,
+      );
 
-      const baseUrl = `${req.protocol}://${req.get('host')}`;
-      const COMMERCE_GRAPHQL = 'https://graph-ql-dev.vio.live/graphql';
+      // Trust X-Forwarded-Proto when behind TLS-terminating proxy (Cloudflare, AKS ingress)
+      const forwardedProto = (req.headers['x-forwarded-proto'] as string)?.split(',')[0]?.trim();
+      const effectiveProtocol = forwardedProto || req.protocol;
+      const baseUrl = `${effectiveProtocol}://${req.get('host')}`;
+      const wsProtocol = effectiveProtocol === 'https' ? 'wss' : 'ws';
+      const wsBase = `${wsProtocol}://${req.get('host')}`;
+      const COMMERCE_GRAPHQL = process.env.COMMERCE_GRAPHQL_URL || 'http://graph-ql.default.svc.cluster.local/graphql';
 
       return res.json({
+        sdkVersion: "0.2.0",
         clientApp: {
           id: clientApp.id,
           name: clientApp.name,
@@ -5135,7 +5482,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
         },
         endpoints: {
           restBase: baseUrl,
-          webSocketBase: baseUrl,
+          webSocketBase: wsBase,
           commerceGraphQL: COMMERCE_GRAPHQL,
         },
         features: {
@@ -5153,6 +5500,16 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
           accentColor: (activeCampaign as any)?.accentColor || null,
         },
         markets: [],
+        campaign: activeCampaign ? {
+          id: activeCampaign.id,
+          campaignId: activeCampaign.id,
+          campaignName: (activeCampaign as any).name || null,
+          campaignLogo: (activeCampaign as any).logoUrl || null,
+          isActive: activeCampaign.status === 'active',
+          isPaused: (activeCampaign as any).isPaused ?? false,
+          startDate: (activeCampaign as any).startDate || null,
+          endDate: (activeCampaign as any).endDate || null,
+        } : null,
       });
     } catch (error) {
       console.error('Error fetching SDK config:', error);
@@ -5166,26 +5523,26 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       const clientApp = (req as any).clientApp;
       const campaignId = parseInt(req.params.campaignId);
       const matchId = req.query.matchId as string | undefined;
-      
+
       if (isNaN(campaignId)) {
-        return res.status(400).json({ 
+        return res.status(400).json({
           error: 'Invalid campaignId',
           code: 'INVALID_PARAMETERS'
         });
       }
-      
+
       // Get full campaign config
       const fullConfig = await storage.getFullCampaignConfig(campaignId);
-      
+
       if (!fullConfig) {
-        return res.status(404).json({ 
+        return res.status(404).json({
           error: 'Campaign not found',
           code: 'CAMPAIGN_NOT_FOUND'
         });
       }
-      
+
       const { campaign, translations, engagementConfig, uiConfig, featureFlags } = fullConfig;
-      
+
       // Verify campaign belongs to this client app — direct match or via channel (legacy)
       const directMatch = campaign.clientAppId === clientApp.id;
       let channelMatch = false;
@@ -5195,12 +5552,12 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
         channelMatch = !!(channel && channel.clientAppId === clientApp.id);
       }
       if (!directMatch && !channelMatch) {
-        return res.status(403).json({ 
+        return res.status(403).json({
           error: 'Campaign does not belong to this API key',
           code: 'FORBIDDEN'
         });
       }
-      
+
       // Build sponsorBadgeText from translations
       const sponsorBadgeText: Record<string, string> = {};
       const defaultSponsorBadgeText: Record<string, string> = {
@@ -5208,13 +5565,13 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
         'en': 'Sponsored by',
         'sv': 'Sponsrad av'
       };
-      
+
       for (const t of translations) {
         if (t.sponsorBadgeText) {
           sponsorBadgeText[t.languageCode] = t.sponsorBadgeText;
         }
       }
-      
+
       // Merge with defaults
       const finalSponsorBadgeText = { ...defaultSponsorBadgeText, ...sponsorBadgeText };
 
@@ -5275,14 +5632,13 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
         };
       }
 
-      // Commerce integration — get key from campaign sponsors first, fallback to campaign legacy key
-      const sdkCampaignSponsors2 = await storage.getCampaignSponsors(campaign.id);
-      let sdkCommerceApiKey2: string | null = campaign.reachuApiKey || null;
-      let sdkCommerceChannelId2: string | null = campaign.reachuChannelId || null;
-      for (const cs of sdkCampaignSponsors2) {
-        const sp = await storage.getSponsor(cs.sponsorId);
-        if (sp?.commerceApiKey) { sdkCommerceApiKey2 = sp.commerceApiKey; sdkCommerceChannelId2 = sp.commerceChannelId || null; break; }
-      }
+      const {
+        apiKey: sdkCommerceApiKey2,
+        channelId: sdkCommerceChannelId2,
+      } = await resolveCommerceFromCampaignSponsors({
+        id: campaign.id,
+        sponsorId: campaign.sponsorId ?? null,
+      });
       config.integrations = {
         commerce: {
           enabled: !!(sdkCommerceApiKey2),
@@ -5300,7 +5656,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       res.json(config);
     } catch (error) {
       console.error('Error fetching campaign config:', error);
-      res.status(500).json({ 
+      res.status(500).json({
         error: 'Internal server error',
         code: 'INTERNAL_ERROR'
       });
@@ -5311,28 +5667,28 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   app.get('/v1/engagement/config', validateApiKey, async (req, res) => {
     try {
       const matchId = req.query.matchId as string | undefined;
-      
+
       if (!matchId) {
-        return res.status(400).json({ 
+        return res.status(400).json({
           error: 'Missing required parameter: matchId',
           code: 'MISSING_PARAMETER'
         });
       }
-      
+
       // Find campaigns associated with this matchId
       const allCampaigns = await storage.getAllCampaigns();
       const matchCampaign = allCampaigns.find(c => c.matchId === matchId);
-      
+
       if (!matchCampaign) {
-        return res.status(404).json({ 
+        return res.status(404).json({
           error: 'Engagement config not found for matchId',
           code: 'CONFIG_NOT_FOUND'
         });
       }
-      
+
       // Get engagement config for this campaign
       const engagementConfig = await storage.getCampaignEngagementConfig(matchCampaign.id);
-      
+
       const config = {
         matchId,
         engagement: {
@@ -5346,12 +5702,12 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
           ttl: 300
         }
       };
-      
+
       res.set('Cache-Control', 'public, max-age=300');
       res.json(config);
     } catch (error) {
       console.error('Error fetching engagement config:', error);
-      res.status(500).json({ 
+      res.status(500).json({
         error: 'Internal server error',
         code: 'INTERNAL_ERROR'
       });
@@ -5364,18 +5720,18 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       const language = req.params.language;
       const campaignId = req.query.campaignId ? parseInt(req.query.campaignId as string) : undefined;
       const matchId = req.query.matchId as string | undefined;
-      
+
       const supportedLanguages = ['no', 'en', 'sv', 'es', 'de', 'fr', 'da', 'fi'];
       if (!supportedLanguages.includes(language)) {
-        return res.status(400).json({ 
+        return res.status(400).json({
           error: 'Invalid language code',
           code: 'INVALID_LANGUAGE'
         });
       }
-      
+
       // Get translations with priority: match > campaign > global
       const translations = await storage.getSdkTranslations(language, campaignId, matchId);
-      
+
       // Default translations
       const defaultTranslations: Record<string, Record<string, string>> = {
         'no': {
@@ -5403,26 +5759,26 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
           contestEnded: 'Tävlingen har avslutats'
         }
       };
-      
+
       // Build translations object
       const translationsObj: Record<string, string> = { ...(defaultTranslations[language] || defaultTranslations['en']) };
-      
+
       for (const t of translations) {
         translationsObj[t.translationKey] = t.translationValue;
       }
-      
+
       const dateFormats: Record<string, string> = {
         'no': 'dd.MM.yyyy',
         'en': 'MM/dd/yyyy',
         'sv': 'yyyy-MM-dd'
       };
-      
+
       const timeFormats: Record<string, string> = {
         'no': 'HH:mm',
         'en': 'h:mm a',
         'sv': 'HH:mm'
       };
-      
+
       const response = {
         language,
         campaignId: campaignId || null,
@@ -5433,12 +5789,12 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
           ttl: 3600
         }
       };
-      
+
       res.set('Cache-Control', 'public, max-age=3600');
       res.json(response);
     } catch (error) {
       console.error('Error fetching localization:', error);
-      res.status(500).json({ 
+      res.status(500).json({
         error: 'Internal server error',
         code: 'INTERNAL_ERROR'
       });
@@ -5453,22 +5809,32 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       const campaignIdParam = req.query.campaignId as string | undefined;
       const userId = req.query.userId as string | undefined;
       const userCountry = req.query.userCountry as string | undefined;
-      
-      // Require campaignId for proper campaign-level scoping
-      if (!campaignIdParam) {
-        return res.status(400).json({ 
-          message: 'campaignId query parameter is required'
-        });
+
+      // campaignId is optional — if not provided, resolve from the clientApp's active campaign
+      let requestedCampaignId: number;
+      if (campaignIdParam) {
+        const parsed = parseInt(campaignIdParam);
+        if (isNaN(parsed)) {
+          return res.status(400).json({ message: 'Invalid campaignId parameter' });
+        }
+        requestedCampaignId = parsed;
+      } else {
+        const now = new Date();
+        const appCampaigns = await storage.getClientAppCampaigns(clientApp.id);
+        const activeCampaign = appCampaigns.find(c =>
+          c.isPaused !== 'true' &&
+          (!c.startDate || new Date(c.startDate) <= now) &&
+          (!c.endDate || new Date(c.endDate) >= now)
+        ) || appCampaigns[0] || null;
+        if (!activeCampaign) {
+          return res.status(404).json({ message: 'No active campaign found for this API key' });
+        }
+        requestedCampaignId = activeCampaign.id;
       }
-      
-      const requestedCampaignId = parseInt(campaignIdParam);
-      if (isNaN(requestedCampaignId)) {
-        return res.status(400).json({ message: 'Invalid campaignId parameter' });
-      }
-      
+
       // Get the campaign
       const campaign = await storage.getCampaign(requestedCampaignId);
-      
+
       if (!campaign) {
         return res.status(404).json({ message: 'Campaign not found' });
       }
@@ -5507,13 +5873,13 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
 
       // Check if campaign is active
       if (!isCampaignActive(campaign)) {
-        return res.json({ 
+        return res.json({
           campaignId: campaign.id,
           campaignName: campaign.name,
           campaignLogo: campaign.logo ? toAbsoluteUrl(campaign.logo, req) : null,
           channelId: channel?.id || null,
           channelName: channel?.name || null,
-          offers: [] 
+          offers: []
         });
       }
 
@@ -5577,10 +5943,19 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   // ========================================
   app.get('/v1/sdk/broadcasts/:broadcastId/chat', validateApiKey, async (req, res) => {
     try {
+      const clientApp = (req as any).clientApp;
       const { broadcastId } = req.params;
       const limit = req.query.limit ? parseInt(req.query.limit as string) : 50;
       const broadcast = await storage.getBroadcast(broadcastId);
       if (!broadcast) return res.status(404).json({ message: 'Broadcast not found' });
+
+      // Validate broadcast's campaign belongs to this API key's clientApp
+      if (broadcast.campaignId) {
+        const campaign = await storage.getCampaign(broadcast.campaignId);
+        if (campaign && campaign.clientAppId !== clientApp.id) {
+          return res.status(403).json({ error: 'Broadcast does not belong to this API key' });
+        }
+      }
       const messages = await storage.getChatMessages(broadcastId, limit);
       res.json({ broadcastId, messages, count: messages.length });
     } catch (error) {
@@ -5594,9 +5969,18 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   // ========================================
   app.get('/v1/sdk/broadcasts/:broadcastId/score', validateApiKey, async (req, res) => {
     try {
+      const clientApp = (req as any).clientApp;
       const { broadcastId } = req.params;
       const broadcast = await storage.getBroadcast(broadcastId);
       if (!broadcast) return res.status(404).json({ message: 'Broadcast not found' });
+
+      // Validate broadcast's campaign belongs to this API key's clientApp
+      if (broadcast.campaignId) {
+        const campaign = await storage.getCampaign(broadcast.campaignId);
+        if (campaign && campaign.clientAppId !== clientApp.id) {
+          return res.status(403).json({ error: 'Broadcast does not belong to this API key' });
+        }
+      }
       const meta = (broadcast.metadata as any) || {};
       const matchData = meta.matchData || null;
       if (!matchData) return res.json({ broadcastId, hasScore: false });
@@ -5620,9 +6004,18 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   // ========================================
   app.get('/v1/sdk/broadcasts/:broadcastId/stats', validateApiKey, async (req, res) => {
     try {
+      const clientApp = (req as any).clientApp;
       const { broadcastId } = req.params;
       const broadcast = await storage.getBroadcast(broadcastId);
       if (!broadcast) return res.status(404).json({ message: 'Broadcast not found' });
+
+      // Validate broadcast's campaign belongs to this API key's clientApp
+      if (broadcast.campaignId) {
+        const campaign = await storage.getCampaign(broadcast.campaignId);
+        if (campaign && campaign.clientAppId !== clientApp.id) {
+          return res.status(403).json({ error: 'Broadcast does not belong to this API key' });
+        }
+      }
       const meta = (broadcast.metadata as any) || {};
       const matchData = meta.matchData || null;
       if (!matchData?.stats) return res.json({ broadcastId, hasStats: false });
@@ -5683,8 +6076,18 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
         const cid = parseInt(campaignIdParam);
         if (!isNaN(cid)) targetCampaignIds = [cid];
       } else {
+        // Only include active campaigns to avoid returning stale data from old campaigns
+        const now = new Date();
         const appCampaigns = await storage.getClientAppCampaigns(clientApp.id);
-        targetCampaignIds = appCampaigns.map(c => c.id);
+        const activeCampaigns = appCampaigns.filter(c =>
+          c.isPaused !== 'true' &&
+          (!c.startDate || new Date(c.startDate) <= now) &&
+          (!c.endDate || new Date(c.endDate) >= now)
+        );
+        // Fall back to most recent campaign if none are strictly active
+        targetCampaignIds = activeCampaigns.length > 0
+          ? activeCampaigns.map(c => c.id)
+          : appCampaigns.slice(0, 1).map(c => c.id);
       }
 
       const result: any[] = [];
@@ -5703,7 +6106,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
             locationId: cc.locationId || null,
             instanceName: cc.instanceName || null,
             type: cc.component?.type || null,
-            config: cc.customConfig || cc.component?.config || null,
+            config: normalizeUrls(cc.customConfig || cc.component?.config || null, req.protocol, req.get('host')),
           });
         }
       }

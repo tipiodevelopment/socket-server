@@ -25,6 +25,9 @@ export const clientApps = pgTable("client_apps", {
   status: varchar("status", { length: 20 }).notNull().default('active'),
   iconUrl: text("icon_url"),
   bannerUrl: text("banner_url"),
+  webhookUrl: varchar("webhook_url", { length: 512 }),
+  /** Partner URL for POST { userId, deviceToken, platform } — filled when Vio forwards after SDK register-device */
+  partnerDeviceRegisterUrl: varchar("partner_device_register_url", { length: 512 }),
   createdAt: timestamp("created_at").defaultNow().notNull()
 });
 
@@ -374,6 +377,7 @@ export const deviceTokens = pgTable("device_tokens", {
   id: serial("id").primaryKey(),
   campaignId: integer("campaign_id").notNull().references(() => campaigns.id, { onDelete: 'cascade' }),
   userId: varchar("user_id", { length: 255 }).notNull(),
+  deviceId: varchar("device_id", { length: 255 }).notNull(),
   deviceToken: varchar("device_token", { length: 512 }).notNull(),
   platform: varchar("platform", { length: 20 }).notNull().default('ios'),
   createdAt: timestamp("created_at").defaultNow().notNull(),

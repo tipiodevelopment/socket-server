@@ -461,7 +461,10 @@ export function SettingsTab({ campaignId, campaign }: SettingsTabProps) {
               data-testid="input-campaign-webhook-url"
             />
             <p className="text-xs text-gray-600">
-              POST body: <code className="text-gray-400">{"{ userId, productId, campaignId, action: \"cart_intent\" }"}</code>
+              POST body (canonical):{" "}
+              <code className="text-gray-400">
+                {"{ vio_notification_version: 1, vio_event_type: \"cart_intent\", userId, productId, campaignId, action: \"cart_intent\", productName? }"}
+              </code>
             </p>
           </div>
           <button

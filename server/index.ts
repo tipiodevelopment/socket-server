@@ -1,6 +1,7 @@
 import express, { type Request, Response, NextFunction } from "express";
 import type * as httpTypes from "http";
 import cors from "cors";
+import morgan from "morgan";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
 import { detectAndCacheBaseUrl } from "./utils";
@@ -8,9 +9,9 @@ import { startScheduler } from "./scheduler";
 import { initializeWorkers } from "./queue/workers";
 import { isQueueEnabled } from "./queue/queues";
 
-declare module 'http' {
+declare module "http" {
   interface IncomingMessage {
-    rawBody: unknown
+    rawBody: unknown;
   }
 }
 
@@ -37,6 +38,11 @@ export async function setupApp(
   }));
   app.use(express.urlencoded({ extended: false }));
 
+  // HTTP request logger (all requests)
+  if (process.env.NODE_ENV === 'development') {
+    app.use(morgan('dev'));
+  }
+
   // Health endpoints — also handled by preserver before express is ready
   app.get('/health', (_req, res) =>
     res.status(200).json({ status: 'ok', timestamp: new Date().toISOString() })
@@ -57,10 +63,12 @@ export async function setupApp(
 
     res.on('finish', () => {
       if (reqPath.startsWith('/api')) {
-        let logLine = `${req.method} ${reqPath} ${res.statusCode} in ${Date.now() - start}ms`;
-        if (capturedJsonResponse) logLine += ` :: ${JSON.stringify(capturedJsonResponse)}`;
-        if (logLine.length > 80) logLine = logLine.slice(0, 79) + '…';
-        log(logLine);
+        if(reqPath != '/api/status'){
+          let logLine = `${req.method} ${reqPath} ${res.statusCode} in ${Date.now() - start}ms`;
+          if (capturedJsonResponse) logLine += ` :: ${JSON.stringify(capturedJsonResponse)}`;
+          if (logLine.length > 80) logLine = logLine.slice(0, 79) + '…';
+          log(logLine);
+        }
       }
     });
     next();
