@@ -5489,7 +5489,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       const baseUrl = `${effectiveProtocol}://${req.get('host')}`;
       const wsProtocol = effectiveProtocol === 'https' ? 'wss' : 'ws';
       const wsBase = `${wsProtocol}://${req.get('host')}`;
-      const COMMERCE_GRAPHQL = process.env.COMMERCE_GRAPHQL_URL || 'http://graph-ql.default.svc.cluster.local/graphql';
+      const COMMERCE_GRAPHQL = process.env.COMMERCE_GRAPHQL_PUBLIC_URL || 'https://graph-ql-dev.vio.live';
 
       return res.json({
         sdkVersion: "0.2.0",
