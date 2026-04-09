@@ -599,6 +599,52 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   setInterval(checkAndNotifyEndedCampaigns, 30000);
   setInterval(checkAndNotifyStartedCampaigns, 30000);
 
+  const delay = (ms: number) => new Promise(res => setTimeout(res, ms));
+  async function fetchGraphQL(query: string, commerceApiKey: string, retries = 3): Promise<any> {
+    console.log('[GraphQL] Fetching data...');
+    try {
+      const res = await fetch(process.env.COMMERCE_GRAPHQL_URL || 'http://graph-ql', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': commerceApiKey,
+        },
+        body: JSON.stringify({ query }),
+      });
+
+      if (!res.ok) {
+        console.error(`[GraphQL] HTTP error ${res.status}:`, await res.text());
+        throw new Error(`HTTP ${res.status}`);
+      }
+
+      const data = await res.json();
+
+      if (data.errors) {
+        throw new Error(`GraphQL error`);
+      }
+
+      return data;
+
+    } catch (err: any) {
+      console.log(`[GraphQL] Error fetching data (retries left: ${retries - 1}):`, err.message);
+      const code = err?.cause?.code || err?.code;
+      const isRetryable =
+        code === 'ECONNRESET' ||
+        code === 'ETIMEDOUT' ||
+        err.message?.includes('fetch failed');
+
+      if (retries > 0 && isRetryable) {
+        await delay(200 * (4 - retries));
+        return fetchGraphQL(query, commerceApiKey, retries - 1);
+      }
+
+      console.error('[GraphQL error]', {
+        message: err.message,
+        code,
+      });
+    }
+  }
+
   // HTTP API endpoints
 
   // Get recent events
@@ -4604,15 +4650,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
 
       let product: any = null;
       try {
-        const gqlRes = await fetch(process.env.COMMERCE_GRAPHQL_URL || 'http://graph-ql.default.svc.cluster.local/graphql', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': commerceApiKey,
-          },
-          body: JSON.stringify({ query: gqlQuery }),
-        });
-        const gqlData = await gqlRes.json() as any;
+        const gqlData = await fetchGraphQL(gqlQuery, commerceApiKey);
         const p = gqlData?.data?.Channel?.GetProductsByIds?.[0];
         if (p) {
           const image = p.images?.sort((a: any, b: any) => a.order - b.order)?.[0];
@@ -4678,12 +4716,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       let product: any = null;
       try {
         const gqlQuery = `{ Channel { GetProductsByIds(product_ids: [${productId}]) { id title images { url order } price { amount amount_incl_taxes currency_code } } } }`;
-        const gqlRes = await fetch(process.env.COMMERCE_GRAPHQL_URL || 'http://graph-ql.default.svc.cluster.local/graphql', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Authorization': commerceApiKey },
-          body: JSON.stringify({ query: gqlQuery }),
-        });
-        const gqlData = await gqlRes.json() as any;
+        const gqlData = await fetchGraphQL(gqlQuery, commerceApiKey);
         const p = gqlData?.data?.Channel?.GetProductsByIds?.[0];
         if (p) {
           const image = p.images?.sort((a: any, b: any) => a.order - b.order)?.[0];
@@ -4801,12 +4834,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       if (productIds.length > 0) {
         try {
           const gqlQuery = `{ Channel { GetProductsByIds(product_ids: [${productIds[0]}]) { id title images { url order } price { amount amount_incl_taxes currency_code } } } }`;
-          const gqlRes = await fetch(process.env.COMMERCE_GRAPHQL_URL || 'http://graph-ql.default.svc.cluster.local/graphql', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'Authorization': commerceApiKey },
-            body: JSON.stringify({ query: gqlQuery }),
-          });
-          const gqlData = await gqlRes.json() as any;
+          const gqlData = await fetchGraphQL(gqlQuery, commerceApiKey);
           const p = gqlData?.data?.Channel?.GetProductsByIds?.[0];
           if (p) {
             const image = p.images?.sort((a: any, b: any) => a.order - b.order)?.[0];
@@ -4870,12 +4898,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       }
 
       const gqlQuery = `{ Channel { GetProductsByIds(product_ids: [${productIds.join(',')}]) { id title images { url order } price { amount amount_incl_taxes currency_code } } } }`;
-      const gqlRes = await fetch(process.env.COMMERCE_GRAPHQL_URL || 'http://graph-ql.default.svc.cluster.local/graphql', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': commerceApiKey },
-        body: JSON.stringify({ query: gqlQuery }),
-      });
-      const gqlData = await gqlRes.json() as any;
+      const gqlData = await fetchGraphQL(gqlQuery, commerceApiKey);
       const raw = gqlData?.data?.Channel?.GetProductsByIds ?? [];
       const products = raw.map((p: any) => {
         const image = p.images?.sort((a: any, b: any) => a.order - b.order)?.[0];
@@ -4904,12 +4927,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
         try {
           const commerceApiKey = process.env.COMMERCE_API_KEY || 'KCXF10Y-W5T4PCR-GG5119A-Z64SQ9S';
           const gqlQuery = `{ Channel { GetProductsByIds(product_ids: [${productId}]) { id title images { url order } price { amount amount_incl_taxes currency_code } } } }`;
-          const gqlRes = await fetch(process.env.COMMERCE_GRAPHQL_URL || 'http://graph-ql.default.svc.cluster.local/graphql', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'Authorization': commerceApiKey },
-            body: JSON.stringify({ query: gqlQuery }),
-          });
-          const gqlData = await gqlRes.json() as any;
+          const gqlData = await fetchGraphQL(gqlQuery, commerceApiKey);
           const name = gqlData?.data?.Channel?.GetProductsByIds?.[0]?.title;
           if (name) resolvedName = name;
         } catch (err) {
