@@ -418,7 +418,8 @@ export function SettingsTab({ campaignId, campaign }: SettingsTabProps) {
         <p className="text-xs text-gray-500 mb-4">Select which payment methods are enabled for checkout in this campaign</p>
         <div className="border border-white/10 rounded-lg p-6 space-y-4">
           {[
-            { id: 'apple_pay', label: 'Apple Pay / Google Pay' },
+            { id: 'apple_pay', label: 'Apple Pay' },
+            { id: 'google_pay', label: 'Google Pay' },
             { id: 'klarna', label: 'Klarna' },
             { id: 'vipps', label: 'Vipps' },
             { id: 'stripe_link', label: 'Stripe Link' },
