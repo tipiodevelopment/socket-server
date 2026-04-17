@@ -47,7 +47,7 @@ export interface IStorage {
   getChannelCampaigns(channelId: number): Promise<Campaign[]>;
   getClientAppCampaigns(clientAppId: number): Promise<Campaign[]>;
   getUserCampaigns(userId: number): Promise<Campaign[]>;
-  getCampaignByApiKey(apiKey: string): Promise<Campaign | undefined>;
+  getCampaignsByApiKey(apiKey: string): Promise<Campaign[]>;
   updateCampaignPaymentMethods(id: number, paymentMethods: string[]): Promise<Campaign | undefined>;
   updateCampaign(id: number, campaign: Partial<InsertCampaign>): Promise<Campaign | undefined>;
   deleteCampaign(id: number): Promise<void>;
@@ -410,9 +410,9 @@ export class MemStorage implements IStorage {
       .orderBy(desc(campaigns.createdAt));
   }
 
-  async getCampaignByApiKey(apiKey: string): Promise<Campaign | undefined> {
-    const [campaign] = await db.select().from(campaigns).where(eq(campaigns.reachuApiKey, apiKey));
-    return campaign || undefined;
+  async getCampaignsByApiKey(apiKey: string): Promise<Campaign[]> {
+    const campaignsList = await db.select().from(campaigns).where(eq(campaigns.reachuApiKey, apiKey));
+    return campaignsList || [];
   }
 
   async updateCampaignPaymentMethods(id: number, paymentMethods: string[]): Promise<Campaign | undefined> {

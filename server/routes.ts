@@ -23,7 +23,8 @@ import {
   insertCampaignSponsorSchema,
   insertBroadcastSponsorSlotSchema,
   type WebSocketEvent,
-  type InsertScheduledComponent
+  type InsertScheduledComponent,
+  Campaign
 } from "@shared/schema";
 import { randomUUID } from "crypto";
 import {
@@ -775,15 +776,25 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       const _apiKey = req.params.apiKey;
       const { paymentMethods } = req.body;
 
-      const campaign = await storage.getCampaignByApiKey(_apiKey);
-      if (!campaign) {
-        throw new Error('Campaign not found for provided API key');
+      const campaigns = await storage.getCampaignsByApiKey(_apiKey);
+      if (!campaigns || campaigns.length === 0) {
+        throw new Error('Campaigns not found for provided API key');
       }
       if(paymentMethods && !Array.isArray(paymentMethods)) {
         throw new Error('paymentMethods should be an array');
       }
-      await storage.updateCampaignPaymentMethods(campaign.id, paymentMethods);
-      response.message = `Payment methods updated successfully: ${JSON.stringify(paymentMethods)} to campaign ${campaign.id}`;
+
+      const processCampaign = async (campaign: Campaign) => {
+        try {
+          await storage.updateCampaignPaymentMethods(campaign.id, paymentMethods);          
+        } catch (error) {
+          console.error(`Error updating payment methods for campaign ${campaign.id}:`, error);
+        }
+      }
+
+      await Promise.allSettled(campaigns.map(processCampaign));
+      
+      response.message = `Payment methods updated successfully: ${JSON.stringify(paymentMethods)} to ${campaigns.length} campaign(s) with API key ${_apiKey}`;
 
     } catch (error) {
       console.error('Error updating payment methods:', error);
