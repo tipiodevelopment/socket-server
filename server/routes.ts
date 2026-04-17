@@ -765,7 +765,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
 
   // HTTP API endpoints
   // Post update payment methods by apykey
-  app.post('/api/campaign/payments/apikey/:apiKey/', async (req, res) => {
+  app.post('/api/campaign/payments/apikey/:apiKey', async (req, res) => {
     const response = {
       message: "",
       status: "success",
