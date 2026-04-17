@@ -5350,7 +5350,8 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
           startDate: campaign.startDate,
           endDate: campaign.endDate,
           isPaused: isPaused,
-          components: activeComponents
+          components: activeComponents,
+          paymentMethods: campaign.paymentMethods ?? [],
         };
 
         // Include matchContext if campaign has matchId
@@ -5567,6 +5568,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
           isPaused: (activeCampaign as any).isPaused ?? false,
           startDate: (activeCampaign as any).startDate || null,
           endDate: (activeCampaign as any).endDate || null,
+          paymentMethods: (activeCampaign as any).paymentMethods || [],
         } : null,
       });
     } catch (error) {
