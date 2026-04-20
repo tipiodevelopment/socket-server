@@ -310,6 +310,19 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   // Map WebSocket → user connection binding for Redis-backed presence
   const clientUserBindings = new WeakMap<WebSocket, { userId: string; connectionId: string }>();
   
+  // Function to broadcast to clients in a specific campaign (local node only)
+  const broadcastToCampaignLocal = (campaignId: number, message: string) => {
+    const clients = campaignClients.get(campaignId);
+    if (clients) {
+      clients.forEach((client) => {
+        if (client.readyState === WebSocket.OPEN) {
+          console.log("Message Send!  Campaign:", campaignId, "Message:", message);
+          client.send(message);
+        }
+      });
+    }
+  };
+
   // Subscribe to cross-node events via Redis Pub/Sub
   if (isRedisEnabled()) {
     subscribeToEvents("ws:events:forward", (messageStr) => {
@@ -321,6 +334,9 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
             targetWs.send(JSON.stringify(event));
             console.log(`[WS] Forwarded cart_intent delivered locally to userId=${event.userId}`);
           }
+        } else if (event.type === 'broadcast_campaign' && event.campaignId) {
+          // Deliver forwarded campaign broadcast to local node clients
+          broadcastToCampaignLocal(event.campaignId, event.message);
         }
       } catch (err) {
         console.error('[WS] Error processing cross-node event:', err);
@@ -629,14 +645,16 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
 
   // Function to broadcast to clients in a specific campaign
   const broadcastToCampaignImpl = (campaignId: number, message: string) => {
-    const clients = campaignClients.get(campaignId);
-    if (clients) {
-      clients.forEach((client) => {
-        if (client.readyState === WebSocket.OPEN) {
-          console.log("Message Send!  Campaign:", campaignId, "Message:", message);
-          client.send(message);
-        }
+    if (isRedisEnabled()) {
+      // Forward to all nodes via Redis (including this one)
+      publishEvent("ws:events:forward", {
+        type: 'broadcast_campaign',
+        campaignId,
+        message
       });
+    } else {
+      // Redis disabled: broadcast locally only
+      broadcastToCampaignLocal(campaignId, message);
     }
   };
 
