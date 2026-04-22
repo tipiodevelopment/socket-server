@@ -323,7 +323,7 @@ Broadcasts / Polls / Contests — unchanged.
 | `POST /api/sdk/tv/session/heartbeat` | POST | Updates `last_seen_at` on the session |
 | `POST /api/sdk/tv/session/end` | POST | Marks session ended |
 | `POST /api/sdk/tv/broadcasts/:broadcastId/shoppable-ad` | POST | Triggers a shoppable_ad dispatch (source=`tv-sdk`). Rare from a real Apple TV device; mostly for automation. |
-| `POST /api/sdk/tv/cart-intent` | POST | TV-originated cart intent. Body: `{ externalUserId, productId, campaignId, activationId?, sponsorId?, platform? }`. Persists `cart_intents` with `source_activation_id = activationId` **and forwards the envelope to the user's mobile** via the same delivery tree as `/api/campaigns/:id/cart-intent` (local WS → Redis cluster → partner webhook → APNs). The persisted row records the actual `delivery_mode`. |
+| `POST /api/sdk/tv/cart-intent` | POST | TV-originated cart intent. **v2 minimal body**: `{ externalUserId, productId, activationId }` — the backend derives `campaignId` + `sponsorId` from `shoppable_ad_activations[activationId]`. Legacy body with explicit `{ campaignId, sponsorId, platform }` still accepted for ad-hoc callers (no upstream activation). Persists `cart_intents` with `source_activation_id = activationId` **and forwards the envelope to the user's mobile** via the same delivery tree as `/api/campaigns/:id/cart-intent` (local WS → Redis cluster → partner webhook → APNs). The persisted row records the actual `delivery_mode`. |
 | `GET /api/sdk/tv/broadcasts/:broadcastId/capabilities` | GET | Same as mobile `capabilities` but filtered for TV (no engagement UI on TV; only shoppable) |
 
 ### 4.4 `/v1/sdk/config` response shape (final)
@@ -655,17 +655,19 @@ Step 2: TV SDK receives WS event
 
 Step 3: User presses OK on the remote
   SDK → POST /api/sdk/tv/cart-intent
-  body: {
-    externalUserId: "tv2_demo_user",
+  v2 minimal body (backend resolves campaignId + sponsorId from activationId):
+  {
+    externalUserId: "demo_user_001",
     productId: "408841",
-    campaignId: 36,
-    activationId: 42,      ← attribution link
-    sponsorId: 3,          ← analytics enrichment
-    platform: "apple-tv"
+    activationId: 42      ← attribution link AND context anchor
   }
+  Legacy / ad-hoc callers may still pass campaignId + sponsorId explicitly.
   headers: X-Api-Key: <client_app.apiKey>
 
 Step 4: Backend processes (persist AND forward)
+  ├── When activationId present: getShoppableAdActivation(42)
+  │     → derive campaignId + sponsorId (if not sent explicitly)
+  │     → reject if activation.clientAppId doesn't match the API key
   ├── ensureEndUser(client_app, externalUserId) → end_users.id
   ├── getActiveTvSession(client_app, endUser, platform) → tv_session_id
   ├── Resolve product name via Commerce (best-effort, for push title)
@@ -684,8 +686,16 @@ Step 4: Backend processes (persist AND forward)
   │       envelope }
   └── Return 200 { success, cartIntentId, mode, userConnected, envelope }
 
-Step 5: Mobile app receives event (WS / webhook push / APNs)
-  → Mobile SDK opens Commerce checkout with productId
+Step 5: Mobile app receives the envelope (WS / webhook push / APNs)
+  → VioSwiftSDK.CartIntentEvent.parse() decodes activation_id + sponsor_id
+    from vio_payload (v2 — see VioSwiftSDK/Documentation/CART_INTENT_FLOW.md)
+  → CampaignManager.publishCartIntentIfChanged() dedups by activationId so
+    the dual-delivery (WS + webhook/APNs) doesn't open two overlays
+  → CartIntentProductDetailHost renders, passing sponsorId to ProductService
+  → ProductService.loadProduct uses CommerceSdkClientProvider.client(forSponsorId:)
+    so a secondary sponsor's product hydrates from that sponsor's channel,
+    not the primary's
+  → VProductDetailOverlay sheet opens with Apple Pay
   → User completes purchase
   → (future) Commerce webhook → Vio closes the row → full attribution
 ```
