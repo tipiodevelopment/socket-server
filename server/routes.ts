@@ -4880,15 +4880,26 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       }
     }
 
-    // 1. Resolve sponsor (includes its Commerce API key if present)
+    // 1. Resolve sponsor (includes its Commerce API key if present). The SDK renders
+    //    the shoppable overlay using the sponsor's **avatar** (square brand mark),
+    //    not the full horizontal logo — enforce that here so the overlay never has to
+    //    handle a missing avatar at display time.
     let sponsor: any = null;
     let commerceApiKey = process.env.COMMERCE_API_KEY || 'KCXF10Y-W5T4PCR-GG5119A-Z64SQ9S';
     if (sponsorId) {
       const sp = await storage.getSponsor(sponsorId);
       if (sp) {
+        if (!sp.avatarUrl) {
+          const err: any = new Error(`Sponsor ${sp.id} (${sp.name}) has no avatar_url — set one in the dashboard before dispatching shoppable ads`);
+          err.status = 422;
+          err.code = 'SPONSOR_MISSING_AVATAR';
+          throw err;
+        }
         if (sp.commerceApiKey) commerceApiKey = sp.commerceApiKey;
         sponsor = {
+          id: sp.id,
           name: sp.name,
+          avatarUrl: normalizeUrls(sp.avatarUrl, req.protocol, req.get('host')),
           logoUrl: sp.logoUrl ? normalizeUrls(sp.logoUrl, req.protocol, req.get('host')) : null,
           primaryColor: sp.primaryColor ?? null,
         };
@@ -4934,11 +4945,13 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       metadata: null,
     });
 
-    // 4. Build WS event (includes activationId for future attribution / idempotency)
+    // 4. Build WS event (includes activationId for attribution + sponsorId for per-sponsor
+    //    commerce-key routing on the SDK side via VioTVConfiguration.commerce(forSponsorId:))
     const wsEvent: Record<string, any> = {
       type: 'shoppable_ad',
       broadcastId: broadcast.broadcastId,
       campaignId: campaign.id,
+      sponsorId: sponsorId ?? null,
       product,
       ...(sponsor ? { sponsor } : {}),
       ...(slotId ? { slotId } : {}),
@@ -5089,8 +5102,9 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       await storage.updateBroadcastSponsorSlot(slotId, { status: 'completed', executedAt: new Date() });
 
       res.json({ success: true, activationId, product, sponsor });
-    } catch (error) {
+    } catch (error: any) {
       console.error('[ShoppableAd:slot-scheduler] Execute error:', error);
+      if (error?.status) return res.status(error.status).json({ error: error.message, code: error.code });
       res.status(500).json({ error: 'Failed to execute sponsor slot' });
     }
   });
@@ -6343,10 +6357,15 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
     const sp = await storage.getSponsor(sponsorId);
     if (!sp) return null;
     const hasCommerce = !!sp.commerceApiKey;
+    const publicHost = process.env.PUBLIC_BASE_URL || 'api-dev.vio.live';
     return {
       id: sp.id,
       name: sp.name,
-      logoUrl: sp.logoUrl ? normalizeUrls(sp.logoUrl, 'https', (process.env.PUBLIC_BASE_URL || 'api-dev.vio.live')) : null,
+      // `avatarUrl` is the square brand mark rendered inside shoppable overlays / product
+      // cards. `logoUrl` is the wide horizontal logo used for sponsor intros / full-screen
+      // branding. Both ship so the SDK can pick the right one for each surface.
+      avatarUrl: sp.avatarUrl ? normalizeUrls(sp.avatarUrl, 'https', publicHost) : null,
+      logoUrl: sp.logoUrl ? normalizeUrls(sp.logoUrl, 'https', publicHost) : null,
       primaryColor: sp.primaryColor ?? null,
       secondaryColor: sp.secondaryColor ?? null,
       commerce: hasCommerce

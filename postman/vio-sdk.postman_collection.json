@@ -1,30 +1,104 @@
 {
   "info": {
     "name": "Vio SDK API (v2 Multi-Sponsor)",
-    "description": "SDK-facing endpoints for Vio, organised by flow. Set the `apiKey` variable once and every request is authorised.\n\n**Default baseUrl**: `https://api-local-angelo.vio.live` (Cloudflare tunnel to the local backend). Change to `http://localhost:5001` if you prefer direct.\n\n**Folders**:\n1. Setup & Health — smoke checks\n2. SDK Bootstrap v2 — the new multi-sponsor init flow (primary + secondary sponsors)\n3. SDK v2 — Per-broadcast — capabilities + components per broadcast\n4. TV session — Apple TV / Android TV lifecycle\n5. Cart Intent — mobile + TV variants with attribution chain\n6. Shoppable Ads — 4 dispatch entry points + audit\n7. Secondary Sponsors — dashboard CRUD for secondary sponsor list\n8. Engagement (public) — polls / contests voting\n9. Legacy v1 — old bootstrap + SDK endpoints kept for comparison during migration",
+    "description": "SDK-facing endpoints for Vio, organised by flow. Set the `apiKey` variable once and every request is authorised.\n\n**Default baseUrl**: `https://api-local-angelo.vio.live` (Cloudflare tunnel to the local backend). Change to `http://localhost:5001` if you prefer direct.\n\n**Folders**:\n1. Setup & Health \u2014 smoke checks\n2. SDK Bootstrap v2 \u2014 the new multi-sponsor init flow (primary + secondary sponsors)\n3. SDK v2 \u2014 Per-broadcast \u2014 capabilities + components per broadcast\n4. TV session \u2014 Apple TV / Android TV lifecycle\n5. Cart Intent \u2014 mobile + TV variants with attribution chain\n6. Shoppable Ads \u2014 4 dispatch entry points + audit\n7. Secondary Sponsors \u2014 dashboard CRUD for secondary sponsor list\n8. Engagement (public) \u2014 polls / contests voting\n9. Legacy v1 \u2014 old bootstrap + SDK endpoints kept for comparison during migration\n\n## Changelog \u2014 April 2026\n\n- `shoppable_ad` WS events now carry `sponsorId` (top-level) for SDK commerce-key routing and `activationId` for the cart-intent \u2192 mobile attribution chain. Trigger endpoints also return `activationId` in the HTTP response so Postman can auto-capture it for the downstream `cart-intent` request.\n- New soft-miss request under folder 4 to exercise the `{ subscribed: false, reason: ... }` path of `/api/sdk/tv/broadcast/subscribe`.\n- Post-response scripts auto-populate `sessionId`, `endUserId`, `campaignId`, `activationId` so you can walk the full TV flow without copy-pasting ids.\n",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
-    { "key": "baseUrl", "value": "https://api-local-angelo.vio.live", "type": "string" },
-    { "key": "apiKey", "value": "", "type": "string", "description": "Your client_app API key. For feature DB branch use e.g. vg_api_key_87cce71a18c9f942" },
-    { "key": "broadcastId", "value": "paris-saint-germain-vs-chelsea-2026-03-11", "type": "string" },
-    { "key": "campaignId", "value": "35", "type": "string" },
-    { "key": "sponsorId", "value": "3", "type": "string" },
-    { "key": "externalUserId", "value": "test-user-1", "type": "string", "description": "Opaque user id from the partner (Viaplay/TV2)" },
-    { "key": "tvDeviceId", "value": "tv-device-abc-123", "type": "string" },
-    { "key": "tvPlatform", "value": "apple-tv", "type": "string", "description": "apple-tv | android-tv | fire-tv | roku" },
-    { "key": "productId", "value": "12345", "type": "string" },
-    { "key": "activationId", "value": "", "type": "string", "description": "Set this from a shoppable_ad response to test attribution chain" },
-    { "key": "sessionId", "value": "", "type": "string", "description": "Set after TV session/start" },
-    { "key": "language", "value": "en", "type": "string" },
-    { "key": "adminBearer", "value": "", "type": "string" }
+    {
+      "key": "baseUrl",
+      "value": "https://api-local-angelo.vio.live",
+      "type": "string"
+    },
+    {
+      "key": "apiKey",
+      "value": "tv2_api_key_91b4fbf634af4bc5",
+      "type": "string",
+      "description": "Your client_app API key. For feature DB branch use e.g. vg_api_key_87cce71a18c9f942"
+    },
+    {
+      "key": "broadcastId",
+      "value": "barcelona-psg-2026-03-03",
+      "type": "string"
+    },
+    {
+      "key": "campaignId",
+      "value": "36",
+      "type": "string"
+    },
+    {
+      "key": "sponsorId",
+      "value": "3",
+      "type": "string"
+    },
+    {
+      "key": "externalUserId",
+      "value": "demo_user_001",
+      "type": "string",
+      "description": "Opaque user id from the partner (Viaplay/TV2)"
+    },
+    {
+      "key": "tvDeviceId",
+      "value": "tv-device-abc-123",
+      "type": "string"
+    },
+    {
+      "key": "tvPlatform",
+      "value": "apple-tv",
+      "type": "string",
+      "description": "apple-tv | android-tv | fire-tv | roku"
+    },
+    {
+      "key": "productId",
+      "value": "408898",
+      "type": "string"
+    },
+    {
+      "key": "activationId",
+      "value": "",
+      "type": "string",
+      "description": "Set this from a shoppable_ad response to test attribution chain"
+    },
+    {
+      "key": "sessionId",
+      "value": "",
+      "type": "string",
+      "description": "Set after TV session/start"
+    },
+    {
+      "key": "language",
+      "value": "en",
+      "type": "string"
+    },
+    {
+      "key": "adminBearer",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "endUserId",
+      "value": "",
+      "type": "string"
+    }
   ],
   "auth": {
     "type": "apikey",
     "apikey": [
-      { "key": "key", "value": "x-api-key", "type": "string" },
-      { "key": "value", "value": "{{apiKey}}", "type": "string" },
-      { "key": "in", "value": "header", "type": "string" }
+      {
+        "key": "key",
+        "value": "x-api-key",
+        "type": "string"
+      },
+      {
+        "key": "value",
+        "value": "{{apiKey}}",
+        "type": "string"
+      },
+      {
+        "key": "in",
+        "value": "header",
+        "type": "string"
+      }
     ]
   },
   "item": [
@@ -34,21 +108,43 @@
         {
           "name": "GET /api/status",
           "request": {
-            "auth": { "type": "noauth" },
+            "auth": {
+              "type": "noauth"
+            },
             "method": "GET",
-            "url": { "raw": "{{baseUrl}}/api/status", "host": ["{{baseUrl}}"], "path": ["api","status"] },
+            "url": {
+              "raw": "{{baseUrl}}/api/status",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "status"
+              ]
+            },
             "description": "Health check. Returns 200 if the backend is reachable."
           }
         },
         {
-          "name": "GET /v2/sdk/config — apiKey sanity check",
+          "name": "GET /v2/sdk/config \u2014 apiKey sanity check",
           "request": {
             "method": "GET",
             "url": {
               "raw": "{{baseUrl}}/v2/sdk/config?apiKey={{apiKey}}",
-              "host": ["{{baseUrl}}"],
-              "path": ["v2","sdk","config"],
-              "query": [{ "key": "apiKey", "value": "{{apiKey}}" }]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v2",
+                "sdk",
+                "config"
+              ],
+              "query": [
+                {
+                  "key": "apiKey",
+                  "value": "{{apiKey}}"
+                }
+              ]
             },
             "description": "Validates your apiKey and that the backend supports v2. Expect 200 with the multi-sponsor bootstrap payload."
           }
@@ -63,14 +159,24 @@
           "name": "GET /v2/sdk/config (primary + secondary sponsors)",
           "request": {
             "method": "GET",
-            "url": { "raw": "{{baseUrl}}/v2/sdk/config", "host": ["{{baseUrl}}"], "path": ["v2","sdk","config"] },
-            "description": "Response shape:\n\n```json\n{\n  \"endpoints\": { \"webSocketBase\", \"commerceGraphQL\" },\n  \"campaign\": { \"id\", \"name\", \"logo\", \"isActive\", \"isPaused\", \"startDate\", \"endDate\" },\n  \"primarySponsor\": { \"id\", \"name\", \"logoUrl\", \"primaryColor\", \"secondaryColor\", \"commerce\": { \"apiKey\", \"channelId\", \"paymentMethods\": [] } | null },\n  \"secondarySponsors\": [ ... ],\n  \"features\": { \"shoppable\", \"lineup\" }\n}\n```\n\nEach sponsor's commerce block is nullable — visual-only sponsors have `commerce: null`."
+            "url": {
+              "raw": "{{baseUrl}}/v2/sdk/config",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v2",
+                "sdk",
+                "config"
+              ]
+            },
+            "description": "Response shape:\n\n```json\n{\n  \"endpoints\": { \"webSocketBase\", \"commerceGraphQL\" },\n  \"campaign\": { \"id\", \"name\", \"logo\", \"isActive\", \"isPaused\", \"startDate\", \"endDate\" },\n  \"primarySponsor\": { \"id\", \"name\", \"logoUrl\", \"primaryColor\", \"secondaryColor\", \"commerce\": { \"apiKey\", \"channelId\", \"paymentMethods\": [] } | null },\n  \"secondarySponsors\": [ ... ],\n  \"features\": { \"shoppable\", \"lineup\" }\n}\n```\n\nEach sponsor's commerce block is nullable \u2014 visual-only sponsors have `commerce: null`."
           }
         }
       ]
     },
     {
-      "name": "3. SDK v2 — Per-broadcast",
+      "name": "3. SDK v2 \u2014 Per-broadcast",
       "description": "Called when the user enters a specific broadcast.",
       "item": [
         {
@@ -79,8 +185,16 @@
             "method": "GET",
             "url": {
               "raw": "{{baseUrl}}/v2/sdk/broadcasts/{{broadcastId}}/capabilities",
-              "host": ["{{baseUrl}}"],
-              "path": ["v2","sdk","broadcasts","{{broadcastId}}","capabilities"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v2",
+                "sdk",
+                "broadcasts",
+                "{{broadcastId}}",
+                "capabilities"
+              ]
             },
             "description": "Capability map:\n\n```json\n{\n  \"broadcastId\", \"campaignId\",\n  \"engagement\": { \"enabled\", \"hasPolls\", \"hasContests\" },\n  \"shoppable\": { \"enabled\" },\n  \"lineup\": { \"available\" }\n}\n```\n\nSDK uses this to decide what to subscribe to and what to load into memory."
           }
@@ -91,8 +205,16 @@
             "method": "GET",
             "url": {
               "raw": "{{baseUrl}}/v2/sdk/broadcasts/{{broadcastId}}/components",
-              "host": ["{{baseUrl}}"],
-              "path": ["v2","sdk","broadcasts","{{broadcastId}}","components"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v2",
+                "sdk",
+                "broadcasts",
+                "{{broadcastId}}",
+                "components"
+              ]
             },
             "description": "Returns campaign-scoped + broadcast-scoped placements. Each entry has:\n\n```json\n{\n  \"id\", \"campaignComponentId\",\n  \"type\": \"banner|countdown|carousel_*|product_spotlight|...\",\n  \"locationId\",\n  \"sponsor\": { \"id\", \"name\", \"logoUrl\", \"primaryColor\" },\n  \"commerce\": { \"apiKey\", \"channelId\" } | null,\n  \"config\": { ... }\n}\n```\n\nSDK uses `commerce.apiKey` per component to call Commerce GraphQL directly (model d3)."
           }
@@ -107,35 +229,170 @@
           "name": "POST /api/sdk/tv/broadcast/subscribe (combined bootstrap)",
           "request": {
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"broadcastId\": \"{{broadcastId}}\",\n  \"externalUserId\": \"{{externalUserId}}\",\n  \"tvDeviceId\": \"{{tvDeviceId}}\",\n  \"platform\": \"{{tvPlatform}}\"\n}"
             },
-            "url": { "raw": "{{baseUrl}}/api/sdk/tv/broadcast/subscribe", "host": ["{{baseUrl}}"], "path": ["api","sdk","tv","broadcast","subscribe"] },
+            "url": {
+              "raw": "{{baseUrl}}/api/sdk/tv/broadcast/subscribe",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "sdk",
+                "tv",
+                "broadcast",
+                "subscribe"
+              ]
+            },
             "description": "One request that replaces three:\n- validates the partner-provided `broadcastId` against Vio's DB for this client_app\n- ensures the `end_users` row exists for (clientApp, externalUserId)\n- upserts the tv_sessions row\n- returns campaign + primary/secondary sponsors with their commerce blocks + wsUrl + capabilities\n\nIf the broadcast is unknown or cross-tenant, responds 200 with `{ subscribed: false, reason }` so the SDK can silently skip.\n\nTry it:\n1. Happy path (TV2 broadcast + TV2 apiKey): use defaults\n2. Unknown broadcast: set `{{broadcastId}}` to `broadcast-does-not-exist`\n3. Cross-tenant (Viaplay broadcast with TV2 apiKey): use `paris-saint-germain-vs-chelsea-2026-03-11`\n4. TV not enabled: swap `{{apiKey}}` to VG's (tv_enabled=false on that client_app)"
-          }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Auto-capture sessionId + endUserId when backend accepts the broadcast.",
+                  "// Lets you run heartbeat / end / cart-intent without copy-pasting ids.",
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "try {",
+                  "  const r = pm.response.json();",
+                  "  if (r.subscribed) {",
+                  "    if (r.sessionId)  pm.collectionVariables.set('sessionId',  String(r.sessionId));",
+                  "    if (r.endUserId)  pm.collectionVariables.set('endUserId',  String(r.endUserId));",
+                  "    if (r.campaignId) pm.collectionVariables.set('campaignId', String(r.campaignId));",
+                  "    console.log('[subscribe] captured sessionId=' + r.sessionId + ' endUserId=' + r.endUserId);",
+                  "  } else {",
+                  "    console.log('[subscribe] soft-miss:', r.reason);",
+                  "  }",
+                  "} catch (e) { console.error('parse error', e); }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /api/sdk/tv/broadcast/subscribe \u2014 UNKNOWN broadcast (soft-miss)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-API-Key",
+                "value": "{{apiKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/sdk/tv/broadcast/subscribe",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "sdk",
+                "tv",
+                "broadcast",
+                "subscribe"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"broadcastId\": \"broadcast-no-existe-demo\",\n  \"externalUserId\": \"{{externalUserId}}\",\n  \"platform\": \"{{tvPlatform}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Simulates the Apple TV demo's orange card. Backend responds `{ subscribed: false, reason: \"broadcast_not_registered_for_client_app\" }`. The SDK never opens the WS on this response \u2014 use this to verify the partner app doesn't crash and that `onSubscriptionFailed` fires."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('subscribed is false', () => {",
+                  "  const r = pm.response.json();",
+                  "  pm.expect(r.subscribed).to.eql(false);",
+                  "  pm.expect(r.reason).to.be.a('string');",
+                  "  console.log('[soft-miss] reason=' + r.reason);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "response": []
         },
         {
           "name": "POST /api/sdk/tv/session/start",
           "request": {
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"externalUserId\": \"{{externalUserId}}\",\n  \"tvDeviceId\": \"{{tvDeviceId}}\",\n  \"platform\": \"{{tvPlatform}}\"\n}"
             },
-            "url": { "raw": "{{baseUrl}}/api/sdk/tv/session/start", "host": ["{{baseUrl}}"], "path": ["api","sdk","tv","session","start"] },
-            "description": "Registers (or refreshes) the TV session. Ensures the `end_users` row for (clientApp, externalUserId) exists. Returns `sessionId` — save it into the `sessionId` collection variable for the next requests.\n\n**Capabilities**: `shoppable = clientApp.tv_enabled && platform in tv_platforms` (or unrestricted if no platforms configured)."
+            "url": {
+              "raw": "{{baseUrl}}/api/sdk/tv/session/start",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "sdk",
+                "tv",
+                "session",
+                "start"
+              ]
+            },
+            "description": "Registers (or refreshes) the TV session. Ensures the `end_users` row for (clientApp, externalUserId) exists. Returns `sessionId` \u2014 save it into the `sessionId` collection variable for the next requests.\n\n**Capabilities**: `shoppable = clientApp.tv_enabled && platform in tv_platforms` (or unrestricted if no platforms configured)."
           }
         },
         {
           "name": "POST /api/sdk/tv/session/heartbeat",
           "request": {
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "body": { "mode": "raw", "raw": "{\n  \"sessionId\": {{sessionId}}\n}" },
-            "url": { "raw": "{{baseUrl}}/api/sdk/tv/session/heartbeat", "host": ["{{baseUrl}}"], "path": ["api","sdk","tv","session","heartbeat"] },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sessionId\": {{sessionId}}\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/sdk/tv/session/heartbeat",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "sdk",
+                "tv",
+                "session",
+                "heartbeat"
+              ]
+            },
             "description": "Bumps `last_seen_at`. Call every ~60s from the SDK."
           }
         },
@@ -143,10 +400,30 @@
           "name": "POST /api/sdk/tv/session/end",
           "request": {
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "body": { "mode": "raw", "raw": "{\n  \"sessionId\": {{sessionId}}\n}" },
-            "url": { "raw": "{{baseUrl}}/api/sdk/tv/session/end", "host": ["{{baseUrl}}"], "path": ["api","sdk","tv","session","end"] },
-            "description": "Marks `ended_at`. Optional — sessions also time out by inactivity via cron."
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sessionId\": {{sessionId}}\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/sdk/tv/session/end",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "sdk",
+                "tv",
+                "session",
+                "end"
+              ]
+            },
+            "description": "Marks `ended_at`. Optional \u2014 sessions also time out by inactivity via cron."
           }
         }
       ]
@@ -156,28 +433,60 @@
       "description": "User click-to-buy. Both endpoints persist a `cart_intents` row. Carry `activationId` to close the attribution chain from a preceding shoppable_ad dispatch.",
       "item": [
         {
-          "name": "POST /api/sdk/tv/cart-intent (TV — with attribution)",
+          "name": "POST /api/sdk/tv/cart-intent (TV \u2014 with attribution)",
           "request": {
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"externalUserId\": \"{{externalUserId}}\",\n  \"productId\": \"{{productId}}\",\n  \"campaignId\": {{campaignId}},\n  \"activationId\": {{activationId}},\n  \"sponsorId\": {{sponsorId}},\n  \"platform\": \"{{tvPlatform}}\"\n}"
             },
-            "url": { "raw": "{{baseUrl}}/api/sdk/tv/cart-intent", "host": ["{{baseUrl}}"], "path": ["api","sdk","tv","cart-intent"] },
-            "description": "Called by the TV SDK when the user presses the remote on a shoppable_ad popup. The `activationId` (from the preceding WS event) is persisted as `source_activation_id` on the cart_intent row, giving us the TV→Mobile→Purchase attribution chain."
+            "url": {
+              "raw": "{{baseUrl}}/api/sdk/tv/cart-intent",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "sdk",
+                "tv",
+                "cart-intent"
+              ]
+            },
+            "description": "Called by the TV SDK when the user presses the remote on a shoppable_ad popup. The `activationId` (from the preceding WS event) is persisted as `source_activation_id` on the cart_intent row, giving us the TV\u2192Mobile\u2192Purchase attribution chain."
           }
         },
         {
-          "name": "POST /api/campaigns/{id}/cart-intent (Mobile — with activation)",
+          "name": "POST /api/campaigns/{id}/cart-intent (Mobile \u2014 with activation)",
           "request": {
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"userId\": \"{{externalUserId}}\",\n  \"productId\": \"{{productId}}\",\n  \"productName\": \"Acme Sneakers\",\n  \"activationId\": {{activationId}},\n  \"sponsorId\": {{sponsorId}}\n}"
             },
-            "url": { "raw": "{{baseUrl}}/api/campaigns/{{campaignId}}/cart-intent", "host": ["{{baseUrl}}"], "path": ["api","campaigns","{{campaignId}}","cart-intent"] },
+            "url": {
+              "raw": "{{baseUrl}}/api/campaigns/{{campaignId}}/cart-intent",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "campaigns",
+                "{{campaignId}}",
+                "cart-intent"
+              ]
+            },
             "description": "Also persists now. Delivery modes: `websocket | dual | webhook | apns | dropped`. Response includes `cartIntentId` for correlation."
           }
         },
@@ -185,12 +494,28 @@
           "name": "POST /api/campaigns/{id}/register-device",
           "request": {
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"userId\": \"{{externalUserId}}\",\n  \"deviceId\": \"device-uuid-1\",\n  \"deviceToken\": \"apns-hex-token-64chars\",\n  \"platform\": \"ios\"\n}"
             },
-            "url": { "raw": "{{baseUrl}}/api/campaigns/{{campaignId}}/register-device", "host": ["{{baseUrl}}"], "path": ["api","campaigns","{{campaignId}}","register-device"] },
+            "url": {
+              "raw": "{{baseUrl}}/api/campaigns/{{campaignId}}/register-device",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "campaigns",
+                "{{campaignId}}",
+                "register-device"
+              ]
+            },
             "description": "Register APNs / FCM device token for push delivery."
           }
         }
@@ -203,45 +528,180 @@
         {
           "name": "POST /api/broadcasts/{id}/trigger-shoppable-ad (dashboard)",
           "request": {
-            "auth": { "type": "noauth" },
+            "auth": {
+              "type": "noauth"
+            },
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "body": { "mode": "raw", "raw": "{\n  \"productId\": \"{{productId}}\",\n  \"sponsorId\": {{sponsorId}}\n}" },
-            "url": { "raw": "{{baseUrl}}/api/broadcasts/{{broadcastId}}/trigger-shoppable-ad", "host": ["{{baseUrl}}"], "path": ["api","broadcasts","{{broadcastId}}","trigger-shoppable-ad"] },
-            "description": "Dashboard Quick Fire. No auth. Persists `source='dashboard'`. Response includes `activationId` — save it for chained cart_intent tests."
-          }
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"productId\": \"{{productId}}\",\n  \"sponsorId\": {{sponsorId}}\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/broadcasts/{{broadcastId}}/trigger-shoppable-ad",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "broadcasts",
+                "{{broadcastId}}",
+                "trigger-shoppable-ad"
+              ]
+            },
+            "description": "Dashboard Quick Fire. No auth. Persists `source='dashboard'`. Response includes `activationId` \u2014 save it for chained cart_intent tests."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Capture activationId so the TV cart-intent call below can close the attribution chain.",
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "try {",
+                  "  const r = pm.response.json();",
+                  "  if (r.activationId) {",
+                  "    pm.collectionVariables.set('activationId', String(r.activationId));",
+                  "    console.log('[trigger-shoppable-ad] activationId=' + r.activationId);",
+                  "  }",
+                  "} catch (e) { console.error('parse error', e); }"
+                ]
+              }
+            }
+          ]
         },
         {
           "name": "POST /api/sdk/tv/broadcasts/{id}/shoppable-ad (TV SDK)",
           "request": {
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "body": { "mode": "raw", "raw": "{\n  \"productId\": \"{{productId}}\",\n  \"sponsorId\": {{sponsorId}}\n}" },
-            "url": { "raw": "{{baseUrl}}/api/sdk/tv/broadcasts/{{broadcastId}}/shoppable-ad", "host": ["{{baseUrl}}"], "path": ["api","sdk","tv","broadcasts","{{broadcastId}}","shoppable-ad"] },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"productId\": \"{{productId}}\",\n  \"sponsorId\": {{sponsorId}}\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/sdk/tv/broadcasts/{{broadcastId}}/shoppable-ad",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "sdk",
+                "tv",
+                "broadcasts",
+                "{{broadcastId}}",
+                "shoppable-ad"
+              ]
+            },
             "description": "Persists `source='tv-sdk'` + `client_app_id` from the apiKey."
-          }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "try {",
+                  "  const r = pm.response.json();",
+                  "  if (r.activationId) pm.collectionVariables.set('activationId', String(r.activationId));",
+                  "} catch (e) {}"
+                ]
+              }
+            }
+          ]
         },
         {
           "name": "POST /api/broadcasts/{id}/shoppable-ad (Bearer admin)",
           "request": {
-            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{adminBearer}}", "type": "string" }] },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminBearer}}",
+                  "type": "string"
+                }
+              ]
+            },
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "body": { "mode": "raw", "raw": "{\n  \"productId\": \"{{productId}}\",\n  \"sponsorId\": {{sponsorId}}\n}" },
-            "url": { "raw": "{{baseUrl}}/api/broadcasts/{{broadcastId}}/shoppable-ad", "host": ["{{baseUrl}}"], "path": ["api","broadcasts","{{broadcastId}}","shoppable-ad"] },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"productId\": \"{{productId}}\",\n  \"sponsorId\": {{sponsorId}}\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/broadcasts/{{broadcastId}}/shoppable-ad",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "broadcasts",
+                "{{broadcastId}}",
+                "shoppable-ad"
+              ]
+            },
             "description": "JWT-protected. Persists `source='admin-api'`."
-          }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "try {",
+                  "  const r = pm.response.json();",
+                  "  if (r.activationId) pm.collectionVariables.set('activationId', String(r.activationId));",
+                  "} catch (e) {}"
+                ]
+              }
+            }
+          ]
         },
         {
           "name": "POST /api/broadcasts/{id}/sponsor-slots/{slotId}/execute (slot)",
           "request": {
-            "auth": { "type": "noauth" },
+            "auth": {
+              "type": "noauth"
+            },
             "method": "POST",
             "url": {
               "raw": "{{baseUrl}}/api/broadcasts/{{broadcastId}}/sponsor-slots/:slotId/execute",
-              "host": ["{{baseUrl}}"],
-              "path": ["api","broadcasts","{{broadcastId}}","sponsor-slots",":slotId","execute"],
-              "variable": [{ "key": "slotId", "value": "1" }]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "broadcasts",
+                "{{broadcastId}}",
+                "sponsor-slots",
+                ":slotId",
+                "execute"
+              ],
+              "variable": [
+                {
+                  "key": "slotId",
+                  "value": "1"
+                }
+              ]
             },
             "description": "Fires a pre-configured slot. Persists `source='slot-scheduler'` with `slot_id`."
           }
@@ -249,17 +709,41 @@
         {
           "name": "GET /api/broadcasts/{id}/shoppable-ads (audit list)",
           "request": {
-            "auth": { "type": "noauth" },
+            "auth": {
+              "type": "noauth"
+            },
             "method": "GET",
             "url": {
               "raw": "{{baseUrl}}/api/broadcasts/{{broadcastId}}/shoppable-ads?limit=20",
-              "host": ["{{baseUrl}}"],
-              "path": ["api","broadcasts","{{broadcastId}}","shoppable-ads"],
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "broadcasts",
+                "{{broadcastId}}",
+                "shoppable-ads"
+              ],
               "query": [
-                { "key": "limit", "value": "20" },
-                { "key": "offset", "value": "0", "disabled": true },
-                { "key": "sponsorId", "value": "{{sponsorId}}", "disabled": true },
-                { "key": "source", "value": "tv-sdk", "disabled": true }
+                {
+                  "key": "limit",
+                  "value": "20"
+                },
+                {
+                  "key": "offset",
+                  "value": "0",
+                  "disabled": true
+                },
+                {
+                  "key": "sponsorId",
+                  "value": "{{sponsorId}}",
+                  "disabled": true
+                },
+                {
+                  "key": "source",
+                  "value": "tv-sdk",
+                  "disabled": true
+                }
               ]
             },
             "description": "List activations sorted by `triggeredAt DESC`. Filters: sponsorId, source (admin-api|dashboard|tv-sdk|slot-scheduler), limit (max 200), offset."
@@ -274,33 +758,82 @@
         {
           "name": "GET /api/campaigns/{id}/secondary-sponsors",
           "request": {
-            "auth": { "type": "noauth" },
+            "auth": {
+              "type": "noauth"
+            },
             "method": "GET",
-            "url": { "raw": "{{baseUrl}}/api/campaigns/{{campaignId}}/secondary-sponsors", "host": ["{{baseUrl}}"], "path": ["api","campaigns","{{campaignId}}","secondary-sponsors"] },
+            "url": {
+              "raw": "{{baseUrl}}/api/campaigns/{{campaignId}}/secondary-sponsors",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "campaigns",
+                "{{campaignId}}",
+                "secondary-sponsors"
+              ]
+            },
             "description": "List the secondary sponsors of a campaign."
           }
         },
         {
           "name": "POST /api/campaigns/{id}/secondary-sponsors",
           "request": {
-            "auth": { "type": "noauth" },
+            "auth": {
+              "type": "noauth"
+            },
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "body": { "mode": "raw", "raw": "{\n  \"sponsorId\": 4\n}" },
-            "url": { "raw": "{{baseUrl}}/api/campaigns/{{campaignId}}/secondary-sponsors", "host": ["{{baseUrl}}"], "path": ["api","campaigns","{{campaignId}}","secondary-sponsors"] },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sponsorId\": 4\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/campaigns/{{campaignId}}/secondary-sponsors",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "campaigns",
+                "{{campaignId}}",
+                "secondary-sponsors"
+              ]
+            },
             "description": "Add a secondary sponsor. 400 if the sponsor is already the primary."
           }
         },
         {
           "name": "DELETE /api/campaigns/{id}/secondary-sponsors/{sponsorId}",
           "request": {
-            "auth": { "type": "noauth" },
+            "auth": {
+              "type": "noauth"
+            },
             "method": "DELETE",
             "url": {
               "raw": "{{baseUrl}}/api/campaigns/{{campaignId}}/secondary-sponsors/:sponsorId",
-              "host": ["{{baseUrl}}"],
-              "path": ["api","campaigns","{{campaignId}}","secondary-sponsors",":sponsorId"],
-              "variable": [{ "key": "sponsorId", "value": "4" }]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "campaigns",
+                "{{campaignId}}",
+                "secondary-sponsors",
+                ":sponsorId"
+              ],
+              "variable": [
+                {
+                  "key": "sponsorId",
+                  "value": "4"
+                }
+              ]
             },
             "description": "Remove a secondary sponsor. 409 if the sponsor is still referenced by components or activations on this campaign."
           }
@@ -313,24 +846,65 @@
         {
           "name": "GET /v1/engagement/polls",
           "request": {
-            "auth": { "type": "noauth" },
+            "auth": {
+              "type": "noauth"
+            },
             "method": "GET",
-            "url": { "raw": "{{baseUrl}}/v1/engagement/polls?broadcastId={{broadcastId}}", "host": ["{{baseUrl}}"], "path": ["v1","engagement","polls"], "query": [{ "key": "broadcastId", "value": "{{broadcastId}}" }] },
+            "url": {
+              "raw": "{{baseUrl}}/v1/engagement/polls?broadcastId={{broadcastId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "engagement",
+                "polls"
+              ],
+              "query": [
+                {
+                  "key": "broadcastId",
+                  "value": "{{broadcastId}}"
+                }
+              ]
+            },
             "description": "Public list of polls for a broadcast."
           }
         },
         {
           "name": "POST /v1/engagement/polls/{pollId}/vote",
           "request": {
-            "auth": { "type": "noauth" },
+            "auth": {
+              "type": "noauth"
+            },
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "body": { "mode": "raw", "raw": "{\n  \"userId\": \"{{externalUserId}}\",\n  \"optionId\": 1,\n  \"broadcastId\": \"{{broadcastId}}\"\n}" },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userId\": \"{{externalUserId}}\",\n  \"optionId\": 1,\n  \"broadcastId\": \"{{broadcastId}}\"\n}"
+            },
             "url": {
               "raw": "{{baseUrl}}/v1/engagement/polls/:pollId/vote",
-              "host": ["{{baseUrl}}"],
-              "path": ["v1","engagement","polls",":pollId","vote"],
-              "variable": [{ "key": "pollId", "value": "1" }]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "engagement",
+                "polls",
+                ":pollId",
+                "vote"
+              ],
+              "variable": [
+                {
+                  "key": "pollId",
+                  "value": "1"
+                }
+              ]
             },
             "description": "Rate-limited by `voting` preset. One vote per user per poll."
           }
@@ -338,24 +912,65 @@
         {
           "name": "GET /v1/engagement/contests",
           "request": {
-            "auth": { "type": "noauth" },
+            "auth": {
+              "type": "noauth"
+            },
             "method": "GET",
-            "url": { "raw": "{{baseUrl}}/v1/engagement/contests?broadcastId={{broadcastId}}", "host": ["{{baseUrl}}"], "path": ["v1","engagement","contests"], "query": [{ "key": "broadcastId", "value": "{{broadcastId}}" }] },
+            "url": {
+              "raw": "{{baseUrl}}/v1/engagement/contests?broadcastId={{broadcastId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "engagement",
+                "contests"
+              ],
+              "query": [
+                {
+                  "key": "broadcastId",
+                  "value": "{{broadcastId}}"
+                }
+              ]
+            },
             "description": "Public list of contests."
           }
         },
         {
           "name": "POST /v1/engagement/contests/{contestId}/participate",
           "request": {
-            "auth": { "type": "noauth" },
+            "auth": {
+              "type": "noauth"
+            },
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "body": { "mode": "raw", "raw": "{\n  \"userId\": \"{{externalUserId}}\",\n  \"answers\": { \"question1\": \"Barcelona\" },\n  \"broadcastId\": \"{{broadcastId}}\"\n}" },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userId\": \"{{externalUserId}}\",\n  \"answers\": { \"question1\": \"Barcelona\" },\n  \"broadcastId\": \"{{broadcastId}}\"\n}"
+            },
             "url": {
               "raw": "{{baseUrl}}/v1/engagement/contests/:contestId/participate",
-              "host": ["{{baseUrl}}"],
-              "path": ["v1","engagement","contests",":contestId","participate"],
-              "variable": [{ "key": "contestId", "value": "1" }]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "engagement",
+                "contests",
+                ":contestId",
+                "participate"
+              ],
+              "variable": [
+                {
+                  "key": "contestId",
+                  "value": "1"
+                }
+              ]
             },
             "description": "Rate-limited by `participation` preset."
           }
@@ -370,16 +985,46 @@
           "name": "GET /v1/sdk/config (legacy)",
           "request": {
             "method": "GET",
-            "url": { "raw": "{{baseUrl}}/v1/sdk/config", "host": ["{{baseUrl}}"], "path": ["v1","sdk","config"] },
+            "url": {
+              "raw": "{{baseUrl}}/v1/sdk/config",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "sdk",
+                "config"
+              ]
+            },
             "description": "Old bootstrap. Single `commerce` block, clientApp info, theme, markets. Superseded by `/v2/sdk/config`."
           }
         },
         {
           "name": "GET /v1/sdk/broadcasts/{id}/lineup",
           "request": {
-            "auth": { "type": "noauth" },
+            "auth": {
+              "type": "noauth"
+            },
             "method": "GET",
-            "url": { "raw": "{{baseUrl}}/v1/sdk/broadcasts/{{broadcastId}}/lineup?apiKey={{apiKey}}", "host": ["{{baseUrl}}"], "path": ["v1","sdk","broadcasts","{{broadcastId}}","lineup"], "query": [{ "key": "apiKey", "value": "{{apiKey}}" }] },
+            "url": {
+              "raw": "{{baseUrl}}/v1/sdk/broadcasts/{{broadcastId}}/lineup?apiKey={{apiKey}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "sdk",
+                "broadcasts",
+                "{{broadcastId}}",
+                "lineup"
+              ],
+              "query": [
+                {
+                  "key": "apiKey",
+                  "value": "{{apiKey}}"
+                }
+              ]
+            },
             "description": "Starting XI for a match (football-only)."
           }
         },
@@ -387,7 +1032,25 @@
           "name": "GET /v1/sdk/broadcasts/{id}/chat",
           "request": {
             "method": "GET",
-            "url": { "raw": "{{baseUrl}}/v1/sdk/broadcasts/{{broadcastId}}/chat?limit=50", "host": ["{{baseUrl}}"], "path": ["v1","sdk","broadcasts","{{broadcastId}}","chat"], "query": [{ "key": "limit", "value": "50" }] },
+            "url": {
+              "raw": "{{baseUrl}}/v1/sdk/broadcasts/{{broadcastId}}/chat?limit=50",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "sdk",
+                "broadcasts",
+                "{{broadcastId}}",
+                "chat"
+              ],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "50"
+                }
+              ]
+            },
             "description": "Chat feed (feature not fully built)."
           }
         },
@@ -395,7 +1058,19 @@
           "name": "GET /v1/sdk/broadcasts/{id}/score",
           "request": {
             "method": "GET",
-            "url": { "raw": "{{baseUrl}}/v1/sdk/broadcasts/{{broadcastId}}/score", "host": ["{{baseUrl}}"], "path": ["v1","sdk","broadcasts","{{broadcastId}}","score"] },
+            "url": {
+              "raw": "{{baseUrl}}/v1/sdk/broadcasts/{{broadcastId}}/score",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "sdk",
+                "broadcasts",
+                "{{broadcastId}}",
+                "score"
+              ]
+            },
             "description": "Current match score."
           }
         },
@@ -403,7 +1078,23 @@
           "name": "GET /v1/sdk/livescores",
           "request": {
             "method": "GET",
-            "url": { "raw": "{{baseUrl}}/v1/sdk/livescores?apiKey={{apiKey}}", "host": ["{{baseUrl}}"], "path": ["v1","sdk","livescores"], "query": [{ "key": "apiKey", "value": "{{apiKey}}" }] },
+            "url": {
+              "raw": "{{baseUrl}}/v1/sdk/livescores?apiKey={{apiKey}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "sdk",
+                "livescores"
+              ],
+              "query": [
+                {
+                  "key": "apiKey",
+                  "value": "{{apiKey}}"
+                }
+              ]
+            },
             "description": "Aggregate scores."
           }
         }

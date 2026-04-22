@@ -1040,7 +1040,8 @@ components:
       properties:
         id: { type: integer }
         name: { type: string }
-        logoUrl: { type: string, nullable: true }
+        avatarUrl: { type: string, nullable: true, description: "Square brand mark, rendered in the shoppable overlay / product card. Non-null for any sponsor eligible to dispatch shoppable_ad events." }
+        logoUrl:   { type: string, nullable: true, description: "Wide horizontal logo, for sponsor intros and full-screen branding. Not a fallback for avatarUrl." }
         primaryColor: { type: string, nullable: true }
         secondaryColor: { type: string, nullable: true }
         commerce:
@@ -1069,6 +1070,7 @@ components:
           properties:
             id: { type: integer }
             name: { type: string }
+            avatarUrl: { type: string, nullable: true, description: "Square brand mark. Preferred for overlays." }
             logoUrl: { type: string, nullable: true }
             primaryColor: { type: string, nullable: true }
         commerce:
