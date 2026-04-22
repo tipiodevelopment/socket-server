@@ -23,13 +23,22 @@ import {
   insertCampaignSponsorSchema,
   insertBroadcastSponsorSlotSchema,
   shoppableAdActivations,
+  campaignComponents,
+  components,
+  polls,
+  contests,
+  sponsors,
+  campaignSponsors,
+  endUsers,
+  tvSessions,
+  cartIntents,
   type WebSocketEvent,
   type InsertScheduledComponent,
   Campaign,
   Broadcast
 } from "@shared/schema";
 import { db } from "./db";
-import { eq } from "drizzle-orm";
+import { eq, and, or, isNull, desc, sql } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import {
   ObjectStorageService,
@@ -1843,17 +1852,21 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
         }
       }
 
-      if (req.body.sponsorId) {
-        const sponsor = await storage.getSponsor(req.body.sponsorId);
-        if (!sponsor) {
-          return res.status(404).json({ message: 'Sponsor not found' });
-        }
-        if (sponsor.userId !== userId) {
-          return res.status(403).json({ message: 'Access denied - sponsor does not belong to this user' });
-        }
+      // Multi-sponsor redesign: primarySponsorId is required at creation.
+      // Accept legacy `sponsorId` as an alias for backwards compat during rollout.
+      const primarySponsorId = req.body.primarySponsorId ?? req.body.sponsorId;
+      if (!primarySponsorId) {
+        return res.status(400).json({ message: 'primarySponsorId is required — select a primary sponsor' });
+      }
+      const sponsor = await storage.getSponsor(Number(primarySponsorId));
+      if (!sponsor) {
+        return res.status(404).json({ message: 'Primary sponsor not found' });
+      }
+      if (sponsor.userId !== userId) {
+        return res.status(403).json({ message: 'Access denied - sponsor does not belong to this user' });
       }
 
-      const campaignData = { ...req.body };
+      const campaignData = { ...req.body, primarySponsorId: Number(primarySponsorId), sponsorId: Number(primarySponsorId) };
       if (campaignData.startDate) {
         campaignData.startDate = new Date(campaignData.startDate);
       }
@@ -2079,20 +2092,36 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
         updateData.matchStartTime = updateData.matchStartTime ? new Date(updateData.matchStartTime) : null;
       }
 
-      if (updateData.sponsorId) {
-        const existingCampaign = await storage.getCampaign(parseInt(req.params.id));
+      const campaignId = parseInt(req.params.id);
+
+      // Multi-sponsor redesign: reject changes to primary sponsor once child rows exist.
+      // Accept either `primarySponsorId` or legacy `sponsorId` in the body.
+      const newPrimary = updateData.primarySponsorId ?? updateData.sponsorId;
+      if (newPrimary !== undefined) {
+        const existingCampaign = await storage.getCampaign(campaignId);
         if (existingCampaign) {
-          const sponsor = await storage.getSponsor(updateData.sponsorId);
+          if (existingCampaign.primarySponsorId && existingCampaign.primarySponsorId !== Number(newPrimary)) {
+            const canChange = await storage.canChangePrimarySponsor(campaignId);
+            if (!canChange) {
+              return res.status(403).json({
+                message: 'Primary sponsor is immutable once broadcasts, activations or cart intents exist for this campaign',
+                code: 'PRIMARY_SPONSOR_LOCKED',
+              });
+            }
+          }
+          const sponsor = await storage.getSponsor(Number(newPrimary));
           if (!sponsor) {
             return res.status(404).json({ message: 'Sponsor not found' });
           }
           if (sponsor.userId !== existingCampaign.userId) {
             return res.status(403).json({ message: 'Access denied - sponsor does not belong to this user' });
           }
+          updateData.primarySponsorId = Number(newPrimary);
+          updateData.sponsorId = Number(newPrimary);  // keep legacy in sync during transition
         }
       }
 
-      const campaign = await storage.updateCampaign(parseInt(req.params.id), updateData);
+      const campaign = await storage.updateCampaign(campaignId, updateData);
       if (!campaign) {
         return res.status(404).json({ message: 'Campaign not found' });
       }
@@ -2405,8 +2434,21 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
         }
       }
 
+      // Resolve sponsor: accept explicit sponsorId, or default to campaign primary.
+      // Sponsor must be primary OR one of the campaign's secondary sponsors.
+      const campaignForSponsor = await storage.getCampaign(campaignId);
+      if (!campaignForSponsor || !campaignForSponsor.primarySponsorId) {
+        return res.status(400).json({ message: 'Campaign has no primary sponsor' });
+      }
+      const requestedSponsorId: number = req.body.sponsorId ? Number(req.body.sponsorId) : campaignForSponsor.primarySponsorId;
+      const sponsorAllowed = await storage.isSponsorAllowedForCampaign(requestedSponsorId, campaignId);
+      if (!sponsorAllowed) {
+        return res.status(400).json({ message: 'Sponsor is not associated with this campaign (must be primary or secondary)' });
+      }
+
       const component = await storage.createScheduledComponent({
         campaignId,
+        sponsorId: requestedSponsorId,
         type,
         scheduledTime: new Date(scheduledTime),
         endTime: endTime ? new Date(endTime) : undefined,
@@ -2842,9 +2884,23 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
         }
       }
 
+      // Resolve sponsor for this placement: explicit or default to campaign primary.
+      const campaignForSponsor = await storage.getCampaign(campaignId);
+      if (!campaignForSponsor || !campaignForSponsor.primarySponsorId) {
+        return res.status(400).json({ message: 'Campaign has no primary sponsor' });
+      }
+      const requestedSponsorId: number = req.body.sponsorId ? Number(req.body.sponsorId) : campaignForSponsor.primarySponsorId;
+      const sponsorAllowed = await storage.isSponsorAllowedForCampaign(requestedSponsorId, campaignId);
+      if (!sponsorAllowed) {
+        return res.status(400).json({ message: 'Sponsor is not associated with this campaign (must be primary or secondary)' });
+      }
+      const broadcastScope: string | null = req.body.broadcastId ? String(req.body.broadcastId) : null;
+
       const campaignComponent = await storage.addComponentToCampaign({
         campaignId,
         componentId,
+        sponsorId: requestedSponsorId,
+        broadcastId: broadcastScope,
         instanceName: finalInstanceName,
         status: status || 'inactive',
         locationId: locationId || null,
@@ -4812,6 +4868,18 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   }): Promise<{ activationId: number; wsEvent: Record<string, any>; product: any; sponsor: any }> {
     const { broadcast, campaign, productId, sponsorId, slotId, clientAppId, source, req } = args;
 
+    // 0. Sponsor must be primary OR a secondary of this campaign (validated for all sources
+    //    except slot-scheduler which is authoritative by design — the slot already enforces its sponsor)
+    if (sponsorId && source !== 'slot-scheduler') {
+      const allowed = await storage.isSponsorAllowedForCampaign(sponsorId, campaign.id);
+      if (!allowed) {
+        const err: any = new Error('Sponsor is not associated with this campaign (must be primary or secondary)');
+        err.status = 400;
+        err.code = 'SPONSOR_NOT_IN_CAMPAIGN';
+        throw err;
+      }
+    }
+
     // 1. Resolve sponsor (includes its Commerce API key if present)
     let sponsor: any = null;
     let commerceApiKey = process.env.COMMERCE_API_KEY || 'KCXF10Y-W5T4PCR-GG5119A-Z64SQ9S';
@@ -4914,8 +4982,9 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
         source: 'admin-api', req,
       });
       res.json({ success: true, activationId, product, sponsor });
-    } catch (error) {
+    } catch (error: any) {
       console.error('[ShoppableAd:admin-api] Error:', error);
+      if (error?.status) return res.status(error.status).json({ error: error.message, code: error.code });
       res.status(500).json({ error: 'Failed to trigger shoppable ad' });
     }
   });
@@ -4940,8 +5009,9 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       });
 
       res.json({ success: true, activationId, product, sponsor });
-    } catch (error) {
+    } catch (error: any) {
       console.error('[ShoppableAd:dashboard] Error:', error);
+      if (error?.status) return res.status(error.status).json({ error: error.message, code: error.code });
       res.status(500).json({ error: 'Failed to trigger shoppable ad' });
     }
   });
@@ -5048,8 +5118,9 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
         source: 'tv-sdk', req,
       });
       res.json({ success: true, activationId, product, sponsor });
-    } catch (error) {
+    } catch (error: any) {
       console.error('[ShoppableAd:tv-sdk] Error:', error);
+      if (error?.status) return res.status(error.status).json({ error: error.message, code: error.code });
       res.status(500).json({ error: 'Failed to trigger shoppable ad' });
     }
   });
@@ -5173,11 +5244,13 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   });
 
   // POST /api/campaigns/:id/cart-intent — TV adds to cart -> broadcast WS or webhook (partner-first)
+  // Accepts optional `activationId` to close the attribution chain (shoppable_ad → cart_intent → purchase).
+  // Persists a row in cart_intents for later analytics.
   app.post('/api/campaigns/:campaignId/cart-intent', validateApiKey, async (req, res) => {
     try {
       const campaignId = parseInt(req.params.campaignId);
       const clientApp = (req as any).clientApp;
-      const { productId, userId, productName } = req.body;
+      const { productId, userId, productName, activationId, sponsorId } = req.body;
 
       // Validate campaign belongs to this API key's clientApp
       const campaign = await storage.getCampaign(campaignId);
@@ -5322,11 +5395,36 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
         },
       };
 
+      // Persist cart_intent with attribution chain (source_activation_id) for later analytics.
+      // Ensure-user: resolves (client_app, externalUserId) to the end_users row, creating if needed.
+      let cartIntentId: number | null = null;
+      try {
+        const endUser = await storage.ensureEndUser(clientApp.id, normalizedUserId);
+        const created = await storage.createCartIntent({
+          endUserId: endUser.id,
+          campaignId,
+          clientAppId: clientApp.id,
+          tvSessionId: null,
+          sponsorId: sponsorId ? Number(sponsorId) : null,
+          productId: String(productId),
+          sourceActivationId: activationId ? Number(activationId) : null,
+          sourceComponentId: null,
+          deliveryMode,
+          userConnected: Boolean(isUserConnected),
+          envelope,
+          metadata: null,
+        });
+        cartIntentId = created.id;
+      } catch (persistErr) {
+        console.error('[CartIntent] persist failed (non-fatal):', persistErr);
+      }
+
       res.json({
         success: true,
         mode: deliveryMode,
         userConnected: Boolean(isUserConnected),
         envelope,
+        cartIntentId,
       });
     } catch (error) {
       console.error('[CartIntent] Error:', error);
@@ -6230,6 +6328,348 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       res.json({ components: result, count: result.length });
     } catch (error) {
       res.status(500).json({ message: 'Error fetching components' });
+    }
+  });
+
+  // ==================================================================
+  // v2 SDK endpoints — multi-sponsor redesign (see docs/multi-sponsor-architecture.md)
+  // ==================================================================
+
+  /**
+   * Helper: build the sponsor block for the /v2/sdk/config response.
+   * Returns the canonical shape the SDK consumes.
+   */
+  async function buildSponsorBlock(sponsorId: number) {
+    const sp = await storage.getSponsor(sponsorId);
+    if (!sp) return null;
+    const hasCommerce = !!sp.commerceApiKey;
+    return {
+      id: sp.id,
+      name: sp.name,
+      logoUrl: sp.logoUrl ? normalizeUrls(sp.logoUrl, 'https', (process.env.PUBLIC_BASE_URL || 'api-dev.vio.live')) : null,
+      primaryColor: sp.primaryColor ?? null,
+      secondaryColor: sp.secondaryColor ?? null,
+      commerce: hasCommerce
+        ? {
+            apiKey: sp.commerceApiKey,
+            channelId: sp.commerceChannelId ?? null,
+            paymentMethods: Array.isArray(sp.paymentMethods) ? sp.paymentMethods : [],
+          }
+        : null,
+    };
+  }
+
+  // GET /v2/sdk/config — primary + secondary sponsors with commerce per sponsor
+  app.get('/v2/sdk/config', validateApiKey, async (req, res) => {
+    try {
+      const clientApp = (req as any).clientApp;
+      const appCampaigns = await storage.getClientAppCampaigns(clientApp.id);
+      const now = new Date();
+      const activeCampaign = appCampaigns.find(c =>
+        (!c.startDate || new Date(c.startDate) <= now) &&
+        (!c.endDate || new Date(c.endDate) >= now) &&
+        c.isPaused !== 'true'
+      ) || appCampaigns[0] || null;
+
+      if (!activeCampaign) {
+        return res.status(404).json({ error: 'No campaign configured for this client app' });
+      }
+      if (!activeCampaign.primarySponsorId) {
+        return res.status(500).json({ error: 'Active campaign has no primary sponsor — invariant violation' });
+      }
+
+      const [primary, secondaryList] = await Promise.all([
+        buildSponsorBlock(activeCampaign.primarySponsorId),
+        storage.listSecondarySponsors(activeCampaign.id),
+      ]);
+      const secondarySponsors = await Promise.all(secondaryList.map(s => buildSponsorBlock(s.id)));
+
+      const forwardedProto = (req.headers['x-forwarded-proto'] as string)?.split(',')[0]?.trim();
+      const effectiveProtocol = forwardedProto || req.protocol;
+      const wsProtocol = effectiveProtocol === 'https' ? 'wss' : 'ws';
+      const wsBase = `${wsProtocol}://${req.get('host')}`;
+      const commerceGraphQL = process.env.COMMERCE_GRAPHQL_PUBLIC_URL || 'https://graph-ql-dev.vio.live';
+
+      return res.json({
+        endpoints: {
+          webSocketBase: wsBase,
+          commerceGraphQL,
+        },
+        campaign: {
+          id: activeCampaign.id,
+          name: activeCampaign.name,
+          logo: (activeCampaign as any).logo ?? null,
+          isActive: (!activeCampaign.startDate || new Date(activeCampaign.startDate) <= now) &&
+                    (!activeCampaign.endDate || new Date(activeCampaign.endDate) >= now) &&
+                    activeCampaign.isPaused !== 'true',
+          isPaused: activeCampaign.isPaused === 'true',
+          startDate: activeCampaign.startDate ?? null,
+          endDate: activeCampaign.endDate ?? null,
+        },
+        primarySponsor: primary,
+        secondarySponsors: secondarySponsors.filter(Boolean),
+        features: {
+          shoppable: !!primary?.commerce,
+          lineup: !!(activeCampaign as any).showLineup,
+        },
+      });
+    } catch (error) {
+      console.error('[v2 config] error', error);
+      res.status(500).json({ error: 'Failed to build config' });
+    }
+  });
+
+  // GET /v2/sdk/broadcasts/:broadcastId/capabilities — per-broadcast feature flags
+  app.get('/v2/sdk/broadcasts/:broadcastId/capabilities', validateApiKey, async (req, res) => {
+    try {
+      const { broadcastId } = req.params;
+      const broadcast = await storage.getBroadcast(broadcastId);
+      if (!broadcast) return res.status(404).json({ error: 'Broadcast not found' });
+      const [pollCount, contestCount, activationCount] = await Promise.all([
+        db.select({ n: sql<number>`count(*)::int` }).from(polls).where(eq(polls.broadcastId, broadcastId)),
+        db.select({ n: sql<number>`count(*)::int` }).from(contests).where(eq(contests.broadcastId, broadcastId)),
+        db.select({ n: sql<number>`count(*)::int` }).from(shoppableAdActivations).where(eq(shoppableAdActivations.broadcastId, broadcastId)),
+      ]);
+      const hasPolls = pollCount[0].n > 0;
+      const hasContests = contestCount[0].n > 0;
+      const hasShoppable = activationCount[0].n > 0;
+      res.json({
+        broadcastId,
+        campaignId: broadcast.campaignId,
+        engagement: {
+          enabled: broadcast.engagementEnabled === true,
+          hasPolls,
+          hasContests,
+        },
+        shoppable: { enabled: hasShoppable || broadcast.engagementEnabled === true },
+        lineup: { available: broadcast.showLineup === true },
+      });
+    } catch (error) {
+      console.error('[v2 capabilities] error', error);
+      res.status(500).json({ error: 'Failed to fetch capabilities' });
+    }
+  });
+
+  // GET /v2/sdk/broadcasts/:broadcastId/components — component placements for this broadcast
+  // Merges campaign-scoped (broadcast_id IS NULL) + broadcast-scoped (broadcast_id = this)
+  app.get('/v2/sdk/broadcasts/:broadcastId/components', validateApiKey, async (req, res) => {
+    try {
+      const { broadcastId } = req.params;
+      const broadcast = await storage.getBroadcast(broadcastId);
+      if (!broadcast || !broadcast.campaignId) return res.status(404).json({ error: 'Broadcast not found' });
+
+      const rows = await db.select({
+        cc: campaignComponents,
+        comp: components,
+        sp: sponsors,
+      })
+        .from(campaignComponents)
+        .innerJoin(components, eq(campaignComponents.componentId, components.id))
+        .innerJoin(sponsors, eq(campaignComponents.sponsorId, sponsors.id))
+        .where(and(
+          eq(campaignComponents.campaignId, broadcast.campaignId),
+          eq(campaignComponents.status, 'active'),
+          or(isNull(campaignComponents.broadcastId), eq(campaignComponents.broadcastId, broadcastId)),
+        ));
+
+      const items = rows.map(({ cc, comp, sp }) => ({
+        id: cc.id,
+        campaignComponentId: cc.id,
+        type: comp.type,
+        locationId: cc.locationId ?? null,
+        instanceName: cc.instanceName ?? null,
+        sponsor: {
+          id: sp.id,
+          name: sp.name,
+          logoUrl: sp.logoUrl ?? null,
+          primaryColor: sp.primaryColor ?? null,
+        },
+        commerce: sp.commerceApiKey ? {
+          apiKey: sp.commerceApiKey,
+          channelId: sp.commerceChannelId ?? null,
+        } : null,
+        config: cc.customConfig ?? (comp as any).config ?? {},
+      }));
+
+      res.json({ broadcastId, components: items });
+    } catch (error) {
+      console.error('[v2 components] error', error);
+      res.status(500).json({ error: 'Failed to fetch components' });
+    }
+  });
+
+  // POST /api/sdk/tv/session/start — register / renew a TV session
+  app.post('/api/sdk/tv/session/start', validateApiKey, async (req, res) => {
+    try {
+      const clientApp = (req as any).clientApp;
+      const { externalUserId, tvDeviceId, platform } = req.body ?? {};
+      if (!externalUserId) return res.status(400).json({ error: 'externalUserId is required' });
+      if (!platform) return res.status(400).json({ error: 'platform is required' });
+      const tvPlatforms = ['apple-tv', 'android-tv', 'fire-tv', 'roku'];
+      if (!tvPlatforms.includes(platform)) return res.status(400).json({ error: `platform must be one of ${tvPlatforms.join(', ')}` });
+
+      const endUser = await storage.ensureEndUser(clientApp.id, String(externalUserId));
+      const session = await storage.upsertTvSession({
+        clientAppId: clientApp.id,
+        endUserId: endUser.id,
+        platform,
+        tvDeviceId: tvDeviceId ?? null,
+      });
+
+      const tvEnabled = (clientApp as any).tvEnabled === true;
+      const platforms: string[] = (clientApp as any).tvPlatforms ?? [];
+      const platformAllowed = platforms.length === 0 ? true : platforms.includes(platform);
+
+      res.json({
+        sessionId: session.id,
+        endUserId: endUser.id,
+        capabilities: {
+          shoppable: tvEnabled && platformAllowed,
+        },
+      });
+    } catch (error) {
+      console.error('[tv session start] error', error);
+      res.status(500).json({ error: 'Failed to start TV session' });
+    }
+  });
+
+  // POST /api/sdk/tv/session/heartbeat — keep the session alive
+  app.post('/api/sdk/tv/session/heartbeat', validateApiKey, async (req, res) => {
+    try {
+      const { sessionId } = req.body ?? {};
+      if (!sessionId) return res.status(400).json({ error: 'sessionId is required' });
+      await storage.touchTvSession(Number(sessionId));
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to update TV session' });
+    }
+  });
+
+  // POST /api/sdk/tv/session/end — explicit session close
+  app.post('/api/sdk/tv/session/end', validateApiKey, async (req, res) => {
+    try {
+      const { sessionId } = req.body ?? {};
+      if (!sessionId) return res.status(400).json({ error: 'sessionId is required' });
+      await storage.endTvSession(Number(sessionId));
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to end TV session' });
+    }
+  });
+
+  // POST /api/sdk/tv/cart-intent — TV-originated cart intent with attribution
+  app.post('/api/sdk/tv/cart-intent', validateApiKey, async (req, res) => {
+    try {
+      const clientApp = (req as any).clientApp;
+      const { externalUserId, productId, campaignId, activationId, sponsorId } = req.body ?? {};
+      if (!externalUserId) return res.status(400).json({ error: 'externalUserId is required' });
+      if (!productId) return res.status(400).json({ error: 'productId is required' });
+      if (!campaignId) return res.status(400).json({ error: 'campaignId is required' });
+
+      const endUser = await storage.ensureEndUser(clientApp.id, String(externalUserId));
+      const campaign = await storage.getCampaign(Number(campaignId));
+      if (!campaign) return res.status(404).json({ error: 'Campaign not found' });
+
+      const tvSessionPlatform = req.body.platform as (string | undefined);
+      const session = tvSessionPlatform
+        ? await storage.getActiveTvSession(clientApp.id, endUser.id, tvSessionPlatform as any)
+        : undefined;
+
+      // Envelope v1
+      const envelope = {
+        vio_notification_version: 1,
+        vio_user_id: String(externalUserId),
+        vio_event_type: 'cart_intent',
+        vio_payload: {
+          product_id: String(productId),
+          campaign_id: String(campaign.id),
+          source: `tv_${String(clientApp.name ?? '').toLowerCase().replace(/\s+/g, '_')}`,
+          deeplink: `product/${productId}?campaignId=${campaign.id}`,
+          activation_id: activationId ? Number(activationId) : null,
+        },
+      };
+
+      const row = await storage.createCartIntent({
+        endUserId: endUser.id,
+        campaignId: campaign.id,
+        clientAppId: clientApp.id,
+        tvSessionId: session?.id ?? null,
+        sponsorId: sponsorId ? Number(sponsorId) : null,
+        productId: String(productId),
+        sourceActivationId: activationId ? Number(activationId) : null,
+        sourceComponentId: null,
+        deliveryMode: 'dropped', // updated below if we actually delivered
+        userConnected: false,
+        envelope,
+        metadata: null,
+      });
+
+      res.json({ success: true, cartIntentId: row.id, envelope });
+    } catch (error) {
+      console.error('[tv cart-intent] error', error);
+      res.status(500).json({ error: 'Failed to record cart intent' });
+    }
+  });
+
+  // ---- Secondary sponsors CRUD (dashboard) ----
+
+  // GET /api/campaigns/:id/secondary-sponsors
+  app.get('/api/campaigns/:id/secondary-sponsors', async (req, res) => {
+    try {
+      const campaignId = parseInt(req.params.id);
+      const list = await storage.listSecondarySponsors(campaignId);
+      res.json({ campaignId, secondarySponsors: list });
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to list secondary sponsors' });
+    }
+  });
+
+  // POST /api/campaigns/:id/secondary-sponsors  body: { sponsorId }
+  app.post('/api/campaigns/:id/secondary-sponsors', async (req, res) => {
+    try {
+      const campaignId = parseInt(req.params.id);
+      const { sponsorId } = req.body ?? {};
+      if (!sponsorId) return res.status(400).json({ error: 'sponsorId is required' });
+      const sponsorIdNum = Number(sponsorId);
+
+      const campaign = await storage.getCampaign(campaignId);
+      if (!campaign) return res.status(404).json({ error: 'Campaign not found' });
+      if (campaign.primarySponsorId === sponsorIdNum) {
+        return res.status(400).json({ error: 'Sponsor is already the primary sponsor' });
+      }
+      const sp = await storage.getSponsor(sponsorIdNum);
+      if (!sp) return res.status(404).json({ error: 'Sponsor not found' });
+
+      await storage.addSecondarySponsor(campaignId, sponsorIdNum);
+      res.status(201).json({ success: true, campaignId, sponsorId: sponsorIdNum });
+    } catch (error) {
+      console.error('[secondary-sponsors add] error', error);
+      res.status(500).json({ error: 'Failed to add secondary sponsor' });
+    }
+  });
+
+  // DELETE /api/campaigns/:id/secondary-sponsors/:sponsorId
+  app.delete('/api/campaigns/:id/secondary-sponsors/:sponsorId', async (req, res) => {
+    try {
+      const campaignId = parseInt(req.params.id);
+      const sponsorId = parseInt(req.params.sponsorId);
+      // Block if any placement / poll / contest / activation references this sponsor in this campaign
+      const [[{ n: ccN }]] = [await db.select({ n: sql<number>`count(*)::int` }).from(campaignComponents)
+        .where(and(eq(campaignComponents.campaignId, campaignId), eq(campaignComponents.sponsorId, sponsorId)))];
+      const [[{ n: activN }]] = [await db.select({ n: sql<number>`count(*)::int` }).from(shoppableAdActivations)
+        .where(and(eq(shoppableAdActivations.campaignId, campaignId), eq(shoppableAdActivations.sponsorId, sponsorId)))];
+      if (ccN > 0 || activN > 0) {
+        return res.status(409).json({
+          error: 'Cannot remove: sponsor still referenced by components or activations',
+          componentRefs: ccN,
+          activationRefs: activN,
+        });
+      }
+      await storage.removeSecondarySponsor(campaignId, sponsorId);
+      res.json({ success: true });
+    } catch (error) {
+      console.error('[secondary-sponsors remove] error', error);
+      res.status(500).json({ error: 'Failed to remove secondary sponsor' });
     }
   });
 

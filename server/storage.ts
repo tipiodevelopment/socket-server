@@ -1,6 +1,6 @@
-import { WebSocketEvent, Campaign, InsertCampaign, Event, InsertEvent, CampaignFormState, InsertFormState, ScheduledComponent, InsertScheduledComponent, Component, InsertComponent, CampaignComponent, InsertCampaignComponent, AppComponent, InsertAppComponent, User, InsertUser, ClientApp, InsertClientApp, Channel, InsertChannel, CampaignTranslation, InsertCampaignTranslation, CampaignEngagementConfig, InsertCampaignEngagementConfig, CampaignUiConfig, InsertCampaignUiConfig, CampaignFeatureFlags, InsertCampaignFeatureFlags, SdkTranslation, InsertSdkTranslation, Broadcast, InsertBroadcast, Poll, InsertPoll, PollOptionRecord, InsertPollOption, PollVote, InsertPollVote, Contest, InsertContest, ContestParticipation, InsertContestParticipation, Sponsor, InsertSponsor, BroadcastAd, InsertBroadcastAd, BroadcastProduct, InsertBroadcastProduct, ChatMessage, InsertChatMessage, DeviceToken, InsertDeviceToken, SportmonksCache, type InsertCampaignSponsor, type InsertBroadcastSponsorSlot, type InsertShoppableAdActivation, type ShoppableAdActivation } from "@shared/schema";
+import { WebSocketEvent, Campaign, InsertCampaign, Event, InsertEvent, CampaignFormState, InsertFormState, ScheduledComponent, InsertScheduledComponent, Component, InsertComponent, CampaignComponent, InsertCampaignComponent, AppComponent, InsertAppComponent, User, InsertUser, ClientApp, InsertClientApp, Channel, InsertChannel, CampaignTranslation, InsertCampaignTranslation, CampaignEngagementConfig, InsertCampaignEngagementConfig, CampaignUiConfig, InsertCampaignUiConfig, CampaignFeatureFlags, InsertCampaignFeatureFlags, SdkTranslation, InsertSdkTranslation, Broadcast, InsertBroadcast, Poll, InsertPoll, PollOptionRecord, InsertPollOption, PollVote, InsertPollVote, Contest, InsertContest, ContestParticipation, InsertContestParticipation, Sponsor, InsertSponsor, BroadcastAd, InsertBroadcastAd, BroadcastProduct, InsertBroadcastProduct, ChatMessage, InsertChatMessage, DeviceToken, InsertDeviceToken, SportmonksCache, type InsertCampaignSponsor, type InsertBroadcastSponsorSlot, type InsertShoppableAdActivation, type ShoppableAdActivation, type EndUser, type TvSession, type CartIntent, type InsertCartIntent, type TvPlatform } from "@shared/schema";
 import { db } from "./db";
-import { campaigns, events, campaignFormState, scheduledComponents, components, campaignComponents, appComponents, users, clientApps, channels, campaignTranslations, campaignEngagementConfig, campaignUiConfig, campaignFeatureFlags, sdkTranslations, broadcasts, polls, pollOptions, pollVotes, contests, contestParticipations, sponsors, broadcastAds, broadcastProducts, chatMessages, deviceTokens, sportmonksCache, campaignSponsors, broadcastSponsorSlots, shoppableAdActivations } from "@shared/schema";
+import { campaigns, events, campaignFormState, scheduledComponents, components, campaignComponents, appComponents, users, clientApps, channels, campaignTranslations, campaignEngagementConfig, campaignUiConfig, campaignFeatureFlags, sdkTranslations, broadcasts, polls, pollOptions, pollVotes, contests, contestParticipations, sponsors, broadcastAds, broadcastProducts, chatMessages, deviceTokens, sportmonksCache, campaignSponsors, broadcastSponsorSlots, shoppableAdActivations, endUsers, tvSessions, cartIntents } from "@shared/schema";
 import { eq, desc, and, or, gte, ne, isNull, isNotNull, sql, lte, inArray } from "drizzle-orm";
 
 export interface IStorage {
@@ -218,6 +218,33 @@ export interface IStorage {
   createShoppableAdActivation(data: InsertShoppableAdActivation): Promise<ShoppableAdActivation>;
   listShoppableAdActivationsByBroadcast(broadcastId: string, options?: { limit?: number; offset?: number; sponsorId?: number; source?: string }): Promise<ShoppableAdActivation[]>;
   listShoppableAdActivationsByCampaign(campaignId: number, options?: { limit?: number; offset?: number; sponsorId?: number; source?: string }): Promise<ShoppableAdActivation[]>;
+
+  // End users (SDK viewers) — opaque id per partner, unique per client_app
+  ensureEndUser(clientAppId: number, externalUserId: string): Promise<EndUser>;
+  getEndUser(clientAppId: number, externalUserId: string): Promise<EndUser | undefined>;
+  touchEndUser(endUserId: number): Promise<void>;
+
+  // TV sessions — one active session per (clientApp, user, platform)
+  upsertTvSession(data: { clientAppId: number; endUserId: number; platform: TvPlatform; tvDeviceId?: string | null }): Promise<TvSession>;
+  getActiveTvSession(clientAppId: number, endUserId: number, platform: TvPlatform): Promise<TvSession | undefined>;
+  touchTvSession(sessionId: number): Promise<void>;
+  endTvSession(sessionId: number): Promise<void>;
+
+  // Cart intents — persistent log of user click-to-buy events with attribution
+  createCartIntent(data: InsertCartIntent): Promise<CartIntent>;
+  listCartIntentsByBroadcast(broadcastId: string, options?: { limit?: number; offset?: number }): Promise<CartIntent[]>;
+  listCartIntentsByCampaign(campaignId: number, options?: { limit?: number; offset?: number }): Promise<CartIntent[]>;
+
+  // Secondary sponsors — manage the M:N list (primary lives on campaigns.primary_sponsor_id)
+  listSecondarySponsors(campaignId: number): Promise<Sponsor[]>;
+  addSecondarySponsor(campaignId: number, sponsorId: number): Promise<void>;
+  removeSecondarySponsor(campaignId: number, sponsorId: number): Promise<void>;
+
+  // Validation: a sponsor must be the campaign's primary or in its secondary list
+  isSponsorAllowedForCampaign(sponsorId: number, campaignId: number): Promise<boolean>;
+
+  // Check whether changing the primary sponsor is still allowed (no child rows yet)
+  canChangePrimarySponsor(campaignId: number): Promise<boolean>;
 
   // getBroadcastsByCampaign alias
   getBroadcastsByCampaign(campaignId: number): Promise<Broadcast[]>;
@@ -1635,6 +1662,146 @@ export class MemStorage implements IStorage {
       .orderBy(desc(shoppableAdActivations.triggeredAt))
       .limit(limit)
       .offset(offset);
+  }
+
+  // --- Multi-sponsor redesign helpers (Phase 4) ---
+
+  async ensureEndUser(clientAppId: number, externalUserId: string): Promise<EndUser> {
+    const existing = await this.getEndUser(clientAppId, externalUserId);
+    if (existing) {
+      await this.touchEndUser(existing.id);
+      return existing;
+    }
+    const [created] = await db.insert(endUsers)
+      .values({ clientAppId, externalUserId })
+      .onConflictDoUpdate({
+        target: [endUsers.clientAppId, endUsers.externalUserId],
+        set: { lastSeenAt: new Date() },
+      })
+      .returning();
+    return created;
+  }
+
+  async getEndUser(clientAppId: number, externalUserId: string): Promise<EndUser | undefined> {
+    const [row] = await db.select().from(endUsers)
+      .where(and(eq(endUsers.clientAppId, clientAppId), eq(endUsers.externalUserId, externalUserId)))
+      .limit(1);
+    return row;
+  }
+
+  async touchEndUser(endUserId: number): Promise<void> {
+    await db.update(endUsers).set({ lastSeenAt: new Date() }).where(eq(endUsers.id, endUserId));
+  }
+
+  async upsertTvSession(data: { clientAppId: number; endUserId: number; platform: TvPlatform; tvDeviceId?: string | null }): Promise<TvSession> {
+    const [row] = await db.insert(tvSessions)
+      .values({
+        clientAppId: data.clientAppId,
+        endUserId: data.endUserId,
+        platform: data.platform,
+        tvDeviceId: data.tvDeviceId ?? null,
+      })
+      .onConflictDoUpdate({
+        target: [tvSessions.clientAppId, tvSessions.endUserId, tvSessions.platform],
+        set: {
+          lastSeenAt: new Date(),
+          endedAt: null,
+          tvDeviceId: data.tvDeviceId ?? sql`${tvSessions.tvDeviceId}`,
+        },
+      })
+      .returning();
+    return row;
+  }
+
+  async getActiveTvSession(clientAppId: number, endUserId: number, platform: TvPlatform): Promise<TvSession | undefined> {
+    const [row] = await db.select().from(tvSessions)
+      .where(and(
+        eq(tvSessions.clientAppId, clientAppId),
+        eq(tvSessions.endUserId, endUserId),
+        eq(tvSessions.platform, platform),
+        isNull(tvSessions.endedAt),
+      ))
+      .orderBy(desc(tvSessions.lastSeenAt))
+      .limit(1);
+    return row;
+  }
+
+  async touchTvSession(sessionId: number): Promise<void> {
+    await db.update(tvSessions).set({ lastSeenAt: new Date() }).where(eq(tvSessions.id, sessionId));
+  }
+
+  async endTvSession(sessionId: number): Promise<void> {
+    await db.update(tvSessions).set({ endedAt: new Date() }).where(eq(tvSessions.id, sessionId));
+  }
+
+  async createCartIntent(data: InsertCartIntent): Promise<CartIntent> {
+    const [row] = await db.insert(cartIntents).values(data).returning();
+    return row;
+  }
+
+  async listCartIntentsByBroadcast(
+    _broadcastId: string,
+    options: { limit?: number; offset?: number } = {},
+  ): Promise<CartIntent[]> {
+    // cart_intents are scoped to campaign (not broadcast); resolve via activation or source_component
+    const { limit = 50, offset = 0 } = options;
+    return await db.select().from(cartIntents)
+      .orderBy(desc(cartIntents.triggeredAt))
+      .limit(limit)
+      .offset(offset);
+  }
+
+  async listCartIntentsByCampaign(
+    campaignId: number,
+    options: { limit?: number; offset?: number } = {},
+  ): Promise<CartIntent[]> {
+    const { limit = 50, offset = 0 } = options;
+    return await db.select().from(cartIntents)
+      .where(eq(cartIntents.campaignId, campaignId))
+      .orderBy(desc(cartIntents.triggeredAt))
+      .limit(limit)
+      .offset(offset);
+  }
+
+  async listSecondarySponsors(campaignId: number): Promise<Sponsor[]> {
+    const rows = await db.select({ sponsor: sponsors })
+      .from(campaignSponsors)
+      .innerJoin(sponsors, eq(campaignSponsors.sponsorId, sponsors.id))
+      .where(eq(campaignSponsors.campaignId, campaignId));
+    return rows.map(r => r.sponsor);
+  }
+
+  async addSecondarySponsor(campaignId: number, sponsorId: number): Promise<void> {
+    await db.insert(campaignSponsors)
+      .values({ campaignId, sponsorId, role: 'secondary' })
+      .onConflictDoNothing();
+  }
+
+  async removeSecondarySponsor(campaignId: number, sponsorId: number): Promise<void> {
+    await db.delete(campaignSponsors)
+      .where(and(eq(campaignSponsors.campaignId, campaignId), eq(campaignSponsors.sponsorId, sponsorId)));
+  }
+
+  async isSponsorAllowedForCampaign(sponsorId: number, campaignId: number): Promise<boolean> {
+    const [campaign] = await db.select({ primary: campaigns.primarySponsorId })
+      .from(campaigns).where(eq(campaigns.id, campaignId)).limit(1);
+    if (!campaign) return false;
+    if (campaign.primary === sponsorId) return true;
+    const [secondary] = await db.select({ id: campaignSponsors.id })
+      .from(campaignSponsors)
+      .where(and(eq(campaignSponsors.campaignId, campaignId), eq(campaignSponsors.sponsorId, sponsorId)))
+      .limit(1);
+    return !!secondary;
+  }
+
+  async canChangePrimarySponsor(campaignId: number): Promise<boolean> {
+    // Blocked once any child row exists that references this campaign via its primary semantics.
+    const checks = await Promise.all([
+      db.select({ n: sql<number>`count(*)::int` }).from(broadcasts).where(eq(broadcasts.campaignId, campaignId)),
+      db.select({ n: sql<number>`count(*)::int` }).from(shoppableAdActivations).where(eq(shoppableAdActivations.campaignId, campaignId)),
+      db.select({ n: sql<number>`count(*)::int` }).from(cartIntents).where(eq(cartIntents.campaignId, campaignId)),
+    ]);
+    return checks.every(([row]) => row.n === 0);
   }
 }
 
