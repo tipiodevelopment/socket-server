@@ -750,7 +750,12 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   setInterval(checkAndNotifyStartedCampaigns, 30000);
 
   const delay = (ms: number) => new Promise(res => setTimeout(res, ms));
-  async function fetchGraphQL(query: string, commerceApiKey: string, retries = 3): Promise<any> {
+  async function fetchGraphQL(
+    query: string,
+    commerceApiKey: string,
+    retries = 3,
+    variables?: Record<string, unknown>,
+  ): Promise<any> {
     console.log('[GraphQL] Fetching data...');
     try {
       const res = await fetch(process.env.COMMERCE_GRAPHQL_URL || 'http://graph-ql', {
@@ -759,7 +764,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
           'Content-Type': 'application/json',
           'Authorization': commerceApiKey,
         },
-        body: JSON.stringify({ query }),
+        body: JSON.stringify(variables ? { query, variables } : { query }),
       });
 
       if (!res.ok) {
@@ -5210,6 +5215,92 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
     }
   });
 
+  // GET /api/commerce/sponsors/:sponsorId/catalog — list a sponsor's full Commerce catalog
+  // (used by the dashboard slot picker to browse a sponsor's channel before saving the
+  // chosen productId on a broadcast_sponsor_slot). Auth boundary: 404 if sponsor missing,
+  // 422 if the sponsor has no commerce_api_key wired (visual-only sponsors can't sell).
+  // Search filtering is performed client-side from the returned page since the upstream
+  // GraphQL `Channel.GetProducts` does not expose a search argument today.
+  app.get('/api/commerce/sponsors/:sponsorId/catalog', async (req, res) => {
+    try {
+      const sponsorId = parseInt(req.params.sponsorId);
+      if (!Number.isFinite(sponsorId)) {
+        return res.status(400).json({ error: 'Invalid sponsorId' });
+      }
+
+      const sponsor = await storage.getSponsor(sponsorId);
+      if (!sponsor) return res.status(404).json({ error: 'Sponsor not found' });
+      if (!sponsor.commerceApiKey) {
+        return res.status(422).json({
+          error: `Sponsor ${sponsor.id} (${sponsor.name}) has no commerce key — cannot list a catalog`,
+          code: 'SPONSOR_MISSING_COMMERCE_KEY',
+        });
+      }
+
+      const shippingCountryCode = (req.query.shippingCountryCode as string) || 'NO';
+      const currency = (req.query.currency as string) || 'NOK';
+      const limit = Math.min(parseInt(req.query.limit as string) || 100, 200);
+      const offset = parseInt(req.query.offset as string) || 0;
+
+      const gqlQuery = `
+        query GetCatalog($shippingCountryCode: String, $currency: String) {
+          Channel {
+            GetProducts(shipping_country_code: $shippingCountryCode, currency: $currency) {
+              id
+              title
+              sku
+              description
+              images { id url height order }
+              price {
+                amount
+                currency_code
+                amount_incl_taxes
+                tax_amount
+                tax_rate
+                compare_at
+                compare_at_incl_taxes
+              }
+            }
+          }
+        }
+      `;
+
+      const gqlData = await fetchGraphQL(gqlQuery, sponsor.commerceApiKey, 3, {
+        shippingCountryCode,
+        currency,
+      });
+      const all = (gqlData?.data?.Channel?.GetProducts ?? []) as any[];
+
+      const products = all.map((p) => {
+        const image = p.images?.slice().sort((a: any, b: any) => (a.order ?? 0) - (b.order ?? 0))?.[0];
+        return {
+          id: p.id,
+          name: p.title,
+          sku: p.sku ?? null,
+          description: p.description ?? null,
+          imageUrl: image?.url ?? null,
+          price: p.price?.amount_incl_taxes ?? p.price?.amount ?? null,
+          currency: p.price?.currency_code ?? currency,
+        };
+      });
+
+      const total = products.length;
+      const page = products.slice(offset, offset + limit);
+
+      res.json({
+        sponsor: { id: sponsor.id, name: sponsor.name },
+        products: page,
+        total,
+        limit,
+        offset,
+        hasMore: offset + page.length < total,
+      });
+    } catch (error: any) {
+      console.error('[Commerce catalog] Error:', error?.message ?? error);
+      res.status(502).json({ error: 'Failed to fetch sponsor catalog from Commerce', detail: error?.message });
+    }
+  });
+
   // POST /api/campaigns/:id/register-device — Register APNs device token (SDK partner apps; used for Vio-side push fallback)
   app.post('/api/campaigns/:campaignId/register-device', validateApiKey, async (req, res) => {
     try {
@@ -6584,10 +6675,29 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   app.post('/api/sdk/tv/cart-intent', validateApiKey, async (req, res) => {
     try {
       const clientApp = (req as any).clientApp;
-      const { externalUserId, productId, campaignId, activationId, sponsorId } = req.body ?? {};
+      let { externalUserId, productId, campaignId, activationId, sponsorId } = req.body ?? {};
       if (!externalUserId) return res.status(400).json({ error: 'externalUserId is required' });
       if (!productId) return res.status(400).json({ error: 'productId is required' });
-      if (!campaignId) return res.status(400).json({ error: 'campaignId is required' });
+
+      // v2 minimal body: when `activationId` is supplied, resolve campaignId +
+      // sponsorId from the shoppable_ad_activations row. Lets the SDK send only
+      // `{ externalUserId, productId, activationId }` and the backend infer the
+      // rest from the dispatch that originated the cart-intent. Fallbacks to
+      // explicit `campaignId` / `sponsorId` when the caller has no activation
+      // (ad-hoc triggers, legacy callers, etc.).
+      if (activationId && (!campaignId || !sponsorId)) {
+        const activation = await storage.getShoppableAdActivation(Number(activationId));
+        if (!activation) {
+          return res.status(404).json({ error: `activationId ${activationId} not found`, code: 'ACTIVATION_NOT_FOUND' });
+        }
+        if (activation.clientAppId && activation.clientAppId !== clientApp.id) {
+          return res.status(403).json({ error: 'Activation does not belong to this API key', code: 'ACTIVATION_WRONG_CLIENT_APP' });
+        }
+        if (!campaignId) campaignId = activation.campaignId;
+        if (!sponsorId && activation.sponsorId) sponsorId = activation.sponsorId;
+      }
+
+      if (!campaignId) return res.status(400).json({ error: 'campaignId is required (or pass activationId so it can be derived)' });
 
       const endUser = await storage.ensureEndUser(clientApp.id, String(externalUserId));
       const campaign = await storage.getCampaign(Number(campaignId));

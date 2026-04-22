@@ -1161,6 +1161,85 @@ components:
 
 paths:
   # ============================================================
+  # Commerce — sponsor catalog (consumed by the dashboard slot picker)
+  # ============================================================
+  /api/commerce/sponsors/{sponsorId}/catalog:
+    get:
+      tags:
+        - Commerce
+      summary: List a sponsor's full Commerce catalog
+      description: |
+        Returns the products available in the sponsor's Commerce GraphQL channel.
+        Backend uses the sponsor's `commerce_api_key` to fetch from the upstream
+        GraphQL `Channel.GetProducts` query, then normalises the response to a
+        small product shape friendly to the dashboard picker.
+
+        Searching is performed client-side from the returned page since the
+        upstream query does not expose a search argument.
+      parameters:
+        - name: sponsorId
+          in: path
+          required: true
+          schema: { type: integer }
+        - name: shippingCountryCode
+          in: query
+          required: false
+          schema: { type: string, default: NO }
+        - name: currency
+          in: query
+          required: false
+          schema: { type: string, default: NOK }
+        - name: limit
+          in: query
+          required: false
+          schema: { type: integer, default: 100, maximum: 200 }
+        - name: offset
+          in: query
+          required: false
+          schema: { type: integer, default: 0 }
+      responses:
+        '200':
+          description: Catalog page
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  sponsor:
+                    type: object
+                    properties:
+                      id: { type: integer }
+                      name: { type: string }
+                  products:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: integer }
+                        name: { type: string }
+                        sku: { type: string, nullable: true }
+                        description: { type: string, nullable: true }
+                        imageUrl: { type: string, nullable: true }
+                        price: { type: number, nullable: true }
+                        currency: { type: string }
+                  total: { type: integer }
+                  limit: { type: integer }
+                  offset: { type: integer }
+                  hasMore: { type: boolean }
+        '400': { description: "Invalid sponsorId" }
+        '404': { description: "Sponsor not found" }
+        '422':
+          description: "Sponsor exists but has no commerce_api_key (visual-only)"
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error: { type: string }
+                  code:  { type: string, example: SPONSOR_MISSING_COMMERCE_KEY }
+        '502': { description: "Upstream Commerce GraphQL error" }
+
+  # ============================================================
   # Admin API - Broadcasts
   # ============================================================
   /v1/broadcasts:

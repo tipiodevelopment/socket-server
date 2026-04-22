@@ -79,6 +79,11 @@
       "key": "endUserId",
       "value": "",
       "type": "string"
+    },
+    {
+      "key": "catalogSponsorId",
+      "value": "7",
+      "type": "string"
     }
   ],
   "auth": {
@@ -748,6 +753,72 @@
             },
             "description": "List activations sorted by `triggeredAt DESC`. Filters: sponsorId, source (admin-api|dashboard|tv-sdk|slot-scheduler), limit (max 200), offset."
           }
+        }
+      ]
+    },
+    {
+      "name": "Commerce",
+      "description": "Sponsor-scoped Commerce GraphQL proxies used by the dashboard.",
+      "item": [
+        {
+          "name": "GET /api/commerce/sponsors/{sponsorId}/catalog (XXL by default)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/commerce/sponsors/{{catalogSponsorId}}/catalog?limit=50",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "commerce",
+                "sponsors",
+                "{{catalogSponsorId}}",
+                "catalog"
+              ],
+              "query": [
+                {
+                  "key": "shippingCountryCode",
+                  "value": "NO",
+                  "disabled": true
+                },
+                {
+                  "key": "currency",
+                  "value": "NOK",
+                  "disabled": true
+                },
+                {
+                  "key": "limit",
+                  "value": "50"
+                },
+                {
+                  "key": "offset",
+                  "value": "0",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "Browses a single sponsor's Commerce catalog using that sponsor's commerce_api_key. Used by the dashboard slot picker. Returns 404 if sponsor missing, 422 if the sponsor has no commerce key configured (visual-only sponsor)."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "try {",
+                  "  const r = pm.response.json();",
+                  "  console.log(`[catalog] sponsor=${r.sponsor.name} returned=${r.products.length}/${r.total} hasMore=${r.hasMore}`);",
+                  "  pm.test('has sponsor block', () => pm.expect(r.sponsor.id).to.be.a('number'));",
+                  "  pm.test('products is array', () => pm.expect(r.products).to.be.an('array'));",
+                  "} catch (e) { console.error('parse error', e); }"
+                ]
+              }
+            }
+          ],
+          "response": []
         }
       ]
     },

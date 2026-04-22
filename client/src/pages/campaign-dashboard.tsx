@@ -1246,6 +1246,7 @@ const ROLE_COLORS: Record<string, string> = {
 
 function SponsorsTabContent({ campaignId }: { campaignId: number }) {
   const { toast } = useToast();
+  const { userId } = useUser();
   const [addOpen, setAddOpen] = useState(false);
   const [selectedSponsorId, setSelectedSponsorId] = useState('');
   const [selectedRole, setSelectedRole] = useState('shoppable');
@@ -1260,8 +1261,17 @@ function SponsorsTabContent({ campaignId }: { campaignId: number }) {
     enabled: !!campaignId,
   });
 
+  // /api/sponsors requires userId — without it the endpoint 400s and the
+  // "Add Sponsor" button stays disabled because availableSponsors is empty.
   const { data: allSponsors = [] } = useQuery<any[]>({
-    queryKey: ['/api/sponsors'],
+    queryKey: ['/api/sponsors', userId],
+    queryFn: async () => {
+      if (!userId) return [];
+      const res = await fetch(`/api/sponsors?userId=${userId}`);
+      if (!res.ok) throw new Error('Failed');
+      return res.json();
+    },
+    enabled: !!userId,
   });
 
   const linkedSponsorIds = new Set(campaignSponsors.map((s: any) => s.sponsorId));

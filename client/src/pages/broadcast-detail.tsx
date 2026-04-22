@@ -17,6 +17,7 @@ import type { Broadcast, Poll, PollOptionRecord, Contest, Campaign, BroadcastAd,
 import { ArrowLeft, Plus, Trash2, BarChart3, Trophy, X, MoreVertical, CheckCircle, Play, SkipBack, SkipForward, Maximize2, Send, Megaphone, ShoppingBag, ExternalLink, Eye, TrendingUp, Vote, MessageSquare, RefreshCw, Users, Radio, Pencil, Check, AtSign, ChevronDown, ChevronRight, Code2, Shirt } from 'lucide-react';
 import { useState, useRef, useEffect } from 'react';
 import { useUser } from '@/contexts/UserContext';
+import { SponsorCatalogPicker } from '@/components/sponsor-catalog-picker';
 
 type BroadcastWithRelations = Broadcast & {
   polls?: (Poll & { options?: PollOptionRecord[] })[];
@@ -893,17 +894,6 @@ function ShoppableAdTriggerSection({ broadcastId, campaignId }: { broadcastId: s
     },
   });
 
-  const { data: commerceProducts = [] } = useQuery<CommerceProduct[]>({
-    queryKey: ['/api/commerce/products', campaignId],
-    queryFn: async () => {
-      const url = `/api/commerce/products${campaignId ? `?campaignId=${campaignId}` : ''}`;
-      const res = await fetch(url);
-      if (!res.ok) return [];
-      return res.json();
-    },
-    enabled: !!campaignId,
-  });
-
   const buildSlotConfig = () => {
     if (slotType === 'lead') return { title: cfgTitle, fields: cfgLeadFields, cta: cfgCta };
     if (slotType === 'poll_cta') return { pollId: cfgRefId, message: cfgMessage, cta: cfgCta };
@@ -1093,34 +1083,13 @@ function ShoppableAdTriggerSection({ broadcastId, campaignId }: { broadcastId: s
                 {slotType === 'product' && (
                   <div className="space-y-1.5">
                     <Label>Products</Label>
-                    {commerceProducts.length === 0 ? (
-                      <p className="text-xs text-gray-400 dark:text-gray-500">No products configured for this campaign yet.</p>
-                    ) : (
-                      <div className="grid grid-cols-2 gap-2 max-h-52 overflow-y-auto pr-1">
-                        {commerceProducts.map(p => {
-                          const isSelected = slotProductIds.includes(p.id);
-                          return (
-                            <button
-                              key={p.id}
-                              type="button"
-                              onClick={() => setSlotProductIds(prev => isSelected ? prev.filter(id => id !== p.id) : [...prev, p.id])}
-                              data-testid={`slot-product-${p.id}`}
-                              className={`flex items-center gap-2 p-2 rounded-lg border text-left transition ${isSelected ? 'border-blue-500/50 bg-blue-500/10' : 'border-white/10 bg-white/[0.02] hover:border-white/20'}`}
-                            >
-                              {p.imageUrl
-                                ? <img src={p.imageUrl} alt={p.name} className="w-8 h-8 rounded object-cover flex-shrink-0" />
-                                : <div className="w-8 h-8 rounded bg-white/10 flex-shrink-0 flex items-center justify-center"><ShoppingBag className="w-3.5 h-3.5 text-white/30" /></div>
-                              }
-                              <div className="flex-1 min-w-0">
-                                <p className="text-[11px] font-medium text-white truncate">{p.name}</p>
-                                {p.price != null && <p className="text-[10px] text-green-400">{p.price} {p.currency}</p>}
-                              </div>
-                              {isSelected && <Check className="w-3 h-3 text-blue-400 shrink-0" />}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    )}
+                    <SponsorCatalogPicker
+                      multi
+                      sponsorId={selectedSponsorId}
+                      value={slotProductIds}
+                      onChange={setSlotProductIds}
+                      sponsorPlaceholderText="Select a sponsor above to load its product catalog."
+                    />
                   </div>
                 )}
 
@@ -1314,22 +1283,12 @@ function ShoppableAdTriggerSection({ broadcastId, campaignId }: { broadcastId: s
             </div>
             <div className="space-y-1.5">
               <Label className="text-xs text-gray-500 dark:text-gray-400">Product</Label>
-              <Select value={adhocProductId ? String(adhocProductId) : ''} onValueChange={v => setAdhocProductId(parseInt(v))}>
-                <SelectTrigger data-testid="select-adhoc-product" className="text-sm">
-                  <SelectValue placeholder="Select product..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {commerceProducts.map(p => (
-                    <SelectItem key={p.id} value={String(p.id)}>
-                      <div className="flex items-center gap-2">
-                        {p.imageUrl ? <img src={p.imageUrl} alt={p.name} className="w-4 h-4 object-cover rounded flex-shrink-0" /> : <ShoppingBag className="w-3.5 h-3.5 text-gray-400" />}
-                        <span className="truncate">{p.name}</span>
-                        {p.price != null && <span className="text-green-400 shrink-0 text-[10px]">{p.price} {p.currency}</span>}
-                      </div>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <SponsorCatalogPicker
+                sponsorId={adhocSponsorId && adhocSponsorId !== 'none' ? adhocSponsorId : null}
+                value={adhocProductId}
+                onChange={setAdhocProductId}
+                sponsorPlaceholderText="Pick a sponsor to browse its catalog."
+              />
             </div>
           </div>
           <button

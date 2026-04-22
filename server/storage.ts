@@ -216,6 +216,7 @@ export interface IStorage {
 
   // Shoppable Ad Activations methods (one row per shoppable_ad dispatch)
   createShoppableAdActivation(data: InsertShoppableAdActivation): Promise<ShoppableAdActivation>;
+  getShoppableAdActivation(id: number): Promise<ShoppableAdActivation | undefined>;
   listShoppableAdActivationsByBroadcast(broadcastId: string, options?: { limit?: number; offset?: number; sponsorId?: number; source?: string }): Promise<ShoppableAdActivation[]>;
   listShoppableAdActivationsByCampaign(campaignId: number, options?: { limit?: number; offset?: number; sponsorId?: number; source?: string }): Promise<ShoppableAdActivation[]>;
 
@@ -1631,6 +1632,14 @@ export class MemStorage implements IStorage {
   // Shoppable Ad Activations (dispatch log) ------------------------------
   async createShoppableAdActivation(data: InsertShoppableAdActivation): Promise<ShoppableAdActivation> {
     const [row] = await db.insert(shoppableAdActivations).values(data).returning();
+    return row;
+  }
+
+  /// Lookup an activation row by id. Used by `/api/sdk/tv/cart-intent` to
+  /// derive campaignId + sponsorId from the originating shoppable_ad so the
+  /// SDK only has to ship `{ externalUserId, productId, activationId }`.
+  async getShoppableAdActivation(id: number): Promise<ShoppableAdActivation | undefined> {
+    const [row] = await db.select().from(shoppableAdActivations).where(eq(shoppableAdActivations.id, id));
     return row;
   }
 
