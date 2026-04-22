@@ -4911,11 +4911,17 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       }
     }
 
-    // 2. Resolve product from Commerce GraphQL (with fallback)
+    // 2. Resolve product from Commerce GraphQL — with a 2-step fallback:
+    //    a) rich query (images + price) for the WS event + snapshot.
+    //    b) if upstream fails (e.g. some products return `Cannot return null for
+    //       non-nullable field Product.images.` — data-quality issue in Commerce),
+    //       retry with a minimal `{ id title }` query so we at least get the
+    //       product name into the push title + activation snapshot.
+    //    c) if that also fails, fall back to `Product #X` placeholder.
     let product: any = null;
     try {
-      const gqlQuery = `{ Channel { GetProductsByIds(product_ids: [${productId}]) { id title images { url order } price { amount amount_incl_taxes currency_code } } } }`;
-      const gqlData = await fetchGraphQL(gqlQuery, commerceApiKey);
+      const richQuery = `{ Channel { GetProductsByIds(product_ids: [${productId}]) { id title images { url order } price { amount amount_incl_taxes currency_code } } } }`;
+      const gqlData = await fetchGraphQL(richQuery, commerceApiKey);
       const p = gqlData?.data?.Channel?.GetProductsByIds?.[0];
       if (p) {
         const image = p.images?.sort((a: any, b: any) => a.order - b.order)?.[0];
@@ -4928,7 +4934,23 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
         };
       }
     } catch (err) {
-      console.warn(`[ShoppableAd:${source}] Commerce GraphQL error:`, err);
+      console.warn(`[ShoppableAd:${source}] Commerce GraphQL rich query failed — retrying minimal:`, (err as Error).message ?? err);
+      try {
+        const minQuery = `{ Channel { GetProductsByIds(product_ids: [${productId}]) { id title } } }`;
+        const gqlData = await fetchGraphQL(minQuery, commerceApiKey);
+        const p = gqlData?.data?.Channel?.GetProductsByIds?.[0];
+        if (p) {
+          product = {
+            id: String(p.id),
+            name: p.title,
+            price: null,
+            currency: 'NOK',
+            imageUrl: null,
+          };
+        }
+      } catch (minErr) {
+        console.warn(`[ShoppableAd:${source}] Commerce GraphQL minimal query also failed:`, (minErr as Error).message ?? minErr);
+      }
     }
     if (!product) {
       product = { id: String(productId), name: `Product #${productId}`, price: null, currency: 'NOK', imageUrl: null };
