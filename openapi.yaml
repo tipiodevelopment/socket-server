@@ -48,6 +48,10 @@ tags:
     description: Lineup retrieval and lineup_show WebSocket trigger endpoints
   - name: SDK - Lineup
     description: Starting XI lineup retrieval for SDK clients (API Key auth)
+  - name: SDK - TV
+    description: Dedicated endpoints for TV SDKs (tvOS, Fire TV, Roku) using the same API Key auth as mobile SDKs but isolated under `/api/sdk/tv/*`
+  - name: Shoppable Ads
+    description: Triggering and auditing shoppable_ad activations (4 entry points, shared table `shoppable_ad_activations`)
   - name: Analytics
     description: Analytics and reporting endpoints (planned)
 
@@ -994,6 +998,47 @@ components:
           type: string
           enum: [goalkeeper, defender, midfielder, attacker]
           example: goalkeeper
+
+    ShoppableAdActivation:
+      type: object
+      description: One dispatch of a shoppable_ad (persisted in `shoppable_ad_activations`)
+      properties:
+        id: { type: integer }
+        broadcastId: { type: string }
+        campaignId: { type: integer }
+        sponsorId: { type: integer, nullable: true }
+        slotId: { type: integer, nullable: true, description: "Populated only for source='slot-scheduler'" }
+        clientAppId: { type: integer, nullable: true, description: "Populated only for source='tv-sdk' (or future API-key-auth entry points)" }
+        productId: { type: string, description: "External Commerce product id" }
+        productSnapshot:
+          type: object
+          description: Product state captured at dispatch time (id, name, price, currency, imageUrl)
+        sponsorSnapshot:
+          type: object
+          nullable: true
+          description: Sponsor state captured at dispatch time (name, logoUrl, primaryColor)
+        source:
+          type: string
+          enum: [admin-api, dashboard, tv-sdk, slot-scheduler]
+        wsEventSent:
+          type: boolean
+          description: false if the DB insert succeeded but the subsequent WS broadcast threw
+        metadata:
+          type: object
+          nullable: true
+        triggeredAt:
+          type: string
+          format: date-time
+    ShoppableAdDispatchResult:
+      type: object
+      properties:
+        success: { type: boolean }
+        activationId: { type: integer, description: "Primary key of the persisted activation row; can be echoed back in a future cart_intent for attribution" }
+        product:
+          type: object
+        sponsor:
+          type: object
+          nullable: true
 
     LineupTeam:
       type: object
@@ -6108,3 +6153,178 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+
+  # ---------------------------------------------------------------
+  # Shoppable Ad Activations
+  # ---------------------------------------------------------------
+  /api/broadcasts/{broadcastId}/shoppable-ad:
+    post:
+      tags: [Shoppable Ads]
+      summary: Trigger a shoppable ad (Admin API, Bearer auth)
+      description: |
+        Resolves product from Commerce GraphQL, persists a row in
+        `shoppable_ad_activations` with `source='admin-api'`, and fans out a
+        `shoppable_ad` WebSocket event to all clients on the campaign.
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - in: path
+          name: broadcastId
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [productId]
+              properties:
+                productId: { type: string }
+                sponsorId: { type: integer, nullable: true }
+      responses:
+        '200':
+          description: Dispatched
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ShoppableAdDispatchResult' }
+        '400': { description: Bad request (missing productId or broadcast has no campaign) }
+        '401': { description: Missing or invalid Bearer token }
+        '404': { description: Broadcast or campaign not found }
+
+  /api/broadcasts/{broadcastId}/trigger-shoppable-ad:
+    post:
+      tags: [Shoppable Ads]
+      summary: Trigger a shoppable ad (Dashboard, no auth)
+      description: |
+        Same as the Admin endpoint but without auth. Used by the dashboard UI.
+        Persists with `source='dashboard'`.
+      parameters:
+        - in: path
+          name: broadcastId
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [productId]
+              properties:
+                productId: { type: string }
+                sponsorId: { type: integer, nullable: true }
+      responses:
+        '200':
+          description: Dispatched
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ShoppableAdDispatchResult' }
+        '400': { description: Bad request }
+        '404': { description: Broadcast or campaign not found }
+
+  /api/sdk/tv/broadcasts/{broadcastId}/shoppable-ad:
+    post:
+      tags: [SDK - TV, Shoppable Ads]
+      summary: Trigger a shoppable ad (TV SDK, API Key auth)
+      description: |
+        Dedicated endpoint for TV SDKs (tvOS, Fire TV, Roku). Uses the same
+        API Key auth model as mobile SDKs but on an isolated path so
+        TV-specific behaviour (rate limits, reporting, analytics) can diverge
+        independently. Persists with `source='tv-sdk'` and attaches the
+        calling `client_app.id` as `clientAppId`.
+      security:
+        - ApiKeyHeader: []
+        - ApiKeyQuery: []
+      parameters:
+        - in: path
+          name: broadcastId
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [productId]
+              properties:
+                productId: { type: string }
+                sponsorId: { type: integer, nullable: true }
+      responses:
+        '200':
+          description: Dispatched
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ShoppableAdDispatchResult' }
+        '400': { description: Bad request }
+        '401': { description: Missing or invalid API key }
+        '404': { description: Broadcast or campaign not found }
+
+  /api/broadcasts/{broadcastId}/sponsor-slots/{slotId}/execute:
+    post:
+      tags: [Shoppable Ads, Dashboard - Broadcasts]
+      summary: Execute a pre-configured sponsor slot
+      description: |
+        Fires a scheduled shoppable_ad dispatch for a pre-configured
+        `broadcast_sponsor_slot`. Persists with `source='slot-scheduler'` and
+        populates `slotId`. On success, marks the slot row as completed
+        (`status='completed'`, `executedAt=now()`). The activation is written
+        before the slot status update, so the slot will never be marked
+        completed without a matching activation row.
+      parameters:
+        - in: path
+          name: broadcastId
+          required: true
+          schema: { type: string }
+        - in: path
+          name: slotId
+          required: true
+          schema: { type: integer }
+      responses:
+        '200':
+          description: Executed
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ShoppableAdDispatchResult' }
+        '404': { description: Slot, broadcast or campaign not found }
+
+  /api/broadcasts/{broadcastId}/shoppable-ads:
+    get:
+      tags: [Shoppable Ads, Analytics]
+      summary: List shoppable ad activations for a broadcast
+      description: |
+        Returns activation history sorted by `triggeredAt` DESC. Useful for
+        audit, debugging, and dashboard timelines.
+      parameters:
+        - in: path
+          name: broadcastId
+          required: true
+          schema: { type: string }
+        - in: query
+          name: limit
+          schema: { type: integer, default: 50, maximum: 200 }
+        - in: query
+          name: offset
+          schema: { type: integer, default: 0 }
+        - in: query
+          name: sponsorId
+          schema: { type: integer }
+        - in: query
+          name: source
+          schema:
+            type: string
+            enum: [admin-api, dashboard, tv-sdk, slot-scheduler]
+      responses:
+        '200':
+          description: List of activations
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  activations:
+                    type: array
+                    items: { $ref: '#/components/schemas/ShoppableAdActivation' }
+                  limit: { type: integer }
+                  offset: { type: integer }
+                  count: { type: integer }

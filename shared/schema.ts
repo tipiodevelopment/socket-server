@@ -444,6 +444,33 @@ export const broadcastSponsorSlots = pgTable("broadcast_sponsor_slots", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
+// Shoppable Ad Activations — one row per shoppable_ad dispatch (manual, scheduled, or SDK-triggered)
+// Separate from generic events table because this is a high-volume, queryable engagement signal
+// that needs proper FKs (sponsor, slot, client_app) for analytics and attribution.
+export const shoppableAdActivations = pgTable("shoppable_ad_activations", {
+  id: serial("id").primaryKey(),
+  broadcastId: varchar("broadcast_id", { length: 255 }).notNull()
+    .references((): AnyPgColumn => broadcasts.broadcastId, { onDelete: 'cascade' }),
+  campaignId: integer("campaign_id").notNull()
+    .references(() => campaigns.id, { onDelete: 'cascade' }),
+  sponsorId: integer("sponsor_id").references(() => sponsors.id, { onDelete: 'set null' }),
+  slotId: integer("slot_id").references(() => broadcastSponsorSlots.id, { onDelete: 'set null' }),
+  clientAppId: integer("client_app_id").references(() => clientApps.id, { onDelete: 'set null' }),
+  productId: varchar("product_id", { length: 255 }).notNull(), // external Commerce id, not a local FK
+  productSnapshot: json("product_snapshot").notNull(), // { id, name, price, currency, imageUrl } captured at dispatch time
+  sponsorSnapshot: json("sponsor_snapshot"), // { name, logoUrl, primaryColor } captured at dispatch time
+  source: varchar("source", { length: 30 }).notNull(), // 'admin-api' | 'dashboard' | 'tv-sdk' | 'slot-scheduler'
+  wsEventSent: boolean("ws_event_sent").notNull().default(true),
+  metadata: json("metadata"), // future-proof payload (userId, deviceId, experiment tags, etc.)
+  triggeredAt: timestamp("triggered_at").defaultNow().notNull(),
+}, (table) => [
+  index("idx_shoppable_activations_broadcast_time").on(table.broadcastId, table.triggeredAt),
+  index("idx_shoppable_activations_campaign_time").on(table.campaignId, table.triggeredAt),
+  index("idx_shoppable_activations_sponsor").on(table.sponsorId),
+  index("idx_shoppable_activations_slot").on(table.slotId),
+  index("idx_shoppable_activations_source_time").on(table.source, table.triggeredAt),
+]);
+
 export const insertCampaignSponsorSchema = createInsertSchema(campaignSponsors).omit({ id: true, createdAt: true });
 export const insertBroadcastCampaignSchema = createInsertSchema(broadcastCampaigns).omit({ id: true, createdAt: true });
 export const insertBroadcastSponsorSlotSchema = createInsertSchema(broadcastSponsorSlots).omit({ id: true, createdAt: true }).extend({
@@ -451,6 +478,15 @@ export const insertBroadcastSponsorSlotSchema = createInsertSchema(broadcastSpon
   type: z.enum(['product', 'lead', 'poll_cta', 'contest_cta', 'link']).default('product'),
   config: z.record(z.any()).optional(),
 });
+export const shoppableAdSourceEnum = z.enum(['admin-api', 'dashboard', 'tv-sdk', 'slot-scheduler']);
+export const insertShoppableAdActivationSchema = createInsertSchema(shoppableAdActivations)
+  .omit({ id: true, triggeredAt: true })
+  .extend({
+    source: shoppableAdSourceEnum,
+    productSnapshot: z.record(z.any()),
+    sponsorSnapshot: z.record(z.any()).optional().nullable(),
+    metadata: z.record(z.any()).optional().nullable(),
+  });
 
 export type CampaignSponsor = typeof campaignSponsors.$inferSelect;
 export type InsertCampaignSponsor = z.infer<typeof insertCampaignSponsorSchema>;
@@ -458,6 +494,9 @@ export type BroadcastCampaign = typeof broadcastCampaigns.$inferSelect;
 export type InsertBroadcastCampaign = z.infer<typeof insertBroadcastCampaignSchema>;
 export type BroadcastSponsorSlot = typeof broadcastSponsorSlots.$inferSelect;
 export type InsertBroadcastSponsorSlot = z.infer<typeof insertBroadcastSponsorSlotSchema>;
+export type ShoppableAdActivation = typeof shoppableAdActivations.$inferSelect;
+export type InsertShoppableAdActivation = z.infer<typeof insertShoppableAdActivationSchema>;
+export type ShoppableAdSource = z.infer<typeof shoppableAdSourceEnum>;
 
 // Relations
 export const usersRelations = relations(users, ({ many }) => ({
@@ -617,10 +656,19 @@ export const broadcastCampaignsRelations = relations(broadcastCampaigns, ({ one 
   campaign: one(campaigns, { fields: [broadcastCampaigns.campaignId], references: [campaigns.id] }),
 }));
 
-export const broadcastSponsorSlotsRelations = relations(broadcastSponsorSlots, ({ one }) => ({
+export const broadcastSponsorSlotsRelations = relations(broadcastSponsorSlots, ({ one, many }) => ({
   broadcast: one(broadcasts, { fields: [broadcastSponsorSlots.broadcastId], references: [broadcasts.broadcastId] }),
   sponsor: one(sponsors, { fields: [broadcastSponsorSlots.sponsorId], references: [sponsors.id] }),
   campaign: one(campaigns, { fields: [broadcastSponsorSlots.campaignId], references: [campaigns.id] }),
+  activations: many(shoppableAdActivations),
+}));
+
+export const shoppableAdActivationsRelations = relations(shoppableAdActivations, ({ one }) => ({
+  broadcast: one(broadcasts, { fields: [shoppableAdActivations.broadcastId], references: [broadcasts.broadcastId] }),
+  campaign: one(campaigns, { fields: [shoppableAdActivations.campaignId], references: [campaigns.id] }),
+  sponsor: one(sponsors, { fields: [shoppableAdActivations.sponsorId], references: [sponsors.id] }),
+  slot: one(broadcastSponsorSlots, { fields: [shoppableAdActivations.slotId], references: [broadcastSponsorSlots.id] }),
+  clientApp: one(clientApps, { fields: [shoppableAdActivations.clientAppId], references: [clientApps.id] }),
 }));
 
 export const broadcastsRelations = relations(broadcasts, ({ one, many }) => ({

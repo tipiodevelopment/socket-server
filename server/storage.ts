@@ -1,6 +1,6 @@
-import { WebSocketEvent, Campaign, InsertCampaign, Event, InsertEvent, CampaignFormState, InsertFormState, ScheduledComponent, InsertScheduledComponent, Component, InsertComponent, CampaignComponent, InsertCampaignComponent, AppComponent, InsertAppComponent, User, InsertUser, ClientApp, InsertClientApp, Channel, InsertChannel, CampaignTranslation, InsertCampaignTranslation, CampaignEngagementConfig, InsertCampaignEngagementConfig, CampaignUiConfig, InsertCampaignUiConfig, CampaignFeatureFlags, InsertCampaignFeatureFlags, SdkTranslation, InsertSdkTranslation, Broadcast, InsertBroadcast, Poll, InsertPoll, PollOptionRecord, InsertPollOption, PollVote, InsertPollVote, Contest, InsertContest, ContestParticipation, InsertContestParticipation, Sponsor, InsertSponsor, BroadcastAd, InsertBroadcastAd, BroadcastProduct, InsertBroadcastProduct, ChatMessage, InsertChatMessage, DeviceToken, InsertDeviceToken, SportmonksCache, type InsertCampaignSponsor, type InsertBroadcastSponsorSlot } from "@shared/schema";
+import { WebSocketEvent, Campaign, InsertCampaign, Event, InsertEvent, CampaignFormState, InsertFormState, ScheduledComponent, InsertScheduledComponent, Component, InsertComponent, CampaignComponent, InsertCampaignComponent, AppComponent, InsertAppComponent, User, InsertUser, ClientApp, InsertClientApp, Channel, InsertChannel, CampaignTranslation, InsertCampaignTranslation, CampaignEngagementConfig, InsertCampaignEngagementConfig, CampaignUiConfig, InsertCampaignUiConfig, CampaignFeatureFlags, InsertCampaignFeatureFlags, SdkTranslation, InsertSdkTranslation, Broadcast, InsertBroadcast, Poll, InsertPoll, PollOptionRecord, InsertPollOption, PollVote, InsertPollVote, Contest, InsertContest, ContestParticipation, InsertContestParticipation, Sponsor, InsertSponsor, BroadcastAd, InsertBroadcastAd, BroadcastProduct, InsertBroadcastProduct, ChatMessage, InsertChatMessage, DeviceToken, InsertDeviceToken, SportmonksCache, type InsertCampaignSponsor, type InsertBroadcastSponsorSlot, type InsertShoppableAdActivation, type ShoppableAdActivation } from "@shared/schema";
 import { db } from "./db";
-import { campaigns, events, campaignFormState, scheduledComponents, components, campaignComponents, appComponents, users, clientApps, channels, campaignTranslations, campaignEngagementConfig, campaignUiConfig, campaignFeatureFlags, sdkTranslations, broadcasts, polls, pollOptions, pollVotes, contests, contestParticipations, sponsors, broadcastAds, broadcastProducts, chatMessages, deviceTokens, sportmonksCache, campaignSponsors, broadcastSponsorSlots } from "@shared/schema";
+import { campaigns, events, campaignFormState, scheduledComponents, components, campaignComponents, appComponents, users, clientApps, channels, campaignTranslations, campaignEngagementConfig, campaignUiConfig, campaignFeatureFlags, sdkTranslations, broadcasts, polls, pollOptions, pollVotes, contests, contestParticipations, sponsors, broadcastAds, broadcastProducts, chatMessages, deviceTokens, sportmonksCache, campaignSponsors, broadcastSponsorSlots, shoppableAdActivations } from "@shared/schema";
 import { eq, desc, and, or, gte, ne, isNull, isNotNull, sql, lte, inArray } from "drizzle-orm";
 
 export interface IStorage {
@@ -213,6 +213,11 @@ export interface IStorage {
   createBroadcastSponsorSlot(data: any): Promise<any>;
   updateBroadcastSponsorSlot(id: number, data: any): Promise<any | undefined>;
   deleteBroadcastSponsorSlot(id: number): Promise<void>;
+
+  // Shoppable Ad Activations methods (one row per shoppable_ad dispatch)
+  createShoppableAdActivation(data: InsertShoppableAdActivation): Promise<ShoppableAdActivation>;
+  listShoppableAdActivationsByBroadcast(broadcastId: string, options?: { limit?: number; offset?: number; sponsorId?: number; source?: string }): Promise<ShoppableAdActivation[]>;
+  listShoppableAdActivationsByCampaign(campaignId: number, options?: { limit?: number; offset?: number; sponsorId?: number; source?: string }): Promise<ShoppableAdActivation[]>;
 
   // getBroadcastsByCampaign alias
   getBroadcastsByCampaign(campaignId: number): Promise<Broadcast[]>;
@@ -1594,6 +1599,42 @@ export class MemStorage implements IStorage {
 
   async getBroadcastsByCampaign(campaignId: number): Promise<Broadcast[]> {
     return this.getCampaignBroadcasts(campaignId);
+  }
+
+  // Shoppable Ad Activations (dispatch log) ------------------------------
+  async createShoppableAdActivation(data: InsertShoppableAdActivation): Promise<ShoppableAdActivation> {
+    const [row] = await db.insert(shoppableAdActivations).values(data).returning();
+    return row;
+  }
+
+  async listShoppableAdActivationsByBroadcast(
+    broadcastId: string,
+    options: { limit?: number; offset?: number; sponsorId?: number; source?: string } = {}
+  ): Promise<ShoppableAdActivation[]> {
+    const { limit = 50, offset = 0, sponsorId, source } = options;
+    const conditions = [eq(shoppableAdActivations.broadcastId, broadcastId)];
+    if (typeof sponsorId === 'number') conditions.push(eq(shoppableAdActivations.sponsorId, sponsorId));
+    if (source) conditions.push(eq(shoppableAdActivations.source, source));
+    return await db.select().from(shoppableAdActivations)
+      .where(and(...conditions))
+      .orderBy(desc(shoppableAdActivations.triggeredAt))
+      .limit(limit)
+      .offset(offset);
+  }
+
+  async listShoppableAdActivationsByCampaign(
+    campaignId: number,
+    options: { limit?: number; offset?: number; sponsorId?: number; source?: string } = {}
+  ): Promise<ShoppableAdActivation[]> {
+    const { limit = 50, offset = 0, sponsorId, source } = options;
+    const conditions = [eq(shoppableAdActivations.campaignId, campaignId)];
+    if (typeof sponsorId === 'number') conditions.push(eq(shoppableAdActivations.sponsorId, sponsorId));
+    if (source) conditions.push(eq(shoppableAdActivations.source, source));
+    return await db.select().from(shoppableAdActivations)
+      .where(and(...conditions))
+      .orderBy(desc(shoppableAdActivations.triggeredAt))
+      .limit(limit)
+      .offset(offset);
   }
 }
 

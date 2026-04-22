@@ -22,10 +22,14 @@ import {
   participateInputSchema,
   insertCampaignSponsorSchema,
   insertBroadcastSponsorSlotSchema,
+  shoppableAdActivations,
   type WebSocketEvent,
   type InsertScheduledComponent,
-  Campaign
+  Campaign,
+  Broadcast
 } from "@shared/schema";
+import { db } from "./db";
+import { eq } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import {
   ObjectStorageService,
@@ -4790,156 +4794,154 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
     }
   });
 
-  // POST /api/broadcasts/:id/shoppable-ad — Trigger shoppable ad via Commerce GraphQL + WS
+  // ----------------------------------------------------------------------
+  // Shoppable Ad dispatch — unified helper used by all 4 entry points.
+  // Resolves product + sponsor via Commerce GraphQL, persists an activation
+  // row, then fans out the WS event. Insertion happens on the origin node
+  // only; Redis Pub/Sub fanout is payload-forward only (no duplicate writes).
+  // ----------------------------------------------------------------------
+  async function persistAndBroadcastShoppableAd(args: {
+    broadcast: Broadcast;
+    campaign: Campaign;
+    productId: string | number;
+    sponsorId?: number | null;
+    slotId?: number | null;
+    clientAppId?: number | null;
+    source: 'admin-api' | 'dashboard' | 'tv-sdk' | 'slot-scheduler';
+    req: Request;
+  }): Promise<{ activationId: number; wsEvent: Record<string, any>; product: any; sponsor: any }> {
+    const { broadcast, campaign, productId, sponsorId, slotId, clientAppId, source, req } = args;
+
+    // 1. Resolve sponsor (includes its Commerce API key if present)
+    let sponsor: any = null;
+    let commerceApiKey = process.env.COMMERCE_API_KEY || 'KCXF10Y-W5T4PCR-GG5119A-Z64SQ9S';
+    if (sponsorId) {
+      const sp = await storage.getSponsor(sponsorId);
+      if (sp) {
+        if (sp.commerceApiKey) commerceApiKey = sp.commerceApiKey;
+        sponsor = {
+          name: sp.name,
+          logoUrl: sp.logoUrl ? normalizeUrls(sp.logoUrl, req.protocol, req.get('host')) : null,
+          primaryColor: sp.primaryColor ?? null,
+        };
+      }
+    }
+
+    // 2. Resolve product from Commerce GraphQL (with fallback)
+    let product: any = null;
+    try {
+      const gqlQuery = `{ Channel { GetProductsByIds(product_ids: [${productId}]) { id title images { url order } price { amount amount_incl_taxes currency_code } } } }`;
+      const gqlData = await fetchGraphQL(gqlQuery, commerceApiKey);
+      const p = gqlData?.data?.Channel?.GetProductsByIds?.[0];
+      if (p) {
+        const image = p.images?.sort((a: any, b: any) => a.order - b.order)?.[0];
+        product = {
+          id: String(p.id),
+          name: p.title,
+          price: p.price?.amount_incl_taxes ?? p.price?.amount ?? null,
+          currency: p.price?.currency_code ?? 'NOK',
+          imageUrl: image?.url ?? null,
+        };
+      }
+    } catch (err) {
+      console.warn(`[ShoppableAd:${source}] Commerce GraphQL error:`, err);
+    }
+    if (!product) {
+      product = { id: String(productId), name: `Product #${productId}`, price: null, currency: 'NOK', imageUrl: null };
+    }
+
+    // 3. Persist activation BEFORE broadcasting. If DB fails, throw — callers translate to 500.
+    //    We flag ws_event_sent=true optimistically; if the subsequent broadcast throws, we update it to false.
+    const activation = await storage.createShoppableAdActivation({
+      broadcastId: broadcast.broadcastId,
+      campaignId: campaign.id,
+      sponsorId: sponsorId ?? null,
+      slotId: slotId ?? null,
+      clientAppId: clientAppId ?? null,
+      productId: String(productId),
+      productSnapshot: product,
+      sponsorSnapshot: sponsor,
+      source,
+      wsEventSent: true,
+      metadata: null,
+    });
+
+    // 4. Build WS event (includes activationId for future attribution / idempotency)
+    const wsEvent: Record<string, any> = {
+      type: 'shoppable_ad',
+      broadcastId: broadcast.broadcastId,
+      campaignId: campaign.id,
+      product,
+      ...(sponsor ? { sponsor } : {}),
+      ...(slotId ? { slotId } : {}),
+      activationId: activation.id,
+      timestamp: Date.now(),
+    };
+
+    // 5. Fan-out (Redis Pub/Sub if enabled, otherwise local only)
+    try {
+      if (campaign.id) broadcastToCampaign(campaign.id, JSON.stringify(wsEvent));
+    } catch (err) {
+      console.error(`[ShoppableAd:${source}] broadcastToCampaign failed, marking ws_event_sent=false for activation ${activation.id}`, err);
+      // Best-effort flag update; swallow failures here so we don't mask the broadcast error
+      try {
+        await db.update(shoppableAdActivations)
+          .set({ wsEventSent: false })
+          .where(eq(shoppableAdActivations.id, activation.id));
+      } catch {/* ignore */}
+      throw err;
+    }
+
+    return { activationId: activation.id, wsEvent, product, sponsor };
+  }
+
+  // POST /api/broadcasts/:id/shoppable-ad — Admin Bearer trigger (source=admin-api)
   app.post('/api/broadcasts/:broadcastId/shoppable-ad', requireBearerAuth, async (req, res) => {
     try {
       const { broadcastId } = req.params;
       const { productId, sponsorId } = req.body;
-
-      if (!productId) {
-        return res.status(400).json({ error: 'productId is required' });
-      }
+      if (!productId) return res.status(400).json({ error: 'productId is required' });
 
       const broadcast = await storage.getBroadcast(broadcastId);
       if (!broadcast) return res.status(404).json({ error: 'Broadcast not found' });
-
+      if (!broadcast.campaignId) return res.status(400).json({ error: 'Broadcast has no associated campaign' });
       const campaign = await storage.getCampaign(broadcast.campaignId);
       if (!campaign) return res.status(404).json({ error: 'Campaign not found' });
 
-      // Resolve sponsor first, use sponsor's Commerce API key
-      let sponsor: any = null;
-      let commerceApiKey = process.env.COMMERCE_API_KEY || 'KCXF10Y-W5T4PCR-GG5119A-Z64SQ9S';
-      if (sponsorId) {
-        const sp = await storage.getSponsor(sponsorId);
-        if (sp) {
-          if (sp.commerceApiKey) commerceApiKey = sp.commerceApiKey;
-          sponsor = {
-            name: sp.name,
-            logoUrl: sp.logoUrl ? normalizeUrls(sp.logoUrl, req.protocol, req.get('host')) : null,
-            primaryColor: sp.primaryColor ?? null,
-          };
-        }
-      }
-
-      // Resolve product from Commerce GraphQL
-      const gqlQuery = `{ Channel { GetProductsByIds(product_ids: [${productId}]) { id title images { url order } price { amount amount_incl_taxes currency_code } } } }`;
-
-      let product: any = null;
-      try {
-        const gqlData = await fetchGraphQL(gqlQuery, commerceApiKey);
-        const p = gqlData?.data?.Channel?.GetProductsByIds?.[0];
-        if (p) {
-          const image = p.images?.sort((a: any, b: any) => a.order - b.order)?.[0];
-          product = {
-            id: String(p.id),
-            name: p.title,
-            price: p.price?.amount_incl_taxes ?? p.price?.amount ?? null,
-            currency: p.price?.currency_code ?? 'NOK',
-            imageUrl: image?.url ?? null,
-          };
-        }
-      } catch (err) {
-        console.warn('[ShoppableAd] Commerce GraphQL error:', err);
-      }
-
-      if (!product) {
-        product = { id: String(productId), name: 'Product', price: null, currency: 'NOK', imageUrl: null };
-      }
-
-      const wsEvent = {
-        type: 'shoppable_ad',
-        broadcastId,
-        campaignId: campaign.id,
-        product,
-        ...(sponsor ? { sponsor } : {}),
-        timestamp: Date.now(),
-      };
-
-      if (campaign.id) {
-        broadcastToCampaign(campaign.id, JSON.stringify(wsEvent));
-      }
-
-      res.json({ success: true });
+      const { activationId, product, sponsor } = await persistAndBroadcastShoppableAd({
+        broadcast, campaign, productId,
+        sponsorId: sponsorId ? Number(sponsorId) : null,
+        source: 'admin-api', req,
+      });
+      res.json({ success: true, activationId, product, sponsor });
     } catch (error) {
-      console.error('[ShoppableAd] Error:', error);
+      console.error('[ShoppableAd:admin-api] Error:', error);
       res.status(500).json({ error: 'Failed to trigger shoppable ad' });
     }
   });
 
-  // POST /api/broadcasts/:broadcastId/trigger-shoppable-ad — Dashboard trigger (no Bearer required)
+  // POST /api/broadcasts/:broadcastId/trigger-shoppable-ad — Dashboard trigger (source=dashboard, no auth)
   app.post('/api/broadcasts/:broadcastId/trigger-shoppable-ad', async (req, res) => {
     try {
       const { broadcastId } = req.params;
       const { productId, sponsorId } = req.body;
-
-      if (!productId) {
-        return res.status(400).json({ error: 'productId is required' });
-      }
+      if (!productId) return res.status(400).json({ error: 'productId is required' });
 
       const broadcast = await storage.getBroadcast(broadcastId);
       if (!broadcast) return res.status(404).json({ error: 'Broadcast not found' });
-
+      if (!broadcast.campaignId) return res.status(400).json({ error: 'Broadcast has no associated campaign' });
       const campaign = await storage.getCampaign(broadcast.campaignId);
       if (!campaign) return res.status(404).json({ error: 'Campaign not found' });
 
-      // Use sponsor's commerceApiKey if available, fallback to env
-      let commerceApiKey = process.env.COMMERCE_API_KEY || 'KCXF10Y-W5T4PCR-GG5119A-Z64SQ9S';
-      if (sponsorId) {
-        const sp = await storage.getSponsor(parseInt(sponsorId));
-        if (sp?.commerceApiKey) commerceApiKey = sp.commerceApiKey;
-      }
+      const { activationId, product, sponsor } = await persistAndBroadcastShoppableAd({
+        broadcast, campaign, productId,
+        sponsorId: sponsorId ? Number(sponsorId) : null,
+        source: 'dashboard', req,
+      });
 
-      let product: any = null;
-      try {
-        const gqlQuery = `{ Channel { GetProductsByIds(product_ids: [${productId}]) { id title images { url order } price { amount amount_incl_taxes currency_code } } } }`;
-        const gqlData = await fetchGraphQL(gqlQuery, commerceApiKey);
-        const p = gqlData?.data?.Channel?.GetProductsByIds?.[0];
-        if (p) {
-          const image = p.images?.sort((a: any, b: any) => a.order - b.order)?.[0];
-          product = {
-            id: String(p.id),
-            name: p.title,
-            price: p.price?.amount_incl_taxes ?? p.price?.amount ?? null,
-            currency: p.price?.currency_code ?? 'NOK',
-            imageUrl: image?.url ?? null,
-          };
-        }
-      } catch (err) {
-        console.warn('[TriggerShoppableAd] Commerce GraphQL error:', err);
-      }
-
-      if (!product) {
-        product = { id: String(productId), name: `Product #${productId}`, price: null, currency: 'NOK', imageUrl: null };
-      }
-
-      let sponsor: any = null;
-      if (sponsorId) {
-        const sp = await storage.getSponsor(parseInt(sponsorId));
-        if (sp) {
-          sponsor = {
-            name: sp.name,
-            logoUrl: sp.logoUrl ? normalizeUrls(sp.logoUrl, req.protocol, req.get('host')) : null,
-            primaryColor: sp.primaryColor ?? null,
-          };
-        }
-      }
-
-      const wsEvent = {
-        type: 'shoppable_ad',
-        broadcastId,
-        campaignId: campaign.id,
-        product,
-        ...(sponsor ? { sponsor } : {}),
-        timestamp: Date.now(),
-      };
-
-      if (campaign.id) {
-        broadcastToCampaign(campaign.id, JSON.stringify(wsEvent));
-      }
-
-      res.json({ success: true, product, sponsor });
+      res.json({ success: true, activationId, product, sponsor });
     } catch (error) {
-      console.error('[TriggerShoppableAd] Error:', error);
+      console.error('[ShoppableAd:dashboard] Error:', error);
       res.status(500).json({ error: 'Failed to trigger shoppable ad' });
     }
   });
@@ -4988,7 +4990,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
     }
   });
 
-  // POST /api/broadcasts/:id/sponsor-slots/:slotId/execute — Fire the slot as WS event
+  // POST /api/broadcasts/:id/sponsor-slots/:slotId/execute — Fire the slot as WS event (source=slot-scheduler)
   app.post('/api/broadcasts/:broadcastId/sponsor-slots/:slotId/execute', async (req, res) => {
     try {
       const { broadcastId } = req.params;
@@ -4998,42 +5000,77 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
 
       const broadcast = await storage.getBroadcast(broadcastId);
       if (!broadcast) return res.status(404).json({ error: 'Broadcast not found' });
+      if (!broadcast.campaignId) return res.status(400).json({ error: 'Broadcast has no associated campaign' });
+      const campaign = await storage.getCampaign(broadcast.campaignId);
+      if (!campaign) return res.status(404).json({ error: 'Campaign not found' });
 
-      await storage.getCampaign(broadcast.campaignId);
+      const productIds: (number | string)[] = slot.productIds ?? [];
+      const productId = productIds[0] ?? 'unknown';
 
-      // Use slot's sponsor commerceApiKey
-      const slotSponsor = await storage.getSponsor(slot.sponsorId);
-      const commerceApiKey = slotSponsor?.commerceApiKey || process.env.COMMERCE_API_KEY || 'KCXF10Y-W5T4PCR-GG5119A-Z64SQ9S';
-
-      const productIds = slot.productIds ?? [];
-      let product: any = null;
-      if (productIds.length > 0) {
-        try {
-          const gqlQuery = `{ Channel { GetProductsByIds(product_ids: [${productIds[0]}]) { id title images { url order } price { amount amount_incl_taxes currency_code } } } }`;
-          const gqlData = await fetchGraphQL(gqlQuery, commerceApiKey);
-          const p = gqlData?.data?.Channel?.GetProductsByIds?.[0];
-          if (p) {
-            const image = p.images?.sort((a: any, b: any) => a.order - b.order)?.[0];
-            product = { id: String(p.id), name: p.title, price: p.price?.amount_incl_taxes ?? p.price?.amount ?? null, currency: p.price?.currency_code ?? 'NOK', imageUrl: image?.url ?? null };
-          }
-        } catch (err) {
-          console.warn('[SponsorSlot] Commerce error:', err);
-        }
-      }
-      if (!product) product = { id: String(productIds[0] ?? 'unknown'), name: 'Product', price: null, currency: 'NOK', imageUrl: null };
-
-      const sp = await storage.getSponsor(slot.sponsorId);
-      const sponsor = sp ? { name: sp.name, logoUrl: sp.logoUrl ? normalizeUrls(sp.logoUrl, req.protocol, req.get('host')) : null, primaryColor: sp.primaryColor ?? null } : null;
-
-      const wsEvent = { type: 'shoppable_ad', broadcastId, campaignId: broadcast.campaignId, product, ...(sponsor ? { sponsor } : {}), slotId, timestamp: Date.now() };
-      if (broadcast.campaignId) broadcastToCampaign(broadcast.campaignId, JSON.stringify(wsEvent));
+      // Persist & broadcast first — only mark the slot completed if this succeeds,
+      // so we never leave a slot in 'completed' state without an activation row.
+      const { activationId, product, sponsor } = await persistAndBroadcastShoppableAd({
+        broadcast, campaign, productId,
+        sponsorId: slot.sponsorId,
+        slotId,
+        source: 'slot-scheduler', req,
+      });
 
       await storage.updateBroadcastSponsorSlot(slotId, { status: 'completed', executedAt: new Date() });
 
-      res.json({ success: true, product, sponsor });
+      res.json({ success: true, activationId, product, sponsor });
     } catch (error) {
-      console.error('[SponsorSlot] Execute error:', error);
+      console.error('[ShoppableAd:slot-scheduler] Execute error:', error);
       res.status(500).json({ error: 'Failed to execute sponsor slot' });
+    }
+  });
+
+  // POST /api/sdk/tv/broadcasts/:broadcastId/shoppable-ad — TV SDK trigger (API Key auth, source=tv-sdk)
+  // Uses the same apiKey model as mobile SDK endpoints but on a dedicated path so TV-specific
+  // behaviours (reporting, rate limits, analytics) can diverge cleanly over time.
+  app.post('/api/sdk/tv/broadcasts/:broadcastId/shoppable-ad', validateApiKey, async (req, res) => {
+    try {
+      const { broadcastId } = req.params;
+      const { productId, sponsorId } = req.body ?? {};
+      if (!productId) return res.status(400).json({ error: 'productId is required' });
+
+      const broadcast = await storage.getBroadcast(broadcastId);
+      if (!broadcast) return res.status(404).json({ error: 'Broadcast not found' });
+      if (!broadcast.campaignId) return res.status(400).json({ error: 'Broadcast has no associated campaign' });
+      const campaign = await storage.getCampaign(broadcast.campaignId);
+      if (!campaign) return res.status(404).json({ error: 'Campaign not found' });
+
+      const clientApp = (req as any).clientApp;
+      const { activationId, product, sponsor } = await persistAndBroadcastShoppableAd({
+        broadcast, campaign, productId,
+        sponsorId: sponsorId ? Number(sponsorId) : null,
+        clientAppId: clientApp?.id ?? null,
+        source: 'tv-sdk', req,
+      });
+      res.json({ success: true, activationId, product, sponsor });
+    } catch (error) {
+      console.error('[ShoppableAd:tv-sdk] Error:', error);
+      res.status(500).json({ error: 'Failed to trigger shoppable ad' });
+    }
+  });
+
+  // GET /api/broadcasts/:broadcastId/shoppable-ads — List activation history for a broadcast
+  // Session auth not enforced here (mirrors existing event-log endpoints in this file).
+  app.get('/api/broadcasts/:broadcastId/shoppable-ads', async (req, res) => {
+    try {
+      const { broadcastId } = req.params;
+      const limit = Math.min(parseInt(String(req.query.limit ?? '50')) || 50, 200);
+      const offset = parseInt(String(req.query.offset ?? '0')) || 0;
+      const sponsorId = req.query.sponsorId ? Number(req.query.sponsorId) : undefined;
+      const source = req.query.source ? String(req.query.source) : undefined;
+
+      const rows = await storage.listShoppableAdActivationsByBroadcast(broadcastId, {
+        limit, offset, sponsorId, source,
+      });
+      res.json({ activations: rows, limit, offset, count: rows.length });
+    } catch (error) {
+      console.error('[ShoppableAd:list] Error:', error);
+      res.status(500).json({ error: 'Failed to list shoppable ad activations' });
     }
   });
 
