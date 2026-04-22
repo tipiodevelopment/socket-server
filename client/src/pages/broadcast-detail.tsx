@@ -855,12 +855,18 @@ type SponsorSlot = {
 
 function ShoppableAdTriggerSection({ broadcastId, campaignId }: { broadcastId: string; campaignId: number | null }) {
   const { toast } = useToast();
+  const { userId } = useUser();
   const [log, setLog] = useState<TriggeredAdEntry[]>([]);
   const [addSlotOpen, setAddSlotOpen] = useState(false);
   /// When set, the dialog is in "edit" mode — submit performs a PUT against
   /// that slot id instead of creating a new row. Cleared by `resetSlotForm()`.
   const [editingSlotId, setEditingSlotId] = useState<number | null>(null);
   const [selectedSponsorId, setSelectedSponsorId] = useState('');
+  /// Opens the "add sponsor to campaign" sub-dialog inline from the slot form
+  /// so operators don't have to navigate to campaign-dashboard to link a
+  /// sponsor mid-authoring. Uses `POST /api/campaigns/:id/sponsors`.
+  const [addSponsorToCampaignOpen, setAddSponsorToCampaignOpen] = useState(false);
+  const [pendingSponsorIdToLink, setPendingSponsorIdToLink] = useState('');
   const [slotType, setSlotType] = useState<'product' | 'lead' | 'poll_cta' | 'contest_cta' | 'link'>('product');
   const [slotTriggerType, setSlotTriggerType] = useState('manual');
   const [slotTriggerValue, setSlotTriggerValue] = useState('');
@@ -886,6 +892,48 @@ function ShoppableAdTriggerSection({ broadcastId, campaignId }: { broadcastId: s
       return res.json();
     },
     enabled: !!campaignId,
+  });
+
+  /// User's full sponsor roster — fetched lazily only when the operator opens
+  /// the "add sponsor to campaign" picker, to avoid an unnecessary request on
+  /// every broadcast visit.
+  const { data: allSponsors = [] } = useQuery<any[]>({
+    queryKey: ['/api/sponsors', userId, 'for-picker'],
+    queryFn: async () => {
+      if (!userId) return [];
+      const res = await fetch(`/api/sponsors?userId=${userId}`);
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: !!userId && addSponsorToCampaignOpen,
+  });
+
+  const availableToLink = (allSponsors as any[]).filter(
+    (s: any) => !campaignSponsors.some((cs: any) => cs.sponsorId === s.id),
+  );
+
+  const addSponsorToCampaignMutation = useMutation({
+    mutationFn: async () => {
+      if (!campaignId) throw new Error('No campaign');
+      if (!pendingSponsorIdToLink) throw new Error('Pick a sponsor');
+      const res = await fetch(`/api/campaigns/${campaignId}/sponsors`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sponsorId: parseInt(pendingSponsorIdToLink), role: 'shoppable' }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/campaigns', campaignId, 'sponsors'] });
+      // Pre-select the newly linked sponsor so the operator can continue
+      // filling the slot form without having to re-pick from the dropdown.
+      setSelectedSponsorId(pendingSponsorIdToLink);
+      setAddSponsorToCampaignOpen(false);
+      setPendingSponsorIdToLink('');
+      toast({ title: 'Sponsor added to campaign' });
+    },
+    onError: (err: any) => toast({ title: 'Error', description: err.message || 'Could not add sponsor', variant: 'destructive' }),
   });
 
   const { data: slots = [], isLoading: slotsLoading } = useQuery<SponsorSlot[]>({
@@ -1105,25 +1153,89 @@ function ShoppableAdTriggerSection({ broadcastId, campaignId }: { broadcastId: s
               <div className="space-y-4 py-2">
                 <div className="space-y-1.5">
                   <Label>Sponsor</Label>
-                  <Select value={selectedSponsorId} onValueChange={setSelectedSponsorId}>
-                    <SelectTrigger data-testid="select-slot-sponsor">
-                      <SelectValue placeholder="Select sponsor..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {campaignSponsors.map((s: any) => (
-                        <SelectItem key={s.sponsorId} value={String(s.sponsorId)}>
-                          <div className="flex items-center gap-2">
-                            {s.logoUrl
-                              ? <img src={s.logoUrl} alt={s.name} className="w-4 h-4 object-contain rounded" />
-                              : <div className="w-4 h-4 rounded text-[9px] font-bold flex items-center justify-center text-white" style={{ backgroundColor: s.primaryColor ?? '#3d8b7a' }}>{s.name.slice(0, 2).toUpperCase()}</div>
-                            }
-                            {s.name}
-                          </div>
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <div className="flex items-center gap-2">
+                    <Select value={selectedSponsorId} onValueChange={setSelectedSponsorId}>
+                      <SelectTrigger data-testid="select-slot-sponsor" className="flex-1">
+                        <SelectValue placeholder="Select sponsor..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {campaignSponsors.map((s: any) => (
+                          <SelectItem key={s.sponsorId} value={String(s.sponsorId)}>
+                            <div className="flex items-center gap-2">
+                              {s.logoUrl
+                                ? <img src={s.logoUrl} alt={s.name} className="w-4 h-4 object-contain rounded" />
+                                : <div className="w-4 h-4 rounded text-[9px] font-bold flex items-center justify-center text-white" style={{ backgroundColor: s.primaryColor ?? '#3d8b7a' }}>{s.name.slice(0, 2).toUpperCase()}</div>
+                              }
+                              {s.name}
+                            </div>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <button
+                      type="button"
+                      onClick={() => setAddSponsorToCampaignOpen(true)}
+                      data-testid="button-add-sponsor-to-campaign-inline"
+                      className="shrink-0 flex items-center gap-1 px-2.5 h-9 rounded-md border border-white/10 text-xs text-white/60 hover:text-white hover:bg-white/5 transition"
+                      title="Link another sponsor to this campaign"
+                    >
+                      <Plus className="w-3 h-3" />
+                      Add
+                    </button>
+                  </div>
+                  {campaignSponsors.length === 0 && (
+                    <p className="text-[11px] text-amber-400/80">
+                      No sponsors on this campaign yet — click <span className="font-semibold">Add</span> to link one.
+                    </p>
+                  )}
                 </div>
+
+                <Dialog open={addSponsorToCampaignOpen} onOpenChange={setAddSponsorToCampaignOpen}>
+                  <DialogContent className="sm:max-w-sm">
+                    <DialogHeader>
+                      <DialogTitle>Link sponsor to campaign</DialogTitle>
+                      <DialogDescription>
+                        Only sponsors linked here can be picked on slots. Creating a new sponsor from scratch still lives on the sponsors page.
+                      </DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-3 py-2">
+                      <div className="space-y-1.5">
+                        <Label>Sponsor</Label>
+                        <Select value={pendingSponsorIdToLink} onValueChange={setPendingSponsorIdToLink}>
+                          <SelectTrigger data-testid="select-inline-add-sponsor">
+                            <SelectValue placeholder={availableToLink.length === 0 ? 'All sponsors already linked' : 'Pick a sponsor...'} />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {availableToLink.map((s: any) => (
+                              <SelectItem key={s.id} value={String(s.id)}>
+                                <div className="flex items-center gap-2">
+                                  {s.logoUrl
+                                    ? <img src={s.logoUrl} alt={s.name} className="w-4 h-4 object-contain rounded" />
+                                    : <div className="w-4 h-4 rounded text-[9px] font-bold flex items-center justify-center text-white" style={{ backgroundColor: s.primaryColor ?? '#3d8b7a' }}>{s.name.slice(0, 2).toUpperCase()}</div>
+                                  }
+                                  {s.name}
+                                </div>
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <p className="text-[11px] text-white/30">
+                        Role defaults to <span className="font-semibold">shoppable</span>. Change it from the campaign settings if needed.
+                      </p>
+                    </div>
+                    <DialogFooter>
+                      <Button variant="outline" onClick={() => { setAddSponsorToCampaignOpen(false); setPendingSponsorIdToLink(''); }}>Cancel</Button>
+                      <Button
+                        onClick={() => addSponsorToCampaignMutation.mutate()}
+                        disabled={!pendingSponsorIdToLink || addSponsorToCampaignMutation.isPending}
+                        data-testid="button-link-sponsor-inline"
+                      >
+                        {addSponsorToCampaignMutation.isPending ? 'Linking...' : 'Link'}
+                      </Button>
+                    </DialogFooter>
+                  </DialogContent>
+                </Dialog>
                 <div className="space-y-1.5">
                   <Label>Type</Label>
                   <Select value={slotType} onValueChange={v => setSlotType(v as typeof slotType)}>
