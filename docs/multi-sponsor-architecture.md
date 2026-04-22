@@ -20,6 +20,8 @@ These are final as of 2026-04-22. Any change from here requires an explicit doc 
 | 4 | Commerce → Vio sync of keys / payment methods | **Manual** initial entry by operator + **webhook** from Commerce for subsequent updates. |
 | 5 | Reachu legacy | **100% out**. No backfill of `users.reachu_user_id` or `reachu_*` columns. Column and concept removed cleanly in Phase 4. End-users re-register via new `ensure_user` flow. |
 | 6 | `broadcasts.engagement_enabled` default | **false**. Operator opts in explicitly per broadcast. |
+| 7 | Apple TV SDK repo | **Separate repo `InteractiveAds-vio` (`VioTVSDK`)** — not part of `VioSwiftSDK`. tvOS-only, shoppable_ad-only. |
+| 8 | TV SDK bootstrap | Single combined `POST /api/sdk/tv/broadcast/subscribe` (validate + session + sponsors in one call). Soft-miss when broadcast not registered for the client_app. |
 
 **Implication of decision 5** (Reachu fully out): the old end-user identifier flow (`reachu_user_id` varchar) is abandoned. Historical `poll_votes`, `contest_participations`, `device_tokens` rows that reference old string IDs remain but are not bridged into the new user model. New flows use the `external_user_id` provided by partner at SDK init, resolved into an `end_users` row (see §2.3).
 
@@ -316,11 +318,12 @@ Broadcasts / Polls / Contests — unchanged.
 
 | Endpoint | Method | Purpose |
 |---|---|---|
-| `POST /api/sdk/tv/session/start` | POST | Register TV session. Body: `{ externalUserId, tvDeviceId?, platform }`. Returns `sessionId`, ensures user row exists. |
+| **`POST /api/sdk/tv/broadcast/subscribe`** | POST | **Primary bootstrap — the TV SDK uses this.** One-shot that replaces config+capabilities+session/start. Body: `{ broadcastId, externalUserId, platform, tvDeviceId? }`. Validates the partner-provided `broadcastId` against Vio's DB for this client_app; ensures `end_users`; upserts `tv_sessions`; returns campaign + primary/secondary sponsors (with commerce blocks) + `wsUrl` + capabilities. Soft-miss returns 200 with `{ subscribed: false, reason }` (`broadcast_not_registered_for_client_app` / `campaign_has_no_primary_sponsor` / `tv_not_enabled_for_this_platform`) so the SDK can silently skip. |
+| `POST /api/sdk/tv/session/start` | POST | Register a TV session without binding to a broadcast. Kept as a building block; most hosts use `/subscribe`. |
 | `POST /api/sdk/tv/session/heartbeat` | POST | Updates `last_seen_at` on the session |
 | `POST /api/sdk/tv/session/end` | POST | Marks session ended |
-| `POST /api/sdk/tv/broadcasts/:broadcastId/shoppable-ad` | POST | **Already implemented**. Triggers shoppable ad (source=`tv-sdk`) |
-| `POST /api/sdk/tv/cart-intent` | POST | TV-originated cart intent. Body: `{ externalUserId, productId, activationId? }`. Backend resolves user via session context |
+| `POST /api/sdk/tv/broadcasts/:broadcastId/shoppable-ad` | POST | Triggers a shoppable_ad dispatch (source=`tv-sdk`). Rare from a real Apple TV device; mostly for automation. |
+| `POST /api/sdk/tv/cart-intent` | POST | TV-originated cart intent. Body: `{ externalUserId, productId, campaignId, activationId?, sponsorId?, platform? }`. Persists `cart_intents` with `source_activation_id = activationId` **and forwards the envelope to the user's mobile** via the same delivery tree as `/api/campaigns/:id/cart-intent` (local WS → Redis cluster → partner webhook → APNs). The persisted row records the actual `delivery_mode`. |
 | `GET /api/sdk/tv/broadcasts/:broadcastId/capabilities` | GET | Same as mobile `capabilities` but filtered for TV (no engagement UI on TV; only shoppable) |
 
 ### 4.4 `/v1/sdk/config` response shape (final)
@@ -553,32 +556,58 @@ Backend persists row in campaign_components (with scheduled_time).
 scheduler.ts fires at the right time → WS event to SDK → SDK renders.
 ```
 
-### 6.5 TV SDK startup
+### 6.5 TV SDK startup (single-round-trip via `/broadcast/subscribe`)
+
+The Apple TV SDK consolidates config + capabilities + session into **one call**.
+The host passes the partner-internal `broadcastId` it already knows; Vio
+validates tenant + TV enablement and returns everything the SDK needs.
 
 ```
-Host app (Viaplay TV) launches Vio TV SDK
-  ├── Passes local apiKey (from vio-config.json)
-  ├── Passes externalUserId (from partner's user session)
-  └── Passes tvDeviceId (SDK-generated persistent UUID)
-
-SDK → POST /api/sdk/tv/session/start
-  body: { externalUserId, tvDeviceId, platform: 'apple-tv' }
+Host app (Viaplay Apple TV / TV2 Apple TV) launches Vio TV SDK
+  ├── VioTV.configureFromBundle(userIdOverride: "tv2_demo_user")
+  │       ↓ reads vio-config.json — only apiKey + userId (no commerceApiKey)
+  └── VioTV.connect(broadcastId: "tv2-eliteserien-live-2026-03-08")
+          ↓
+SDK → POST /api/sdk/tv/broadcast/subscribe
+  body: {
+    broadcastId: "tv2-eliteserien-live-2026-03-08",
+    externalUserId: "tv2_demo_user",
+    platform: "apple-tv",
+    tvDeviceId: "<real device id if available, else SDK-generated UUID>"
+  }
   headers: X-Api-Key: <client_app.apiKey>
 
-Backend:
-  ├── validate apiKey → resolves client_app
-  ├── ensure_user(client_app_id, externalUserId) → users.id (upsert)
-  ├── UPSERT tv_sessions (client_app_id, user_id, platform)
-  │   → if existing: update last_seen_at
-  │   → if not: INSERT new row
-  └── Return { sessionId, userId, capabilities: { shoppable: true, engagement: false } }
+Backend — single block:
+  ├── validateApiKey middleware                   → resolves client_app
+  ├── storage.getBroadcast(broadcastId)           → does Vio have this broadcast?
+  ├── broadcast.campaign.clientAppId = clientApp.id ?
+  │     → no: 200 { subscribed: false, reason: 'broadcast_not_registered_for_client_app' }
+  ├── campaign.primarySponsorId                   ? no: 200 { subscribed:false, reason:'campaign_has_no_primary_sponsor' }
+  ├── clientApp.tvEnabled && platform in clientApp.tvPlatforms ?
+  │     → no: 200 { subscribed:false, reason:'tv_not_enabled_for_this_platform' }
+  ├── storage.ensureEndUser(clientApp.id, externalUserId) → end_users row
+  ├── storage.upsertTvSession(…)                  → one row per (app,user,platform)
+  ├── buildSponsorBlock(primarySponsorId) + listSecondarySponsors()
+  └── Return 200 {
+         subscribed: true,
+         campaignId, broadcastId, sessionId, endUserId,
+         wsUrl: "wss://api-local-angelo.vio.live/ws/<campaignId>",
+         primarySponsor: { id, name, logoUrl, colors,
+           commerce: { apiKey, channelId, paymentMethods } | null },
+         secondarySponsors: [ { … }, … ],
+         capabilities: { shoppable, engagement }
+       }
 
-SDK:
-  ├── Store sessionId for subsequent requests
-  ├── GET /v1/sdk/config → primary + secondary sponsors
-  ├── Instantiate N Commerce GraphQL clients (one per sponsor with commerce)
-  ├── Open WebSocket connection
-  └── Subscribe to shoppable_ad events for the current campaign
+SDK on success:
+  ├── Cache sessionId + sponsor list for per-sponsor commerce client resolution
+  ├── Open WebSocket at wsUrl; send { type: "identify", userId: externalUserId }
+  ├── Start 60s heartbeat → POST /api/sdk/tv/session/heartbeat { sessionId }
+  └── Listen for `shoppable_ad` WS events (see §5)
+
+SDK on soft-miss (subscribed: false):
+  └── Silent no-op. Host app sees no error.
+      Optional `onSubscriptionFailed(reason)` callback available for hosts that
+      want to surface it in their own logs / UI.
 ```
 
 ### 6.6 Shoppable ad dispatch (Flow A)
@@ -599,36 +628,51 @@ All pass through `persistAndBroadcastShoppableAd()` helper → INSERT activation
 ### 6.7 Cart intent + attribution chain
 
 ```
-Step 1: Backend dispatches shoppable_ad
-  → WS event: { type: 'shoppable_ad', activationId: 42, product, sponsor, ... }
+Step 1: Backend dispatches shoppable_ad (operator / scheduler / TV / admin)
+  → persistAndBroadcastShoppableAd() writes shoppable_ad_activations (activationId)
+  → WS event on the campaign channel:
+     { type: 'shoppable_ad', activationId: 42, product, sponsor, … }
 
-Step 2: TV SDK receives, stores activationId in memory, renders popup
+Step 2: TV SDK receives WS event
+  → VioTVWebSocketManager decodes ShoppableAdEvent (now with activationId + sponsorId)
+  → SDK stores activationId + sponsorId in memory
+  → VioTVShoppableOverlay renders the product + sponsor branding
 
-Step 3: User clicks remote
+Step 3: User presses OK on the remote
   SDK → POST /api/sdk/tv/cart-intent
-  body: { externalUserId, productId: "12345", activationId: 42 }
-  headers: X-Api-Key: ...
+  body: {
+    externalUserId: "tv2_demo_user",
+    productId: "408841",
+    campaignId: 36,
+    activationId: 42,      ← attribution link
+    sponsorId: 3,          ← analytics enrichment
+    platform: "apple-tv"
+  }
+  headers: X-Api-Key: <client_app.apiKey>
 
-Step 4: Backend processes
-  ├── ensure_user(client_app, externalUserId) → users.id
-  ├── Resolve tv_session (current active for this user+app)
-  ├── Build envelope v1 (same as today)
-  ├── Decide delivery:
-  │   ├── mobile WS connected → send WS
-  │   ├── partner webhook set → POST webhook
-  │   ├── APNs token exists → send APNs
-  │   └── else → delivery_mode='dropped'
-  ├── INSERT cart_intents row with:
-  │   ├── source_activation_id = 42  (the chain link)
-  │   ├── tv_session_id = current
-  │   ├── delivery_mode = actual outcome
-  │   └── envelope = full v1 payload
-  └── Return 200 { success, cartIntentId, deliveryMode }
+Step 4: Backend processes (persist AND forward)
+  ├── ensureEndUser(client_app, externalUserId) → end_users.id
+  ├── getActiveTvSession(client_app, endUser, platform) → tv_session_id
+  ├── Resolve product name via Commerce (best-effort, for push title)
+  ├── Build envelope v1 (vio_payload carries activation_id, sponsor_id)
+  ├── Decide delivery tree (same as /api/campaigns/:id/cart-intent):
+  │   ├── mobile WS connected locally   → send WS         → 'websocket' (or 'dual')
+  │   ├── mobile WS on another node     → Redis Pub/Sub   → 'websocket' (or 'dual')
+  │   ├── client_app.webhookUrl set     → POST webhook    → 'webhook'
+  │   ├── APNs device token registered  → direct APNs     → 'apns'
+  │   └── else                          → drop            → 'dropped'
+  ├── INSERT cart_intents:
+  │     { endUserId, campaignId, clientAppId, tvSessionId, sponsorId,
+  │       productId,
+  │       source_activation_id = 42,   ← closes the TV→Mobile→Purchase chain
+  │       delivery_mode, user_connected,
+  │       envelope }
+  └── Return 200 { success, cartIntentId, mode, userConnected, envelope }
 
-Step 5: Mobile app receives event
-  SDK → opens Commerce checkout with productId
-  User completes purchase
-  (Purchase → Commerce webhook to Vio → future attribution closure)
+Step 5: Mobile app receives event (WS / webhook push / APNs)
+  → Mobile SDK opens Commerce checkout with productId
+  → User completes purchase
+  → (future) Commerce webhook → Vio closes the row → full attribution
 ```
 
 ### 6.8 Impression tracking (Mixpanel)
