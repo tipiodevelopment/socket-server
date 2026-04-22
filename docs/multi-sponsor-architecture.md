@@ -348,7 +348,8 @@ Broadcasts / Polls / Contests — unchanged.
   "primarySponsor": {
     "id": 3,
     "name": "Elkjøp",
-    "logoUrl": "...",
+    "avatarUrl": "...",   // square brand mark — used in the overlay / product card
+    "logoUrl": "...",     // wide horizontal logo — used for sponsor intros / full-screen branding
     "primaryColor": "#…",
     "secondaryColor": "#…",
     "commerce": {
@@ -362,6 +363,7 @@ Broadcasts / Polls / Contests — unchanged.
     {
       "id": 4,
       "name": "Torshov Sport",
+      "avatarUrl": "...",
       "logoUrl": "...",
       "primaryColor": "#…",
       "commerce": {
@@ -373,6 +375,7 @@ Broadcasts / Polls / Contests — unchanged.
     {
       "id": 99,
       "name": "Visual-Only Sponsor",
+      "avatarUrl": "...",
       "logoUrl": "...",
       "commerce": null     // null = branding only, no purchase flow
     }
@@ -448,20 +451,32 @@ The SDK resolves products directly from Commerce GraphQL using `commerce.apiKey`
 
 ### 5.1 Existing events (with changes)
 
-`shoppable_ad` — unchanged payload, already carries `activationId` (from earlier implementation):
+`shoppable_ad` — payload now carries `activationId` (attribution) + `sponsorId` top-level
+(commerce-key routing for the SDK) + the full sponsor block including `avatarUrl`:
 
 ```jsonc
 {
   "type": "shoppable_ad",
   "broadcastId": "...",
   "campaignId": 35,
+  "sponsorId": 3,        // top-level — SDK resolves commerce key via sponsor(forSponsorId:)
   "product": { "id", "name", "price", "currency", "imageUrl" },
-  "sponsor": { "name", "logoUrl", "primaryColor" },
+  "sponsor": {
+    "id": 3,
+    "name": "Elkjøp",
+    "avatarUrl": "...", // square brand mark — what the overlay renders
+    "logoUrl":   "...", // wide logo — sponsor intros / full-screen
+    "primaryColor": "#f7b23b"
+  },
   "activationId": 42,
   "slotId": 7,          // only if triggered by a pre-configured slot
   "timestamp": 1745123456789
 }
 ```
+
+**Avatar validation** — `persistAndBroadcastShoppableAd` rejects (HTTP 422,
+`SPONSOR_MISSING_AVATAR`) any dispatch whose sponsor has `avatar_url IS NULL`. The SDK
+can therefore treat `sponsor.avatarUrl` as effectively non-null on this event type.
 
 `cart_intent` — unchanged envelope (v1), but now triggered by persistence-first endpoint.
 
@@ -797,10 +812,15 @@ Swift Package isolated from `VioSwiftSDK`. Platform gate: tvOS 17+ only (macOS 1
 {
   "apiKey": "<client_app.apiKey>",
   "userId": "<optional default>",
+  "broadcastId": "<optional — used by bare VioTV.connect()>",
   "environment": "development"
 }
 ```
-Notably **no `commerceApiKey`** — all commerce keys arrive from `/api/sdk/tv/broadcast/subscribe` response (`primarySponsor.commerce.apiKey` + `secondarySponsors[].commerce.apiKey`).
+The JSON key `broadcastId` matches `broadcasts.broadcast_id` in this backend — it was
+previously aliased as `contentId` in early SDK drafts and was renamed for consistency.
+Notably **no `commerceApiKey`** — all commerce keys arrive from
+`/api/sdk/tv/broadcast/subscribe` response (`primarySponsor.commerce.apiKey` +
+`secondarySponsors[].commerce.apiKey`).
 
 **Host integration (minimum viable)**:
 ```swift
