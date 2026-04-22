@@ -766,18 +766,63 @@ Both platforms expose same minimal API:
 
 ```
 TV SDK
- ├── initialize(apiKey)
- ├── registerSession(externalUserId, tvDeviceId)
- │    └── stores sessionId
- ├── openSocket()
- │    └── subscribes to campaign's WS channel
- ├── onShoppableAdReceived(payload):
- │    ├── store activationId, product, sponsor in memory
- │    └── render popup
- ├── onUserConfirm():
- │    └── POST /api/sdk/tv/cart-intent with { externalUserId, productId, activationId }
- └── heartbeat() every 60s → POST /api/sdk/tv/session/heartbeat
+ ├── configure(apiKey, userId, environment)  or  configureFromBundle()
+ ├── connect(broadcastId)   → POST /api/sdk/tv/broadcast/subscribe
+ │    ├── { subscribed: true }  → cache sponsors, open WS, send identify, start heartbeat
+ │    └── { subscribed: false } → silent no-op, optional onSubscriptionFailed(reason)
+ ├── onShoppableAdReceived(payload):   // WS event
+ │    ├── store activationId + sponsorId + product in memory
+ │    └── render popup (product info + sponsor branding)
+ ├── onUserConfirm():   // remote OK / tap
+ │    └── POST /api/sdk/tv/cart-intent
+ │         body: { externalUserId, productId, campaignId, activationId, sponsorId, platform }
+ │         → backend persists cart_intents + forwards envelope to mobile
+ ├── heartbeat() every 60s → POST /api/sdk/tv/session/heartbeat { sessionId }
+ └── disconnect() → close WS, stop heartbeat, POST /api/sdk/tv/session/end
 ```
+
+### 7.4 Apple TV SDK — `VioTVSDK` (separate repo `InteractiveAds-vio`)
+
+Swift Package isolated from `VioSwiftSDK`. Platform gate: tvOS 17+ only (macOS 12+ just for tests). **Shoppable_ad only** — no polls/contests/lineup/chat.
+
+| Module | Role |
+|---|---|
+| `VioTVCore` | `VioTVConfiguration`, `VioTVConfigurationLoader`, `VioTVWebSocketManager`, session lifecycle, `VioTVManager` (cart-intent sender + `activeAd` state), models (`ShoppableAdEvent`, `ShoppableProduct`, sponsor types) |
+| `VioTVCommerce` | `VioTVCommerceService` — fetches products from Commerce GraphQL; accepts a per-sponsor `commerceApiKey` by call (no global singleton) |
+| `VioTVUI` | `VioTVShoppableOverlay` + product card. Observes `VioTVManager.shared.activeAd`, triggers cart-intent through the manager |
+| `VioTV` | Thin public facade: `configure`, `configureFromBundle`, `connect(broadcastId:)`, `disconnect`, `onCartIntent`, `onSubscriptionFailed(reason)` |
+
+**`vio-config.json` (minimal)**:
+```json
+{
+  "apiKey": "<client_app.apiKey>",
+  "userId": "<optional default>",
+  "environment": "development"
+}
+```
+Notably **no `commerceApiKey`** — all commerce keys arrive from `/api/sdk/tv/broadcast/subscribe` response (`primarySponsor.commerce.apiKey` + `secondarySponsors[].commerce.apiKey`).
+
+**Host integration (minimum viable)**:
+```swift
+import VioTV
+
+@main struct TV2App: App {
+    init() {
+        try? VioTV.configureFromBundle(userIdOverride: "tv2_demo_user")
+        VioTV.onCartIntent = { productId in analytics.track("cart_intent_sent", ["pid": productId]) }
+        VioTV.onSubscriptionFailed = { reason in logger.debug("Vio skipped broadcast: \(reason)") }
+    }
+    var body: some Scene { WindowGroup { ContentView() } }
+}
+
+// When entering a broadcast:
+VioTV.connect(broadcastId: "tv2-eliteserien-live-2026-03-08")
+
+// When leaving:
+VioTV.disconnect()
+```
+
+Everything else (subscribe, WS, identify, heartbeat, overlay, cart-intent, commerce hydration) is handled inside the SDK.
 
 ---
 
