@@ -857,6 +857,9 @@ function ShoppableAdTriggerSection({ broadcastId, campaignId }: { broadcastId: s
   const { toast } = useToast();
   const [log, setLog] = useState<TriggeredAdEntry[]>([]);
   const [addSlotOpen, setAddSlotOpen] = useState(false);
+  /// When set, the dialog is in "edit" mode — submit performs a PUT against
+  /// that slot id instead of creating a new row. Cleared by `resetSlotForm()`.
+  const [editingSlotId, setEditingSlotId] = useState<number | null>(null);
   const [selectedSponsorId, setSelectedSponsorId] = useState('');
   const [slotType, setSlotType] = useState<'product' | 'lead' | 'poll_cta' | 'contest_cta' | 'link'>('product');
   const [slotTriggerType, setSlotTriggerType] = useState('manual');
@@ -903,9 +906,30 @@ function ShoppableAdTriggerSection({ broadcastId, campaignId }: { broadcastId: s
   };
 
   const resetSlotForm = () => {
+    setEditingSlotId(null);
     setSelectedSponsorId(''); setSlotType('product');
     setSlotTriggerType('manual'); setSlotTriggerValue(''); setSlotProductIds([]); setAutoExecute(false);
     setCfgTitle(''); setCfgUrl(''); setCfgCta(''); setCfgMessage(''); setCfgRefId(''); setCfgLeadFields(['email']);
+  };
+
+  /// Open the slot dialog in edit mode, pre-populating the form from an
+  /// existing slot. Config fields map back from `slot.config` when present.
+  const openEditSlot = (slot: SponsorSlot) => {
+    setEditingSlotId(slot.id);
+    setSelectedSponsorId(String(slot.sponsorId));
+    setSlotType((slot.type as any) ?? 'product');
+    setSlotTriggerType(slot.triggerType ?? 'manual');
+    setSlotTriggerValue(slot.triggerValue ?? '');
+    setSlotProductIds(slot.productIds ?? []);
+    setAutoExecute(Boolean(slot.autoExecute));
+    const cfg = (slot.config ?? {}) as Record<string, any>;
+    setCfgTitle(String(cfg.title ?? ''));
+    setCfgUrl(String(cfg.url ?? ''));
+    setCfgCta(String(cfg.cta ?? ''));
+    setCfgMessage(String(cfg.message ?? ''));
+    setCfgRefId(String(cfg.pollId ?? cfg.contestId ?? ''));
+    setCfgLeadFields(Array.isArray(cfg.fields) ? cfg.fields : ['email']);
+    setAddSlotOpen(true);
   };
 
   const createSlotMutation = useMutation({
@@ -934,6 +958,34 @@ function ShoppableAdTriggerSection({ broadcastId, campaignId }: { broadcastId: s
       resetSlotForm();
     },
     onError: () => toast({ title: 'Error', description: 'Could not create slot', variant: 'destructive' }),
+  });
+
+  const updateSlotMutation = useMutation({
+    mutationFn: async () => {
+      if (!editingSlotId) throw new Error('No slot being edited');
+      const res = await fetch(`/api/broadcasts/${broadcastId}/sponsor-slots/${editingSlotId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sponsorId: parseInt(selectedSponsorId),
+          type: slotType,
+          config: buildSlotConfig(),
+          triggerType: slotTriggerType,
+          triggerValue: slotTriggerValue || null,
+          productIds: slotType === 'product' ? slotProductIds : [],
+          autoExecute,
+        }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/broadcasts', broadcastId, 'sponsor-slots'] });
+      toast({ title: 'Slot updated' });
+      setAddSlotOpen(false);
+      resetSlotForm();
+    },
+    onError: (err: any) => toast({ title: 'Error', description: err.message || 'Could not update slot', variant: 'destructive' }),
   });
 
   const deleteSlotMutation = useMutation({
@@ -1026,7 +1078,12 @@ function ShoppableAdTriggerSection({ broadcastId, campaignId }: { broadcastId: s
       <div className="bg-transparent border border-gray-200 dark:border-white/10 rounded-xl overflow-hidden">
         <div className="flex items-center justify-between px-4 py-3 bg-gray-50 dark:bg-white/[0.03] border-b border-gray-100 dark:border-white/10">
           <span className="text-xs font-semibold text-gray-500 dark:text-white/50 uppercase tracking-wide">Pre-programmed Slots</span>
-          <Dialog open={addSlotOpen} onOpenChange={setAddSlotOpen}>
+          <Dialog open={addSlotOpen} onOpenChange={(open) => {
+            setAddSlotOpen(open);
+            // Clearing the edit state when the dialog closes prevents the next
+            // "Add Slot" click from starting pre-populated with the last edit.
+            if (!open) resetSlotForm();
+          }}>
             <DialogTrigger asChild>
               <button
                 data-testid="button-add-slot"
@@ -1038,8 +1095,12 @@ function ShoppableAdTriggerSection({ broadcastId, campaignId }: { broadcastId: s
             </DialogTrigger>
             <DialogContent className="sm:max-w-md">
               <DialogHeader>
-                <DialogTitle>Configure Slot</DialogTitle>
-                <DialogDescription>Pre-program a sponsor moment for this broadcast.</DialogDescription>
+                <DialogTitle>{editingSlotId ? 'Edit Slot' : 'Configure Slot'}</DialogTitle>
+                <DialogDescription>
+                  {editingSlotId
+                    ? 'Update this pre-programmed sponsor moment.'
+                    : 'Pre-program a sponsor moment for this broadcast.'}
+                </DialogDescription>
               </DialogHeader>
               <div className="space-y-4 py-2">
                 <div className="space-y-1.5">
@@ -1186,8 +1247,14 @@ function ShoppableAdTriggerSection({ broadcastId, campaignId }: { broadcastId: s
               </div>
               <DialogFooter>
                 <Button variant="outline" onClick={() => setAddSlotOpen(false)}>Cancel</Button>
-                <Button onClick={() => createSlotMutation.mutate()} disabled={!selectedSponsorId || createSlotMutation.isPending} data-testid="button-save-slot">
-                  {createSlotMutation.isPending ? 'Saving...' : 'Save Slot'}
+                <Button
+                  onClick={() => (editingSlotId ? updateSlotMutation.mutate() : createSlotMutation.mutate())}
+                  disabled={!selectedSponsorId || createSlotMutation.isPending || updateSlotMutation.isPending}
+                  data-testid="button-save-slot"
+                >
+                  {editingSlotId
+                    ? (updateSlotMutation.isPending ? 'Updating...' : 'Update Slot')
+                    : (createSlotMutation.isPending ? 'Saving...' : 'Save Slot')}
                 </Button>
               </DialogFooter>
             </DialogContent>
@@ -1239,6 +1306,14 @@ function ShoppableAdTriggerSection({ broadcastId, campaignId }: { broadcastId: s
                   >
                     <Play className="w-3 h-3" />
                     Fire
+                  </button>
+                  <button
+                    onClick={() => openEditSlot(slot)}
+                    data-testid={`button-edit-slot-${slot.id}`}
+                    className="p-1.5 rounded-lg text-white/20 hover:text-blue-400 hover:bg-blue-500/10 transition"
+                    title="Edit"
+                  >
+                    <Pencil className="w-3.5 h-3.5" />
                   </button>
                   <button
                     onClick={() => deleteSlotMutation.mutate(slot.id)}
