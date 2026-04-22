@@ -101,8 +101,21 @@
     },
     {
       "name": "4. TV session",
-      "description": "TV SDK lifecycle. Session is keyed by (clientApp, endUser, platform) — new WS connection does NOT create a new row.",
+      "description": "TV SDK lifecycle. Prefer `POST /api/sdk/tv/broadcast/subscribe` for the combined bootstrap (validate + session + sponsors in one call). Individual session/start is still available when you only need to register a TV without binding to a broadcast.",
       "item": [
+        {
+          "name": "POST /api/sdk/tv/broadcast/subscribe (combined bootstrap)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"broadcastId\": \"{{broadcastId}}\",\n  \"externalUserId\": \"{{externalUserId}}\",\n  \"tvDeviceId\": \"{{tvDeviceId}}\",\n  \"platform\": \"{{tvPlatform}}\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/sdk/tv/broadcast/subscribe", "host": ["{{baseUrl}}"], "path": ["api","sdk","tv","broadcast","subscribe"] },
+            "description": "One request that replaces three:\n- validates the partner-provided `broadcastId` against Vio's DB for this client_app\n- ensures the `end_users` row exists for (clientApp, externalUserId)\n- upserts the tv_sessions row\n- returns campaign + primary/secondary sponsors with their commerce blocks + wsUrl + capabilities\n\nIf the broadcast is unknown or cross-tenant, responds 200 with `{ subscribed: false, reason }` so the SDK can silently skip.\n\nTry it:\n1. Happy path (TV2 broadcast + TV2 apiKey): use defaults\n2. Unknown broadcast: set `{{broadcastId}}` to `broadcast-does-not-exist`\n3. Cross-tenant (Viaplay broadcast with TV2 apiKey): use `paris-saint-germain-vs-chelsea-2026-03-11`\n4. TV not enabled: swap `{{apiKey}}` to VG's (tv_enabled=false on that client_app)"
+          }
+        },
         {
           "name": "POST /api/sdk/tv/session/start",
           "request": {

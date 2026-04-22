@@ -6558,6 +6558,10 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   });
 
   // POST /api/sdk/tv/cart-intent — TV-originated cart intent with attribution
+  // Persists a cart_intents row AND forwards the envelope to the user's mobile
+  // via the same delivery path as /api/campaigns/:id/cart-intent (local WS →
+  // Redis cluster → partner webhook / APNs). Accepts `activationId` to close
+  // the attribution chain (shoppable_ad.activationId → cart_intents.source_activation_id).
   app.post('/api/sdk/tv/cart-intent', validateApiKey, async (req, res) => {
     try {
       const clientApp = (req as any).clientApp;
@@ -6569,13 +6573,31 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       const endUser = await storage.ensureEndUser(clientApp.id, String(externalUserId));
       const campaign = await storage.getCampaign(Number(campaignId));
       if (!campaign) return res.status(404).json({ error: 'Campaign not found' });
+      if (campaign.clientAppId !== clientApp.id) {
+        return res.status(403).json({ error: 'Campaign does not belong to this API key' });
+      }
 
       const tvSessionPlatform = req.body.platform as (string | undefined);
       const session = tvSessionPlatform
         ? await storage.getActiveTvSession(clientApp.id, endUser.id, tvSessionPlatform as any)
         : undefined;
 
-      // Envelope v1
+      // 1. Resolve product name via Commerce (best-effort) — used in the push title/body.
+      let resolvedName = `Product ${productId}`;
+      try {
+        const commerceKey = process.env.COMMERCE_API_KEY || 'KCXF10Y-W5T4PCR-GG5119A-Z64SQ9S';
+        const gqlQuery = `{ Channel { GetProductsByIds(product_ids: [${productId}]) { id title } } }`;
+        const gqlData = await fetchGraphQL(gqlQuery, commerceKey);
+        const name = gqlData?.data?.Channel?.GetProductsByIds?.[0]?.title;
+        if (name) resolvedName = name;
+      } catch (err) {
+        console.warn('[tv cart-intent] Commerce lookup failed:', err);
+      }
+
+      // 2. Build envelope v1 — shipped to mobile WS / partner webhook / APNs.
+      const normalizedAppName = clientApp.name.toLowerCase().replace(/\s+/g, '_');
+      const source = `apptv_${normalizedAppName}`;
+      const deeplink = `product/${productId}?campaignId=${campaign.id}`;
       const envelope = {
         vio_notification_version: 1,
         vio_user_id: String(externalUserId),
@@ -6583,12 +6605,79 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
         vio_payload: {
           product_id: String(productId),
           campaign_id: String(campaign.id),
-          source: `tv_${String(clientApp.name ?? '').toLowerCase().replace(/\s+/g, '_')}`,
-          deeplink: `product/${productId}?campaignId=${campaign.id}`,
+          product_name: resolvedName,
+          notification_title: resolvedName,
+          notification_body: `${resolvedName} – klikk for å kjøpe.`,
+          source,
+          deeplink,
           activation_id: activationId ? Number(activationId) : null,
+          sponsor_id: sponsorId ? Number(sponsorId) : null,
         },
       };
 
+      // 3. Route to user's mobile — same decision tree as legacy cart-intent.
+      const normalizedUserId = String(externalUserId).trim();
+      const directWs = wsUserMap.get(normalizedUserId);
+      const isConnectedLocal = Boolean(directWs && directWs.readyState === WebSocket.OPEN);
+      let isConnectedCluster = false;
+      if (isRedisEnabled()) {
+        try {
+          isConnectedCluster = await Promise.race([
+            isUserConnectedAcrossCluster(normalizedUserId),
+            new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 1000)),
+          ]);
+        } catch (err) {
+          console.warn('[tv cart-intent] isUserConnectedAcrossCluster error:', err);
+        }
+      }
+      const isUserConnected = isConnectedLocal || isConnectedCluster;
+
+      const wsEvent = {
+        type: 'cart_intent',
+        ...envelope,
+        timestamp: new Date().toISOString(),
+      };
+
+      const dualDelivery = process.env.CART_INTENT_DUAL_DELIVERY !== 'false';
+      let deliveryMode: 'websocket' | 'dual' | 'webhook' | 'apns' | 'dropped';
+
+      if (isConnectedLocal && directWs) {
+        directWs.send(JSON.stringify(wsEvent));
+        console.log('[tv cart-intent] WS local → userId:', externalUserId);
+        if (dualDelivery) {
+          await notifyCartIntentPartnerFallback({
+            clientApp, campaignId: campaign.id, userId: String(externalUserId),
+            productId, resolvedName, context: 'dual',
+          });
+          deliveryMode = 'dual';
+        } else {
+          deliveryMode = 'websocket';
+        }
+      } else if (isConnectedCluster) {
+        await publishEvent('ws:events:forward', wsEvent);
+        console.log('[tv cart-intent] Redis Pub/Sub → cluster for userId:', externalUserId);
+        if (dualDelivery) {
+          await notifyCartIntentPartnerFallback({
+            clientApp, campaignId: campaign.id, userId: String(externalUserId),
+            productId, resolvedName, context: 'dual',
+          });
+          deliveryMode = 'dual';
+        } else {
+          deliveryMode = 'websocket';
+        }
+      } else {
+        // Offline — mock server / APNs path (same as legacy cart-intent).
+        await notifyCartIntentPartnerFallback({
+          clientApp, campaignId: campaign.id, userId: String(externalUserId),
+          productId, resolvedName, context: 'offline',
+        });
+        // Best-effort guess at which offline fallback actually ran.
+        const webhookConfigured = !!clientApp.webhookUrl?.trim();
+        const devices = webhookConfigured ? [] : await storage.getDeviceTokens(campaign.id, String(externalUserId));
+        deliveryMode = webhookConfigured ? 'webhook' : (devices.filter((d) => d.platform === 'ios').length > 0 ? 'apns' : 'dropped');
+      }
+
+      // 4. Persist cart_intents row with the actual delivery outcome.
       const row = await storage.createCartIntent({
         endUserId: endUser.id,
         campaignId: campaign.id,
@@ -6598,16 +6687,103 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
         productId: String(productId),
         sourceActivationId: activationId ? Number(activationId) : null,
         sourceComponentId: null,
-        deliveryMode: 'dropped', // updated below if we actually delivered
-        userConnected: false,
+        deliveryMode,
+        userConnected: Boolean(isUserConnected),
         envelope,
         metadata: null,
       });
 
-      res.json({ success: true, cartIntentId: row.id, envelope });
+      res.json({
+        success: true,
+        cartIntentId: row.id,
+        mode: deliveryMode,
+        userConnected: Boolean(isUserConnected),
+        envelope,
+      });
     } catch (error) {
       console.error('[tv cart-intent] error', error);
       res.status(500).json({ error: 'Failed to record cart intent' });
+    }
+  });
+
+  // ============================================================
+  // POST /api/sdk/tv/broadcast/subscribe — combined TV bootstrap
+  // ============================================================
+  // One request that:
+  //   1. Validates the host-provided broadcastId against Vio's DB for this client_app.
+  //   2. Ensures the end_users row exists for (client_app, externalUserId).
+  //   3. Upserts the tv_sessions row (one per clientApp+user+platform).
+  //   4. Returns the campaign + primary/secondary sponsors with commerce blocks
+  //      + wsUrl + capabilities. TV SDK opens the WS with wsUrl after this.
+  //
+  // If the broadcast is not found or not owned by this client_app, returns 200
+  // with `{ subscribed: false, reason }` so the TV SDK can silently skip. This
+  // avoids noisy error states on host apps that try to subscribe speculatively.
+  app.post('/api/sdk/tv/broadcast/subscribe', validateApiKey, async (req, res) => {
+    try {
+      const clientApp = (req as any).clientApp;
+      const { broadcastId, externalUserId, platform, tvDeviceId } = req.body ?? {};
+      if (!broadcastId) return res.status(400).json({ error: 'broadcastId is required' });
+      if (!externalUserId) return res.status(400).json({ error: 'externalUserId is required' });
+      if (!platform) return res.status(400).json({ error: 'platform is required' });
+      const tvPlatforms = ['apple-tv', 'android-tv', 'fire-tv', 'roku'];
+      if (!tvPlatforms.includes(platform)) return res.status(400).json({ error: `platform must be one of ${tvPlatforms.join(', ')}` });
+
+      const broadcast = await storage.getBroadcast(String(broadcastId));
+      // Soft-miss: broadcast unknown OR not bound to this client_app's campaigns.
+      const broadcastCampaign = broadcast?.campaignId ? await storage.getCampaign(broadcast.campaignId) : null;
+      if (!broadcast || !broadcastCampaign || broadcastCampaign.clientAppId !== clientApp.id) {
+        return res.json({ subscribed: false, reason: 'broadcast_not_registered_for_client_app' });
+      }
+      if (!broadcastCampaign.primarySponsorId) {
+        return res.json({ subscribed: false, reason: 'campaign_has_no_primary_sponsor' });
+      }
+
+      // TV capabilities come from the client_app flags (tv_enabled + tv_platforms).
+      const tvEnabled = (clientApp as any).tvEnabled === true;
+      const platformsAllowed: string[] = (clientApp as any).tvPlatforms ?? [];
+      const platformOk = platformsAllowed.length === 0 ? true : platformsAllowed.includes(platform);
+      if (!tvEnabled || !platformOk) {
+        return res.json({ subscribed: false, reason: 'tv_not_enabled_for_this_platform' });
+      }
+
+      const endUser = await storage.ensureEndUser(clientApp.id, String(externalUserId));
+      const session = await storage.upsertTvSession({
+        clientAppId: clientApp.id,
+        endUserId: endUser.id,
+        platform,
+        tvDeviceId: tvDeviceId ?? null,
+      });
+
+      // Resolve sponsors with commerce blocks — same shape as /v2/sdk/config.
+      const [primary, secondaryList] = await Promise.all([
+        buildSponsorBlock(broadcastCampaign.primarySponsorId),
+        storage.listSecondarySponsors(broadcastCampaign.id),
+      ]);
+      const secondarySponsors = await Promise.all(secondaryList.map((s) => buildSponsorBlock(s.id)));
+
+      const forwardedProto = (req.headers['x-forwarded-proto'] as string)?.split(',')[0]?.trim();
+      const effectiveProtocol = forwardedProto || req.protocol;
+      const wsProtocol = effectiveProtocol === 'https' ? 'wss' : 'ws';
+      const wsUrl = `${wsProtocol}://${req.get('host')}/ws/${broadcastCampaign.id}`;
+
+      res.json({
+        subscribed: true,
+        campaignId: broadcastCampaign.id,
+        broadcastId: broadcast.broadcastId,
+        sessionId: session.id,
+        endUserId: endUser.id,
+        wsUrl,
+        primarySponsor: primary,
+        secondarySponsors: secondarySponsors.filter(Boolean),
+        capabilities: {
+          shoppable: true,
+          engagement: broadcast.engagementEnabled === true,
+        },
+      });
+    } catch (error) {
+      console.error('[tv subscribe] error', error);
+      res.status(500).json({ error: 'Failed to subscribe TV to broadcast' });
     }
   });
 

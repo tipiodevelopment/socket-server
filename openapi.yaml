@@ -6567,14 +6567,88 @@ paths:
       responses:
         '200': { description: ended_at set }
 
+  /api/sdk/tv/broadcast/subscribe:
+    post:
+      tags: [SDK - TV]
+      summary: One-shot TV bootstrap (validate broadcast + start session + sponsors)
+      description: |
+        Combined endpoint the Apple TV SDK calls once the host app enters a broadcast.
+        Minimises round-trips: validates the host-provided `broadcastId` against Vio's DB for
+        this client_app, ensures the `end_users` row exists, upserts the `tv_sessions` row,
+        and returns the campaign + primary/secondary sponsors with commerce blocks + the
+        WebSocket URL.
+
+        When the broadcast is unknown or not bound to the client_app, responds with
+        `{ subscribed: false, reason }` (HTTP 200) so the SDK can silently skip without
+        surfacing an error to the host.
+      security:
+        - ApiKeyHeader: []
+        - ApiKeyQuery: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [broadcastId, externalUserId, platform]
+              properties:
+                broadcastId: { type: string, description: "Partner's internal broadcast id (e.g. tv2-eliteserien-live-...)" }
+                externalUserId: { type: string }
+                platform:
+                  type: string
+                  enum: [apple-tv, android-tv, fire-tv, roku]
+                tvDeviceId:
+                  type: string
+                  nullable: true
+                  description: "Optional — real device id if the OS exposes it, else SDK-generated UUID."
+      responses:
+        '200':
+          description: Either a successful subscription or a soft miss with a reason
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - type: object
+                    properties:
+                      subscribed: { type: boolean, enum: [true] }
+                      campaignId: { type: integer }
+                      broadcastId: { type: string }
+                      sessionId: { type: integer }
+                      endUserId: { type: integer }
+                      wsUrl: { type: string, description: "Ready-to-open WebSocket URL, includes campaignId in the path" }
+                      primarySponsor: { $ref: '#/components/schemas/SdkV2Sponsor' }
+                      secondarySponsors:
+                        type: array
+                        items: { $ref: '#/components/schemas/SdkV2Sponsor' }
+                      capabilities:
+                        type: object
+                        properties:
+                          shoppable: { type: boolean }
+                          engagement: { type: boolean }
+                  - type: object
+                    properties:
+                      subscribed: { type: boolean, enum: [false] }
+                      reason:
+                        type: string
+                        enum: [broadcast_not_registered_for_client_app, campaign_has_no_primary_sponsor, tv_not_enabled_for_this_platform]
+        '400': { description: Missing required fields }
+        '401': { description: Invalid apiKey }
+
   /api/sdk/tv/cart-intent:
     post:
       tags: [SDK - TV, Cart Intents]
       summary: TV-originated cart intent
       description: |
         When the viewer clicks the remote on a shoppable_ad, the TV SDK posts here with the
-        `activationId` received via WebSocket (the attribution link). Backend persists a `cart_intents`
-        row so the mobile-side delivery pipeline plus analytics know the chain.
+        `activationId` received via WebSocket (the attribution link). Backend:
+
+        1. Persists a `cart_intents` row with `source_activation_id = activationId`.
+        2. Forwards the envelope to the user's mobile via the standard delivery tree:
+           - Local WebSocket if the mobile is connected to this node.
+           - Redis Pub/Sub cluster fan-out if the mobile is connected to another node.
+           - Partner webhook (`client_app.webhookUrl`) when the user is offline.
+           - Direct APNs if no webhook is configured but iOS tokens are registered.
+        3. Records the actual `delivery_mode` on the persisted row.
       security:
         - ApiKeyHeader: []
         - ApiKeyQuery: []
@@ -6597,7 +6671,7 @@ paths:
                   description: "Optional — when present, backend looks up the active TV session."
       responses:
         '200':
-          description: Intent recorded
+          description: Intent recorded and forwarded
           content:
             application/json:
               schema:
@@ -6605,8 +6679,13 @@ paths:
                 properties:
                   success: { type: boolean }
                   cartIntentId: { type: integer }
+                  mode:
+                    type: string
+                    enum: [websocket, dual, webhook, apns, dropped]
+                  userConnected: { type: boolean }
                   envelope: { type: object }
         '400': { description: Missing required fields }
+        '403': { description: Campaign does not belong to this API key }
         '404': { description: Campaign not found }
 
   # ---------------------------------------------------------------
