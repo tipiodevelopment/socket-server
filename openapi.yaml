@@ -48,6 +48,16 @@ tags:
     description: Lineup retrieval and lineup_show WebSocket trigger endpoints
   - name: SDK - Lineup
     description: Starting XI lineup retrieval for SDK clients (API Key auth)
+  - name: SDK - TV
+    description: Dedicated endpoints for TV SDKs (tvOS, Fire TV, Roku) using the same API Key auth as mobile SDKs but isolated under `/api/sdk/tv/*`
+  - name: SDK v2
+    description: v2 SDK endpoints for the multi-sponsor model. Mobile SDK bootstrap + per-broadcast capabilities + per-broadcast components with sponsor-per-placement.
+  - name: Shoppable Ads
+    description: Triggering and auditing shoppable_ad activations (4 entry points, shared table `shoppable_ad_activations`)
+  - name: Cart Intents
+    description: User click-to-buy events. Replaces fire-and-forget cart_intent with persistent rows carrying attribution (source_activation_id, source_component_id).
+  - name: Secondary Sponsors
+    description: Manage the list of secondary sponsors for a campaign. Primary sponsor lives on campaign.primary_sponsor_id and is immutable once child rows exist.
   - name: Analytics
     description: Analytics and reporting endpoints (planned)
 
@@ -995,6 +1005,144 @@ components:
           enum: [goalkeeper, defender, midfielder, attacker]
           example: goalkeeper
 
+    SdkV2Config:
+      type: object
+      description: v2 SDK bootstrap payload with primary + secondary sponsors
+      properties:
+        endpoints:
+          type: object
+          properties:
+            webSocketBase: { type: string }
+            commerceGraphQL: { type: string }
+        campaign:
+          type: object
+          properties:
+            id: { type: integer }
+            name: { type: string }
+            logo: { type: string, nullable: true }
+            isActive: { type: boolean }
+            isPaused: { type: boolean }
+            startDate: { type: string, format: date-time, nullable: true }
+            endDate: { type: string, format: date-time, nullable: true }
+        primarySponsor: { $ref: '#/components/schemas/SdkV2Sponsor' }
+        secondarySponsors:
+          type: array
+          items: { $ref: '#/components/schemas/SdkV2Sponsor' }
+        features:
+          type: object
+          properties:
+            shoppable: { type: boolean }
+            lineup: { type: boolean }
+
+    SdkV2Sponsor:
+      type: object
+      description: Sponsor block as emitted in v2 SDK config (with commerce keys)
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        avatarUrl: { type: string, nullable: true, description: "Square brand mark, rendered in the shoppable overlay / product card. Non-null for any sponsor eligible to dispatch shoppable_ad events." }
+        logoUrl:   { type: string, nullable: true, description: "Wide horizontal logo, for sponsor intros and full-screen branding. Not a fallback for avatarUrl." }
+        primaryColor: { type: string, nullable: true }
+        secondaryColor: { type: string, nullable: true }
+        commerce:
+          type: object
+          nullable: true
+          description: "null = visual-only sponsor (no Commerce integration)"
+          properties:
+            apiKey: { type: string }
+            channelId: { type: string, nullable: true }
+            paymentMethods:
+              type: array
+              items: { type: string }
+              description: "e.g. ['card', 'klarna', 'vipps', 'apple_pay', 'google_pay']"
+
+    SdkV2ComponentPlacement:
+      type: object
+      description: Component assignment for a broadcast, with its sponsor + optional commerce block
+      properties:
+        id: { type: integer }
+        campaignComponentId: { type: integer }
+        type: { type: string }
+        locationId: { type: string, nullable: true }
+        instanceName: { type: string, nullable: true }
+        sponsor:
+          type: object
+          properties:
+            id: { type: integer }
+            name: { type: string }
+            avatarUrl: { type: string, nullable: true, description: "Square brand mark. Preferred for overlays." }
+            logoUrl: { type: string, nullable: true }
+            primaryColor: { type: string, nullable: true }
+        commerce:
+          type: object
+          nullable: true
+          properties:
+            apiKey: { type: string }
+            channelId: { type: string, nullable: true }
+        config: { type: object }
+
+    CartIntent:
+      type: object
+      description: Persisted row for a cart_intent dispatch
+      properties:
+        id: { type: integer }
+        endUserId: { type: integer }
+        campaignId: { type: integer }
+        clientAppId: { type: integer }
+        tvSessionId: { type: integer, nullable: true }
+        sponsorId: { type: integer, nullable: true }
+        productId: { type: string }
+        sourceActivationId: { type: integer, nullable: true }
+        sourceComponentId: { type: integer, nullable: true }
+        deliveryMode:
+          type: string
+          enum: [websocket, dual, webhook, apns, dropped]
+        userConnected: { type: boolean }
+        envelope: { type: object }
+        metadata: { type: object, nullable: true }
+        triggeredAt: { type: string, format: date-time }
+
+    ShoppableAdActivation:
+      type: object
+      description: One dispatch of a shoppable_ad (persisted in `shoppable_ad_activations`)
+      properties:
+        id: { type: integer }
+        broadcastId: { type: string }
+        campaignId: { type: integer }
+        sponsorId: { type: integer, nullable: true }
+        slotId: { type: integer, nullable: true, description: "Populated only for source='slot-scheduler'" }
+        clientAppId: { type: integer, nullable: true, description: "Populated only for source='tv-sdk' (or future API-key-auth entry points)" }
+        productId: { type: string, description: "External Commerce product id" }
+        productSnapshot:
+          type: object
+          description: Product state captured at dispatch time (id, name, price, currency, imageUrl)
+        sponsorSnapshot:
+          type: object
+          nullable: true
+          description: Sponsor state captured at dispatch time (name, logoUrl, primaryColor)
+        source:
+          type: string
+          enum: [admin-api, dashboard, tv-sdk, slot-scheduler]
+        wsEventSent:
+          type: boolean
+          description: false if the DB insert succeeded but the subsequent WS broadcast threw
+        metadata:
+          type: object
+          nullable: true
+        triggeredAt:
+          type: string
+          format: date-time
+    ShoppableAdDispatchResult:
+      type: object
+      properties:
+        success: { type: boolean }
+        activationId: { type: integer, description: "Primary key of the persisted activation row; can be echoed back in a future cart_intent for attribution" }
+        product:
+          type: object
+        sponsor:
+          type: object
+          nullable: true
+
     LineupTeam:
       type: object
       properties:
@@ -1012,6 +1160,85 @@ components:
             $ref: '#/components/schemas/LineupPlayer'
 
 paths:
+  # ============================================================
+  # Commerce — sponsor catalog (consumed by the dashboard slot picker)
+  # ============================================================
+  /api/commerce/sponsors/{sponsorId}/catalog:
+    get:
+      tags:
+        - Commerce
+      summary: List a sponsor's full Commerce catalog
+      description: |
+        Returns the products available in the sponsor's Commerce GraphQL channel.
+        Backend uses the sponsor's `commerce_api_key` to fetch from the upstream
+        GraphQL `Channel.GetProducts` query, then normalises the response to a
+        small product shape friendly to the dashboard picker.
+
+        Searching is performed client-side from the returned page since the
+        upstream query does not expose a search argument.
+      parameters:
+        - name: sponsorId
+          in: path
+          required: true
+          schema: { type: integer }
+        - name: shippingCountryCode
+          in: query
+          required: false
+          schema: { type: string, default: NO }
+        - name: currency
+          in: query
+          required: false
+          schema: { type: string, default: NOK }
+        - name: limit
+          in: query
+          required: false
+          schema: { type: integer, default: 100, maximum: 200 }
+        - name: offset
+          in: query
+          required: false
+          schema: { type: integer, default: 0 }
+      responses:
+        '200':
+          description: Catalog page
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  sponsor:
+                    type: object
+                    properties:
+                      id: { type: integer }
+                      name: { type: string }
+                  products:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: integer }
+                        name: { type: string }
+                        sku: { type: string, nullable: true }
+                        description: { type: string, nullable: true }
+                        imageUrl: { type: string, nullable: true }
+                        price: { type: number, nullable: true }
+                        currency: { type: string }
+                  total: { type: integer }
+                  limit: { type: integer }
+                  offset: { type: integer }
+                  hasMore: { type: boolean }
+        '400': { description: "Invalid sponsorId" }
+        '404': { description: "Sponsor not found" }
+        '422':
+          description: "Sponsor exists but has no commerce_api_key (visual-only)"
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error: { type: string }
+                  code:  { type: string, example: SPONSOR_MISSING_COMMERCE_KEY }
+        '502': { description: "Upstream Commerce GraphQL error" }
+
   # ============================================================
   # Admin API - Broadcasts
   # ============================================================
@@ -6108,3 +6335,550 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+
+  # ---------------------------------------------------------------
+  # Shoppable Ad Activations
+  # ---------------------------------------------------------------
+  /api/broadcasts/{broadcastId}/shoppable-ad:
+    post:
+      tags: [Shoppable Ads]
+      summary: Trigger a shoppable ad (Admin API, Bearer auth)
+      description: |
+        Resolves product from Commerce GraphQL, persists a row in
+        `shoppable_ad_activations` with `source='admin-api'`, and fans out a
+        `shoppable_ad` WebSocket event to all clients on the campaign.
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - in: path
+          name: broadcastId
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [productId]
+              properties:
+                productId: { type: string }
+                sponsorId: { type: integer, nullable: true }
+      responses:
+        '200':
+          description: Dispatched
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ShoppableAdDispatchResult' }
+        '400': { description: Bad request (missing productId or broadcast has no campaign) }
+        '401': { description: Missing or invalid Bearer token }
+        '404': { description: Broadcast or campaign not found }
+
+  /api/broadcasts/{broadcastId}/trigger-shoppable-ad:
+    post:
+      tags: [Shoppable Ads]
+      summary: Trigger a shoppable ad (Dashboard, no auth)
+      description: |
+        Same as the Admin endpoint but without auth. Used by the dashboard UI.
+        Persists with `source='dashboard'`.
+      parameters:
+        - in: path
+          name: broadcastId
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [productId]
+              properties:
+                productId: { type: string }
+                sponsorId: { type: integer, nullable: true }
+      responses:
+        '200':
+          description: Dispatched
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ShoppableAdDispatchResult' }
+        '400': { description: Bad request }
+        '404': { description: Broadcast or campaign not found }
+
+  /api/sdk/tv/broadcasts/{broadcastId}/shoppable-ad:
+    post:
+      tags: [SDK - TV, Shoppable Ads]
+      summary: Trigger a shoppable ad (TV SDK, API Key auth)
+      description: |
+        Dedicated endpoint for TV SDKs (tvOS, Fire TV, Roku). Uses the same
+        API Key auth model as mobile SDKs but on an isolated path so
+        TV-specific behaviour (rate limits, reporting, analytics) can diverge
+        independently. Persists with `source='tv-sdk'` and attaches the
+        calling `client_app.id` as `clientAppId`.
+      security:
+        - ApiKeyHeader: []
+        - ApiKeyQuery: []
+      parameters:
+        - in: path
+          name: broadcastId
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [productId]
+              properties:
+                productId: { type: string }
+                sponsorId: { type: integer, nullable: true }
+      responses:
+        '200':
+          description: Dispatched
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ShoppableAdDispatchResult' }
+        '400': { description: Bad request }
+        '401': { description: Missing or invalid API key }
+        '404': { description: Broadcast or campaign not found }
+
+  /api/broadcasts/{broadcastId}/sponsor-slots/{slotId}/execute:
+    post:
+      tags: [Shoppable Ads, Dashboard - Broadcasts]
+      summary: Execute a pre-configured sponsor slot
+      description: |
+        Fires a scheduled shoppable_ad dispatch for a pre-configured
+        `broadcast_sponsor_slot`. Persists with `source='slot-scheduler'` and
+        populates `slotId`. On success, marks the slot row as completed
+        (`status='completed'`, `executedAt=now()`). The activation is written
+        before the slot status update, so the slot will never be marked
+        completed without a matching activation row.
+      parameters:
+        - in: path
+          name: broadcastId
+          required: true
+          schema: { type: string }
+        - in: path
+          name: slotId
+          required: true
+          schema: { type: integer }
+      responses:
+        '200':
+          description: Executed
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ShoppableAdDispatchResult' }
+        '404': { description: Slot, broadcast or campaign not found }
+
+  # ---------------------------------------------------------------
+  # v2 SDK Bootstrap + per-broadcast (multi-sponsor redesign)
+  # ---------------------------------------------------------------
+  /v2/sdk/config:
+    get:
+      tags: [SDK v2]
+      summary: Multi-sponsor SDK bootstrap
+      description: |
+        Returns the active campaign for the authenticated client_app with its primary sponsor
+        (always present, commerce block if applicable) and the list of secondary sponsors
+        (each with their own commerce block or `null` for visual-only). Replaces the legacy
+        `/v1/sdk/config`; the v1 endpoint is deprecated and will be retired once all SDKs migrate.
+      security:
+        - ApiKeyHeader: []
+        - ApiKeyQuery: []
+      responses:
+        '200':
+          description: Bootstrap config
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SdkV2Config' }
+        '401': { description: Missing or invalid API key }
+        '404': { description: No campaign configured for this client_app }
+        '500': { description: Active campaign missing primary sponsor (invariant violation) }
+
+  /v2/sdk/broadcasts/{broadcastId}/capabilities:
+    get:
+      tags: [SDK v2]
+      summary: Per-broadcast capability flags
+      description: |
+        Tells the SDK what to load / subscribe to for this broadcast. `engagement.enabled` mirrors
+        `broadcasts.engagement_enabled` (operator opt-in). `shoppable.enabled` is true when
+        `engagement_enabled` is true OR there is at least one prior activation on this broadcast.
+      security:
+        - ApiKeyHeader: []
+        - ApiKeyQuery: []
+      parameters:
+        - in: path
+          name: broadcastId
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Capability map
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  broadcastId: { type: string }
+                  campaignId: { type: integer, nullable: true }
+                  engagement:
+                    type: object
+                    properties:
+                      enabled: { type: boolean }
+                      hasPolls: { type: boolean }
+                      hasContests: { type: boolean }
+                  shoppable:
+                    type: object
+                    properties:
+                      enabled: { type: boolean }
+                  lineup:
+                    type: object
+                    properties:
+                      available: { type: boolean }
+        '401': { description: Missing or invalid API key }
+        '404': { description: Broadcast not found }
+
+  /v2/sdk/broadcasts/{broadcastId}/components:
+    get:
+      tags: [SDK v2]
+      summary: Component placements for this broadcast
+      description: |
+        Returns the active placements for the broadcast's campaign, merged with
+        broadcast-scoped placements (where `campaign_components.broadcast_id = broadcastId`).
+        Each entry carries its sponsor (for branding) and — if the sponsor has commerce —
+        a `commerce` block the SDK uses to call Commerce GraphQL directly for product hydration.
+      security:
+        - ApiKeyHeader: []
+        - ApiKeyQuery: []
+      parameters:
+        - in: path
+          name: broadcastId
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Placement list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  broadcastId: { type: string }
+                  components:
+                    type: array
+                    items: { $ref: '#/components/schemas/SdkV2ComponentPlacement' }
+        '401': { description: Missing or invalid API key }
+        '404': { description: Broadcast not found or broadcast has no campaign }
+
+  # ---------------------------------------------------------------
+  # TV session lifecycle
+  # ---------------------------------------------------------------
+  /api/sdk/tv/session/start:
+    post:
+      tags: [SDK - TV]
+      summary: Register / renew a TV session
+      description: |
+        Creates or refreshes a `tv_sessions` row keyed by (clientApp, endUser, platform). Also
+        ensures the `end_users` row exists for the `(clientApp, externalUserId)` pair — no
+        reachu_user_id concept anywhere. Returns a `sessionId` the SDK uses in subsequent calls.
+      security:
+        - ApiKeyHeader: []
+        - ApiKeyQuery: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [externalUserId, platform]
+              properties:
+                externalUserId: { type: string, description: "Opaque user id from the partner (Viaplay, TV2)" }
+                tvDeviceId: { type: string, nullable: true, description: "SDK-generated persistent UUID for debug" }
+                platform:
+                  type: string
+                  enum: [apple-tv, android-tv, fire-tv, roku]
+      responses:
+        '200':
+          description: Session started / refreshed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  sessionId: { type: integer }
+                  endUserId: { type: integer }
+                  capabilities:
+                    type: object
+                    properties:
+                      shoppable: { type: boolean }
+        '400': { description: Missing/invalid fields }
+        '401': { description: Invalid apiKey }
+
+  /api/sdk/tv/session/heartbeat:
+    post:
+      tags: [SDK - TV]
+      summary: Keep TV session alive
+      security: [{ ApiKeyHeader: [] }, { ApiKeyQuery: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [sessionId]
+              properties:
+                sessionId: { type: integer }
+      responses:
+        '200': { description: last_seen_at updated }
+
+  /api/sdk/tv/session/end:
+    post:
+      tags: [SDK - TV]
+      summary: Close a TV session explicitly
+      security: [{ ApiKeyHeader: [] }, { ApiKeyQuery: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [sessionId]
+              properties:
+                sessionId: { type: integer }
+      responses:
+        '200': { description: ended_at set }
+
+  /api/sdk/tv/broadcast/subscribe:
+    post:
+      tags: [SDK - TV]
+      summary: One-shot TV bootstrap (validate broadcast + start session + sponsors)
+      description: |
+        Combined endpoint the Apple TV SDK calls once the host app enters a broadcast.
+        Minimises round-trips: validates the host-provided `broadcastId` against Vio's DB for
+        this client_app, ensures the `end_users` row exists, upserts the `tv_sessions` row,
+        and returns the campaign + primary/secondary sponsors with commerce blocks + the
+        WebSocket URL.
+
+        When the broadcast is unknown or not bound to the client_app, responds with
+        `{ subscribed: false, reason }` (HTTP 200) so the SDK can silently skip without
+        surfacing an error to the host.
+      security:
+        - ApiKeyHeader: []
+        - ApiKeyQuery: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [broadcastId, externalUserId, platform]
+              properties:
+                broadcastId: { type: string, description: "Partner's internal broadcast id (e.g. tv2-eliteserien-live-...)" }
+                externalUserId: { type: string }
+                platform:
+                  type: string
+                  enum: [apple-tv, android-tv, fire-tv, roku]
+                tvDeviceId:
+                  type: string
+                  nullable: true
+                  description: "Optional — real device id if the OS exposes it, else SDK-generated UUID."
+      responses:
+        '200':
+          description: Either a successful subscription or a soft miss with a reason
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - type: object
+                    properties:
+                      subscribed: { type: boolean, enum: [true] }
+                      campaignId: { type: integer }
+                      broadcastId: { type: string }
+                      sessionId: { type: integer }
+                      endUserId: { type: integer }
+                      wsUrl: { type: string, description: "Ready-to-open WebSocket URL, includes campaignId in the path" }
+                      primarySponsor: { $ref: '#/components/schemas/SdkV2Sponsor' }
+                      secondarySponsors:
+                        type: array
+                        items: { $ref: '#/components/schemas/SdkV2Sponsor' }
+                      capabilities:
+                        type: object
+                        properties:
+                          shoppable: { type: boolean }
+                          engagement: { type: boolean }
+                  - type: object
+                    properties:
+                      subscribed: { type: boolean, enum: [false] }
+                      reason:
+                        type: string
+                        enum: [broadcast_not_registered_for_client_app, campaign_has_no_primary_sponsor, tv_not_enabled_for_this_platform]
+        '400': { description: Missing required fields }
+        '401': { description: Invalid apiKey }
+
+  /api/sdk/tv/cart-intent:
+    post:
+      tags: [SDK - TV, Cart Intents]
+      summary: TV-originated cart intent
+      description: |
+        When the viewer clicks the remote on a shoppable_ad, the TV SDK posts here with the
+        `activationId` received via WebSocket (the attribution link). Backend:
+
+        1. Persists a `cart_intents` row with `source_activation_id = activationId`.
+        2. Forwards the envelope to the user's mobile via the standard delivery tree:
+           - Local WebSocket if the mobile is connected to this node.
+           - Redis Pub/Sub cluster fan-out if the mobile is connected to another node.
+           - Partner webhook (`client_app.webhookUrl`) when the user is offline.
+           - Direct APNs if no webhook is configured but iOS tokens are registered.
+        3. Records the actual `delivery_mode` on the persisted row.
+      security:
+        - ApiKeyHeader: []
+        - ApiKeyQuery: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [externalUserId, productId, campaignId]
+              properties:
+                externalUserId: { type: string }
+                productId: { type: string }
+                campaignId: { type: integer }
+                activationId: { type: integer, nullable: true, description: "From the shoppable_ad WS event that triggered this click. Fills source_activation_id." }
+                sponsorId: { type: integer, nullable: true }
+                platform:
+                  type: string
+                  enum: [apple-tv, android-tv, fire-tv, roku]
+                  description: "Optional — when present, backend looks up the active TV session."
+      responses:
+        '200':
+          description: Intent recorded and forwarded
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  cartIntentId: { type: integer }
+                  mode:
+                    type: string
+                    enum: [websocket, dual, webhook, apns, dropped]
+                  userConnected: { type: boolean }
+                  envelope: { type: object }
+        '400': { description: Missing required fields }
+        '403': { description: Campaign does not belong to this API key }
+        '404': { description: Campaign not found }
+
+  # ---------------------------------------------------------------
+  # Secondary sponsors management
+  # ---------------------------------------------------------------
+  /api/campaigns/{id}/secondary-sponsors:
+    get:
+      tags: [Secondary Sponsors]
+      summary: List secondary sponsors for a campaign
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        '200':
+          description: Secondary sponsor list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  campaignId: { type: integer }
+                  secondarySponsors:
+                    type: array
+                    items: { $ref: '#/components/schemas/Sponsor' }
+    post:
+      tags: [Secondary Sponsors]
+      summary: Add a secondary sponsor to a campaign
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [sponsorId]
+              properties:
+                sponsorId: { type: integer }
+      responses:
+        '201': { description: Linked }
+        '400': { description: Sponsor is already the primary }
+        '404': { description: Campaign or sponsor not found }
+
+  /api/campaigns/{id}/secondary-sponsors/{sponsorId}:
+    delete:
+      tags: [Secondary Sponsors]
+      summary: Remove a secondary sponsor from a campaign
+      description: Fails with 409 if the sponsor is still referenced by components or activations on this campaign.
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+        - in: path
+          name: sponsorId
+          required: true
+          schema: { type: integer }
+      responses:
+        '200': { description: Removed }
+        '409':
+          description: Sponsor still has referencing rows
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error: { type: string }
+                  componentRefs: { type: integer }
+                  activationRefs: { type: integer }
+
+  /api/broadcasts/{broadcastId}/shoppable-ads:
+    get:
+      tags: [Shoppable Ads, Analytics]
+      summary: List shoppable ad activations for a broadcast
+      description: |
+        Returns activation history sorted by `triggeredAt` DESC. Useful for
+        audit, debugging, and dashboard timelines.
+      parameters:
+        - in: path
+          name: broadcastId
+          required: true
+          schema: { type: string }
+        - in: query
+          name: limit
+          schema: { type: integer, default: 50, maximum: 200 }
+        - in: query
+          name: offset
+          schema: { type: integer, default: 0 }
+        - in: query
+          name: sponsorId
+          schema: { type: integer }
+        - in: query
+          name: source
+          schema:
+            type: string
+            enum: [admin-api, dashboard, tv-sdk, slot-scheduler]
+      responses:
+        '200':
+          description: List of activations
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  activations:
+                    type: array
+                    items: { $ref: '#/components/schemas/ShoppableAdActivation' }
+                  limit: { type: integer }
+                  offset: { type: integer }
+                  count: { type: integer }

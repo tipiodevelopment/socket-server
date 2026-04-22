@@ -17,6 +17,7 @@ import type { Broadcast, Poll, PollOptionRecord, Contest, Campaign, BroadcastAd,
 import { ArrowLeft, Plus, Trash2, BarChart3, Trophy, X, MoreVertical, CheckCircle, Play, SkipBack, SkipForward, Maximize2, Send, Megaphone, ShoppingBag, ExternalLink, Eye, TrendingUp, Vote, MessageSquare, RefreshCw, Users, Radio, Pencil, Check, AtSign, ChevronDown, ChevronRight, Code2, Shirt } from 'lucide-react';
 import { useState, useRef, useEffect } from 'react';
 import { useUser } from '@/contexts/UserContext';
+import { SponsorCatalogPicker } from '@/components/sponsor-catalog-picker';
 
 type BroadcastWithRelations = Broadcast & {
   polls?: (Poll & { options?: PollOptionRecord[] })[];
@@ -854,9 +855,18 @@ type SponsorSlot = {
 
 function ShoppableAdTriggerSection({ broadcastId, campaignId }: { broadcastId: string; campaignId: number | null }) {
   const { toast } = useToast();
+  const { userId } = useUser();
   const [log, setLog] = useState<TriggeredAdEntry[]>([]);
   const [addSlotOpen, setAddSlotOpen] = useState(false);
+  /// When set, the dialog is in "edit" mode — submit performs a PUT against
+  /// that slot id instead of creating a new row. Cleared by `resetSlotForm()`.
+  const [editingSlotId, setEditingSlotId] = useState<number | null>(null);
   const [selectedSponsorId, setSelectedSponsorId] = useState('');
+  /// Opens the "add sponsor to campaign" sub-dialog inline from the slot form
+  /// so operators don't have to navigate to campaign-dashboard to link a
+  /// sponsor mid-authoring. Uses `POST /api/campaigns/:id/sponsors`.
+  const [addSponsorToCampaignOpen, setAddSponsorToCampaignOpen] = useState(false);
+  const [pendingSponsorIdToLink, setPendingSponsorIdToLink] = useState('');
   const [slotType, setSlotType] = useState<'product' | 'lead' | 'poll_cta' | 'contest_cta' | 'link'>('product');
   const [slotTriggerType, setSlotTriggerType] = useState('manual');
   const [slotTriggerValue, setSlotTriggerValue] = useState('');
@@ -884,6 +894,48 @@ function ShoppableAdTriggerSection({ broadcastId, campaignId }: { broadcastId: s
     enabled: !!campaignId,
   });
 
+  /// User's full sponsor roster — fetched lazily only when the operator opens
+  /// the "add sponsor to campaign" picker, to avoid an unnecessary request on
+  /// every broadcast visit.
+  const { data: allSponsors = [] } = useQuery<any[]>({
+    queryKey: ['/api/sponsors', userId, 'for-picker'],
+    queryFn: async () => {
+      if (!userId) return [];
+      const res = await fetch(`/api/sponsors?userId=${userId}`);
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: !!userId && addSponsorToCampaignOpen,
+  });
+
+  const availableToLink = (allSponsors as any[]).filter(
+    (s: any) => !campaignSponsors.some((cs: any) => cs.sponsorId === s.id),
+  );
+
+  const addSponsorToCampaignMutation = useMutation({
+    mutationFn: async () => {
+      if (!campaignId) throw new Error('No campaign');
+      if (!pendingSponsorIdToLink) throw new Error('Pick a sponsor');
+      const res = await fetch(`/api/campaigns/${campaignId}/sponsors`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sponsorId: parseInt(pendingSponsorIdToLink), role: 'shoppable' }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/campaigns', campaignId, 'sponsors'] });
+      // Pre-select the newly linked sponsor so the operator can continue
+      // filling the slot form without having to re-pick from the dropdown.
+      setSelectedSponsorId(pendingSponsorIdToLink);
+      setAddSponsorToCampaignOpen(false);
+      setPendingSponsorIdToLink('');
+      toast({ title: 'Sponsor added to campaign' });
+    },
+    onError: (err: any) => toast({ title: 'Error', description: err.message || 'Could not add sponsor', variant: 'destructive' }),
+  });
+
   const { data: slots = [], isLoading: slotsLoading } = useQuery<SponsorSlot[]>({
     queryKey: ['/api/broadcasts', broadcastId, 'sponsor-slots'],
     queryFn: async () => {
@@ -891,17 +943,6 @@ function ShoppableAdTriggerSection({ broadcastId, campaignId }: { broadcastId: s
       if (!res.ok) return [];
       return res.json();
     },
-  });
-
-  const { data: commerceProducts = [] } = useQuery<CommerceProduct[]>({
-    queryKey: ['/api/commerce/products', campaignId],
-    queryFn: async () => {
-      const url = `/api/commerce/products${campaignId ? `?campaignId=${campaignId}` : ''}`;
-      const res = await fetch(url);
-      if (!res.ok) return [];
-      return res.json();
-    },
-    enabled: !!campaignId,
   });
 
   const buildSlotConfig = () => {
@@ -913,9 +954,30 @@ function ShoppableAdTriggerSection({ broadcastId, campaignId }: { broadcastId: s
   };
 
   const resetSlotForm = () => {
+    setEditingSlotId(null);
     setSelectedSponsorId(''); setSlotType('product');
     setSlotTriggerType('manual'); setSlotTriggerValue(''); setSlotProductIds([]); setAutoExecute(false);
     setCfgTitle(''); setCfgUrl(''); setCfgCta(''); setCfgMessage(''); setCfgRefId(''); setCfgLeadFields(['email']);
+  };
+
+  /// Open the slot dialog in edit mode, pre-populating the form from an
+  /// existing slot. Config fields map back from `slot.config` when present.
+  const openEditSlot = (slot: SponsorSlot) => {
+    setEditingSlotId(slot.id);
+    setSelectedSponsorId(String(slot.sponsorId));
+    setSlotType((slot.type as any) ?? 'product');
+    setSlotTriggerType(slot.triggerType ?? 'manual');
+    setSlotTriggerValue(slot.triggerValue ?? '');
+    setSlotProductIds(slot.productIds ?? []);
+    setAutoExecute(Boolean(slot.autoExecute));
+    const cfg = (slot.config ?? {}) as Record<string, any>;
+    setCfgTitle(String(cfg.title ?? ''));
+    setCfgUrl(String(cfg.url ?? ''));
+    setCfgCta(String(cfg.cta ?? ''));
+    setCfgMessage(String(cfg.message ?? ''));
+    setCfgRefId(String(cfg.pollId ?? cfg.contestId ?? ''));
+    setCfgLeadFields(Array.isArray(cfg.fields) ? cfg.fields : ['email']);
+    setAddSlotOpen(true);
   };
 
   const createSlotMutation = useMutation({
@@ -944,6 +1006,34 @@ function ShoppableAdTriggerSection({ broadcastId, campaignId }: { broadcastId: s
       resetSlotForm();
     },
     onError: () => toast({ title: 'Error', description: 'Could not create slot', variant: 'destructive' }),
+  });
+
+  const updateSlotMutation = useMutation({
+    mutationFn: async () => {
+      if (!editingSlotId) throw new Error('No slot being edited');
+      const res = await fetch(`/api/broadcasts/${broadcastId}/sponsor-slots/${editingSlotId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sponsorId: parseInt(selectedSponsorId),
+          type: slotType,
+          config: buildSlotConfig(),
+          triggerType: slotTriggerType,
+          triggerValue: slotTriggerValue || null,
+          productIds: slotType === 'product' ? slotProductIds : [],
+          autoExecute,
+        }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/broadcasts', broadcastId, 'sponsor-slots'] });
+      toast({ title: 'Slot updated' });
+      setAddSlotOpen(false);
+      resetSlotForm();
+    },
+    onError: (err: any) => toast({ title: 'Error', description: err.message || 'Could not update slot', variant: 'destructive' }),
   });
 
   const deleteSlotMutation = useMutation({
@@ -1036,7 +1126,12 @@ function ShoppableAdTriggerSection({ broadcastId, campaignId }: { broadcastId: s
       <div className="bg-transparent border border-gray-200 dark:border-white/10 rounded-xl overflow-hidden">
         <div className="flex items-center justify-between px-4 py-3 bg-gray-50 dark:bg-white/[0.03] border-b border-gray-100 dark:border-white/10">
           <span className="text-xs font-semibold text-gray-500 dark:text-white/50 uppercase tracking-wide">Pre-programmed Slots</span>
-          <Dialog open={addSlotOpen} onOpenChange={setAddSlotOpen}>
+          <Dialog open={addSlotOpen} onOpenChange={(open) => {
+            setAddSlotOpen(open);
+            // Clearing the edit state when the dialog closes prevents the next
+            // "Add Slot" click from starting pre-populated with the last edit.
+            if (!open) resetSlotForm();
+          }}>
             <DialogTrigger asChild>
               <button
                 data-testid="button-add-slot"
@@ -1048,31 +1143,99 @@ function ShoppableAdTriggerSection({ broadcastId, campaignId }: { broadcastId: s
             </DialogTrigger>
             <DialogContent className="sm:max-w-md">
               <DialogHeader>
-                <DialogTitle>Configure Slot</DialogTitle>
-                <DialogDescription>Pre-program a sponsor moment for this broadcast.</DialogDescription>
+                <DialogTitle>{editingSlotId ? 'Edit Slot' : 'Configure Slot'}</DialogTitle>
+                <DialogDescription>
+                  {editingSlotId
+                    ? 'Update this pre-programmed sponsor moment.'
+                    : 'Pre-program a sponsor moment for this broadcast.'}
+                </DialogDescription>
               </DialogHeader>
               <div className="space-y-4 py-2">
                 <div className="space-y-1.5">
                   <Label>Sponsor</Label>
-                  <Select value={selectedSponsorId} onValueChange={setSelectedSponsorId}>
-                    <SelectTrigger data-testid="select-slot-sponsor">
-                      <SelectValue placeholder="Select sponsor..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {campaignSponsors.map((s: any) => (
-                        <SelectItem key={s.sponsorId} value={String(s.sponsorId)}>
-                          <div className="flex items-center gap-2">
-                            {s.logoUrl
-                              ? <img src={s.logoUrl} alt={s.name} className="w-4 h-4 object-contain rounded" />
-                              : <div className="w-4 h-4 rounded text-[9px] font-bold flex items-center justify-center text-white" style={{ backgroundColor: s.primaryColor ?? '#3d8b7a' }}>{s.name.slice(0, 2).toUpperCase()}</div>
-                            }
-                            {s.name}
-                          </div>
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <div className="flex items-center gap-2">
+                    <Select value={selectedSponsorId} onValueChange={setSelectedSponsorId}>
+                      <SelectTrigger data-testid="select-slot-sponsor" className="flex-1">
+                        <SelectValue placeholder="Select sponsor..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {campaignSponsors.map((s: any) => (
+                          <SelectItem key={s.sponsorId} value={String(s.sponsorId)}>
+                            <div className="flex items-center gap-2">
+                              {s.logoUrl
+                                ? <img src={s.logoUrl} alt={s.name} className="w-4 h-4 object-contain rounded" />
+                                : <div className="w-4 h-4 rounded text-[9px] font-bold flex items-center justify-center text-white" style={{ backgroundColor: s.primaryColor ?? '#3d8b7a' }}>{s.name.slice(0, 2).toUpperCase()}</div>
+                              }
+                              {s.name}
+                            </div>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <button
+                      type="button"
+                      onClick={() => setAddSponsorToCampaignOpen(true)}
+                      data-testid="button-add-sponsor-to-campaign-inline"
+                      className="shrink-0 flex items-center gap-1 px-2.5 h-9 rounded-md border border-white/10 text-xs text-white/60 hover:text-white hover:bg-white/5 transition"
+                      title="Link another sponsor to this campaign"
+                    >
+                      <Plus className="w-3 h-3" />
+                      Add
+                    </button>
+                  </div>
+                  {campaignSponsors.length === 0 && (
+                    <p className="text-[11px] text-amber-400/80">
+                      No sponsors on this campaign yet — click <span className="font-semibold">Add</span> to link one.
+                    </p>
+                  )}
                 </div>
+
+                <Dialog open={addSponsorToCampaignOpen} onOpenChange={setAddSponsorToCampaignOpen}>
+                  <DialogContent className="sm:max-w-sm">
+                    <DialogHeader>
+                      <DialogTitle>Link sponsor to campaign</DialogTitle>
+                      <DialogDescription>
+                        Only sponsors linked here can be picked on slots. Creating a new sponsor from scratch still lives on the sponsors page.
+                      </DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-3 py-2">
+                      <div className="space-y-1.5">
+                        <Label>Sponsor</Label>
+                        <Select value={pendingSponsorIdToLink} onValueChange={setPendingSponsorIdToLink}>
+                          <SelectTrigger data-testid="select-inline-add-sponsor">
+                            <SelectValue placeholder={availableToLink.length === 0 ? 'All sponsors already linked' : 'Pick a sponsor...'} />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {availableToLink.map((s: any) => (
+                              <SelectItem key={s.id} value={String(s.id)}>
+                                <div className="flex items-center gap-2">
+                                  {s.logoUrl
+                                    ? <img src={s.logoUrl} alt={s.name} className="w-4 h-4 object-contain rounded" />
+                                    : <div className="w-4 h-4 rounded text-[9px] font-bold flex items-center justify-center text-white" style={{ backgroundColor: s.primaryColor ?? '#3d8b7a' }}>{s.name.slice(0, 2).toUpperCase()}</div>
+                                  }
+                                  {s.name}
+                                </div>
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <p className="text-[11px] text-white/30">
+                        Role defaults to <span className="font-semibold">shoppable</span>. Change it from the campaign settings if needed.
+                      </p>
+                    </div>
+                    <DialogFooter>
+                      <Button variant="outline" onClick={() => { setAddSponsorToCampaignOpen(false); setPendingSponsorIdToLink(''); }}>Cancel</Button>
+                      <Button
+                        onClick={() => addSponsorToCampaignMutation.mutate()}
+                        disabled={!pendingSponsorIdToLink || addSponsorToCampaignMutation.isPending}
+                        data-testid="button-link-sponsor-inline"
+                      >
+                        {addSponsorToCampaignMutation.isPending ? 'Linking...' : 'Link'}
+                      </Button>
+                    </DialogFooter>
+                  </DialogContent>
+                </Dialog>
                 <div className="space-y-1.5">
                   <Label>Type</Label>
                   <Select value={slotType} onValueChange={v => setSlotType(v as typeof slotType)}>
@@ -1093,34 +1256,13 @@ function ShoppableAdTriggerSection({ broadcastId, campaignId }: { broadcastId: s
                 {slotType === 'product' && (
                   <div className="space-y-1.5">
                     <Label>Products</Label>
-                    {commerceProducts.length === 0 ? (
-                      <p className="text-xs text-gray-400 dark:text-gray-500">No products configured for this campaign yet.</p>
-                    ) : (
-                      <div className="grid grid-cols-2 gap-2 max-h-52 overflow-y-auto pr-1">
-                        {commerceProducts.map(p => {
-                          const isSelected = slotProductIds.includes(p.id);
-                          return (
-                            <button
-                              key={p.id}
-                              type="button"
-                              onClick={() => setSlotProductIds(prev => isSelected ? prev.filter(id => id !== p.id) : [...prev, p.id])}
-                              data-testid={`slot-product-${p.id}`}
-                              className={`flex items-center gap-2 p-2 rounded-lg border text-left transition ${isSelected ? 'border-blue-500/50 bg-blue-500/10' : 'border-white/10 bg-white/[0.02] hover:border-white/20'}`}
-                            >
-                              {p.imageUrl
-                                ? <img src={p.imageUrl} alt={p.name} className="w-8 h-8 rounded object-cover flex-shrink-0" />
-                                : <div className="w-8 h-8 rounded bg-white/10 flex-shrink-0 flex items-center justify-center"><ShoppingBag className="w-3.5 h-3.5 text-white/30" /></div>
-                              }
-                              <div className="flex-1 min-w-0">
-                                <p className="text-[11px] font-medium text-white truncate">{p.name}</p>
-                                {p.price != null && <p className="text-[10px] text-green-400">{p.price} {p.currency}</p>}
-                              </div>
-                              {isSelected && <Check className="w-3 h-3 text-blue-400 shrink-0" />}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    )}
+                    <SponsorCatalogPicker
+                      multi
+                      sponsorId={selectedSponsorId}
+                      value={slotProductIds}
+                      onChange={setSlotProductIds}
+                      sponsorPlaceholderText="Select a sponsor above to load its product catalog."
+                    />
                   </div>
                 )}
 
@@ -1217,8 +1359,14 @@ function ShoppableAdTriggerSection({ broadcastId, campaignId }: { broadcastId: s
               </div>
               <DialogFooter>
                 <Button variant="outline" onClick={() => setAddSlotOpen(false)}>Cancel</Button>
-                <Button onClick={() => createSlotMutation.mutate()} disabled={!selectedSponsorId || createSlotMutation.isPending} data-testid="button-save-slot">
-                  {createSlotMutation.isPending ? 'Saving...' : 'Save Slot'}
+                <Button
+                  onClick={() => (editingSlotId ? updateSlotMutation.mutate() : createSlotMutation.mutate())}
+                  disabled={!selectedSponsorId || createSlotMutation.isPending || updateSlotMutation.isPending}
+                  data-testid="button-save-slot"
+                >
+                  {editingSlotId
+                    ? (updateSlotMutation.isPending ? 'Updating...' : 'Update Slot')
+                    : (createSlotMutation.isPending ? 'Saving...' : 'Save Slot')}
                 </Button>
               </DialogFooter>
             </DialogContent>
@@ -1272,6 +1420,14 @@ function ShoppableAdTriggerSection({ broadcastId, campaignId }: { broadcastId: s
                     Fire
                   </button>
                   <button
+                    onClick={() => openEditSlot(slot)}
+                    data-testid={`button-edit-slot-${slot.id}`}
+                    className="p-1.5 rounded-lg text-white/20 hover:text-blue-400 hover:bg-blue-500/10 transition"
+                    title="Edit"
+                  >
+                    <Pencil className="w-3.5 h-3.5" />
+                  </button>
+                  <button
                     onClick={() => deleteSlotMutation.mutate(slot.id)}
                     data-testid={`button-delete-slot-${slot.id}`}
                     className="p-1.5 rounded-lg text-white/20 hover:text-red-400 hover:bg-red-500/10 transition"
@@ -1314,22 +1470,12 @@ function ShoppableAdTriggerSection({ broadcastId, campaignId }: { broadcastId: s
             </div>
             <div className="space-y-1.5">
               <Label className="text-xs text-gray-500 dark:text-gray-400">Product</Label>
-              <Select value={adhocProductId ? String(adhocProductId) : ''} onValueChange={v => setAdhocProductId(parseInt(v))}>
-                <SelectTrigger data-testid="select-adhoc-product" className="text-sm">
-                  <SelectValue placeholder="Select product..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {commerceProducts.map(p => (
-                    <SelectItem key={p.id} value={String(p.id)}>
-                      <div className="flex items-center gap-2">
-                        {p.imageUrl ? <img src={p.imageUrl} alt={p.name} className="w-4 h-4 object-cover rounded flex-shrink-0" /> : <ShoppingBag className="w-3.5 h-3.5 text-gray-400" />}
-                        <span className="truncate">{p.name}</span>
-                        {p.price != null && <span className="text-green-400 shrink-0 text-[10px]">{p.price} {p.currency}</span>}
-                      </div>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <SponsorCatalogPicker
+                sponsorId={adhocSponsorId && adhocSponsorId !== 'none' ? adhocSponsorId : null}
+                value={adhocProductId}
+                onChange={setAdhocProductId}
+                sponsorPlaceholderText="Pick a sponsor to browse its catalog."
+              />
             </div>
           </div>
           <button
