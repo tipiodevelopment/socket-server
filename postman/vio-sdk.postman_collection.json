@@ -1,7 +1,7 @@
 {
   "info": {
-    "name": "Vio SDK API (v2 Multi-Sponsor)",
-    "description": "SDK-facing endpoints for Vio, organised by flow. Set the `apiKey` variable once and every request is authorised.\n\n**Default baseUrl**: `https://api-local-angelo.vio.live` (Cloudflare tunnel to the local backend). Change to `http://localhost:5001` if you prefer direct.\n\n**Folders**:\n1. Setup & Health \u2014 smoke checks\n2. SDK Bootstrap v2 \u2014 the new multi-sponsor init flow (primary + secondary sponsors)\n3. SDK v2 \u2014 Per-broadcast \u2014 capabilities + components per broadcast\n4. TV session \u2014 Apple TV / Android TV lifecycle\n5. Cart Intent \u2014 mobile + TV variants with attribution chain\n6. Shoppable Ads \u2014 4 dispatch entry points + audit\n7. Secondary Sponsors \u2014 dashboard CRUD for secondary sponsor list\n8. Engagement (public) \u2014 polls / contests voting\n9. Legacy v1 \u2014 old bootstrap + SDK endpoints kept for comparison during migration\n\n## Changelog \u2014 April 2026\n\n- `shoppable_ad` WS events now carry `sponsorId` (top-level) for SDK commerce-key routing and `activationId` for the cart-intent \u2192 mobile attribution chain. Trigger endpoints also return `activationId` in the HTTP response so Postman can auto-capture it for the downstream `cart-intent` request.\n- New soft-miss request under folder 4 to exercise the `{ subscribed: false, reason: ... }` path of `/api/sdk/tv/broadcast/subscribe`.\n- Post-response scripts auto-populate `sessionId`, `endUserId`, `campaignId`, `activationId` so you can walk the full TV flow without copy-pasting ids.\n",
+    "name": "Vio Backend API",
+    "description": "SDK-facing endpoints for Vio, organised by flow. Set the `apiKey` variable once and every request is authorised.\n\n**Default baseUrl**: `https://api-local-angelo.vio.live` (Cloudflare tunnel to the local backend). Change to `http://localhost:5001` if you prefer direct.\n\n**Folders**:\n1. Setup & Health \u2014 smoke checks\n2. SDK Bootstrap v2 \u2014 the new multi-sponsor init flow (primary + secondary sponsors)\n3. SDK v2 \u2014 Per-broadcast \u2014 capabilities + components per broadcast\n4. TV session \u2014 Apple TV / Android TV lifecycle\n5. Cart Intent \u2014 mobile + TV variants with attribution chain\n6. Shoppable Ads \u2014 4 dispatch entry points + audit\n7. Secondary Sponsors \u2014 dashboard CRUD for secondary sponsor list\n8. Engagement (public) \u2014 polls / contests voting\n9. Legacy v1 \u2014 old bootstrap + SDK endpoints kept for comparison during migration\n\n## Changelog \u2014 April 2026\n\n- `shoppable_ad` WS events now carry `sponsorId` (top-level) for SDK commerce-key routing and `activationId` for the cart-intent \u2192 mobile attribution chain. Trigger endpoints also return `activationId` in the HTTP response so Postman can auto-capture it for the downstream `cart-intent` request.\n- New soft-miss request under folder 4 to exercise the `{ subscribed: false, reason: ... }` path of `/api/sdk/tv/broadcast/subscribe`.\n- Post-response scripts auto-populate `sessionId`, `endUserId`, `campaignId`, `activationId` so you can walk the full TV flow without copy-pasting ids.\n\n\n## Reorganisation \u2014 2026-04-23\n\nCollection is now grouped by audience (who calls the endpoint):\n1. Mobile SDK (iOS + Kotlin)\n2. TV SDK (Apple TV + Android TV)\n3. Commerce (sponsor-scoped helpers)\n4. Dashboard (operator, session auth)\n5. Admin (Bearer JWT)\n\nLegacy v1 endpoints removed \u2014 the v2 bootstraps supersede them.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -108,7 +108,8 @@
   },
   "item": [
     {
-      "name": "1. Setup & Health",
+      "name": "0. Setup & Health",
+      "description": "Probe backend availability. No auth required.",
       "item": [
         {
           "name": "GET /api/status",
@@ -129,36 +130,12 @@
             },
             "description": "Health check. Returns 200 if the backend is reachable."
           }
-        },
-        {
-          "name": "GET /v2/sdk/config \u2014 apiKey sanity check",
-          "request": {
-            "method": "GET",
-            "url": {
-              "raw": "{{baseUrl}}/v2/sdk/config?apiKey={{apiKey}}",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "v2",
-                "sdk",
-                "config"
-              ],
-              "query": [
-                {
-                  "key": "apiKey",
-                  "value": "{{apiKey}}"
-                }
-              ]
-            },
-            "description": "Validates your apiKey and that the backend supports v2. Expect 200 with the multi-sponsor bootstrap payload."
-          }
         }
       ]
     },
     {
-      "name": "2. SDK Bootstrap v2",
-      "description": "The new init flow. SDK calls these once when a host app starts.",
+      "name": "1. Mobile SDK (iOS + Kotlin)",
+      "description": "What the companion mobile app calls. Auth: `X-API-Key: {{apiKey}}`.\n\nFlow: bootstrap via `/v2/sdk/config`, register device for push fallback, consume cart_intent over WS or push, send cart_intent from the mobile overlay.\n\nEngagement (polls, contests) is also mobile-scoped today \u2014 polls/contests are rendered in the companion app.",
       "item": [
         {
           "name": "GET /v2/sdk/config (primary + secondary sponsors)",
@@ -177,58 +154,202 @@
             },
             "description": "Response shape:\n\n```json\n{\n  \"endpoints\": { \"webSocketBase\", \"commerceGraphQL\" },\n  \"campaign\": { \"id\", \"name\", \"logo\", \"isActive\", \"isPaused\", \"startDate\", \"endDate\" },\n  \"primarySponsor\": { \"id\", \"name\", \"logoUrl\", \"primaryColor\", \"secondaryColor\", \"commerce\": { \"apiKey\", \"channelId\", \"paymentMethods\": [] } | null },\n  \"secondarySponsors\": [ ... ],\n  \"features\": { \"shoppable\", \"lineup\" }\n}\n```\n\nEach sponsor's commerce block is nullable \u2014 visual-only sponsors have `commerce: null`."
           }
-        }
-      ]
-    },
-    {
-      "name": "3. SDK v2 \u2014 Per-broadcast",
-      "description": "Called when the user enters a specific broadcast.",
-      "item": [
+        },
         {
-          "name": "GET /v2/sdk/broadcasts/{id}/capabilities",
+          "name": "POST /api/campaigns/{id}/register-device",
           "request": {
-            "method": "GET",
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userId\": \"{{externalUserId}}\",\n  \"deviceId\": \"device-uuid-1\",\n  \"deviceToken\": \"apns-hex-token-64chars\",\n  \"platform\": \"ios\"\n}"
+            },
             "url": {
-              "raw": "{{baseUrl}}/v2/sdk/broadcasts/{{broadcastId}}/capabilities",
+              "raw": "{{baseUrl}}/api/campaigns/{{campaignId}}/register-device",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
-                "v2",
-                "sdk",
-                "broadcasts",
-                "{{broadcastId}}",
-                "capabilities"
+                "api",
+                "campaigns",
+                "{{campaignId}}",
+                "register-device"
               ]
             },
-            "description": "Capability map:\n\n```json\n{\n  \"broadcastId\", \"campaignId\",\n  \"engagement\": { \"enabled\", \"hasPolls\", \"hasContests\" },\n  \"shoppable\": { \"enabled\" },\n  \"lineup\": { \"available\" }\n}\n```\n\nSDK uses this to decide what to subscribe to and what to load into memory."
+            "description": "Register APNs / FCM device token for push delivery."
           }
         },
         {
-          "name": "GET /v2/sdk/broadcasts/{id}/components",
+          "name": "POST /api/campaigns/{id}/cart-intent (Mobile \u2014 with activation)",
           "request": {
-            "method": "GET",
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userId\": \"{{externalUserId}}\",\n  \"productId\": \"{{productId}}\",\n  \"productName\": \"Acme Sneakers\",\n  \"activationId\": {{activationId}},\n  \"sponsorId\": {{sponsorId}}\n}"
+            },
             "url": {
-              "raw": "{{baseUrl}}/v2/sdk/broadcasts/{{broadcastId}}/components",
+              "raw": "{{baseUrl}}/api/campaigns/{{campaignId}}/cart-intent",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
-                "v2",
-                "sdk",
-                "broadcasts",
-                "{{broadcastId}}",
-                "components"
+                "api",
+                "campaigns",
+                "{{campaignId}}",
+                "cart-intent"
               ]
             },
-            "description": "Returns campaign-scoped + broadcast-scoped placements. Each entry has:\n\n```json\n{\n  \"id\", \"campaignComponentId\",\n  \"type\": \"banner|countdown|carousel_*|product_spotlight|...\",\n  \"locationId\",\n  \"sponsor\": { \"id\", \"name\", \"logoUrl\", \"primaryColor\" },\n  \"commerce\": { \"apiKey\", \"channelId\" } | null,\n  \"config\": { ... }\n}\n```\n\nSDK uses `commerce.apiKey` per component to call Commerce GraphQL directly (model d3)."
+            "description": "Also persists now. Delivery modes: `websocket | dual | webhook | apns | dropped`. Response includes `cartIntentId` for correlation."
+          }
+        },
+        {
+          "name": "GET /v1/engagement/polls",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/v1/engagement/polls?broadcastId={{broadcastId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "engagement",
+                "polls"
+              ],
+              "query": [
+                {
+                  "key": "broadcastId",
+                  "value": "{{broadcastId}}"
+                }
+              ]
+            },
+            "description": "Public list of polls for a broadcast."
+          }
+        },
+        {
+          "name": "POST /v1/engagement/polls/{pollId}/vote",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userId\": \"{{externalUserId}}\",\n  \"optionId\": 1,\n  \"broadcastId\": \"{{broadcastId}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/engagement/polls/:pollId/vote",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "engagement",
+                "polls",
+                ":pollId",
+                "vote"
+              ],
+              "variable": [
+                {
+                  "key": "pollId",
+                  "value": "1"
+                }
+              ]
+            },
+            "description": "Rate-limited by `voting` preset. One vote per user per poll."
+          }
+        },
+        {
+          "name": "GET /v1/engagement/contests",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/v1/engagement/contests?broadcastId={{broadcastId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "engagement",
+                "contests"
+              ],
+              "query": [
+                {
+                  "key": "broadcastId",
+                  "value": "{{broadcastId}}"
+                }
+              ]
+            },
+            "description": "Public list of contests."
+          }
+        },
+        {
+          "name": "POST /v1/engagement/contests/{contestId}/participate",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userId\": \"{{externalUserId}}\",\n  \"answers\": { \"question1\": \"Barcelona\" },\n  \"broadcastId\": \"{{broadcastId}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/engagement/contests/:contestId/participate",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "engagement",
+                "contests",
+                ":contestId",
+                "participate"
+              ],
+              "variable": [
+                {
+                  "key": "contestId",
+                  "value": "1"
+                }
+              ]
+            },
+            "description": "Rate-limited by `participation` preset."
           }
         }
       ]
     },
     {
-      "name": "4. TV session",
-      "description": "TV SDK lifecycle. Prefer `POST /api/sdk/tv/broadcast/subscribe` for the combined bootstrap (validate + session + sponsors in one call). Individual session/start is still available when you only need to register a TV without binding to a broadcast.",
+      "name": "2. TV SDK (Apple TV + Android TV)",
+      "description": "What the TV SDK calls. Auth: `X-API-Key: {{apiKey}}`.\n\nFlow: `broadcast/subscribe` for combined bootstrap + session + identify, `session/*` lifecycle, `cart-intent` from the TV remote tap, optionally `broadcasts/{id}/shoppable-ad` for the TV SDK to trigger its own ad.\n\n`capabilities` + `components` are broadcast-scoped reads that the TV SDK uses after entering a broadcast.",
       "item": [
         {
           "name": "POST /api/sdk/tv/broadcast/subscribe (combined bootstrap)",
@@ -430,13 +551,7 @@
             },
             "description": "Marks `ended_at`. Optional \u2014 sessions also time out by inactivity via cron."
           }
-        }
-      ]
-    },
-    {
-      "name": "5. Cart Intent",
-      "description": "User click-to-buy. Both endpoints persist a `cart_intents` row. Carry `activationId` to close the attribution chain from a preceding shoppable_ad dispatch.",
-      "item": [
+        },
         {
           "name": "POST /api/sdk/tv/cart-intent (TV \u2014 with attribution)",
           "request": {
@@ -465,121 +580,6 @@
             },
             "description": "Called by the TV SDK when the user presses the remote on a shoppable_ad popup. The `activationId` (from the preceding WS event) is persisted as `source_activation_id` on the cart_intent row, giving us the TV\u2192Mobile\u2192Purchase attribution chain."
           }
-        },
-        {
-          "name": "POST /api/campaigns/{id}/cart-intent (Mobile \u2014 with activation)",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"userId\": \"{{externalUserId}}\",\n  \"productId\": \"{{productId}}\",\n  \"productName\": \"Acme Sneakers\",\n  \"activationId\": {{activationId}},\n  \"sponsorId\": {{sponsorId}}\n}"
-            },
-            "url": {
-              "raw": "{{baseUrl}}/api/campaigns/{{campaignId}}/cart-intent",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "api",
-                "campaigns",
-                "{{campaignId}}",
-                "cart-intent"
-              ]
-            },
-            "description": "Also persists now. Delivery modes: `websocket | dual | webhook | apns | dropped`. Response includes `cartIntentId` for correlation."
-          }
-        },
-        {
-          "name": "POST /api/campaigns/{id}/register-device",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"userId\": \"{{externalUserId}}\",\n  \"deviceId\": \"device-uuid-1\",\n  \"deviceToken\": \"apns-hex-token-64chars\",\n  \"platform\": \"ios\"\n}"
-            },
-            "url": {
-              "raw": "{{baseUrl}}/api/campaigns/{{campaignId}}/register-device",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "api",
-                "campaigns",
-                "{{campaignId}}",
-                "register-device"
-              ]
-            },
-            "description": "Register APNs / FCM device token for push delivery."
-          }
-        }
-      ]
-    },
-    {
-      "name": "6. Shoppable Ads",
-      "description": "Four dispatch entry points (all persist to shoppable_ad_activations + fan out a WS event of type `shoppable_ad`) + audit list. Each validates that `sponsorId` belongs to the campaign (primary or secondary).",
-      "item": [
-        {
-          "name": "POST /api/broadcasts/{id}/trigger-shoppable-ad (dashboard)",
-          "request": {
-            "auth": {
-              "type": "noauth"
-            },
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"productId\": \"{{productId}}\",\n  \"sponsorId\": {{sponsorId}}\n}"
-            },
-            "url": {
-              "raw": "{{baseUrl}}/api/broadcasts/{{broadcastId}}/trigger-shoppable-ad",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "api",
-                "broadcasts",
-                "{{broadcastId}}",
-                "trigger-shoppable-ad"
-              ]
-            },
-            "description": "Dashboard Quick Fire. No auth. Persists `source='dashboard'`. Response includes `activationId` \u2014 save it for chained cart_intent tests."
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "// Capture activationId so the TV cart-intent call below can close the attribution chain.",
-                  "pm.test('status 200', () => pm.response.to.have.status(200));",
-                  "try {",
-                  "  const r = pm.response.json();",
-                  "  if (r.activationId) {",
-                  "    pm.collectionVariables.set('activationId', String(r.activationId));",
-                  "    console.log('[trigger-shoppable-ad] activationId=' + r.activationId);",
-                  "  }",
-                  "} catch (e) { console.error('parse error', e); }"
-                ]
-              }
-            }
-          ]
         },
         {
           "name": "POST /api/sdk/tv/broadcasts/{id}/shoppable-ad (TV SDK)",
@@ -628,137 +628,50 @@
           ]
         },
         {
-          "name": "POST /api/broadcasts/{id}/shoppable-ad (Bearer admin)",
+          "name": "GET /v2/sdk/broadcasts/{id}/capabilities",
           "request": {
-            "auth": {
-              "type": "bearer",
-              "bearer": [
-                {
-                  "key": "token",
-                  "value": "{{adminBearer}}",
-                  "type": "string"
-                }
-              ]
-            },
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"productId\": \"{{productId}}\",\n  \"sponsorId\": {{sponsorId}}\n}"
-            },
+            "method": "GET",
             "url": {
-              "raw": "{{baseUrl}}/api/broadcasts/{{broadcastId}}/shoppable-ad",
+              "raw": "{{baseUrl}}/v2/sdk/broadcasts/{{broadcastId}}/capabilities",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
-                "api",
+                "v2",
+                "sdk",
                 "broadcasts",
                 "{{broadcastId}}",
-                "shoppable-ad"
+                "capabilities"
               ]
             },
-            "description": "JWT-protected. Persists `source='admin-api'`."
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('status 200', () => pm.response.to.have.status(200));",
-                  "try {",
-                  "  const r = pm.response.json();",
-                  "  if (r.activationId) pm.collectionVariables.set('activationId', String(r.activationId));",
-                  "} catch (e) {}"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "POST /api/broadcasts/{id}/sponsor-slots/{slotId}/execute (slot)",
-          "request": {
-            "auth": {
-              "type": "noauth"
-            },
-            "method": "POST",
-            "url": {
-              "raw": "{{baseUrl}}/api/broadcasts/{{broadcastId}}/sponsor-slots/:slotId/execute",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "api",
-                "broadcasts",
-                "{{broadcastId}}",
-                "sponsor-slots",
-                ":slotId",
-                "execute"
-              ],
-              "variable": [
-                {
-                  "key": "slotId",
-                  "value": "1"
-                }
-              ]
-            },
-            "description": "Fires a pre-configured slot. Persists `source='slot-scheduler'` with `slot_id`."
+            "description": "Capability map:\n\n```json\n{\n  \"broadcastId\", \"campaignId\",\n  \"engagement\": { \"enabled\", \"hasPolls\", \"hasContests\" },\n  \"shoppable\": { \"enabled\" },\n  \"lineup\": { \"available\" }\n}\n```\n\nSDK uses this to decide what to subscribe to and what to load into memory."
           }
         },
         {
-          "name": "GET /api/broadcasts/{id}/shoppable-ads (audit list)",
+          "name": "GET /v2/sdk/broadcasts/{id}/components",
           "request": {
-            "auth": {
-              "type": "noauth"
-            },
             "method": "GET",
             "url": {
-              "raw": "{{baseUrl}}/api/broadcasts/{{broadcastId}}/shoppable-ads?limit=20",
+              "raw": "{{baseUrl}}/v2/sdk/broadcasts/{{broadcastId}}/components",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
-                "api",
+                "v2",
+                "sdk",
                 "broadcasts",
                 "{{broadcastId}}",
-                "shoppable-ads"
-              ],
-              "query": [
-                {
-                  "key": "limit",
-                  "value": "20"
-                },
-                {
-                  "key": "offset",
-                  "value": "0",
-                  "disabled": true
-                },
-                {
-                  "key": "sponsorId",
-                  "value": "{{sponsorId}}",
-                  "disabled": true
-                },
-                {
-                  "key": "source",
-                  "value": "tv-sdk",
-                  "disabled": true
-                }
+                "components"
               ]
             },
-            "description": "List activations sorted by `triggeredAt DESC`. Filters: sponsorId, source (admin-api|dashboard|tv-sdk|slot-scheduler), limit (max 200), offset."
+            "description": "Returns campaign-scoped + broadcast-scoped placements. Each entry has:\n\n```json\n{\n  \"id\", \"campaignComponentId\",\n  \"type\": \"banner|countdown|carousel_*|product_spotlight|...\",\n  \"locationId\",\n  \"sponsor\": { \"id\", \"name\", \"logoUrl\", \"primaryColor\" },\n  \"commerce\": { \"apiKey\", \"channelId\" } | null,\n  \"config\": { ... }\n}\n```\n\nSDK uses `commerce.apiKey` per component to call Commerce GraphQL directly (model d3)."
           }
         }
       ]
     },
     {
-      "name": "Commerce",
-      "description": "Sponsor-scoped Commerce GraphQL proxies used by the dashboard.",
+      "name": "3. Commerce (sponsor-scoped helpers)",
+      "description": "Routes that proxy the upstream Commerce GraphQL using a specific sponsor's `commerce_api_key`. Consumed by the dashboard slot picker today; the SDKs use the same key path via `VioConfiguration.commerce(forSponsorId:)` after bootstrap. No auth required today.",
       "item": [
         {
           "name": "GET /api/commerce/sponsors/{sponsorId}/catalog (XXL by default)",
@@ -823,8 +736,8 @@
       ]
     },
     {
-      "name": "7. Secondary Sponsors (dashboard CRUD)",
-      "description": "Manage the secondary sponsor list for a campaign. Primary lives on `campaigns.primary_sponsor_id` and is immutable once child rows exist.",
+      "name": "4. Dashboard (operator, session auth)",
+      "description": "What the dashboard UI calls while an operator is logged in. These endpoints don't require an apiKey \u2014 they rely on the session cookie from the dashboard login. Reproducible in Postman by logging in via the UI first if the cookie jar is shared.\n\nFlow: add/remove campaign sponsors, audit the shoppable ad dispatch log, trigger ad-hoc shoppable ads or execute pre-configured slots.",
       "item": [
         {
           "name": "GET /api/campaigns/{id}/secondary-sponsors",
@@ -908,41 +821,9 @@
             },
             "description": "Remove a secondary sponsor. 409 if the sponsor is still referenced by components or activations on this campaign."
           }
-        }
-      ]
-    },
-    {
-      "name": "8. Engagement (public, rate-limited)",
-      "item": [
-        {
-          "name": "GET /v1/engagement/polls",
-          "request": {
-            "auth": {
-              "type": "noauth"
-            },
-            "method": "GET",
-            "url": {
-              "raw": "{{baseUrl}}/v1/engagement/polls?broadcastId={{broadcastId}}",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "v1",
-                "engagement",
-                "polls"
-              ],
-              "query": [
-                {
-                  "key": "broadcastId",
-                  "value": "{{broadcastId}}"
-                }
-              ]
-            },
-            "description": "Public list of polls for a broadcast."
-          }
         },
         {
-          "name": "POST /v1/engagement/polls/{pollId}/vote",
+          "name": "POST /api/broadcasts/{id}/trigger-shoppable-ad (dashboard)",
           "request": {
             "auth": {
               "type": "noauth"
@@ -956,218 +837,174 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"userId\": \"{{externalUserId}}\",\n  \"optionId\": 1,\n  \"broadcastId\": \"{{broadcastId}}\"\n}"
+              "raw": "{\n  \"productId\": \"{{productId}}\",\n  \"sponsorId\": {{sponsorId}}\n}"
             },
             "url": {
-              "raw": "{{baseUrl}}/v1/engagement/polls/:pollId/vote",
+              "raw": "{{baseUrl}}/api/broadcasts/{{broadcastId}}/trigger-shoppable-ad",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
-                "v1",
-                "engagement",
-                "polls",
-                ":pollId",
-                "vote"
-              ],
-              "variable": [
-                {
-                  "key": "pollId",
-                  "value": "1"
-                }
+                "api",
+                "broadcasts",
+                "{{broadcastId}}",
+                "trigger-shoppable-ad"
               ]
             },
-            "description": "Rate-limited by `voting` preset. One vote per user per poll."
-          }
+            "description": "Dashboard Quick Fire. No auth. Persists `source='dashboard'`. Response includes `activationId` \u2014 save it for chained cart_intent tests."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Capture activationId so the TV cart-intent call below can close the attribution chain.",
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "try {",
+                  "  const r = pm.response.json();",
+                  "  if (r.activationId) {",
+                  "    pm.collectionVariables.set('activationId', String(r.activationId));",
+                  "    console.log('[trigger-shoppable-ad] activationId=' + r.activationId);",
+                  "  }",
+                  "} catch (e) { console.error('parse error', e); }"
+                ]
+              }
+            }
+          ]
         },
         {
-          "name": "GET /v1/engagement/contests",
-          "request": {
-            "auth": {
-              "type": "noauth"
-            },
-            "method": "GET",
-            "url": {
-              "raw": "{{baseUrl}}/v1/engagement/contests?broadcastId={{broadcastId}}",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "v1",
-                "engagement",
-                "contests"
-              ],
-              "query": [
-                {
-                  "key": "broadcastId",
-                  "value": "{{broadcastId}}"
-                }
-              ]
-            },
-            "description": "Public list of contests."
-          }
-        },
-        {
-          "name": "POST /v1/engagement/contests/{contestId}/participate",
+          "name": "POST /api/broadcasts/{id}/sponsor-slots/{slotId}/execute (slot)",
           "request": {
             "auth": {
               "type": "noauth"
             },
             "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"userId\": \"{{externalUserId}}\",\n  \"answers\": { \"question1\": \"Barcelona\" },\n  \"broadcastId\": \"{{broadcastId}}\"\n}"
-            },
             "url": {
-              "raw": "{{baseUrl}}/v1/engagement/contests/:contestId/participate",
+              "raw": "{{baseUrl}}/api/broadcasts/{{broadcastId}}/sponsor-slots/:slotId/execute",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
-                "v1",
-                "engagement",
-                "contests",
-                ":contestId",
-                "participate"
+                "api",
+                "broadcasts",
+                "{{broadcastId}}",
+                "sponsor-slots",
+                ":slotId",
+                "execute"
               ],
               "variable": [
                 {
-                  "key": "contestId",
+                  "key": "slotId",
                   "value": "1"
                 }
               ]
             },
-            "description": "Rate-limited by `participation` preset."
-          }
-        }
-      ]
-    },
-    {
-      "name": "9. Legacy v1 (for comparison, scheduled for retirement)",
-      "description": "Old endpoints kept temporarily so SDKs can be compared before flipping to v2. Will be removed in Phase 8 once all SDKs migrate.",
-      "item": [
-        {
-          "name": "GET /v1/sdk/config (legacy)",
-          "request": {
-            "method": "GET",
-            "url": {
-              "raw": "{{baseUrl}}/v1/sdk/config",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "v1",
-                "sdk",
-                "config"
-              ]
-            },
-            "description": "Old bootstrap. Single `commerce` block, clientApp info, theme, markets. Superseded by `/v2/sdk/config`."
+            "description": "Fires a pre-configured slot. Persists `source='slot-scheduler'` with `slot_id`."
           }
         },
         {
-          "name": "GET /v1/sdk/broadcasts/{id}/lineup",
+          "name": "GET /api/broadcasts/{id}/shoppable-ads (audit list)",
           "request": {
             "auth": {
               "type": "noauth"
             },
             "method": "GET",
             "url": {
-              "raw": "{{baseUrl}}/v1/sdk/broadcasts/{{broadcastId}}/lineup?apiKey={{apiKey}}",
+              "raw": "{{baseUrl}}/api/broadcasts/{{broadcastId}}/shoppable-ads?limit=20",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
-                "v1",
-                "sdk",
+                "api",
                 "broadcasts",
                 "{{broadcastId}}",
-                "lineup"
-              ],
-              "query": [
-                {
-                  "key": "apiKey",
-                  "value": "{{apiKey}}"
-                }
-              ]
-            },
-            "description": "Starting XI for a match (football-only)."
-          }
-        },
-        {
-          "name": "GET /v1/sdk/broadcasts/{id}/chat",
-          "request": {
-            "method": "GET",
-            "url": {
-              "raw": "{{baseUrl}}/v1/sdk/broadcasts/{{broadcastId}}/chat?limit=50",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "v1",
-                "sdk",
-                "broadcasts",
-                "{{broadcastId}}",
-                "chat"
+                "shoppable-ads"
               ],
               "query": [
                 {
                   "key": "limit",
-                  "value": "50"
+                  "value": "20"
+                },
+                {
+                  "key": "offset",
+                  "value": "0",
+                  "disabled": true
+                },
+                {
+                  "key": "sponsorId",
+                  "value": "{{sponsorId}}",
+                  "disabled": true
+                },
+                {
+                  "key": "source",
+                  "value": "tv-sdk",
+                  "disabled": true
                 }
               ]
             },
-            "description": "Chat feed (feature not fully built)."
+            "description": "List activations sorted by `triggeredAt DESC`. Filters: sponsorId, source (admin-api|dashboard|tv-sdk|slot-scheduler), limit (max 200), offset."
           }
-        },
+        }
+      ]
+    },
+    {
+      "name": "5. Admin (Bearer JWT)",
+      "description": "Admin API surface \u2014 Bearer JWT required (`Authorization: Bearer {{adminBearer}}`). Currently just the admin-level shoppable-ad trigger; grows as we add admin management endpoints (apps CRUD, component catalog, etc.).",
+      "item": [
         {
-          "name": "GET /v1/sdk/broadcasts/{id}/score",
+          "name": "POST /api/broadcasts/{id}/shoppable-ad (Bearer admin)",
           "request": {
-            "method": "GET",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminBearer}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"productId\": \"{{productId}}\",\n  \"sponsorId\": {{sponsorId}}\n}"
+            },
             "url": {
-              "raw": "{{baseUrl}}/v1/sdk/broadcasts/{{broadcastId}}/score",
+              "raw": "{{baseUrl}}/api/broadcasts/{{broadcastId}}/shoppable-ad",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
-                "v1",
-                "sdk",
+                "api",
                 "broadcasts",
                 "{{broadcastId}}",
-                "score"
+                "shoppable-ad"
               ]
             },
-            "description": "Current match score."
-          }
-        },
-        {
-          "name": "GET /v1/sdk/livescores",
-          "request": {
-            "method": "GET",
-            "url": {
-              "raw": "{{baseUrl}}/v1/sdk/livescores?apiKey={{apiKey}}",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "v1",
-                "sdk",
-                "livescores"
-              ],
-              "query": [
-                {
-                  "key": "apiKey",
-                  "value": "{{apiKey}}"
-                }
-              ]
-            },
-            "description": "Aggregate scores."
-          }
+            "description": "JWT-protected. Persists `source='admin-api'`."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "try {",
+                  "  const r = pm.response.json();",
+                  "  if (r.activationId) pm.collectionVariables.set('activationId', String(r.activationId));",
+                  "} catch (e) {}"
+                ]
+              }
+            }
+          ]
         }
       ]
     }
