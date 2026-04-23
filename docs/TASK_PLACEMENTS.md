@@ -7,8 +7,8 @@
 ## Status
 
 - [x] **Step 1 — Preparación** — this doc + wipe TV2 existing components
-- [ ] **Step 2 — A.1/A.2** backend WS event `sponsorId` at root (scheduler.ts + routes.ts manual toggle)
-- [ ] **Step 3 — A.4** openapi.yaml + Postman docs
+- [x] **Step 2 — A.1/A.2** backend WS event `sponsorId` at root — commit `b5d74df`. Smoke test pass (WS payload carries `sponsorId: 3`)
+- [x] **Step 3 — A.4** openapi + Postman — new `ComponentStatusChangedEvent` schema documenting the WS event shape; Postman reorganised by audience (6 folders: Setup, Mobile SDK, TV SDK, Commerce, Dashboard, Admin) + legacy v1 dropped. Commits `1d0ae3c` + (this step)
 - [ ] **Step 4 — C.1** dashboard sponsor picker obligatorio
 - [ ] **Step 5 — C.2** dashboard component catalog scope a `app_components`
 - [ ] **Step 6 — C.3** dashboard product picker para types `product_*`

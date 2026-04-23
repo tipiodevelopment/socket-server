@@ -1081,6 +1081,51 @@ components:
             channelId: { type: string, nullable: true }
         config: { type: object }
 
+    ComponentStatusChangedEvent:
+      type: object
+      description: |
+        **WebSocket event** broadcast to `/ws/{campaignId}` when a campaign component
+        flips its active/inactive status. Three emission sources:
+        - `PATCH /api/campaigns/:id/components/:componentId` — operator manual toggle
+        - `server/scheduler.ts` — auto-activate at `scheduledTime`
+        - `server/scheduler.ts` — auto-deactivate at `endTime`
+
+        iOS SDK consumes it via `CampaignWebSocketManager.onComponentStatusChanged` and
+        upserts `CampaignManager.activeComponents` keyed by `componentId`. `sponsorId`
+        at the root drives the sponsor-aware commerce routing on the view side
+        (`ProductService.loadProduct(sponsorId:)`).
+      properties:
+        type:
+          type: string
+          enum: [component_status_changed]
+        campaignId:
+          type: integer
+        componentId:
+          type: string
+          description: Catalog component uuid (varchar 50)
+        sponsorId:
+          type: integer
+          nullable: true
+          description: |
+            Sponsor that owns this placement. Drives per-sponsor Commerce GraphQL
+            routing on the SDK side via `VioConfiguration.commerce(forSponsorId:)`.
+            Nullable only for legacy rows that predate the multi-sponsor model.
+        status:
+          type: string
+          enum: [active, inactive]
+        matchId:
+          type: string
+          nullable: true
+        component:
+          type: object
+          nullable: true
+          description: Snapshot of the catalog component + its resolved config
+          properties:
+            id: { type: string }
+            type: { type: string }
+            name: { type: string }
+            config: { type: object, description: "customConfig override || catalog config" }
+
     CartIntent:
       type: object
       description: Persisted row for a cart_intent dispatch
@@ -5128,7 +5173,14 @@ paths:
       tags:
         - Dashboard - Components
       summary: Update campaign component
-      description: Updates a campaign component's status or configuration.
+      description: |
+        Updates a campaign component's status or configuration.
+
+        **Side effect**: when `status` transitions active↔inactive the backend
+        broadcasts a `component_status_changed` WebSocket event (see schema
+        `ComponentStatusChangedEvent`) to the `/ws/{campaignId}` channel, so
+        connected SDKs can reconcile their active-component state without
+        re-polling REST.
       parameters:
         - name: id
           in: path
