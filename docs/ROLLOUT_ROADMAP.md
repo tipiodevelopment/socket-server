@@ -34,8 +34,7 @@ This is a living doc. Tick items as they land. Status legend:
 | 0.2 | Bug-bash round on the dashboard slot authoring (create, edit, delete, fire, search, inline add sponsor) | Angelo | ⏳ |
 | 0.3 | ~~Backend dedup cart_intents~~ — **decision 2026-04-23**: dedup stays SDK-side. Backend keeps every tap as an analytics signal. iOS already dedups in `publishCartIntentIfChanged`; Kotlin spec requires the same. | — | ✅ resolved |
 | 0.4 | Commerce team ticket: `Product.images` non-nullable while data returns null. Opened by Angelo. Mitigation already in backend (fallback to `{ id title }` query). | Angelo → Commerce | 🟡 ticket filed |
-| 0.5 | Drop legacy `campaigns.sponsor_id` column (develop applied 2026-04-23; production pending). | Angelo | ✅ develop done |
-| 0.6 | Audit production sponsors without `avatar_url` — backend now hard-fails with 422 `SPONSOR_MISSING_AVATAR` on dispatch. Needs production Neon URI to run the query. | Angelo | ⏳ needs URI |
+| 0.5 | Drop legacy `campaigns.sponsor_id` column (develop applied 2026-04-23). Production not applicable — no production env yet. | Angelo | ✅ done |
 
 ## Phase 1 — Kotlin SDKs (next 2-3 weeks)
 
@@ -106,17 +105,22 @@ Spec: [`KOTLIN_MOBILE_SDK_SPEC.md`](./KOTLIN_MOBILE_SDK_SPEC.md) — mirror of
 | 3.4 | Rate-limit the TV cart-intent endpoint (currently unbounded — same tap × 10 creates 10 rows) | before partner onboarding | ⏳ |
 | 3.5 | Multi-node WS + Redis cluster — verified locally single-node; production needs the Redis-enabled path re-tested after Phase 3 | production deploy | ⏳ |
 
-## Phase 4 — Production rollout
+## Phase 4 — Production cutover
 
-### 4.1 — Pre-flight
+> **Context 2026-04-23**: we don't have a production environment today. `develop`
+> (Neon `br-royal-mode-a8e8mdq1`) is the only live environment. This phase
+> activates the day the operator decides to spin up `production`.
+
+### 4.1 — Pre-flight (when production is created)
 
 | # | Task | Status |
 |---|---|---|
-| 4.1.1 | Apply Phase 1+2+3 SQL to **production** Neon branch (follow `PHASE_3_ENFORCEMENT.md` — orphan review required) | ⏳ |
-| 4.1.2 | Create Neon backup branch from production before migration | ⏳ |
-| 4.1.3 | Dry-run the `persistAndBroadcastShoppableAd` helper against a production-like campaign to confirm no unexpected 422s | ⏳ |
-| 4.1.4 | Verify every production sponsor has `avatar_url` set (blocker — anyone missing it cannot dispatch shoppable_ads) | ⏳ |
-| 4.1.5 | Confirm Redis cluster wiring still works post-migration (the dual-delivery path falls back to webhook if Redis is down) | ⏳ |
+| 4.1.1 | Create production Neon branch (likely fork from develop after a stable milestone) | ⏳ |
+| 4.1.2 | Apply Phase 1+2+3 SQL to production branch (follow `PHASE_3_ENFORCEMENT.md` — orphan review + drop legacy column) | ⏳ |
+| 4.1.3 | Create Neon backup branch from production before any schema change | ⏳ |
+| 4.1.4 | Verify every production sponsor has `avatar_url` set (blocker — backend now 422s on dispatch when missing) | ⏳ |
+| 4.1.5 | Redis cluster wiring check — dual-delivery path falls back to webhook if Redis is down, verify the failover works on production infra | ⏳ |
+| 4.1.6 | Decide Cloudflare tunnel vs direct DNS for production SDK endpoints | ⏳ |
 
 ### 4.2 — Partner onboarding sequence
 
