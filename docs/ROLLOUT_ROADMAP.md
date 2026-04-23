@@ -25,6 +25,13 @@ This is a living doc. Tick items as they land. Status legend:
   (Apple TV hardware + iPhone) on the dev Cloudflare tunnel.
 - Phase 3 enforcement applied to Neon `develop` branch. **Production DB
   unchanged** — migration + orphan cleanup still to do.
+- **Product placement v2** — feature branch `feature/placements-v2`
+  (Neon branch `br-damp-snow-a8rv0cnc`). Backend `sponsorId` on
+  `component_status_changed` + openapi/Postman + dashboard sponsor picker
+  landed. Dashboard catalog scope / product picker / scheduling + iOS SDK
+  sponsor-aware views pending — full breakdown in §2.6 and the tracking
+  doc [`TASK_PLACEMENTS.md`](https://github.com/tipiodevelopment/socket-server/blob/feature/placements-v2/docs/TASK_PLACEMENTS.md)
+  (lands in develop when `feature/placements-v2` merges).
 
 ## Phase 0 — Finalize today's work (this week)
 
@@ -94,6 +101,27 @@ Spec: [`KOTLIN_MOBILE_SDK_SPEC.md`](./KOTLIN_MOBILE_SDK_SPEC.md) — mirror of
 | 2.3 | Analytics mini-panel on broadcast detail — show last 10 `shoppable_ad_activations` + `cart_intents` with source attribution | nice-to-have | ⏳ |
 | 2.4 | Campaign settings — expose `tv_enabled` + `tv_platforms` toggle on client_apps | must-have before onboarding a new partner | ⏳ |
 | 2.5 | Sponsor editor — make `avatar_url` a required field with upload widget (currently operator can leave it null and the backend will 422 later) | must-have | ⏳ |
+
+### 2.6 — Product placement v2 rollout (backend + dashboard + iOS SDK)
+
+Tracking doc: [`TASK_PLACEMENTS.md`](https://github.com/tipiodevelopment/socket-server/blob/feature/placements-v2/docs/TASK_PLACEMENTS.md) (lives on `feature/placements-v2` until that PR merges).
+Scope: close the 3-layer component model (`components` → `app_components` →
+`campaign_components`) end-to-end so operators can author per-sponsor placements
+and the iOS SDK routes Commerce through the correct sponsor key.
+
+| # | Task | Area | Status |
+|---|---|---|---|
+| 2.6.1 | Backend: emit `sponsorId` at root of `component_status_changed` (scheduler + manual toggle) | backend | ✅ done |
+| 2.6.2 | openapi + Postman — `ComponentStatusChangedEvent` schema + reorganise by audience | docs | ✅ done |
+| 2.6.3 | Dashboard `ComponentsTab` — sponsor picker obligatorio in Add dialog | dashboard | ✅ done |
+| 2.6.4 | Dashboard `ComponentsTab` — scope component catalog to `app_components` for the campaign's app | dashboard | ⏳ |
+| 2.6.5 | Dashboard `ComponentsTab` — product picker (`SponsorCatalogPicker`) for `product_*` types; writes `customConfig.productIds` | dashboard | ⏳ |
+| 2.6.6 | Dashboard `ComponentsTab` — scheduling fields (`scheduledTime` + `endTime`) in Add dialog | dashboard | ⏳ |
+| 2.6.7 | iOS: `Component` + `ComponentStatusChangedEvent` decode `sponsorId` | iOS SDK | ⏳ |
+| 2.6.8 | iOS: 5 product views pass `component.sponsorId` to `ProductService.loadProduct(sponsorId:)` (VProductCarousel, VProductSpotlight, VProductStore, VProductBanner, VProductSlider) | iOS SDK | ⏳ |
+| 2.6.9 | iOS: `Product.sponsorId` stamped by `ProductService` at hydrate | iOS SDK | ⏳ |
+| 2.6.10 | iOS: `CartManager.addProduct` reads `product.sponsorId` → per-sponsor checkout + Apple Pay gate | iOS SDK | ⏳ |
+| 2.6.11 | E2E: reconstruct TV2 campaign 36 with 2 placements (Elkjøp carousel + XXL spotlight); validate branding, per-sponsor Commerce routing, dual checkout | QA | ⏳ |
 
 ## Phase 3 — Backend follow-ups
 

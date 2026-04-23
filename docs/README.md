@@ -66,6 +66,8 @@ Repo: `VioSwiftSDK` (`feature/tv-cart-intent-attribution` → merged to `develop
 | Sponsor avatar requirement | `multi-sponsor-architecture.md` §4 sponsor shape, `SHOPPABLE_AD_AUTHORING.md` §Validation gates |
 | Dashboard slot authoring | `SHOPPABLE_AD_AUTHORING.md`, frontend in `client/src/pages/broadcast-detail.tsx` |
 | Commerce catalog picker (sponsor-scoped) | `SHOPPABLE_AD_AUTHORING.md`, endpoint `GET /api/commerce/sponsors/:id/catalog` |
+| Product placement model (3 layers) | `DB_AND_ENDPOINTS.md` §1-2 (`components` / `app_components` / `campaign_components`), `multi-sponsor-architecture.md` §2.2 |
+| Placement WS lifecycle (`component_status_changed`) | `DB_AND_ENDPOINTS.md` §4-5, `multi-sponsor-architecture.md` §5.1 |
 | Phase 1 SQL (additive schema) | `scripts/phase1-sql.sql` |
 | Phase 2 backfill | `scripts/backfill-multi-sponsor-phase2.ts` |
 | Phase 3 NOT NULL enforcement | `scripts/phase3-enforce-sponsor-fks.sql` + `PHASE_3_ENFORCEMENT.md` |

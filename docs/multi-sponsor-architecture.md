@@ -285,7 +285,7 @@ Organized by audience and auth.
 | `POST /api/campaigns/:id/secondary-sponsors` | Body: `{ sponsorId }`. Adds sponsor to `campaign_sponsors`. Validates not primary. |
 | `DELETE /api/campaigns/:id/secondary-sponsors/:sponsorId` | Removes from campaign_sponsors. Fails (409) if active components reference it. |
 | `POST /api/campaigns/:id/components` | New required field: `sponsorId`. Must match primary or an existing secondary. Accepts optional `broadcastId` for broadcast-scoped placements. |
-| `PATCH /api/campaigns/:id/components/:id` | Can update `sponsorId`; same validation. |
+| `PATCH /api/campaigns/:id/components/:id` | Can update `sponsorId`; same validation. Broadcasts WS `component_status_changed` (with `sponsorId` at root) on every status transition. |
 | `POST /api/broadcasts/:id/polls` | New optional `sponsorId`; defaults to campaign primary if null at insert. |
 | `POST /api/broadcasts/:id/contests` | Same as polls. |
 | `PATCH /api/broadcasts/:id` | Adds `engagementEnabled` toggle. |
@@ -304,9 +304,9 @@ Broadcasts / Polls / Contests — unchanged.
 
 | Endpoint | Method | Purpose |
 |---|---|---|
-| `GET /v1/sdk/config` | GET | Bootstrap: active campaign, primary sponsor, secondary sponsors, each with commerce block |
-| `GET /v1/sdk/broadcasts/:broadcastId/capabilities` | GET | Per-broadcast capabilities (`engagement`, `shoppable`, `lineup`) |
-| `GET /v1/sdk/broadcasts/:broadcastId/components` | GET | Active component placements for this broadcast (campaign + broadcast-scoped merged). Each carries sponsor_id + config |
+| `GET /v2/sdk/config` | GET | Bootstrap: active campaign, primary sponsor, secondary sponsors, each with commerce block. `/v1/sdk/config` kept as deprecated alias during SDK migration. |
+| `GET /v2/sdk/broadcasts/:broadcastId/capabilities` | GET | Per-broadcast capabilities (`engagement`, `shoppable`, `lineup`) |
+| `GET /v2/sdk/broadcasts/:broadcastId/components` | GET | Active component placements for this broadcast (campaign + broadcast-scoped merged). Each carries `sponsor.id` + `commerce` block + config |
 | `GET /v1/sdk/broadcasts/:broadcastId/polls` | GET | Polls for the broadcast, each with its sponsor |
 | `GET /v1/sdk/broadcasts/:broadcastId/contests` | GET | Contests |
 | `POST /v1/sdk/engagement/poll-vote` | POST | Vote on a poll |
@@ -326,7 +326,7 @@ Broadcasts / Polls / Contests — unchanged.
 | `POST /api/sdk/tv/cart-intent` | POST | TV-originated cart intent. **v2 minimal body**: `{ externalUserId, productId, activationId }` — the backend derives `campaignId` + `sponsorId` from `shoppable_ad_activations[activationId]`. Legacy body with explicit `{ campaignId, sponsorId, platform }` still accepted for ad-hoc callers (no upstream activation). Persists `cart_intents` with `source_activation_id = activationId` **and forwards the envelope to the user's mobile** via the same delivery tree as `/api/campaigns/:id/cart-intent` (local WS → Redis cluster → partner webhook → APNs). The persisted row records the actual `delivery_mode`. |
 | `GET /api/sdk/tv/broadcasts/:broadcastId/capabilities` | GET | Same as mobile `capabilities` but filtered for TV (no engagement UI on TV; only shoppable) |
 
-### 4.4 `/v1/sdk/config` response shape (final)
+### 4.4 `/v2/sdk/config` response shape (final)
 
 ```jsonc
 {
@@ -391,7 +391,7 @@ Broadcasts / Polls / Contests — unchanged.
 
 **Removed from current response**: `sdkVersion`, `clientApp.*` (already local), `endpoints.restBase`, `theme.*`, `markets`, `campaign.paymentMethods` (moved to sponsors), `commerce.*` at top-level (replaced by per-sponsor block).
 
-### 4.5 `/v1/sdk/broadcasts/:broadcastId/capabilities` response
+### 4.5 `/v2/sdk/broadcasts/:broadcastId/capabilities` response
 
 ```jsonc
 {
@@ -413,7 +413,7 @@ Broadcasts / Polls / Contests — unchanged.
 
 SDK uses this to decide whether to open the WebSocket and which subsystems to boot.
 
-### 4.6 `/v1/sdk/broadcasts/:broadcastId/components` response
+### 4.6 `/v2/sdk/broadcasts/:broadcastId/components` response
 
 ```jsonc
 {
@@ -479,6 +479,29 @@ The SDK resolves products directly from Commerce GraphQL using `commerce.apiKey`
 can therefore treat `sponsor.avatarUrl` as effectively non-null on this event type.
 
 `cart_intent` — unchanged envelope (v1), but now triggered by persistence-first endpoint.
+
+`component_status_changed` — now carries `sponsorId` at the root so the SDK can
+resolve per-sponsor Commerce routing for a placement without an extra lookup:
+
+```jsonc
+{
+  "type": "component_status_changed",
+  "campaignId": 35,
+  "componentId": "f5d4…",         // campaign_components.id
+  "sponsorId": 3,                  // ← added (matches placement's sponsor)
+  "status": "active",              // "active" | "inactive"
+  "component": {                   // snapshot of the template + effective config
+    "id": "f5d4…",
+    "type": "product_carousel",
+    "name": "Home Hero Carousel",
+    "config": { "productIds": ["123", "456"] }
+  }
+}
+```
+
+Emitted by both paths:
+- `server/routes.ts` — dashboard manual toggle (`PATCH /api/campaigns/:id/components/:componentId`)
+- `server/scheduler.ts` — `scheduledTime` reached → activate, `endTime` reached → deactivate, campaign ended → deactivate in batch
 
 ### 5.2 New events
 
