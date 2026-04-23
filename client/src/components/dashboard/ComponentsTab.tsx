@@ -22,6 +22,10 @@ export function ComponentsTab({ campaignId }: ComponentsTabProps) {
   const { toast } = useToast();
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [selectedComponentId, setSelectedComponentId] = useState<string>('');
+  /// Sponsor that owns this placement. `campaign_components.sponsor_id` is NOT NULL
+  /// in the multi-sponsor model (Phase 3), so the form MUST capture a sponsor before
+  /// submit or the backend returns 400.
+  const [selectedSponsorId, setSelectedSponsorId] = useState<string>('');
   const [instanceName, setInstanceName] = useState<string>('');
   const [locationId, setLocationId] = useState<string>('');
   const [editingConfigFor, setEditingConfigFor] = useState<(CampaignComponent & { component: Component }) | null>(null);
@@ -38,12 +42,26 @@ export function ComponentsTab({ campaignId }: ComponentsTabProps) {
     queryKey: ['/api/components'],
   });
 
+  /// Sponsors linked to this campaign (primary + secondaries). The operator can
+  /// only assign a placement to a sponsor that exists here — backend enforces
+  /// the same invariant via `isSponsorAllowedForCampaign`.
+  const { data: campaignSponsors = [] } = useQuery<Array<{ sponsorId: number; name: string; role: string; logoUrl?: string | null; primaryColor?: string | null }>>({
+    queryKey: ['/api/campaigns', campaignId, 'sponsors'],
+    queryFn: async () => {
+      const res = await fetch(`/api/campaigns/${campaignId}/sponsors`);
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: !!campaignId,
+  });
+
   const isPaused = campaign?.isPaused === 'true';
 
   const addComponentMutation = useMutation({
-    mutationFn: async ({ componentId, instanceName, locationId }: { componentId: string; instanceName?: string; locationId?: string }) => {
+    mutationFn: async ({ componentId, sponsorId, instanceName, locationId }: { componentId: string; sponsorId: number; instanceName?: string; locationId?: string }) => {
       return await apiRequest('POST', `/api/campaigns/${campaignId}/components`, {
         componentId,
+        sponsorId,
         instanceName: instanceName || undefined,
         locationId: locationId || undefined,
         status: 'inactive',
@@ -54,6 +72,7 @@ export function ComponentsTab({ campaignId }: ComponentsTabProps) {
       queryClient.invalidateQueries({ queryKey: ['/api/components/usage'] });
       setIsAddDialogOpen(false);
       setSelectedComponentId('');
+      setSelectedSponsorId('');
       setInstanceName('');
       setLocationId('');
       toast({
@@ -202,8 +221,44 @@ export function ComponentsTab({ campaignId }: ComponentsTabProps) {
                       <p>No available components.</p>
                       <p className="text-sm mt-2">Create components in the Component Library.</p>
                     </div>
+                  ) : campaignSponsors.length === 0 ? (
+                    <div className="text-center py-8 text-muted-foreground">
+                      <p>This campaign has no sponsors linked.</p>
+                      <p className="text-sm mt-2">Add a primary or secondary sponsor in the Sponsors tab before creating placements.</p>
+                    </div>
                   ) : (
                     <>
+                      <div className="space-y-2">
+                        <Label>
+                          Sponsor <span className="text-red-500">*</span>
+                        </Label>
+                        <Select value={selectedSponsorId} onValueChange={setSelectedSponsorId}>
+                          <SelectTrigger data-testid="select-sponsor">
+                            <SelectValue placeholder="Which sponsor owns this placement..." />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {campaignSponsors.map((s) => (
+                              <SelectItem key={s.sponsorId} value={String(s.sponsorId)}>
+                                <div className="flex items-center gap-2">
+                                  {s.logoUrl ? (
+                                    <img src={s.logoUrl} alt={s.name} className="w-4 h-4 object-contain rounded" />
+                                  ) : (
+                                    <div className="w-4 h-4 rounded text-[9px] font-bold flex items-center justify-center text-white"
+                                      style={{ backgroundColor: s.primaryColor ?? '#3d8b7a' }}>
+                                      {s.name.slice(0, 2).toUpperCase()}
+                                    </div>
+                                  )}
+                                  <span>{s.name}</span>
+                                  <span className="text-xs text-muted-foreground">({s.role})</span>
+                                </div>
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <p className="text-xs text-muted-foreground">
+                          Drives branding + per-sponsor Commerce routing on the SDK side.
+                        </p>
+                      </div>
                       <div className="space-y-2">
                         <Label>Select Component</Label>
                         <Select value={selectedComponentId} onValueChange={setSelectedComponentId}>
@@ -252,8 +307,13 @@ export function ComponentsTab({ campaignId }: ComponentsTabProps) {
                         </p>
                       </div>
                       <Button
-                        onClick={() => selectedComponentId && addComponentMutation.mutate({ componentId: selectedComponentId, instanceName: instanceName.trim() || undefined, locationId: locationId || undefined })}
-                        disabled={!selectedComponentId || addComponentMutation.isPending}
+                        onClick={() => selectedComponentId && selectedSponsorId && addComponentMutation.mutate({
+                          componentId: selectedComponentId,
+                          sponsorId: parseInt(selectedSponsorId),
+                          instanceName: instanceName.trim() || undefined,
+                          locationId: locationId || undefined,
+                        })}
+                        disabled={!selectedComponentId || !selectedSponsorId || addComponentMutation.isPending}
                         className="w-full"
                         data-testid="button-confirm-add"
                       >
