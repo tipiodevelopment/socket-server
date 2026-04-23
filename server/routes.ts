@@ -2971,6 +2971,11 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
             type: 'component_status_changed',
             campaignId,
             componentId,
+            // Sponsor that owns this placement — the iOS SDK uses it to route
+            // ProductService to the right sponsor's Commerce GraphQL key via
+            // VioConfiguration.commerce(forSponsorId:). Mirrors the scheduler-
+            // driven emissions in server/scheduler.ts.
+            sponsorId: updated.sponsorId ?? null,
             status,
             component: fullComponent ? {
               id: fullComponent.id,

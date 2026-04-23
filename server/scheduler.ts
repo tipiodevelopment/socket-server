@@ -73,6 +73,7 @@ async function checkScheduledComponents() {
               type: 'component_status_changed',
               campaignId: campaign.id,
               componentId: cc.componentId,
+              sponsorId: cc.sponsorId ?? null,
               status: 'active',
               component: {
                 id: cc.component.id,
@@ -86,14 +87,15 @@ async function checkScheduledComponents() {
 
         if (cc.status === 'active' && endTime && now >= endTime) {
           console.log(`[Scheduler] Deactivating component ${cc.component.name} (${cc.component.type}) in campaign ${campaign.id}`);
-          
+
           const updated = await storage.updateCampaignComponentStatus(campaign.id, cc.componentId, 'inactive');
-          
+
           if (updated) {
             broadcastToCampaign(campaign.id, JSON.stringify({
               type: 'component_status_changed',
               campaignId: campaign.id,
               componentId: cc.componentId,
+              sponsorId: cc.sponsorId ?? null,
               status: 'inactive',
               component: {
                 id: cc.component.id,
