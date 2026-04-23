@@ -6,7 +6,10 @@ developer's machine that has all three repos cloned alongside this one.
 
 ## Start here
 
-- **New to this project?** → [`multi-sponsor-architecture.md`](./multi-sponsor-architecture.md)
+- **Need a quick reference map** (schema + endpoints + WS events + recipes)? →
+  [`DB_AND_ENDPOINTS.md`](./DB_AND_ENDPOINTS.md). Start here if you're the dev
+  landing on this codebase for the first time.
+- **New to this project conceptually?** → [`multi-sponsor-architecture.md`](./multi-sponsor-architecture.md)
   is the authoritative spec (tables, endpoints, WS events, attribution chain).
 - **Planning next steps?** → [`ROLLOUT_ROADMAP.md`](./ROLLOUT_ROADMAP.md)
   tracks what's landed and what's queued across 5 phases.
