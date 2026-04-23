@@ -32,8 +32,10 @@ This is a living doc. Tick items as they land. Status legend:
 |---|---|---|---|
 | 0.1 | Real-device TV2 E2E dry-run (physical Apple TV + physical iPhone, dev tunnel) | QA + Angelo | ⏳ |
 | 0.2 | Bug-bash round on the dashboard slot authoring (create, edit, delete, fire, search, inline add sponsor) | Angelo | ⏳ |
-| 0.3 | Decide cart_intents backend dedup policy — keep one row per tap (analytics) or collapse by `activationId + end_user` within N seconds. Flagged but not implemented. | Angelo | ⏳ |
-| 0.4 | Commerce team ticket: fix `images` null on `Product.images` non-nullable field (upstream GraphQL data-quality issue hitting several real products) | Angelo → Commerce | ⏳ |
+| 0.3 | ~~Backend dedup cart_intents~~ — **decision 2026-04-23**: dedup stays SDK-side. Backend keeps every tap as an analytics signal. iOS already dedups in `publishCartIntentIfChanged`; Kotlin spec requires the same. | — | ✅ resolved |
+| 0.4 | Commerce team ticket: `Product.images` non-nullable while data returns null. Opened by Angelo. Mitigation already in backend (fallback to `{ id title }` query). | Angelo → Commerce | 🟡 ticket filed |
+| 0.5 | Drop legacy `campaigns.sponsor_id` column (develop applied 2026-04-23; production pending). | Angelo | ✅ develop done |
+| 0.6 | Audit production sponsors without `avatar_url` — backend now hard-fails with 422 `SPONSOR_MISSING_AVATAR` on dispatch. Needs production Neon URI to run the query. | Angelo | ⏳ needs URI |
 
 ## Phase 1 — Kotlin SDKs (next 2-3 weeks)
 
@@ -134,13 +136,44 @@ Process per partner (TV2 is first):
 
 ### 4.3 — Observability
 
-| # | Task | Status |
+**Stack decision (2026-04-23)**: no observability tooling today. Using Azure
+credits + free tiers to start:
+
+- **Backend (socket-server)** → **Azure Application Insights**. Node.js
+  auto-instrumentation via `applicationinsights` npm package. Log custom events:
+  - `CartIntentDispatched` — props: `deliveryMode`, `sponsorId`, `activationId`,
+    `userConnected`, `cartIntentId`.
+  - `ShoppableAdDispatched` — props: `source` (admin-api/dashboard/tv-sdk/
+    slot-scheduler), `sponsorId`, `campaignId`, `activationId`.
+  - `SubscribeOutcome` — props: `clientAppId`, `subscribed`, `reason` (nullable).
+  - `CommerceGraphQLFallback` — when the rich query 500s and we fall back to
+    minimal, count the occurrences per sponsor.
+  - Integrates with Azure alerts natively; credits cover ingestion.
+- **SDKs (iOS + Apple TV + Kotlin x2)** → **Sentry free tier** (5k errors/month,
+  unlimited users, 1-project retention). Best-in-class crash reporting for
+  Swift/Kotlin/Android TV. Mobile SDK adds ~100 KB per platform.
+- **Visual dashboards later** → once App Insights queries get cumbersome, wire
+  **Grafana Cloud free** (10k metrics, 50 GB logs, 50 GB traces) as a secondary
+  — App Insights ships a connector.
+
+Initial alerts (Azure Monitor):
+
+| # | Alert | Threshold | Status |
+|---|---|---|---|
+| 4.3.1 | `cart_intents.delivery_mode = 'dropped'` rolling 15m count | >1% of total dispatches | ⏳ |
+| 4.3.2 | `/api/sdk/tv/broadcast/subscribe` soft-miss rate per client_app | >20% over 1h | ⏳ |
+| 4.3.3 | `SPONSOR_MISSING_AVATAR` 422 count | >0 (should stay 0 post-onboarding) | ⏳ |
+| 4.3.4 | Backend p95 latency on `/api/sdk/tv/cart-intent` | >2s over 5m | ⏳ |
+| 4.3.5 | Sentry: new crash in any SDK | immediate (pager) | ⏳ |
+
+Visual dashboards (App Insights Workbooks or Grafana later):
+
+| # | Panel | Status |
 |---|---|---|
-| 4.3.1 | Grafana dashboard: shoppable_ad dispatches / hour per sponsor | ⏳ |
-| 4.3.2 | Grafana dashboard: cart_intents by delivery_mode (ws / dual / webhook / apns / dropped) | ⏳ |
-| 4.3.3 | Alert on `dropped` deliveries > 1 % of total | ⏳ |
-| 4.3.4 | Alert on `/api/sdk/tv/broadcast/subscribe` soft-miss rate > 20 % per client_app (signals misconfiguration) | ⏳ |
-| 4.3.5 | Alert on `SPONSOR_MISSING_AVATAR` 422 count > 0 (should be 0 post-onboarding) | ⏳ |
+| 4.3.6 | Shoppable_ad dispatches / hour per sponsor | ⏳ |
+| 4.3.7 | cart_intents by delivery_mode (ws / dual / webhook / apns / dropped) | ⏳ |
+| 4.3.8 | Active tv_sessions / concurrent connections | ⏳ |
+| 4.3.9 | Upstream Commerce GraphQL error rate (isolates "is it them or us?") | ⏳ |
 
 ## Phase 5 — Post-launch hardening
 
