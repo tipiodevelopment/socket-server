@@ -85,8 +85,6 @@ export const campaigns = pgTable("campaigns", {
   userId: integer("user_id").notNull().references(() => users.id, { onDelete: 'cascade' }),
   clientAppId: integer("client_app_id").references(() => clientApps.id, { onDelete: 'cascade' }),
   channelId: integer("channel_id").references(() => channels.id, { onDelete: 'cascade' }),
-  /** DEPRECATED — use primarySponsorId. Kept during Phase 2 backfill, dropped in Phase 4. */
-  sponsorId: integer("sponsor_id").references(() => sponsors.id, { onDelete: 'set null' }),
   /** The single primary sponsor of the campaign. Set at creation, immutable after
    *  any child row (broadcast, poll, activation, cart_intent) exists. Phase 3 enforced. */
   primarySponsorId: integer("primary_sponsor_id").notNull().references(() => sponsors.id, { onDelete: 'restrict' }),
@@ -676,8 +674,8 @@ export const campaignsRelations = relations(campaigns, ({ one, many }) => ({
     fields: [campaigns.channelId],
     references: [channels.id]
   }),
-  sponsor: one(sponsors, {
-    fields: [campaigns.sponsorId],
+  primarySponsor: one(sponsors, {
+    fields: [campaigns.primarySponsorId],
     references: [sponsors.id]
   }),
   events: many(events),

@@ -1871,7 +1871,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
         return res.status(403).json({ message: 'Access denied - sponsor does not belong to this user' });
       }
 
-      const campaignData = { ...req.body, primarySponsorId: Number(primarySponsorId), sponsorId: Number(primarySponsorId) };
+      const campaignData = { ...req.body, primarySponsorId: Number(primarySponsorId) };
       if (campaignData.startDate) {
         campaignData.startDate = new Date(campaignData.startDate);
       }
@@ -1921,7 +1921,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       const sponsorMap = new Map(sponsors.map(s => [s.id, s]));
 
       const enriched = userCampaigns.map(c => {
-        const sponsor = c.sponsorId ? sponsorMap.get(c.sponsorId) : undefined;
+        const sponsor = sponsorMap.get(c.primarySponsorId);
         return {
           ...c,
           broadcastCount: countMap.get(c.id) || 0,
@@ -2100,8 +2100,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       const campaignId = parseInt(req.params.id);
 
       // Multi-sponsor redesign: reject changes to primary sponsor once child rows exist.
-      // Accept either `primarySponsorId` or legacy `sponsorId` in the body.
-      const newPrimary = updateData.primarySponsorId ?? updateData.sponsorId;
+      const newPrimary = updateData.primarySponsorId;
       if (newPrimary !== undefined) {
         const existingCampaign = await storage.getCampaign(campaignId);
         if (existingCampaign) {
@@ -2122,7 +2121,6 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
             return res.status(403).json({ message: 'Access denied - sponsor does not belong to this user' });
           }
           updateData.primarySponsorId = Number(newPrimary);
-          updateData.sponsorId = Number(newPrimary);  // keep legacy in sync during transition
         }
       }
 
@@ -5799,7 +5797,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
         activeCampaign
           ? {
               id: activeCampaign.id,
-              sponsorId: activeCampaign.sponsorId ?? null,
+              sponsorId: activeCampaign.primarySponsorId,
             }
           : null,
       );
@@ -5916,7 +5914,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       const finalSponsorBadgeText = { ...defaultSponsorBadgeText, ...sponsorBadgeText };
 
       // Resolve sponsor for brand data (sponsor takes priority over campaign brand fields)
-      const sponsor = campaign.sponsorId ? await storage.getSponsor(campaign.sponsorId) : null;
+      const sponsor = await storage.getSponsor(campaign.primarySponsorId);
 
       // Build response with defaults for missing configs
       const config = {
@@ -5977,7 +5975,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
         channelId: sdkCommerceChannelId2,
       } = await resolveCommerceFromCampaignSponsors({
         id: campaign.id,
-        sponsorId: campaign.sponsorId ?? null,
+        sponsorId: campaign.primarySponsorId,
       });
       config.integrations = {
         commerce: {

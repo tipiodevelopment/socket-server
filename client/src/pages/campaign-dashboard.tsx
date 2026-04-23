@@ -135,7 +135,7 @@ export default function CampaignDashboard() {
 
   const appName = campaign.clientAppName || null;
   const channelName = campaign.channelName || null;
-  const sponsor = campaign.sponsorId ? sponsors.find(s => s.id === campaign.sponsorId) : undefined;
+  const sponsor = sponsors.find(s => s.id === campaign.primarySponsorId);
 
   return (
     <AppLayout breadcrumbs={breadcrumbs}>

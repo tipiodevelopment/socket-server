@@ -313,7 +313,7 @@ export default function CampaignsPage() {
               const app = getAppForCampaign(campaign);
               const channel = getChannelForCampaign(campaign);
               const countries = campaign.targetCountries?.filter(Boolean);
-              const sponsor = campaign.sponsorId ? sponsorMap.get(campaign.sponsorId) : undefined;
+              const sponsor = sponsorMap.get(campaign.primarySponsorId);
               const sponsorName = campaign.sponsorName || sponsor?.name;
               const sponsorAvatarUrl = campaign.sponsorAvatarUrl || sponsor?.avatarUrl;
 
