@@ -11,7 +11,20 @@
 > **Branch**: `feature/api-v2-urls` (VioSwiftSDK, off develop). Initial 3
 > renames landed in commit `88320c5`; the 9 remaining are tracked here.
 
-## Calls the iOS SDK still makes (9 endpoints)
+## Already killed (2026-04-24, commit `748aeac` on `feature/api-v2-urls`)
+
+4 legacy calls that conflicted with multi-sponsor state have been removed from iOS:
+
+| # | Endpoint | File:line (pre-change) | Replacement |
+|---|---|---|---|
+| ~~1~~ | `GET /v1/sdk/campaigns?apiKey=` | `CampaignManager.swift:1082` | `GET /v2/mobile/config` (now populates `currentCampaign + activeCampaigns` in `fetchAndApplySdkBootstrapNow`) |
+| ~~2~~ | `GET /v1/sdk/config?apiKey=&campaignId=` | `CampaignManager.swift:816` | deleted — `/v2/mobile/config` is the single bootstrap, no fallback |
+| ~~6~~ | `GET /v1/offers?apiKey=&campaignId=` | `CampaignManager.swift:1369` | deleted — components come from WS `component_status_changed` + `GET /v2/mobile/broadcasts/:id/components` |
+| ~~7~~ | `GET /api/campaigns/:id/active-components` | `OfferBannerModels.swift:567` | deleted — WS events are authoritative |
+
+Net: iOS no longer leaks apiKey in query params for any multi-sponsor-related call. `VioConfiguration.primarySponsor + secondarySponsors + commerce` is only populated from `/v2/mobile/config`.
+
+## Calls the iOS SDK still makes (9 remaining — deferred)
 
 | # | Endpoint | iOS file:line | Purpose in code | Migration plan |
 |---|---|---|---|---|
