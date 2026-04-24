@@ -15,7 +15,7 @@ import { useUser } from '@/contexts/UserContext';
 import { AppLayout } from '@/components/AppLayout';
 import type { ClientApp, Campaign, Component as ComponentType } from '@shared/schema';
 import { ImageUploadWithPreview } from '@/components/ImageUploadWithPreview';
-import { ArrowLeft, Plus, Key, Copy, RefreshCw, Eye, EyeOff, Settings, ChevronRight, Megaphone, Puzzle, BarChart3, Users, Radio, Palette, Shield, Bell, Plug, X, Calendar } from 'lucide-react';
+import { ArrowLeft, Plus, Key, Copy, RefreshCw, Eye, EyeOff, Settings, ChevronRight, Megaphone, Puzzle, BarChart3, Users, Radio, Palette, Shield, Bell, Plug, X, Calendar, Tv } from 'lucide-react';
 
 function formatViewers(num: number): string {
   if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M';
@@ -61,6 +61,8 @@ export default function AppDetailPage() {
   const [editBannerUrl, setEditBannerUrl] = useState('');
   const [editWebhookUrl, setEditWebhookUrl] = useState('');
   const [editPartnerDeviceRegisterUrl, setEditPartnerDeviceRegisterUrl] = useState('');
+  const [editTvEnabled, setEditTvEnabled] = useState(false);
+  const [editTvPlatforms, setEditTvPlatforms] = useState<string[]>([]);
 
   const { data: app, isLoading: appLoading } = useQuery<ClientApp>({
     queryKey: ['/api/client-apps', appIdNum, userId],
@@ -209,6 +211,8 @@ export default function AppDetailPage() {
     if (app) {
       setEditWebhookUrl(app.webhookUrl || '');
       setEditPartnerDeviceRegisterUrl(app.partnerDeviceRegisterUrl || '');
+      setEditTvEnabled(((app as any).tvEnabled as boolean | null | undefined) === true);
+      setEditTvPlatforms(((app as any).tvPlatforms as string[] | null | undefined) ?? []);
     }
     setSettingsTab(tab);
     setSettingsModalOpen(true);
@@ -678,6 +682,7 @@ export default function AppDetailPage() {
                   { id: 'general', label: 'General', icon: Settings },
                   { id: 'api-keys', label: 'API Keys', icon: Key },
                   { id: 'branding', label: 'Branding', icon: Palette },
+                  { id: 'platforms', label: 'Platforms', icon: Tv },
                   { id: 'integrations', label: 'Integrations', icon: Plug },
                 ].map(tab => (
                   <button
@@ -718,6 +723,7 @@ export default function AppDetailPage() {
                   {settingsTab === 'general' && 'General Settings'}
                   {settingsTab === 'api-keys' && 'API Keys'}
                   {settingsTab === 'branding' && 'Branding'}
+                  {settingsTab === 'platforms' && 'Platforms'}
                   {settingsTab === 'integrations' && 'Integrations'}
                 </DialogTitle>
               </DialogHeader>
@@ -783,6 +789,91 @@ ReachuSDK.configure(
                   <Palette className="w-12 h-12 text-gray-600 mx-auto mb-3" />
                   <h3 className="text-lg font-semibold text-white mb-2">Branding Customization</h3>
                   <p className="text-sm text-gray-500">Customize your app's visual appearance. Coming soon.</p>
+                </div>
+              )}
+
+              {settingsTab === 'platforms' && (
+                <div className="space-y-6">
+                  <div>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <Label className="text-gray-200 text-sm font-medium">TV companion app</Label>
+                        <p className="text-xs text-gray-500 mt-1">
+                          Enable if this host app ships a TV companion (Apple TV / Android TV / …) that loads <code className="text-gray-400">VioTVSDK</code> or the Kotlin TV SDK. When off, <code className="text-gray-400">POST /v2/tv/broadcast/subscribe</code> returns <code className="text-gray-400">{"{subscribed:false, reason:\"tv_not_enabled_for_this_platform\"}"}</code> and the SDK stays idle.
+                        </p>
+                      </div>
+                      <label className="relative inline-flex items-center cursor-pointer ml-4">
+                        <input
+                          type="checkbox"
+                          checked={editTvEnabled}
+                          onChange={(e) => setEditTvEnabled(e.target.checked)}
+                          className="sr-only peer"
+                          data-testid="toggle-tv-enabled"
+                        />
+                        <div className="w-11 h-6 bg-white/10 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:bg-green-500/60 after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:rounded-full after:h-5 after:w-5 after:transition"></div>
+                      </label>
+                    </div>
+                  </div>
+
+                  <div className={editTvEnabled ? '' : 'opacity-40 pointer-events-none'}>
+                    <Label className="text-gray-400 text-xs uppercase">Supported platforms</Label>
+                    <p className="text-xs text-gray-500 mt-1 mb-3">
+                      Pick which TV platforms this app supports. Subscribe rejects any TV client whose <code className="text-gray-400">platform</code> isn't in this list.
+                    </p>
+                    <div className="grid grid-cols-2 gap-2">
+                      {[
+                        { id: 'apple-tv',   label: 'Apple TV',   sub: 'tvOS — VioTVSDK' },
+                        { id: 'android-tv', label: 'Android TV', sub: 'Kotlin TV SDK (pending)' },
+                        { id: 'fire-tv',    label: 'Fire TV',    sub: 'not supported yet' },
+                        { id: 'roku',       label: 'Roku',       sub: 'not supported yet' },
+                      ].map(p => {
+                        const checked = editTvPlatforms.includes(p.id);
+                        return (
+                          <label
+                            key={p.id}
+                            className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition ${
+                              checked
+                                ? 'bg-green-500/5 border-green-500/30'
+                                : 'bg-white/[0.02] border-white/10 hover:border-white/20'
+                            }`}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onChange={(e) => {
+                                setEditTvPlatforms(prev =>
+                                  e.target.checked
+                                    ? [...prev, p.id]
+                                    : prev.filter(x => x !== p.id)
+                                );
+                              }}
+                              className="mt-0.5 accent-green-500"
+                              data-testid={`checkbox-tv-platform-${p.id}`}
+                            />
+                            <div className="flex-1">
+                              <div className="text-sm text-white">{p.label}</div>
+                              <div className="text-[11px] text-gray-500">{p.sub}</div>
+                            </div>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  <Button
+                    onClick={() => {
+                      updateAppMutation.mutate({
+                        tvEnabled: editTvEnabled,
+                        tvPlatforms: editTvEnabled ? editTvPlatforms : [],
+                      });
+                      setSettingsModalOpen(false);
+                    }}
+                    disabled={updateAppMutation.isPending}
+                    className="bg-white hover:bg-gray-200 text-black"
+                    data-testid="button-save-platforms"
+                  >
+                    {updateAppMutation.isPending ? 'Saving...' : 'Save platforms'}
+                  </Button>
                 </div>
               )}
 
