@@ -6,6 +6,10 @@ developer's machine that has all three repos cloned alongside this one.
 
 ## Start here
 
+- **Lost context? Resuming a session?** → [`CURRENT_STATE.md`](./CURRENT_STATE.md)
+  is the live status: which branch of every repo is the tip, which Neon DB
+  is active, which services are up, what PRs are open, what's next. Read
+  this first.
 - **Need a quick reference map** (schema + endpoints + WS events + recipes)? →
   [`DB_AND_ENDPOINTS.md`](./DB_AND_ENDPOINTS.md). Start here if you're the dev
   landing on this codebase for the first time.
