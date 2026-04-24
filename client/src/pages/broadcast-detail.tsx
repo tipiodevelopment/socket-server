@@ -732,106 +732,6 @@ function ScheduledAdsSection({ broadcastId }: { broadcastId: string }) {
   );
 }
 
-function ShoppableProductsSection({ broadcastId, campaignId }: { broadcastId: string; campaignId: number | null }) {
-  const { toast } = useToast();
-  const [firingId, setFiringId] = useState<number | null>(null);
-
-  const { data: products = [], isLoading } = useQuery<CommerceProduct[]>({
-    queryKey: ['/api/commerce/products', campaignId],
-    queryFn: async () => {
-      if (!campaignId) return [];
-      const res = await fetch(`/api/commerce/products?campaignId=${campaignId}`);
-      if (!res.ok) return [];
-      return res.json();
-    },
-    enabled: !!campaignId,
-  });
-
-  const fireAdMutation = useMutation({
-    mutationFn: async (productId: number) => {
-      setFiringId(productId);
-      const res = await fetch(`/api/broadcasts/${broadcastId}/trigger-shoppable-ad`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ productId: String(productId) }),
-      });
-      if (!res.ok) throw new Error(await res.text());
-      return res.json();
-    },
-    onSuccess: (data, productId) => {
-      const product = products.find(p => p.id === productId);
-      toast({ title: 'Ad triggered', description: `"${product?.name ?? 'Product'}" sent to viewers` });
-      setFiringId(null);
-    },
-    onError: (err: any) => {
-      toast({ title: 'Error', description: err.message || 'Failed to trigger ad', variant: 'destructive' });
-      setFiringId(null);
-    },
-  });
-
-  return (
-    <div className="mb-6" data-testid="section-products">
-      <div className="flex items-center justify-between mb-4">
-        <h2 className="text-sm font-semibold text-gray-900 dark:text-white">Sponsor Moments</h2>
-        {products.length > 0 && (
-          <span className="text-[11px] text-white/30">{products.length} product{products.length !== 1 ? 's' : ''} from Commerce</span>
-        )}
-      </div>
-
-      {!campaignId ? (
-        <div className="bg-transparent border border-gray-200 dark:border-white/10 rounded-lg p-8 text-center">
-          <ShoppingBag className="w-10 h-10 text-gray-400 dark:text-gray-500 mx-auto mb-3" />
-          <p className="text-xs text-gray-500 dark:text-gray-400">Link this broadcast to a campaign to see Commerce products</p>
-        </div>
-      ) : isLoading ? (
-        <div className="grid grid-cols-4 gap-4">
-          {[1,2,3,4].map(i => <div key={i} className="h-56 bg-white/5 rounded-lg animate-pulse" />)}
-        </div>
-      ) : products.length === 0 ? (
-        <div className="bg-transparent border border-gray-200 dark:border-white/10 rounded-lg p-8 text-center">
-          <ShoppingBag className="w-10 h-10 text-gray-400 dark:text-gray-500 mx-auto mb-3" />
-          <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-1">No Commerce products</h3>
-          <p className="text-xs text-gray-500 dark:text-gray-400">Configure the Commerce integration in campaign settings to list products here</p>
-        </div>
-      ) : (
-        <div className="grid grid-cols-4 gap-4">
-          {products.map((product) => (
-            <div key={product.id} className="bg-transparent border border-gray-200 dark:border-white/10 rounded-lg overflow-hidden hover:border-gray-300 dark:hover:border-white/30 transition flex flex-col" data-testid={`card-product-${product.id}`}>
-              <div className="h-40 bg-gray-50 dark:bg-white/5 flex items-center justify-center p-4">
-                {product.imageUrl ? (
-                  <img className="w-full h-full object-contain" src={product.imageUrl} alt={product.name} />
-                ) : (
-                  <ShoppingBag className="w-12 h-12 text-gray-300 dark:text-gray-600" />
-                )}
-              </div>
-              <div className="p-3 flex flex-col flex-1">
-                <h3 className="text-xs font-semibold text-gray-900 dark:text-white mb-1 line-clamp-2 flex-1">{product.name}</h3>
-                {product.price != null && (
-                  <p className="text-sm font-bold text-green-500 dark:text-green-400 mb-2">
-                    {product.price} <span className="text-[10px] font-normal text-gray-400">{product.currency}</span>
-                  </p>
-                )}
-                <button
-                  onClick={() => fireAdMutation.mutate(product.id)}
-                  disabled={firingId === product.id || fireAdMutation.isPending}
-                  data-testid={`button-fire-ad-product-${product.id}`}
-                  className={`w-full flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-[11px] font-medium transition ${
-                    firingId === product.id
-                      ? 'bg-white/5 text-white/30 cursor-not-allowed'
-                      : 'bg-green-500/20 hover:bg-green-500/30 text-green-400'
-                  }`}
-                >
-                  <Radio className="w-3 h-3" />
-                  {firingId === product.id ? 'Sending...' : 'Fire Ad'}
-                </button>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
 
 type TriggeredAdEntry = {
   id: string;
@@ -843,7 +743,6 @@ type TriggeredAdEntry = {
   triggeredAt: Date;
 };
 
-type CommerceProduct = { id: number; name: string; imageUrl: string | null; price: number | null; currency: string };
 type SponsorSlot = {
   id: number; broadcastId: string; sponsorId: number; campaignId: number | null;
   role: string; type: string; config: Record<string, any> | null;
@@ -880,8 +779,11 @@ function ShoppableAdTriggerSection({ broadcastId, campaignId }: { broadcastId: s
   const [cfgRefId, setCfgRefId] = useState('');
   const [cfgLeadFields, setCfgLeadFields] = useState<string[]>(['email']);
 
-  const [adhocSponsorId, setAdhocSponsorId] = useState('');
-  const [adhocProductId, setAdhocProductId] = useState<number | null>(null);
+  // "Fire now" vs "Schedule for later" radio inside the unified Shoppable Moment
+  // dialog. Default schedule — existing mental model. Fire now only makes sense
+  // for type=product; other types (lead, poll_cta, contest_cta, link) force
+  // schedule mode because they have no ad-hoc dispatch path.
+  const [dispatchMode, setDispatchMode] = useState<'now' | 'schedule'>('schedule');
 
   const { data: campaignSponsors = [] } = useQuery<any[]>({
     queryKey: ['/api/campaigns', campaignId, 'sponsors'],
@@ -958,6 +860,7 @@ function ShoppableAdTriggerSection({ broadcastId, campaignId }: { broadcastId: s
     setSelectedSponsorId(''); setSlotType('product');
     setSlotTriggerType('manual'); setSlotTriggerValue(''); setSlotProductIds([]); setAutoExecute(false);
     setCfgTitle(''); setCfgUrl(''); setCfgCta(''); setCfgMessage(''); setCfgRefId(''); setCfgLeadFields(['email']);
+    setDispatchMode('schedule');
   };
 
   /// Open the slot dialog in edit mode, pre-populating the form from an
@@ -977,6 +880,10 @@ function ShoppableAdTriggerSection({ broadcastId, campaignId }: { broadcastId: s
     setCfgMessage(String(cfg.message ?? ''));
     setCfgRefId(String(cfg.pollId ?? cfg.contestId ?? ''));
     setCfgLeadFields(Array.isArray(cfg.fields) ? cfg.fields : ['email']);
+    // Editing an existing row always means Schedule mode — a persisted slot
+    // can't be "edited into a one-off fire". If the operator wants to fire it
+    // now, the slot card has its own "Fire" button.
+    setDispatchMode('schedule');
     setAddSlotOpen(true);
   };
 
@@ -1071,35 +978,43 @@ function ShoppableAdTriggerSection({ broadcastId, campaignId }: { broadcastId: s
     onError: (err: any) => toast({ title: 'Error', description: err.message || 'Failed', variant: 'destructive' }),
   });
 
-  const adhocTriggerMutation = useMutation({
+  /// "Fire now" submit — picks the first product from slotProductIds because
+  /// a one-off dispatch can only target a single product. The selectedSponsorId
+  /// and product come from the unified dialog form (same fields the Schedule
+  /// flow uses). No slot row is persisted.
+  const fireNowMutation = useMutation({
     mutationFn: async () => {
-      if (!adhocProductId) throw new Error('Select a product');
+      const productId = slotProductIds[0];
+      if (!productId) throw new Error('Select a product');
       const res = await fetch(`/api/broadcasts/${broadcastId}/trigger-shoppable-ad`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          productId: String(adhocProductId),
-          sponsorId: (adhocSponsorId && adhocSponsorId !== 'none') ? adhocSponsorId : undefined,
+          productId: String(productId),
+          sponsorId: selectedSponsorId || undefined,
         }),
       });
       if (!res.ok) throw new Error(await res.text());
       return res.json();
     },
     onSuccess: (data) => {
-      const sponsor = adhocSponsorId && adhocSponsorId !== 'none'
-        ? campaignSponsors.find((s: any) => String(s.sponsorId) === adhocSponsorId)
+      const sponsor = selectedSponsorId
+        ? campaignSponsors.find((s: any) => String(s.sponsorId) === selectedSponsorId)
         : undefined;
+      const productId = slotProductIds[0];
       const entry: TriggeredAdEntry = {
-        id: `adhoc-${Date.now()}`,
-        productId: String(adhocProductId),
-        productName: data.product?.name ?? `Product #${adhocProductId}`,
+        id: `firenow-${Date.now()}`,
+        productId: String(productId),
+        productName: data.product?.name ?? `Product #${productId}`,
         productPrice: data.product?.price != null ? `${data.product.price} ${data.product.currency ?? 'NOK'}`.trim() : null,
         productImage: data.product?.imageUrl ?? null,
         sponsorName: sponsor?.name ?? null,
         triggeredAt: new Date(),
       };
       setLog(prev => [entry, ...prev]);
-      toast({ title: 'Ad triggered', description: `"${entry.productName}" sent to viewers` });
+      toast({ title: 'Ad fired', description: `"${entry.productName}" sent to viewers` });
+      setAddSlotOpen(false);
+      resetSlotForm();
     },
     onError: (err: any) => toast({ title: 'Error', description: err.message || 'Failed', variant: 'destructive' }),
   });
@@ -1118,14 +1033,17 @@ function ShoppableAdTriggerSection({ broadcastId, campaignId }: { broadcastId: s
 
   return (
     <div className="mb-6 space-y-5" data-testid="section-shoppable-ads">
-      <div className="flex items-center justify-between">
-        <h2 className="text-sm font-semibold text-gray-900 dark:text-white">Sponsor Moments</h2>
+      <div className="flex items-end justify-between">
+        <div>
+          <h2 className="text-sm font-semibold text-gray-900 dark:text-white">Shoppable Moments</h2>
+          <p className="text-[11px] text-white/40 mt-0.5">Scheduled slots + ad-hoc fire — one unified form, dispatch mode picks the path</p>
+        </div>
       </div>
 
-      {/* Pre-programmed Slots Panel */}
+      {/* Scheduled slot list + Add Moment dialog */}
       <div className="bg-transparent border border-gray-200 dark:border-white/10 rounded-xl overflow-hidden">
         <div className="flex items-center justify-between px-4 py-3 bg-gray-50 dark:bg-white/[0.03] border-b border-gray-100 dark:border-white/10">
-          <span className="text-xs font-semibold text-gray-500 dark:text-white/50 uppercase tracking-wide">Pre-programmed Slots</span>
+          <span className="text-xs font-semibold text-gray-500 dark:text-white/50 uppercase tracking-wide">Scheduled</span>
           <Dialog open={addSlotOpen} onOpenChange={(open) => {
             setAddSlotOpen(open);
             // Clearing the edit state when the dialog closes prevents the next
@@ -1138,19 +1056,64 @@ function ShoppableAdTriggerSection({ broadcastId, campaignId }: { broadcastId: s
                 className="flex items-center gap-1.5 text-xs text-white/40 hover:text-white/70 transition px-2 py-1 rounded-md hover:bg-white/5"
               >
                 <Plus className="w-3 h-3" />
-                Add Slot
+                Add Moment
               </button>
             </DialogTrigger>
             <DialogContent className="sm:max-w-md">
               <DialogHeader>
-                <DialogTitle>{editingSlotId ? 'Edit Slot' : 'Configure Slot'}</DialogTitle>
+                <DialogTitle>{editingSlotId ? 'Edit Shoppable Moment' : 'Add Shoppable Moment'}</DialogTitle>
                 <DialogDescription>
                   {editingSlotId
                     ? 'Update this pre-programmed sponsor moment.'
-                    : 'Pre-program a sponsor moment for this broadcast.'}
+                    : dispatchMode === 'now'
+                      ? 'Pick a sponsor + product and fire a shoppable ad immediately.'
+                      : 'Pre-program a sponsor moment. It fires on its trigger or when manually executed.'}
                 </DialogDescription>
               </DialogHeader>
               <div className="space-y-4 py-2">
+                {/* Dispatch mode — only visible on create, not on edit (edit
+                    always means schedule). Product-type only; other types force
+                    schedule silently. */}
+                {!editingSlotId && (
+                  <div className="space-y-1.5">
+                    <Label>Dispatch</Label>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        disabled={slotType !== 'product'}
+                        onClick={() => setDispatchMode('now')}
+                        data-testid="radio-dispatch-now"
+                        className={`flex flex-col items-start gap-1 px-3 py-2.5 rounded-lg border transition text-left ${
+                          dispatchMode === 'now'
+                            ? 'border-green-500/40 bg-green-500/10'
+                            : 'border-white/10 bg-white/[0.02] hover:border-white/20'
+                        } ${slotType !== 'product' ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'}`}
+                      >
+                        <span className="text-sm font-medium text-white">Fire now</span>
+                        <span className="text-[11px] text-white/40">Dispatch a one-off shoppable ad immediately</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setDispatchMode('schedule')}
+                        data-testid="radio-dispatch-schedule"
+                        className={`flex flex-col items-start gap-1 px-3 py-2.5 rounded-lg border transition cursor-pointer text-left ${
+                          dispatchMode === 'schedule'
+                            ? 'border-blue-500/40 bg-blue-500/10'
+                            : 'border-white/10 bg-white/[0.02] hover:border-white/20'
+                        }`}
+                      >
+                        <span className="text-sm font-medium text-white">Schedule for later</span>
+                        <span className="text-[11px] text-white/40">Persist a slot, fires on trigger or manually</span>
+                      </button>
+                    </div>
+                    {slotType !== 'product' && (
+                      <p className="text-[11px] text-amber-400/70">
+                        Fire now is only available for product-type moments. Other types are always scheduled.
+                      </p>
+                    )}
+                  </div>
+                )}
+
                 <div className="space-y-1.5">
                   <Label>Sponsor</Label>
                   <div className="flex items-center gap-2">
@@ -1324,49 +1287,68 @@ function ShoppableAdTriggerSection({ broadcastId, campaignId }: { broadcastId: s
                   </div>
                 )}
 
-                <div className="space-y-1.5">
-                  <Label>Trigger Type</Label>
-                  <Select value={slotTriggerType} onValueChange={setSlotTriggerType}>
-                    <SelectTrigger data-testid="select-slot-trigger-type">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="manual">Manual</SelectItem>
-                      <SelectItem value="match_minute">Match Minute</SelectItem>
-                      <SelectItem value="absolute_time">Absolute Time</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                {slotTriggerType === 'match_minute' && (
-                  <div className="space-y-1.5">
-                    <Label>Minute</Label>
-                    <Input type="number" min={1} max={120} placeholder="45" value={slotTriggerValue} onChange={e => setSlotTriggerValue(e.target.value)} data-testid="input-slot-trigger-minute" />
-                  </div>
+                {/* Scheduling fields — only in Schedule mode. Fire now is a one-off
+                    dispatch, trigger/autoExecute don't apply. */}
+                {dispatchMode === 'schedule' && (
+                  <>
+                    <div className="space-y-1.5">
+                      <Label>Trigger Type</Label>
+                      <Select value={slotTriggerType} onValueChange={setSlotTriggerType}>
+                        <SelectTrigger data-testid="select-slot-trigger-type">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="manual">Manual</SelectItem>
+                          <SelectItem value="match_minute">Match Minute</SelectItem>
+                          <SelectItem value="absolute_time">Absolute Time</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    {slotTriggerType === 'match_minute' && (
+                      <div className="space-y-1.5">
+                        <Label>Minute</Label>
+                        <Input type="number" min={1} max={120} placeholder="45" value={slotTriggerValue} onChange={e => setSlotTriggerValue(e.target.value)} data-testid="input-slot-trigger-minute" />
+                      </div>
+                    )}
+                    {slotTriggerType === 'absolute_time' && (
+                      <div className="space-y-1.5">
+                        <Label>Date/Time</Label>
+                        <Input type="datetime-local" value={slotTriggerValue} onChange={e => setSlotTriggerValue(e.target.value)} data-testid="input-slot-trigger-time" className="[color-scheme:dark]" />
+                      </div>
+                    )}
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm text-white/80">Auto-execute</p>
+                        <p className="text-xs text-white/30">Fire automatically at trigger time (not implemented yet)</p>
+                      </div>
+                      <input type="checkbox" checked={autoExecute} onChange={e => setAutoExecute(e.target.checked)} data-testid="checkbox-auto-execute" className="w-4 h-4 rounded" />
+                    </div>
+                  </>
                 )}
-                {slotTriggerType === 'absolute_time' && (
-                  <div className="space-y-1.5">
-                    <Label>Date/Time</Label>
-                    <Input type="datetime-local" value={slotTriggerValue} onChange={e => setSlotTriggerValue(e.target.value)} data-testid="input-slot-trigger-time" className="[color-scheme:dark]" />
-                  </div>
-                )}
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-white/80">Auto-execute</p>
-                    <p className="text-xs text-white/30">Fire automatically at trigger time (not implemented yet)</p>
-                  </div>
-                  <input type="checkbox" checked={autoExecute} onChange={e => setAutoExecute(e.target.checked)} data-testid="checkbox-auto-execute" className="w-4 h-4 rounded" />
-                </div>
               </div>
               <DialogFooter>
                 <Button variant="outline" onClick={() => setAddSlotOpen(false)}>Cancel</Button>
                 <Button
-                  onClick={() => (editingSlotId ? updateSlotMutation.mutate() : createSlotMutation.mutate())}
-                  disabled={!selectedSponsorId || createSlotMutation.isPending || updateSlotMutation.isPending}
+                  onClick={() => {
+                    if (editingSlotId) return updateSlotMutation.mutate();
+                    if (dispatchMode === 'now') return fireNowMutation.mutate();
+                    return createSlotMutation.mutate();
+                  }}
+                  disabled={
+                    !selectedSponsorId
+                    || (dispatchMode === 'now' && slotProductIds.length === 0)
+                    || createSlotMutation.isPending
+                    || updateSlotMutation.isPending
+                    || fireNowMutation.isPending
+                  }
                   data-testid="button-save-slot"
+                  className={dispatchMode === 'now' && !editingSlotId ? 'bg-green-500 hover:bg-green-600 text-white' : ''}
                 >
                   {editingSlotId
-                    ? (updateSlotMutation.isPending ? 'Updating...' : 'Update Slot')
-                    : (createSlotMutation.isPending ? 'Saving...' : 'Save Slot')}
+                    ? (updateSlotMutation.isPending ? 'Updating...' : 'Update Moment')
+                    : dispatchMode === 'now'
+                      ? (fireNowMutation.isPending ? 'Firing...' : 'Fire Ad')
+                      : (createSlotMutation.isPending ? 'Saving...' : 'Save Slot')}
                 </Button>
               </DialogFooter>
             </DialogContent>
@@ -1440,58 +1422,6 @@ function ShoppableAdTriggerSection({ broadcastId, campaignId }: { broadcastId: s
             ))}
           </div>
         )}
-      </div>
-
-      {/* Ad-hoc Trigger Panel */}
-      <div className="bg-transparent border border-gray-200 dark:border-white/10 rounded-xl overflow-hidden">
-        <div className="px-4 py-3 bg-gray-50 dark:bg-white/[0.03] border-b border-gray-100 dark:border-white/10">
-          <span className="text-xs font-semibold text-gray-500 dark:text-white/50 uppercase tracking-wide">Quick Fire</span>
-        </div>
-        <div className="p-4 space-y-3">
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1.5">
-              <Label className="text-xs text-gray-500 dark:text-gray-400">Sponsor</Label>
-              <Select value={adhocSponsorId} onValueChange={setAdhocSponsorId}>
-                <SelectTrigger data-testid="select-adhoc-sponsor" className="text-sm">
-                  <SelectValue placeholder="No sponsor" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">No sponsor</SelectItem>
-                  {campaignSponsors.map((s: any) => (
-                    <SelectItem key={s.sponsorId} value={String(s.sponsorId)}>
-                      <div className="flex items-center gap-2">
-                        {s.logoUrl ? <img src={s.logoUrl} alt={s.name} className="w-3.5 h-3.5 object-contain rounded" /> : null}
-                        {s.name}
-                      </div>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs text-gray-500 dark:text-gray-400">Product</Label>
-              <SponsorCatalogPicker
-                sponsorId={adhocSponsorId && adhocSponsorId !== 'none' ? adhocSponsorId : null}
-                value={adhocProductId}
-                onChange={setAdhocProductId}
-                sponsorPlaceholderText="Pick a sponsor to browse its catalog."
-              />
-            </div>
-          </div>
-          <button
-            onClick={() => adhocTriggerMutation.mutate()}
-            disabled={!adhocProductId || adhocTriggerMutation.isPending}
-            data-testid="button-trigger-shoppable-ad"
-            className={`w-full flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm font-medium transition ${
-              !adhocProductId || adhocTriggerMutation.isPending
-                ? 'bg-gray-100 dark:bg-white/5 text-gray-400 cursor-not-allowed'
-                : 'bg-green-600 hover:bg-green-700 dark:bg-green-500 dark:hover:bg-green-600 text-white'
-            }`}
-          >
-            <Radio className="w-4 h-4" />
-            {adhocTriggerMutation.isPending ? 'Sending...' : 'Trigger Ad'}
-          </button>
-        </div>
       </div>
 
       {/* Session Log */}
@@ -2488,7 +2418,6 @@ export default function BroadcastDetailPage() {
           </div>
 
           <ScheduledAdsSection broadcastId={broadcastId!} />
-          <ShoppableProductsSection broadcastId={broadcastId!} campaignId={broadcast.campaignId ?? null} />
           <ShoppableAdTriggerSection broadcastId={broadcastId!} campaignId={broadcast.campaignId ?? null} />
         </main>
 

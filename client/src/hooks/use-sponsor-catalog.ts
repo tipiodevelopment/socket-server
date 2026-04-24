@@ -37,7 +37,9 @@ export function useSponsorCatalog(
   const enabled = Number.isFinite(numericId) && (numericId as number) > 0;
 
   return useQuery<CatalogResponse>({
-    queryKey: ['/api/commerce/sponsors', numericId, 'catalog', opts],
+    // v2 path — the direct cut on 2026-04-24 renamed /api/commerce/* → /v2/commerce/*.
+    // Calling the old path returns the Vite SPA index (HTML) and breaks JSON decode.
+    queryKey: ['/v2/commerce/sponsors', numericId, 'catalog', opts],
     queryFn: async () => {
       const params = new URLSearchParams();
       if (opts.shippingCountryCode) params.set('shippingCountryCode', opts.shippingCountryCode);
@@ -45,7 +47,7 @@ export function useSponsorCatalog(
       if (opts.limit != null) params.set('limit', String(opts.limit));
       if (opts.offset != null) params.set('offset', String(opts.offset));
       const qs = params.toString();
-      const url = `/api/commerce/sponsors/${numericId}/catalog${qs ? `?${qs}` : ''}`;
+      const url = `/v2/commerce/sponsors/${numericId}/catalog${qs ? `?${qs}` : ''}`;
       const res = await fetch(url);
       if (!res.ok) {
         const body = await res.text();
