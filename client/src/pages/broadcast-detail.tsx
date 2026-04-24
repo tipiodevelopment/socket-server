@@ -1789,6 +1789,22 @@ export default function BroadcastDetailPage() {
     enabled: !!broadcast?.campaignId,
   });
 
+  // TV-gated sections (Scheduled Ads, Sponsor Catalog, Shoppable Ad Slots) only
+  // make sense when the host clientApp has TV SDK enabled, because `shoppable_ad`
+  // WS events are consumed exclusively by VioTVSDK / Kotlin TV SDK. Fetch the
+  // clientApp so the sections can gate their UI.
+  const { data: hostApp } = useQuery<{ id: number; name: string; tvEnabled: boolean; tvPlatforms: string[] }>({
+    queryKey: ['/api/client-apps', (campaignData as any)?.clientAppId, userId],
+    queryFn: async () => {
+      const appId = (campaignData as any)?.clientAppId;
+      const res = await fetch(`/api/client-apps/${appId}?userId=${userId}`);
+      if (!res.ok) throw new Error('Failed to fetch app');
+      return res.json();
+    },
+    enabled: !!(campaignData as any)?.clientAppId && !!userId,
+  });
+  const tvEnabled = hostApp?.tvEnabled === true;
+
   const { data: analytics } = useQuery<BroadcastAnalytics>({
     queryKey: ['/api/broadcasts', broadcastId, 'analytics'],
     enabled: !!broadcastId,
@@ -2417,8 +2433,42 @@ export default function BroadcastDetailPage() {
             )}
           </div>
 
-          <ScheduledAdsSection broadcastId={broadcastId!} />
-          <ShoppableAdTriggerSection broadcastId={broadcastId!} campaignId={broadcast.campaignId ?? null} />
+          {hostApp && !tvEnabled ? (
+            <div className="mb-6" data-testid="tv-disabled-banner">
+              <h2 className="text-sm font-semibold text-gray-900 dark:text-white mb-4">Shoppable moments</h2>
+              <div className="bg-amber-500/5 border border-amber-500/20 rounded-xl p-6">
+                <div className="flex items-start gap-3">
+                  <div className="shrink-0 mt-0.5">
+                    <Megaphone className="w-5 h-5 text-amber-400" />
+                  </div>
+                  <div className="flex-1">
+                    <h3 className="text-sm font-semibold text-white mb-1">TV companion not enabled for this app</h3>
+                    <p className="text-xs text-gray-400 mb-3">
+                      Shoppable moments (scheduled ads + ad-hoc fire) dispatch a{' '}
+                      <code className="text-amber-300/80 font-mono text-[10px]">shoppable_ad</code>{' '}
+                      WebSocket event that is rendered by the TV companion SDK (VioTVSDK on Apple TV, Kotlin TV SDK on Android TV).
+                      This app <span className="text-white font-semibold">{hostApp.name}</span> has <code className="text-amber-300/80 font-mono text-[10px]">tvEnabled=false</code>{' '}
+                      so firing any moment would succeed but nothing would render anywhere.
+                    </p>
+                    <p className="text-xs text-gray-500">
+                      To enable:{' '}
+                      <Link href={`/apps/${hostApp.id}`}>
+                        <span className="text-amber-300 hover:text-amber-200 cursor-pointer underline underline-offset-2">
+                          open {hostApp.name} → Settings → Platforms
+                        </span>
+                      </Link>
+                      {' '}and toggle <span className="text-white">TV companion app</span> on, picking at least one platform.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <>
+              <ScheduledAdsSection broadcastId={broadcastId!} />
+              <ShoppableAdTriggerSection broadcastId={broadcastId!} campaignId={broadcast.campaignId ?? null} />
+            </>
+          )}
         </main>
 
         <LiveChatSidebar broadcastId={broadcastId!} analytics={analytics} reachuUserId={reachuUserId} broadcastStatus={broadcast?.status} />
