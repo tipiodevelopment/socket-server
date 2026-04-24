@@ -1965,10 +1965,49 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   });
 
   // GET /api/campaigns/:id/sponsors
+  // GET /api/campaigns/:id/sponsors
+  // Returns primary sponsor (from campaigns.primary_sponsor_id) + all secondaries
+  // (from campaign_sponsors). Primary is first in the array with role='primary',
+  // id=null (no campaign_sponsors row exists for it — it's a logical entry).
+  // This single source of truth keeps the dashboard consistent across every
+  // place that needs to show "all sponsors of this campaign":
+  // - campaign-dashboard Sponsors tab
+  // - broadcast-detail Add Slot + Quick Fire dropdowns
+  // - future callers
+  //
+  // Consumers that want ONLY secondaries use /api/campaigns/:id/secondary-sponsors.
   app.get('/api/campaigns/:id/sponsors', async (req, res) => {
     try {
-      const sponsors = await storage.getCampaignSponsors(parseInt(req.params.id));
-      res.json(sponsors);
+      const campaignId = parseInt(req.params.id);
+      const [campaign, secondaries] = await Promise.all([
+        storage.getCampaign(campaignId),
+        storage.getCampaignSponsors(campaignId),
+      ]);
+
+      const result: any[] = [];
+      if (campaign?.primarySponsorId) {
+        const primary = await storage.getSponsor(campaign.primarySponsorId);
+        if (primary) {
+          result.push({
+            id: null,
+            sponsorId: primary.id,
+            campaignId,
+            role: 'primary',
+            name: primary.name,
+            logoUrl: primary.logoUrl,
+            primaryColor: primary.primaryColor,
+            secondaryColor: primary.secondaryColor,
+          });
+        }
+      }
+      // Drop any accidental duplicate where primary is also in campaign_sponsors
+      // (shouldn't happen post de-dupe, but defensive).
+      const primarySponsorId = campaign?.primarySponsorId ?? null;
+      for (const s of secondaries) {
+        if (s.sponsorId === primarySponsorId) continue;
+        result.push(s);
+      }
+      res.json(result);
     } catch (error) {
       res.status(500).json({ error: 'Failed to fetch campaign sponsors' });
     }

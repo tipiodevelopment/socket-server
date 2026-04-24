@@ -1459,7 +1459,11 @@ function SponsorsTabContent({ campaignId }: { campaignId: number }) {
             </div>
           )}
 
-          {campaignSponsors.map((cs: any) => (
+          {campaignSponsors
+            // Primary is rendered in the amber card above; /api/campaigns/:id/sponsors
+            // now returns it too (as `role:'primary'`) so filter here to avoid duplicates.
+            .filter((cs: any) => cs.role !== 'primary')
+            .map((cs: any) => (
             <div
               key={cs.id}
               className="flex items-center gap-4 p-4 bg-transparent border border-white/10 rounded-xl hover:border-white/20 transition"
