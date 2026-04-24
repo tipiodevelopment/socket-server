@@ -6,12 +6,14 @@ developer's machine that has all three repos cloned alongside this one.
 
 ## Start here
 
+- **New developer landing on the project?** → [`ARCHITECTURE_OVERVIEW.md`](./ARCHITECTURE_OVERVIEW.md).
+  Explains the hierarchy (App → Campaign → multi-sponsor → broadcasts/placements), the v2 API surface, the data flow, and milestones (done vs coming). This is the onboarding doc.
 - **Lost context? Resuming a session?** → [`CURRENT_STATE.md`](./CURRENT_STATE.md)
   is the live truth: branches, DB, runtime, demo data, PRs, current phase.
 - **Building or consuming the API?** → [`API_V2_CONTRACT.md`](./API_V2_CONTRACT.md)
   is the SDK contract (5 surfaces under `/v2/*`).
 - **Need the map** (schema + endpoints + WS events + recipes) → [`DB_AND_ENDPOINTS.md`](./DB_AND_ENDPOINTS.md).
-- **Authoritative architecture** → [`multi-sponsor-architecture.md`](./multi-sponsor-architecture.md).
+- **Authoritative data-model spec** → [`multi-sponsor-architecture.md`](./multi-sponsor-architecture.md) (deeper than ARCHITECTURE_OVERVIEW; the design → implementation spec).
 - **Planning next steps?** → [`ROLLOUT_ROADMAP.md`](./ROLLOUT_ROADMAP.md).
 - **Placements plan tracker** → [`TASK_PLACEMENTS.md`](./TASK_PLACEMENTS.md) (paused at Step 4 pending v2 merge).
 - **iOS legacy calls still in code** → [`IOS_V2_MIGRATION_GAP.md`](./IOS_V2_MIGRATION_GAP.md).
