@@ -3,7 +3,7 @@
 > **Purpose**: one file to regain context after a compaction, a break, or a
 > new session. If you read only one doc, read this.
 >
-> **Last updated**: 2026-04-24 — post PR rebranch (closed #17/#18/#19 stale branches, reopened as #21/#22/#23 off fresh develop).
+> **Last updated**: 2026-04-24 — dashboard UX sprint fully unified into develop (#21/#22/#23 all merged). No open PRs.
 
 This doc is the single source of truth for:
 - Which branch + commit of each repo is the working tip
@@ -19,7 +19,7 @@ This doc is the single source of truth for:
 
 | Repo | Local path | Active branch | HEAD | Purpose |
 |---|---|---|---|---|
-| socket-server (backend + dashboard) | `/Users/angelo/vio-backend/socket-server` | `develop` | `f4f28d7` | tip of develop after #20 merge; 3 open feature PRs off it |
+| socket-server (backend + dashboard) | `/Users/angelo/vio-backend/socket-server` | `develop` | `61e43c1` | tip of develop with the full dashboard UX sprint merged |
 | VioSwiftSDK (iOS SDK) | `/Users/angelo/VioSwiftSDK` | `develop` | merged to develop via PR #3 (a8e5730) | |
 | InteractiveAds-vio (Apple TV SDK) | `/Users/angelo/Documents/GitHub/InteractiveAds-vio` | `main` | merged to main via PR #3 (6a23bdf) | |
 
@@ -29,6 +29,10 @@ This doc is the single source of truth for:
 - socket-server `fix/dashboard-sponsors-show-primary` → develop (PR #15)
 - socket-server `fix/dashboard-app-tv-settings` → develop (PR #16)
 - socket-server `docs/session-state-post-dashboard-sprint` → develop (PR #20)
+- socket-server `fix/campaign-sponsors-primary-v2` → develop (PR #21)
+- socket-server `fix/shoppable-moments-unified-v2` → develop (PR #22)
+- socket-server `fix/broadcast-detail-tv-gate-v2` → develop (PR #23, rebased onto #22 before merge — stripped obsolete rename hunks)
+- socket-server `docs/state-after-pr-rebranch` → develop (PR #24)
 - VioSwiftSDK `feature/api-v2-urls` → develop (PR #3)
 - InteractiveAds-vio `feature/api-v2-urls` → main (PR #3)
 
@@ -43,21 +47,9 @@ This doc is the single source of truth for:
 
 ## 3. Open PRs awaiting user review
 
-All on `tipiodevelopment/socket-server`. None merged yet.
+**None.** As of 2026-04-24, all feature PRs from the UX sprint have been merged to develop. Next work → new branches off develop `61e43c1` for Phase 6 cleanup + Phase 7 placements.
 
-| PR | Branch | What | Target |
-|---|---|---|---|
-| [#21](https://github.com/tipiodevelopment/socket-server/pull/21) | `fix/campaign-sponsors-primary-v2` | `/api/campaigns/:id/sponsors` now returns primary + secondaries in one array with `role:'primary'` | develop |
-| [#22](https://github.com/tipiodevelopment/socket-server/pull/22) | `fix/shoppable-moments-unified-v2` | single `Add Shoppable Moment` dialog with `Fire now` / `Schedule for later` radio; drops broken `ShoppableProductsSection` and `Quick Fire` subsection. Also fixes `useSponsorCatalog` hook hitting dead `/api/commerce/*` path | develop |
-| [#23](https://github.com/tipiodevelopment/socket-server/pull/23) | `fix/broadcast-detail-tv-gate-v2` | TV SDK gate banner on broadcast detail + renames (partial — superseded in part by #22 for the renames) | develop |
-
-### PR interaction notes
-
-- #22 supersedes #23's header renames (both rename "Sponsor Moments" → something distinct, but #22 goes further and removes the duplicate entirely). If #22 merges first, #23 needs rebase to keep only the TV gate banner (not the renames).
-- #21 is independent. Can merge anytime.
-- The 3 can merge in any order but #21 → #22 → #23 keeps conflicts minimal.
-
-**Closed** (superseded, do not reopen):
+**Closed / superseded** (do not reopen):
 - #10 superseded by #11 (was a force-push casualty)
 - #11 superseded by #13 (docs folded into the v2 cut)
 - #12 superseded by #13 (idem)
@@ -165,15 +157,15 @@ Two iteration batches on top of the v2 cut, driven by the user reviewing the cam
 | #15 | Campaign dashboard Sponsors tab shows primary sponsor in an amber card (was only showing secondaries) |
 | #16 | New **Platforms** tab in app settings — toggle `tvEnabled` + pick `tvPlatforms` without SQL |
 
-### Batch 2 — open PRs (awaiting user test)
+### Batch 2 — all merged to develop
 
-Rebranched 2026-04-24: the original #17/#18/#19 were closed and recreated off fresh develop (post #20 merge) to eliminate stale-branch risk. Same content, new numbers.
+Rebranched 2026-04-24: the original #17/#18/#19 were closed and recreated off fresh develop (post #20 merge) to eliminate stale-branch risk. Then merged in sequence #21 → #22 → #23. #23 was rebased before merge to strip the rename hunks that #22 had already subsumed.
 
 | PR | Change |
 |---|---|
 | #21 | `/api/campaigns/:id/sponsors` now returns primary + secondaries as a single array (before: only secondaries). Fixes "data inconsistent across dashboard" — all callers see 3 sponsors now. (ex-#18) |
 | #22 | Unified `Add Shoppable Moment` dialog replaces the 3 redundant surfaces (Sponsor Catalog grid + Pre-programmed Slots + Quick Fire). One form with `Fire now` / `Schedule for later` radio. Also fixes `useSponsorCatalog` hook hitting dead `/api/commerce/*` path. (ex-#19) |
-| #23 | Broadcast detail: TV SDK gate banner (if `clientApp.tvEnabled=false`, hides the 3 TV-dependent sections and shows a link to Platforms tab). Also renamed duplicate "Sponsor Moments" headers. (ex-#17) |
+| #23 | Broadcast detail: TV SDK gate banner (if `clientApp.tvEnabled=false`, hides TV-dependent sections and shows a link to Platforms tab). (ex-#17 — rename hunks dropped during rebase, only the gate banner landed) |
 
 ### Patches not in any PR (direct data fixes)
 
@@ -194,7 +186,7 @@ Backend responses 200 JSON with correct sponsor blocks. Apple TV overlay should 
 Completion requires:
 1. Apple TV demo (InteractiveAds-vio on `main`) connected to `/v2/tv/broadcast/subscribe`
 2. iOS demo (VioSwiftSDK on `develop` via `feature/api-v2-urls`) connected as `demo_user_001`
-3. Fire the 3 ads (via PR #22 new dialog once merged, or curl to `/api/broadcasts/:id/trigger-shoppable-ad`)
+3. Fire the 3 ads (via the unified `Add Shoppable Moment` dialog — Fire now mode — or curl to `/api/broadcasts/:id/trigger-shoppable-ad`)
 4. User taps Select/Play on tvOS sim → iOS receives `cart_intent` → overlay opens with Commerce product loaded via the correct sponsor's key → Apple Pay button visible + functional
 5. Verify `cart_intents` DB row has `sponsor_id + source_activation_id + delivery_mode='websocket'`
 
@@ -218,7 +210,7 @@ Tracked in `IOS_V2_MIGRATION_GAP.md`. NOT fallbacks — direct calls for feature
 - Steps 8-11 — iOS SDK Component.sponsorId propagation through 5 product views + CartManager per-sponsor checkout
 - Step 12 — E2E with TV2 campaign + 2 placements
 
-Paused at Step 4. Resumes once the 3 open PRs (#21/#22/#23) merge + Apple Pay smoke test closes.
+Paused at Step 4. Dashboard UX sprint (#21/#22/#23) is now merged — next blocker is the Apple Pay smoke test (Phase 5) closing. Once that's green, Phase 7 resumes from Step 5.
 
 ## 12. Kotlin SDKs (Hito 7, not started)
 
@@ -233,8 +225,8 @@ Kotlin dev codes against v2 surface from day 1, tests with campaign 36 (TV2) AND
 1. Read this doc top-to-bottom.
 2. `cd /Users/angelo/vio-backend/socket-server`.
 3. Check backend: `lsof -nP -iTCP:5001 -sTCP:LISTEN` — if not running, `npm run dev &`.
-4. Check PR state: `gh pr list --state open` — there should be 3 (#21, #22, #23) unless merged.
-5. Check local branches: `git branch` — latest work landed on `develop`; open feature branches are `fix/campaign-sponsors-primary-v2`, `fix/shoppable-moments-unified-v2`, `fix/broadcast-detail-tv-gate-v2`.
+4. Check PR state: `gh pr list --state open` — should be empty.
+5. Check local branches: `git branch` — develop is the latest working tip; next work lives on fresh feature branches off develop.
 6. See `ARCHITECTURE_OVERVIEW.md` for the big picture, `API_V2_CONTRACT.md` for endpoint shapes.
 
 ## 14. How to update this doc
