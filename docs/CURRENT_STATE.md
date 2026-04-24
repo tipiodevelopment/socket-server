@@ -25,9 +25,17 @@ are referenced from here — they hold the detail. This doc holds the state.
 |---|---|---|---|---|
 | socket-server (backend + dashboard) | `/Users/angelo/vio-backend/socket-server` | `feature/placements-v2` | `c63f681` | clean |
 | VioSwiftSDK (iOS SDK) | `/Users/angelo/VioSwiftSDK` | `feature/tv-cart-intent-attribution` | `8c993c4` | clean |
-| InteractiveAds-vio (Apple TV SDK) | `/Users/angelo/Documents/GitHub/InteractiveAds-vio` | `feat/sdk-consolidation` | `48e0635` | 2 files (demo video recovered + staged) |
+| InteractiveAds-vio (Apple TV SDK) | `/Users/angelo/Documents/GitHub/InteractiveAds-vio` | `feat/sdk-consolidation` (⚠ stale) | `48e0635` | 2 files (demo video recovered + staged) |
 
 All 3 are pushed up to origin on their respective branches.
+
+**Apple TV truth lives on `main`**, not on the locally checked-out
+`feat/sdk-consolidation`. `main` is 4 commits ahead and contains the v2
+TV integration (subscribe, broadcastId alignment, ws keep-alive, demo
+picker). Before running the TV demo for any smoke test, switch to
+`main`: `cd ~/Documents/GitHub/InteractiveAds-vio && git checkout main`
+(the 2 local changes — demo video + pbxproj — cherry-pick cleanly onto
+main or stash first).
 
 ## 2. Open PRs (socket-server)
 
@@ -117,22 +125,52 @@ Not blocking, flagged for cleanup.
 - 1 historical `shoppable_ad_activation` on `barcelona-psg-…` (sponsor 3, product 408895, source=dashboard, 2026-04-23)
 - 0 `cart_intents` yet
 
-### Apple TV demo (`InteractiveAds-vio/Demo/tv2demo-appletv/Configuration/vio-config.json`)
+### Apple TV demo (on `main`)
+
+Config file: `InteractiveAds-vio/Demo/tv2demo-appletv/Configuration/vio-config.json`
 
 ```json
 {
   "apiKey": "tv2_api_key_91b4fbf634af4bc5",
-  "commerceApiKey": "KCXF10Y-W5T4PCR-GG5119A-Z64SQ9S",
-  "backendUrl": "https://api-local-angelo.vio.live/",
+  "environment": "development",
+  "backendUrl": "https://api-local-angelo.vio.live",
   "webSocketUrl": "wss://api-local-angelo.vio.live/ws",
   "commerceUrl": "https://graph-ql-dev.vio.live/graphql",
-  "campaignId": 36,
-  "contentId": "barcelona-psg-2026-03-03",
   "country": "NO"
 }
 ```
 
-Heads-up: `contentId` is legacy — SDK internally uses `broadcastId`. Demo loader maps it. The current value points at an ENDED broadcast, so for the live smoke test change to `tv2-eliteserien-live-2026-03-08` or expect "no broadcast live" behaviour.
+No `campaignId`, no `contentId` — both were removed. The SDK resolves
+campaign + sponsors from the subscribe response.
+
+### Apple TV runtime flow (verified in `origin/main` 2026-04-24)
+
+```
+BroadcastPickerView (landing screen)
+ ├─ "Broadcast registrado":   barcelona-psg-2026-03-03  (hardcoded in picker)
+ └─ "Broadcast desconocido":  broadcast-no-existe-demo   (hardcoded, tests soft-miss)
+
+User tap → TVPlayerView(broadcastId:) → VioTV.connect(broadcastId:)
+
+VioTVManager.connect:
+  1. POST /api/sdk/tv/broadcast/subscribe
+     body: { broadcastId, externalUserId: config.userId, platform: "apple-tv", tvDeviceId? }
+  2. subscribed=true:
+     • applySubscribeResponse(...)       → sponsors + commerce keys cached
+     • ws.connect(wsUrl, identifyUserId) → identify frame sent
+     • session.start(sessionId)          → heartbeat loop
+  3. subscribed=false: idle + onSubscriptionFailed callback
+
+Remote Select/Play → VioTVManager.sendCartIntent(productId, campaignId, activationId, sponsorId)
+ → POST /api/sdk/tv/cart-intent
+    body: { externalUserId, productId, campaignId, platform, activationId, sponsorId }
+    (activationId + sponsorId come from the active shoppable_ad event)
+```
+
+Backend subscribe (routes.ts:6876) **does NOT check `broadcast.status`** —
+so the picker's hardcoded `barcelona-psg-2026-03-03` (currently ended in
+the DB) still subscribes successfully. No config changes needed for the
+smoke test.
 
 ## 6. Work in flight
 
@@ -164,59 +202,74 @@ Two independent tracks can progress in parallel:
 
 ## 7. Smoke test plan — live Apple TV → iOS cart-intent round-trip
 
-**Why**: verify the current stack still works before adding any new layer. We have not run this end-to-end since before today's API v2 work.
+**Why**: verify the current stack still works before adding any new layer.
 
-**Pre-flight check** (all must be ✅ before starting):
+**Pre-flight** (all ✅ before starting):
 
 | # | Check | Current |
 |---|---|---|
 | 1 | Backend `:5001` listening | ✅ |
 | 2 | Tunnel `api-local-angelo.vio.live/health` 200 | ✅ |
 | 3 | Partner mock 200 | ✅ |
-| 4 | DB has campaign 36 live broadcast | ✅ `tv2-eliteserien-live-2026-03-08` |
-| 5 | DB has sponsor 3 (Elkjøp) with commerce key | ✅ |
-| 6 | Apple TV demo config apiKey matches TV2 (#18) | ✅ |
-| 7 | iOS demo configured with same backend URL + demo_user_001 | verify before run |
+| 4 | DB campaign 36 has `barcelona-psg-2026-03-03` broadcast | ✅ (ended status; subscribe works anyway) |
+| 5 | Sponsor 3 Elkjøp with commerce key | ✅ |
+| 6 | Apple TV repo on `main` (not `feat/sdk-consolidation`) | **verify before starting** |
+| 7 | `vio-config.json` has `"userId": "demo_user_001"` (or is set via env/ProcessInfo before `VioTV.configure(fromConfigFile:)`) | **verify before starting** |
+| 8 | iOS demo configured with same backend URL + `externalUserId = "demo_user_001"` | **verify before starting** |
 
 **Steps**:
 
-1. **Update Apple TV demo config** — change `contentId` to
-   `tv2-eliteserien-live-2026-03-08` (current one points at ended
-   broadcast).
-2. **Launch Apple TV demo** on tvOS simulator. Expected log:
-   `VioTV: subscribed broadcastId=tv2-eliteserien-live-2026-03-08, wsOpen=true, identify=demo_user_001`.
-3. **Launch iOS demo** (VioSwiftSDK TV2 demo) on iOS simulator. Expected
-   log: `CampaignWS: connected /ws/36, identified as demo_user_001`.
-4. **Trigger shoppable ad** from local curl:
+1. **Apple TV repo → `main`**. `cd ~/Documents/GitHub/InteractiveAds-vio &&
+   git stash && git checkout main`. Open the workspace, build the
+   `tv2demo-appletv` target against the tvOS simulator.
+2. **Launch the Apple TV demo**. It lands on `BroadcastPickerView`. Tap
+   **"Broadcast registrado"** (`barcelona-psg-2026-03-03`). Expected logs:
+   ```
+   [VioTV] POST subscribe → subscribed=true, wsUrl=wss://…/ws/36
+   [VioTV] WebSocket connected to wss://api-local-angelo.vio.live/ws/36
+   [VioTV] identify sent userId=demo_user_001
+   [VioTV] session started id=<N>
+   ```
+3. **Launch iOS demo** (VioSwiftSDK TV2 demo). Expected:
+   `[CampaignWS] connected /ws/36, identified userId=demo_user_001`.
+4. **Fire a shoppable ad** from a terminal. The path that exercises the
+   full multi-sponsor pipeline is the TV SDK shoppable endpoint (apiKey
+   auth, so no cookie needed):
    ```bash
-   curl -X POST "https://api-local-angelo.vio.live/api/broadcasts/tv2-eliteserien-live-2026-03-08/trigger-shoppable-ad" \
+   curl -X POST "https://api-local-angelo.vio.live/api/sdk/tv/broadcasts/barcelona-psg-2026-03-03/shoppable-ad" \
      -H "Content-Type: application/json" \
      -H "X-API-Key: tv2_api_key_91b4fbf634af4bc5" \
      -d '{"productId":"408895","sponsorId":3}'
    ```
-5. **Expect on Apple TV**: overlay appears with Elkjøp branding + product card.
-6. **Press remote** (Select/Play button). Apple TV posts
-   `/api/sdk/tv/cart-intent` with `{externalUserId: "demo_user_001",
-   productId: "408895", activationId: <from step 4 response>}`.
-7. **Expect on iOS demo**: WS `cart_intent` event received, product
-   detail screen opens, product loaded via Elkjøp's commerce key.
+   Response carries the new `activationId`. Capture it.
+5. **Expect on Apple TV**: overlay shows with Elkjøp branding + product
+   card. Log: `[VioTV] shoppable_ad received: <title> (activationId=<N>)`.
+6. **Press Select/Play on the tvOS simulator remote**. The SDK posts
+   `/api/sdk/tv/cart-intent` with body
+   `{externalUserId, productId, campaignId, platform, activationId, sponsorId}`.
+7. **Expect on iOS demo**: `cart_intent` WS event received, product
+   detail screen opens with Elkjøp-branded UI, product loaded through
+   Elkjøp's commerce client.
 8. **Verify in DB**:
    ```sql
    SELECT id, sponsor_id, product_id, source_activation_id, delivery_mode, triggered_at
    FROM cart_intents WHERE campaign_id=36 ORDER BY id DESC LIMIT 1;
    ```
-   Expect: `sponsor_id=3, source_activation_id=<from step 4>, delivery_mode='websocket'`.
+   Expect `sponsor_id=3, source_activation_id=<activationId from step 4>,
+   delivery_mode='websocket'`.
 
-**What failure modes tell us**:
+**Failure-mode decoder**:
 
 | Symptom | Likely cause |
 |---|---|
-| Apple TV `subscribe` 401 | apiKey mismatch in `vio-config.json` |
-| Apple TV `subscribe` soft-miss `broadcast_not_registered_for_client_app` | broadcastId doesn't belong to TV2 campaign |
-| Apple TV subscribe OK, no overlay on trigger | WS connection dropped, or campaignId mismatch in `/ws/:id` subscription |
-| iOS demo connects but doesn't receive cart_intent | `externalUserId` mismatch between TV and iOS — both MUST be `demo_user_001` |
-| iOS receives but product loads 401 | per-sponsor commerce routing broken (regression of step 6.3) |
-| cart_intents.delivery_mode='webhook' or 'apns' | iOS wasn't actually connected on WS at the time; fallback path fired |
+| Subscribe 401 | `apiKey` in `vio-config.json` ≠ `client_apps.api_key` for TV2 (id 18) |
+| Subscribe returns `{subscribed:false, reason:"broadcast_not_registered_for_client_app"}` | broadcastId doesn't belong to a campaign of clientApp 18 — not our case for `barcelona-psg-2026-03-03` |
+| Subscribe returns `{subscribed:false, reason:"tv_not_enabled_for_this_platform"}` | `client_apps.tv_enabled=false` or `tv_platforms` missing `apple-tv` — verify with `SELECT tv_enabled, tv_platforms FROM client_apps WHERE id=18` |
+| Subscribe OK but no `shoppable_ad` on the TV after the curl | Check backend logs — `wsUserMap` / `campaignSubscribers` dispatch. WS may have dropped and not reconnected |
+| iOS demo doesn't receive `cart_intent` | `externalUserId` mismatch between TV config and iOS config (must both be `demo_user_001`), or iOS WS not actually open (dual delivery falls back to webhook) |
+| iOS receives but product loads 401 | per-sponsor commerce routing broken — check `CommerceSdkClientProvider.client(forSponsorId:)` returns Elkjøp's key |
+| `cart_intents.delivery_mode='webhook'` or `'apns'` | iOS was offline at dispatch — relaunch and retry, fallback is working as designed |
+| `cart_intents.source_activation_id IS NULL` | TV SDK didn't include `activationId` in the body — check the TV SDK log for `activationId=<N>` on dispatch |
 
 ## 8. How to update this doc
 
