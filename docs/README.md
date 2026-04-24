@@ -6,12 +6,17 @@ developer's machine that has all three repos cloned alongside this one.
 
 ## Start here
 
+- **Building or consuming the API?** → [`API_V2_CONTRACT.md`](./API_V2_CONTRACT.md)
+  is the single source of truth for SDK + partner surfaces (mobile, TV,
+  commerce, admin, partner outbound). Read this first if you're wiring any
+  client.
 - **New to this project?** → [`multi-sponsor-architecture.md`](./multi-sponsor-architecture.md)
   is the authoritative spec (tables, endpoints, WS events, attribution chain).
 - **Planning next steps?** → [`ROLLOUT_ROADMAP.md`](./ROLLOUT_ROADMAP.md)
   tracks what's landed and what's queued across 5 phases.
-- **Onboarding the Kotlin dev?** → [`KOTLIN_TV_SDK_SPEC.md`](./KOTLIN_TV_SDK_SPEC.md)
-  and [`KOTLIN_MOBILE_SDK_SPEC.md`](./KOTLIN_MOBILE_SDK_SPEC.md).
+- **Onboarding the Kotlin dev?** → [`API_V2_CONTRACT.md`](./API_V2_CONTRACT.md)
+  + [`KOTLIN_TV_SDK_SPEC.md`](./KOTLIN_TV_SDK_SPEC.md) +
+  [`KOTLIN_MOBILE_SDK_SPEC.md`](./KOTLIN_MOBILE_SDK_SPEC.md).
 
 ## By role
 
