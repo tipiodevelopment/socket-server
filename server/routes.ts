@@ -5002,7 +5002,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   }
 
   // POST /api/broadcasts/:id/shoppable-ad — Admin Bearer trigger (source=admin-api)
-  app.post('/api/broadcasts/:broadcastId/shoppable-ad', requireBearerAuth, async (req, res) => {
+  app.post('/v2/admin/broadcasts/:broadcastId/shoppable-ad', requireBearerAuth, async (req, res) => {
     try {
       const { broadcastId } = req.params;
       const { productId, sponsorId } = req.body;
@@ -5137,7 +5137,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   // POST /api/sdk/tv/broadcasts/:broadcastId/shoppable-ad — TV SDK trigger (API Key auth, source=tv-sdk)
   // Uses the same apiKey model as mobile SDK endpoints but on a dedicated path so TV-specific
   // behaviours (reporting, rate limits, analytics) can diverge cleanly over time.
-  app.post('/api/sdk/tv/broadcasts/:broadcastId/shoppable-ad', validateApiKey, async (req, res) => {
+  app.post('/v2/tv/broadcasts/:broadcastId/shoppable-ad', validateApiKey, async (req, res) => {
     try {
       const { broadcastId } = req.params;
       const { productId, sponsorId } = req.body ?? {};
@@ -5185,7 +5185,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   });
 
   // GET /api/commerce/products?sponsorId=:id OR ?campaignId=:id — Fetch products from Commerce GraphQL
-  app.get('/api/commerce/products', async (req, res) => {
+  app.get('/v2/commerce/products', async (req, res) => {
     try {
       const sponsorId = req.query.sponsorId ? parseInt(req.query.sponsorId as string) : null;
       const campaignId = req.query.campaignId ? parseInt(req.query.campaignId as string) : null;
@@ -5241,7 +5241,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   // 422 if the sponsor has no commerce_api_key wired (visual-only sponsors can't sell).
   // Search filtering is performed client-side from the returned page since the upstream
   // GraphQL `Channel.GetProducts` does not expose a search argument today.
-  app.get('/api/commerce/sponsors/:sponsorId/catalog', async (req, res) => {
+  app.get('/v2/commerce/sponsors/:sponsorId/catalog', async (req, res) => {
     try {
       const sponsorId = parseInt(req.params.sponsorId);
       if (!Number.isFinite(sponsorId)) {
@@ -5322,7 +5322,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   });
 
   // POST /api/campaigns/:id/register-device — Register APNs device token (SDK partner apps; used for Vio-side push fallback)
-  app.post('/api/campaigns/:campaignId/register-device', validateApiKey, async (req, res) => {
+  app.post('/v2/mobile/campaigns/:campaignId/register-device', validateApiKey, async (req, res) => {
     try {
       const campaignId = parseInt(req.params.campaignId);
       const clientApp = (req as any).clientApp;
@@ -5371,7 +5371,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   // POST /api/campaigns/:id/cart-intent — TV adds to cart -> broadcast WS or webhook (partner-first)
   // Accepts optional `activationId` to close the attribution chain (shoppable_ad → cart_intent → purchase).
   // Persists a row in cart_intents for later analytics.
-  app.post('/api/campaigns/:campaignId/cart-intent', validateApiKey, async (req, res) => {
+  app.post('/v2/mobile/campaigns/:campaignId/cart-intent', validateApiKey, async (req, res) => {
     try {
       const campaignId = parseInt(req.params.campaignId);
       const clientApp = (req as any).clientApp;
@@ -6490,7 +6490,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   }
 
   // GET /v2/sdk/config — primary + secondary sponsors with commerce per sponsor
-  app.get('/v2/sdk/config', validateApiKey, async (req, res) => {
+  app.get('/v2/mobile/config', validateApiKey, async (req, res) => {
     try {
       const clientApp = (req as any).clientApp;
       const appCampaigns = await storage.getClientAppCampaigns(clientApp.id);
@@ -6550,7 +6550,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   });
 
   // GET /v2/sdk/broadcasts/:broadcastId/capabilities — per-broadcast feature flags
-  app.get('/v2/sdk/broadcasts/:broadcastId/capabilities', validateApiKey, async (req, res) => {
+  app.get('/v2/mobile/broadcasts/:broadcastId/capabilities', validateApiKey, async (req, res) => {
     try {
       const { broadcastId } = req.params;
       const broadcast = await storage.getBroadcast(broadcastId);
@@ -6582,7 +6582,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
 
   // GET /v2/sdk/broadcasts/:broadcastId/components — component placements for this broadcast
   // Merges campaign-scoped (broadcast_id IS NULL) + broadcast-scoped (broadcast_id = this)
-  app.get('/v2/sdk/broadcasts/:broadcastId/components', validateApiKey, async (req, res) => {
+  app.get('/v2/mobile/broadcasts/:broadcastId/components', validateApiKey, async (req, res) => {
     try {
       const { broadcastId } = req.params;
       const broadcast = await storage.getBroadcast(broadcastId);
@@ -6629,7 +6629,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   });
 
   // POST /api/sdk/tv/session/start — register / renew a TV session
-  app.post('/api/sdk/tv/session/start', validateApiKey, async (req, res) => {
+  app.post('/v2/tv/session/start', validateApiKey, async (req, res) => {
     try {
       const clientApp = (req as any).clientApp;
       const { externalUserId, tvDeviceId, platform } = req.body ?? {};
@@ -6664,7 +6664,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   });
 
   // POST /api/sdk/tv/session/heartbeat — keep the session alive
-  app.post('/api/sdk/tv/session/heartbeat', validateApiKey, async (req, res) => {
+  app.post('/v2/tv/session/heartbeat', validateApiKey, async (req, res) => {
     try {
       const { sessionId } = req.body ?? {};
       if (!sessionId) return res.status(400).json({ error: 'sessionId is required' });
@@ -6676,7 +6676,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   });
 
   // POST /api/sdk/tv/session/end — explicit session close
-  app.post('/api/sdk/tv/session/end', validateApiKey, async (req, res) => {
+  app.post('/v2/tv/session/end', validateApiKey, async (req, res) => {
     try {
       const { sessionId } = req.body ?? {};
       if (!sessionId) return res.status(400).json({ error: 'sessionId is required' });
@@ -6692,7 +6692,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   // via the same delivery path as /api/campaigns/:id/cart-intent (local WS →
   // Redis cluster → partner webhook / APNs). Accepts `activationId` to close
   // the attribution chain (shoppable_ad.activationId → cart_intents.source_activation_id).
-  app.post('/api/sdk/tv/cart-intent', validateApiKey, async (req, res) => {
+  app.post('/v2/tv/cart-intent', validateApiKey, async (req, res) => {
     try {
       const clientApp = (req as any).clientApp;
       let { externalUserId, productId, campaignId, activationId, sponsorId } = req.body ?? {};
@@ -6868,7 +6868,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   // If the broadcast is not found or not owned by this client_app, returns 200
   // with `{ subscribed: false, reason }` so the TV SDK can silently skip. This
   // avoids noisy error states on host apps that try to subscribe speculatively.
-  app.post('/api/sdk/tv/broadcast/subscribe', validateApiKey, async (req, res) => {
+  app.post('/v2/tv/broadcast/subscribe', validateApiKey, async (req, res) => {
     try {
       const clientApp = (req as any).clientApp;
       const { broadcastId, externalUserId, platform, tvDeviceId } = req.body ?? {};
