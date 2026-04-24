@@ -1065,6 +1065,144 @@
       "name": "7. WebSocket events (reference)",
       "description": "WS at `wss://<host>/ws/:campaignId`. Both SDKs connect here. Not runnable in Postman.\n\n**Server → client events**:\n- `shoppable_ad` (activationId, sponsorId, product, sponsor)\n- `cart_intent` (canonical envelope)\n- `component_status_changed` (sponsorId at root)\n- `poll_activated` / `poll_deactivated` / `poll_results_updated`\n- `contest_activated` / `contest_deactivated`\n- `lineup_show`\n- `campaign_started` / `campaign_ended`\n- `broadcast_status_changed`\n- `ping` (client replies `{\"type\":\"pong\"}`)\n\n**Client → server**:\n- `{\"type\":\"identify\",\"userId\":\"<externalUserId>\"}` (first frame, required)\n- `{\"type\":\"pong\"}`\n\nDedup: iOS dedups cart_intent by activationId in `CampaignManager.publishCartIntentIfChanged`.",
       "item": []
+    },
+    {
+      "name": "8. Multi-sponsor smoke test (campaign 36 — 3 sponsors × 3 products)",
+      "description": "Hardcoded dispatches to exercise 3-sponsor routing: fire each request in sequence from the Collection Runner, click Select/Play on Apple TV demo after each ad appears, verify iOS opens the product overlay with the correct sponsor branding + Apple Pay button + per-sponsor Commerce client.\n\nEach dispatch creates a new `shoppable_ad_activations` row + fans out WS `shoppable_ad` to `/ws/36`. Capture `activationId` from each response for cart_intent verification.\n\nRequires `local/angelo-20260423-1814` Neon branch (or any env where campaign 36 sponsors have the 3 real commerce keys in §CURRENT_STATE.md).",
+      "item": [
+        {
+          "name": "8.1 Dispatch — Elkjøp / Samsung QLED TV",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{apiKey}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v2/tv/broadcasts/barcelona-psg-2026-03-03/shoppable-ad",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v2",
+                "tv",
+                "broadcasts",
+                "barcelona-psg-2026-03-03",
+                "shoppable-ad"
+              ]
+            },
+            "description": "**Purpose**: Fires a Samsung 75\" QN85F Neo QLED TV shoppable ad sponsored by Elkjøp (primary sponsor of campaign 36).\n\n**Called by**: Phase 5 smoke test step 1.\n\n**Expected**: 200 `{success:true, activationId:<int>, product:{id:\"408895\", name:\"Samsung…QLED…\", price:17990, currency:\"NOK\"}, sponsor:{id:3, name:\"Elkjøp\", primaryColor:\"#f7b23b\", avatarUrl, logoUrl}}`. WS `shoppable_ad` fires to `/ws/36`. Apple TV overlay shows Elkjøp branding. On Select/Play → iOS routes Commerce via key `5HPHWJY-…` + Apple Pay button visible.\n\n**Pre-conditions**: Elkjøp primary, commerce_api_key = `5HPHWJY-89CMKV3-Q04JJ1H-GZ14TJT`, paymentMethods include `apple_pay`.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"productId\": \"408895\",\n  \"sponsorId\": 3\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "8.2 Dispatch — Torshov Sport / Nike Fotballdrakt",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{apiKey}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v2/tv/broadcasts/barcelona-psg-2026-03-03/shoppable-ad",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v2",
+                "tv",
+                "broadcasts",
+                "barcelona-psg-2026-03-03",
+                "shoppable-ad"
+              ]
+            },
+            "description": "**Purpose**: Fires a Nike Norge Fotballdrakt 2026 Hjemme shoppable ad sponsored by Torshov Sport (secondary, role=shoppable).\n\n**Called by**: Phase 5 smoke test step 2.\n\n**Expected**: 200 `{activationId, product:{id:\"408898\", price:999}, sponsor:{id:4, name:\"Torshov Sport\", primaryColor:\"#3b82f6\"}}`. Overlay blue. On Select/Play → iOS routes Commerce via key `36EHG0M-…` (not Elkjøp's).\n\n**Pre-conditions**: Torshov secondary, commerce_api_key = `36EHG0M-JK9MB4S-HDZK3HS-RMZQQKX`.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"productId\": \"408898\",\n  \"sponsorId\": 4\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "8.3 Dispatch — XXL / FC Barcelona Jersey",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{apiKey}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v2/tv/broadcasts/barcelona-psg-2026-03-03/shoppable-ad",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v2",
+                "tv",
+                "broadcasts",
+                "barcelona-psg-2026-03-03",
+                "shoppable-ad"
+              ]
+            },
+            "description": "**Purpose**: Fires a FC Barcelona Dri-Fit Jersey shoppable ad sponsored by XXL (secondary, role=full).\n\n**Called by**: Phase 5 smoke test step 3.\n\n**Expected**: 200 `{activationId, product:{id:\"408841\", price:759}, sponsor:{id:7, name:\"XXL\", primaryColor:\"#97f700\"}}`. Overlay green. On Select/Play → iOS routes Commerce via key `KCXF10Y-…` (not Elkjøp's, not Torshov's).\n\n**Pre-conditions**: XXL secondary, commerce_api_key = `KCXF10Y-W5T4PCR-GG5119A-Z64SQ9S`.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"productId\": \"408841\",\n  \"sponsorId\": 7\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
     }
   ],
   "variable": [
