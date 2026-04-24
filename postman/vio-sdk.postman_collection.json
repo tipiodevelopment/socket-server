@@ -1,14 +1,14 @@
 {
   "info": {
-    "name": "Vio Backend API (v2 direct cut — full SDK inventory)",
-    "_postman_id": "vio-backend-api-v2-full-2026-04-24",
-    "description": "Every HTTP request exchanged in the Apple TV → iOS cart-intent v2 flow. Ordered by execution sequence per SDK.\n\n**Surfaces**:\n- `/v2/tv/*` — Apple TV SDK (folder 1)\n- `/v2/mobile/*` — iOS SDK (folder 2)\n- `/v2/commerce/*` — per-sponsor catalog (folder 3, also in 2.D)\n- `/v2/admin/*` — platform admin (folder 4)\n- `/api/*` — dashboard operator (folder 5)\n- `{{mockUrl}}` — partner outbound contract (folder 6)\n- WebSocket — documented in folder 7 (not runnable in Postman)\n\n**Legacy v1** endpoints still hit by iOS today (`/v1/sdk/campaigns`, `/v1/sdk/config`, `/v1/campaigns/:id/config`, `/v1/engagement/config`, `/v1/localization/:lang`, `/v1/offers`, `/v1/sdk/broadcast`, `/v1/sdk/broadcasts/:id/lineup`, `/api/campaigns/:id/active-components`) are inline in folder 2 with **LEGACY active** tag. They run in the live demo but await v2 migration.\n\nEach request's description documents Purpose / Called by (exact Swift file:line) / Expected response / Pre-conditions.",
+    "name": "Vio Backend API (v2 — SDK surfaces 100% clean)",
+    "_postman_id": "vio-backend-api-v2-clean-2026-04-24",
+    "description": "Every HTTP request in the Apple TV → iOS cart-intent v2 flow. SDK-facing folders (1 Apple TV, 2 iOS) contain **only** `/v2/*` endpoints — zero legacy.\n\nIf the iOS code is still calling legacy `/v1/*` endpoints at runtime, that gap is technical debt tracked in `docs/IOS_V2_MIGRATION_GAP.md`, not polluting this collection.\n\n**Surfaces**:\n- 1. Apple TV SDK `/v2/tv/*` (8 req)\n- 2. iOS Mobile SDK `/v2/mobile/*` + `/v2/commerce/*` + direct GraphQL (8 req)\n- 3. Commerce proxy (shortcut) (2 req)\n- 4. Admin API `/v2/admin/*` (1 req)\n- 5. Dashboard operator `/api/*` (session cookie) (6 req)\n- 6. Partner outbound (mock) (2 req)\n- 7. WebSocket reference (informational)",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "item": [
     {
       "name": "0. Setup & Health",
-      "description": "Basic reachability + connectivity pre-flight for the local dev backend + tunnel + partner mock.",
+      "description": "Reachability check.",
       "item": [
         {
           "name": "0.1 GET /api/status",
@@ -28,14 +28,14 @@
                 "status"
               ]
             },
-            "description": "**Purpose**: Backend health check.\n\n**Called by**: Anyone.\n\n**Expected**: 200 `{status:\"ok\", timestamp}`"
+            "description": "**Purpose**: Backend health.\n\n**Called by**: Anyone.\n\n**Expected**: 200 `{status:\"ok\", timestamp}`"
           }
         }
       ]
     },
     {
-      "name": "1. Apple TV SDK — runtime flow (execution order)",
-      "description": "Exact HTTP request sequence the Apple TV SDK (`VioTVManager`, InteractiveAds-vio branch `feature/api-v2-urls`) executes. All require `X-API-Key: {{apiKey}}` (TV2 clientApp key).\n\nNote: the WebSocket at `wss://<host>/ws/<campaignId>` is opened by the SDK after 1.1 succeeds (via `wsUrl` in the response). Identify frame `{type:\"identify\",userId}` is sent over WS, not HTTP — see folder 7 for WS reference.",
+      "name": "1. Apple TV SDK — runtime flow (100% v2)",
+      "description": "HTTP requests the Apple TV SDK (`VioTVManager`) executes in order. Every URL is `/v2/tv/*`. `X-API-Key: {{apiKey}}` required.",
       "item": [
         {
           "name": "1.1 POST /v2/tv/broadcast/subscribe (success path)",
@@ -68,7 +68,7 @@
                 "subscribe"
               ]
             },
-            "description": "**Purpose**: Combined TV bootstrap — validates broadcast ownership, ensures `end_users` + upserts `tv_sessions`, returns campaign + sponsors + wsUrl + capabilities.\n\n**Called by**: `VioTVManager.subscribe` (Sources/VioTVCore/VioTVManager.swift:143). Fires on `VioTV.connect(broadcastId:)` from TVPlayerView.onAppear.\n\n**Expected**: 200 `{subscribed:true, campaignId:36, broadcastId, sessionId, endUserId, wsUrl:\"wss://…/ws/36\", primarySponsor:{id,name,commerce:{apiKey,…}}, secondarySponsors:[…], capabilities:{shoppable:true, engagement:<bool>}}`\n\n**Pre-conditions**: `broadcastId` exists + campaign.primarySponsorId set + clientApp.tv_enabled + platform in tv_platforms.",
+            "description": "**Purpose**: Combined TV bootstrap — validates broadcast + ensures end_users + upserts tv_sessions + returns campaign + sponsors + wsUrl + capabilities.\n\n**Called by**: `VioTVManager.subscribe` (Sources/VioTVCore/VioTVManager.swift:143) fired on `VioTV.connect(broadcastId:)`.\n\n**Expected**: 200 `{subscribed:true, campaignId, broadcastId, sessionId, endUserId, wsUrl, primarySponsor:{commerce:{apiKey}}, secondarySponsors, capabilities}`\n\n**Pre-conditions**: broadcast exists + campaign.primarySponsorId set + clientApp.tv_enabled + platform in tv_platforms.",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"broadcastId\": \"{{broadcastId}}\",\n  \"externalUserId\": \"{{externalUserId}}\",\n  \"platform\": \"{{tvPlatform}}\",\n  \"tvDeviceId\": \"{{tvDeviceId}}\"\n}",
@@ -81,7 +81,7 @@
           }
         },
         {
-          "name": "1.2 POST /v2/tv/broadcast/subscribe (soft-miss)",
+          "name": "1.2 POST /v2/tv/broadcast/subscribe (soft-miss test)",
           "request": {
             "auth": {
               "type": "noauth"
@@ -111,7 +111,7 @@
                 "subscribe"
               ]
             },
-            "description": "**Purpose**: Validates the soft-miss path — broadcast not registered for this clientApp.\n\n**Called by**: BroadcastPickerView \"Broadcast desconocido\" option tests this.\n\n**Expected**: 200 `{subscribed:false, reason:\"broadcast_not_registered_for_client_app\"}`. Other reasons: `campaign_has_no_primary_sponsor`, `tv_not_enabled_for_this_platform`.",
+            "description": "**Purpose**: Validates soft-miss — broadcast not registered for this clientApp. SDK stays idle without errors.\n\n**Called by**: BroadcastPickerView \"Broadcast desconocido\" path.\n\n**Expected**: 200 `{subscribed:false, reason:\"broadcast_not_registered_for_client_app\"}`",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"broadcastId\": \"broadcast-no-existe-demo\",\n  \"externalUserId\": \"{{externalUserId}}\",\n  \"platform\": \"{{tvPlatform}}\"\n}",
@@ -147,11 +147,11 @@
                 "{{campaignId}}"
               ]
             },
-            "description": "**Purpose**: **NOT a REST call** — runtime opens a WebSocket to the `wsUrl` returned by 1.1. First frame after handshake is `{\"type\":\"identify\",\"userId\":\"<externalUserId>\"}`. SDK then listens for `shoppable_ad`, `cart_intent`, `component_status_changed`.\n\n**Called by**: `VioTVWebSocketManager.connect` (Sources/VioTVCore/Managers/VioTVWebSocketManager.swift:11).\n\n**Expected**: Postman cannot really test WS upgrade — this row is informational. For live WS inspection use the browser devtools on the dashboard or `wscat -c wss://api-local-angelo.vio.live/ws/36`."
+            "description": "**Purpose**: Not a REST call. SDK opens WS to the `wsUrl` from 1.1. First frame: `{\"type\":\"identify\",\"userId\":\"<externalUserId>\"}`.\n\n**Called by**: `VioTVWebSocketManager.connect` (Sources/VioTVCore/Managers/VioTVWebSocketManager.swift:11).\n\n**Expected**: Listens for shoppable_ad, cart_intent, component_status_changed events. Inspect with `wscat -c <wsUrl>`."
           }
         },
         {
-          "name": "1.4 POST /v2/tv/session/heartbeat (every 60s while connected)",
+          "name": "1.4 POST /v2/tv/session/heartbeat (every 60s)",
           "request": {
             "auth": {
               "type": "noauth"
@@ -181,7 +181,7 @@
                 "heartbeat"
               ]
             },
-            "description": "**Purpose**: Keeps `tv_sessions.last_seen_at` fresh.\n\n**Called by**: `VioTVSessionManager.sendHeartbeat` (Sources/VioTVCore/Managers/VioTVSessionManager.swift:39), fires every 60s from a background Task spawned by 1.1.\n\n**Expected**: 200 `{ok:true, lastSeenAt:\"<ISO>\"}`\n\n**Pre-conditions**: `sessionId` returned by 1.1.",
+            "description": "**Purpose**: Keeps `tv_sessions.last_seen_at` fresh. Fires every 60s until `VioTV.disconnect()`.\n\n**Called by**: `VioTVSessionManager.sendHeartbeat` (Sources/VioTVCore/Managers/VioTVSessionManager.swift:39).\n\n**Expected**: 200 `{ok:true, lastSeenAt}`\n\n**Pre-conditions**: sessionId from 1.1.",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"sessionId\": \"{{sessionId}}\"\n}",
@@ -225,7 +225,7 @@
                 "shoppable-ad"
               ]
             },
-            "description": "**Purpose**: Dispatches a shoppable ad (source=tv-sdk). Persists `shoppable_ad_activations` and broadcasts WS `shoppable_ad` to campaign subscribers.\n\n**Called by**: Used by automation + the smoke-test dispatcher. **This is what the curl step fires during Phase 5 smoke test.**\n\n**Expected**: 200 `{success:true, activationId:<int>, product, sponsor}` + WS `shoppable_ad` event to `/ws/36`.\n\n**Pre-conditions**: Sponsor must have `avatar_url` set (422 `SPONSOR_MISSING_AVATAR` otherwise).",
+            "description": "**Purpose**: Dispatches a shoppable ad (source=tv-sdk). Persists shoppable_ad_activations + broadcasts WS `shoppable_ad` to campaign.\n\n**Called by**: Automation / Phase 5 smoke test dispatcher.\n\n**Expected**: 200 `{success:true, activationId, product, sponsor}` + WS fanout.\n\n**Pre-conditions**: Sponsor has avatar_url (422 SPONSOR_MISSING_AVATAR otherwise).",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"productId\": \"{{productId}}\",\n  \"sponsorId\": \"{{sponsorId}}\"\n}",
@@ -238,7 +238,7 @@
           }
         },
         {
-          "name": "1.6 POST /v2/tv/cart-intent (remote Select/Play tap)",
+          "name": "1.6 POST /v2/tv/cart-intent (remote tap)",
           "request": {
             "auth": {
               "type": "noauth"
@@ -267,7 +267,7 @@
                 "cart-intent"
               ]
             },
-            "description": "**Purpose**: TV-originated cart intent with v2 minimal body. Backend persists `cart_intents` + forwards envelope to mobile user (WS direct → webhook/APNs fallback).\n\n**Called by**: `VioTVManager.sendCartIntent` (Sources/VioTVCore/VioTVManager.swift:88).\n\n**Expected**: 200 `{success:true, cartIntentId, deliveryMode:\"websocket\"|\"dual\"|\"webhook\"|\"apns\"|\"dropped\"}`. Fires WS `cart_intent` to the iOS app if connected.\n\n**Pre-conditions**: `activationId` must exist in `shoppable_ad_activations`.",
+            "description": "**Purpose**: TV-originated cart intent. Persists cart_intents + forwards envelope to mobile (WS direct → webhook/APNs fallback).\n\n**Called by**: `VioTVManager.sendCartIntent` (Sources/VioTVCore/VioTVManager.swift:88).\n\n**Expected**: 200 `{success:true, cartIntentId, deliveryMode}` + WS `cart_intent` to iOS.\n\n**Pre-conditions**: activationId exists in shoppable_ad_activations.",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"externalUserId\": \"{{externalUserId}}\",\n  \"productId\": \"{{productId}}\",\n  \"campaignId\": \"{{campaignId}}\",\n  \"platform\": \"{{tvPlatform}}\",\n  \"activationId\": \"{{activationId}}\",\n  \"sponsorId\": \"{{sponsorId}}\"\n}",
@@ -310,7 +310,7 @@
                 "end"
               ]
             },
-            "description": "**Purpose**: Marks the TV session as ended.\n\n**Called by**: `VioTVSessionManager.sendEnd` (Sources/VioTVCore/Managers/VioTVSessionManager.swift:43) on `VioTV.disconnect()`.\n\n**Expected**: 200 `{ok:true, endedAt:\"<ISO>\"}`",
+            "description": "**Purpose**: Marks TV session ended.\n\n**Called by**: `VioTVSessionManager.sendEnd` (Sources/VioTVCore/Managers/VioTVSessionManager.swift:43) on `VioTV.disconnect()`.\n\n**Expected**: 200 `{ok:true, endedAt}`",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"sessionId\": \"{{sessionId}}\"\n}",
@@ -353,7 +353,7 @@
                 "start"
               ]
             },
-            "description": "**Purpose**: Standalone session creation without subscribing. **Not called by the reference Apple TV demo** — subscribe (1.1) already creates the session. Kept as a building block for automation / custom hosts.\n\n**Called by**: Automation only.\n\n**Expected**: 200 `{sessionId, endUserId, startedAt}`",
+            "description": "**Purpose**: Standalone session creation without subscribing. Not called by the Apple TV demo — building block for automation.\n\n**Called by**: Automation only.\n\n**Expected**: 200 `{sessionId, endUserId, startedAt}`",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"externalUserId\": \"{{externalUserId}}\",\n  \"platform\": \"{{tvPlatform}}\",\n  \"tvDeviceId\": \"{{tvDeviceId}}\"\n}",
@@ -368,71 +368,11 @@
       ]
     },
     {
-      "name": "2. iOS Mobile SDK — runtime flow (execution order)",
-      "description": "Exact HTTP requests the iOS SDK (VioSwiftSDK branch `feature/api-v2-urls`) issues during a normal app session. Grouped by phase. All require `X-API-Key: {{apiKey}}` — for the TV2 demo this is the same `tv2_api_key_91b4fbf634af4bc5`.\n\nThe \"Legacy v1\" rows are still actively called by the current SDK (pending a v2 migration). They're listed in call order, not separated into a \"deprecated\" folder, because they run in the live demo today.",
+      "name": "2. iOS Mobile SDK — runtime flow (100% v2 target)",
+      "description": "Target v2 surface for iOS. These are the only endpoints the SDK SHOULD call at runtime. The current iOS code still calls 9 legacy v1 endpoints — those are tracked in `docs/IOS_V2_MIGRATION_GAP.md` as debt to kill. This folder is the **contract**, not the current implementation.\n\nAll require `X-API-Key: {{apiKey}}`.",
       "item": [
         {
-          "name": "2.A1 GET /v1/sdk/campaigns — zero-config discovery (LEGACY active)",
-          "request": {
-            "auth": {
-              "type": "noauth"
-            },
-            "method": "GET",
-            "header": [],
-            "url": {
-              "raw": "{{baseUrl}}/v1/sdk/campaigns?apiKey={{apiKey}}",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "v1",
-                "sdk",
-                "campaigns"
-              ],
-              "query": [
-                {
-                  "key": "apiKey",
-                  "value": "{{apiKey}}"
-                }
-              ]
-            },
-            "description": "**Purpose**: First call on app launch. Returns campaigns + components bound to this clientApp for zero-config bootstrap.\n\n**Called by**: `CampaignManager.discoverCampaigns` (Sources/VioCore/Managers/CampaignManager.swift:1082). Fires from ContentView.onAppear + TV2VideoPlayer.onAppear.\n\n**Expected**: 200 `{campaigns:[{campaignId,campaignName,isActive,components:[…]}]}`"
-          }
-        },
-        {
-          "name": "2.A2 GET /v1/sdk/config — commerce fallback (LEGACY active)",
-          "request": {
-            "auth": {
-              "type": "noauth"
-            },
-            "method": "GET",
-            "header": [],
-            "url": {
-              "raw": "{{baseUrl}}/v1/sdk/config?apiKey={{apiKey}}&campaignId={{campaignId}}",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "v1",
-                "sdk",
-                "config"
-              ],
-              "query": [
-                {
-                  "key": "apiKey",
-                  "value": "{{apiKey}}"
-                },
-                {
-                  "key": "campaignId",
-                  "value": "{{campaignId}}"
-                }
-              ]
-            },
-            "description": "**Purpose**: Fallback commerce bootstrap. Older v1 shape — superseded by 2.A3.\n\n**Called by**: CampaignManager.swift:816 fallback path, triggered when v2 bootstrap fails.\n\n**Expected**: 200 v1 shape `{campaign,commerce:{apiKey,endpoint}, theme:{…}}`"
-          }
-        },
-        {
-          "name": "2.A3 GET /v2/mobile/config — commerce bootstrap v2",
+          "name": "2.A1 GET /v2/mobile/config (bootstrap)",
           "request": {
             "auth": {
               "type": "noauth"
@@ -456,150 +396,7 @@
                 "config"
               ]
             },
-            "description": "**Purpose**: Multi-sponsor commerce bootstrap. Returns primary + secondaries + per-sponsor commerce blocks + paymentMethods.\n\n**Called by**: `CampaignManager.bootstrapCommerceFromSdkConfig` (Sources/VioCore/Managers/CampaignManager.swift:712).\n\n**Expected**: 200 `{endpoints, campaign, primarySponsor:{commerce:{apiKey,paymentMethods}}, secondarySponsors:[…], features}`"
-          }
-        },
-        {
-          "name": "2.A4 GET /v1/campaigns/:id/config — per-campaign config (LEGACY active)",
-          "request": {
-            "auth": {
-              "type": "noauth"
-            },
-            "method": "GET",
-            "header": [],
-            "url": {
-              "raw": "{{baseUrl}}/v1/campaigns/{{campaignId}}/config?apiKey={{apiKey}}",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "v1",
-                "campaigns",
-                "{{campaignId}}",
-                "config"
-              ],
-              "query": [
-                {
-                  "key": "apiKey",
-                  "value": "{{apiKey}}"
-                }
-              ]
-            },
-            "description": "**Purpose**: Full campaign config: brand, theme, checkout, features.\n\n**Called by**: `ConfigAPIClient.fetchCampaignConfig` (Sources/VioCore/Network/ConfigAPIClient.swift:20).\n\n**Expected**: 200 `{campaignId, brand:{name,logoUrl,iconUrl}, ui:{theme}, features:{enablePolls,…}, checkout:{paymentMethods}}`"
-          }
-        },
-        {
-          "name": "2.A5 GET /v1/engagement/config — engagement config (LEGACY active)",
-          "request": {
-            "auth": {
-              "type": "noauth"
-            },
-            "method": "GET",
-            "header": [],
-            "url": {
-              "raw": "{{baseUrl}}/v1/engagement/config?apiKey={{apiKey}}&broadcastId={{broadcastId}}",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "v1",
-                "engagement",
-                "config"
-              ],
-              "query": [
-                {
-                  "key": "apiKey",
-                  "value": "{{apiKey}}"
-                },
-                {
-                  "key": "broadcastId",
-                  "value": "{{broadcastId}}"
-                }
-              ]
-            },
-            "description": "**Purpose**: Engagement-specific config for a broadcast.\n\n**Called by**: `ConfigAPIClient.fetchEngagementConfig` (Sources/VioCore/Network/ConfigAPIClient.swift:64).\n\n**Expected**: 200 `{engagement:{demoMode,defaultPollDuration,defaultContestDuration}}`"
-          }
-        },
-        {
-          "name": "2.A6 GET /v1/localization/:language — translations (LEGACY active)",
-          "request": {
-            "auth": {
-              "type": "noauth"
-            },
-            "method": "GET",
-            "header": [],
-            "url": {
-              "raw": "{{baseUrl}}/v1/localization/{{language}}?apiKey={{apiKey}}",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "v1",
-                "localization",
-                "{{language}}"
-              ],
-              "query": [
-                {
-                  "key": "apiKey",
-                  "value": "{{apiKey}}"
-                }
-              ]
-            },
-            "description": "**Purpose**: UI translations for the SDK (languages: no, en, sv, es, de, fr, da, fi).\n\n**Called by**: `ConfigAPIClient.fetchLocalization` (Sources/VioCore/Network/ConfigAPIClient.swift:107).\n\n**Expected**: 200 `{language, translations:{key:value}, dateFormat, timeFormat}`"
-          }
-        },
-        {
-          "name": "2.A7 GET /v1/offers — offer banners (LEGACY active)",
-          "request": {
-            "auth": {
-              "type": "noauth"
-            },
-            "method": "GET",
-            "header": [],
-            "url": {
-              "raw": "{{baseUrl}}/v1/offers?apiKey={{apiKey}}&campaignId={{campaignId}}",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "v1",
-                "offers"
-              ],
-              "query": [
-                {
-                  "key": "apiKey",
-                  "value": "{{apiKey}}"
-                },
-                {
-                  "key": "campaignId",
-                  "value": "{{campaignId}}"
-                }
-              ]
-            },
-            "description": "**Purpose**: Returns banner offers for a campaign.\n\n**Called by**: `CampaignManager.fetchOffers` (Sources/VioCore/Managers/CampaignManager.swift:1369).\n\n**Expected**: 200 `{campaignId, offers:[{id,type:\"banner\",config}]}`"
-          }
-        },
-        {
-          "name": "2.A8 GET /api/campaigns/:id/active-components — offer-banner polling (LEGACY active)",
-          "request": {
-            "auth": {
-              "type": "noauth"
-            },
-            "method": "GET",
-            "header": [],
-            "url": {
-              "raw": "{{baseUrl}}/api/campaigns/{{campaignId}}/active-components",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "api",
-                "campaigns",
-                "{{campaignId}}",
-                "active-components"
-              ]
-            },
-            "description": "**Purpose**: Legacy active-components endpoint used by the offer-banner subsystem (alternative to WS-based discovery).\n\n**Called by**: `OfferBannerViewModel.fetchActiveComponents` (Sources/VioCore/Models/OfferBannerModels.swift:567).\n\n**Expected**: 200 `[{instanceId,componentId,locationId,type,config,status}]`"
+            "description": "**Purpose**: Single bootstrap call. Returns active campaign + primary sponsor + secondaries + commerce blocks + payment methods + features. Consolidates everything the SDK needs to know about the clientApp on launch.\n\n**Called by**: `CampaignManager.bootstrapCommerceFromSdkConfig` (Sources/VioCore/Managers/CampaignManager.swift:712).\n\n**Expected**: 200 `{endpoints, campaign:{id,name,isPaused,startDate,endDate}, primarySponsor:{id,name,avatarUrl,commerce:{apiKey,channelId,paymentMethods}}, secondarySponsors:[…], features:{engagement,shoppable,lineup}}`"
           }
         },
         {
@@ -626,7 +423,7 @@
                 "{{campaignId}}"
               ]
             },
-            "description": "**Purpose**: **NOT a REST call**. iOS opens a WebSocket to `{wsBase}/ws/:campaignId` and sends `{\"type\":\"identify\",\"userId\":\"<externalUserId>\"}` as first frame.\n\n**Called by**: `CampaignWebSocketManager.connect` (Sources/VioCore/Managers/CampaignWebSocketManager.swift).\n\n**Expected**: Events received: cart_intent, shoppable_ad, component_status_changed, poll_activated, contest_activated, lineup_show, campaign_started/ended, broadcast_status_changed, ping. See folder 7 for WS reference."
+            "description": "**Purpose**: Not a REST call. SDK opens WS + sends `{\"type\":\"identify\",\"userId\":\"<externalUserId>\"}`.\n\n**Called by**: `CampaignWebSocketManager.connect` (Sources/VioCore/Managers/CampaignWebSocketManager.swift).\n\n**Expected**: Inbound events: cart_intent, shoppable_ad, component_status_changed, poll_activated, contest_activated, lineup_show, campaign_started/ended, broadcast_status_changed, ping. Outbound: identify, pong."
           }
         },
         {
@@ -686,211 +483,11 @@
                 "components"
               ]
             },
-            "description": "**Purpose**: Active campaign_components + broadcast overrides, each with sponsor + commerce block.\n\n**Called by**: 5 product views (VProductCarousel, VProductSpotlight, VProductStore, VProductBanner, VProductSlider).\n\n**Expected**: 200 `{broadcastId, components:[{id, type, locationId, sponsor:{id,name,commerce:{apiKey}}, config:{productIds:[…]}}]}`"
+            "description": "**Purpose**: Active campaign_components + broadcast-scoped overrides. Each entry carries sponsor.id + commerce block for per-sponsor routing.\n\n**Called by**: 5 product views: VProductCarousel, VProductSpotlight, VProductStore, VProductBanner, VProductSlider.\n\n**Expected**: 200 `{broadcastId, components:[{id, type, locationId, sponsor:{id,name,commerce:{apiKey}}, config:{productIds}}]}`"
           }
         },
         {
-          "name": "2.B4 GET /v1/sdk/broadcasts/:id/lineup — Sportmonks lineup (LEGACY active)",
-          "request": {
-            "auth": {
-              "type": "noauth"
-            },
-            "method": "GET",
-            "header": [],
-            "url": {
-              "raw": "{{baseUrl}}/v1/sdk/broadcasts/{{broadcastId}}/lineup?apiKey={{apiKey}}",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "v1",
-                "sdk",
-                "broadcasts",
-                "{{broadcastId}}",
-                "lineup"
-              ],
-              "query": [
-                {
-                  "key": "apiKey",
-                  "value": "{{apiKey}}"
-                }
-              ]
-            },
-            "description": "**Purpose**: Match lineup from Sportmonks.\n\n**Called by**: `LineupService.fetchLineup` (Sources/VioCastingUI/Managers/Match/LineupService.swift:58).\n\n**Expected**: 200 lineup structure."
-          }
-        },
-        {
-          "name": "2.B5 GET /v1/sdk/broadcast?contentId= — contentId resolver (LEGACY active, Viaplay)",
-          "request": {
-            "auth": {
-              "type": "noauth"
-            },
-            "method": "GET",
-            "header": [],
-            "url": {
-              "raw": "{{baseUrl}}/v1/sdk/broadcast?contentId=<partnerStreamId>&country=NO&apiKey={{apiKey}}",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "v1",
-                "sdk",
-                "broadcast"
-              ],
-              "query": [
-                {
-                  "key": "contentId",
-                  "value": "<partnerStreamId>"
-                },
-                {
-                  "key": "country",
-                  "value": "NO"
-                },
-                {
-                  "key": "apiKey",
-                  "value": "{{apiKey}}"
-                }
-              ]
-            },
-            "description": "**Purpose**: Resolves partner-internal `contentId` → Vio `broadcastId`. Used by Viaplay flow, not by the TV2 demo.\n\n**Called by**: `BroadcastValidationService.validateContentId` (Sources/VioCore/Services/BroadcastValidationService.swift:24).\n\n**Expected**: 200 `{hasEngagement, broadcastId, broadcastName, status, campaignId, websocketChannel, broadcastComponents:{polls,contests}}`"
-          }
-        },
-        {
-          "name": "2.C1 GET /v1/engagement/polls?broadcastId=",
-          "request": {
-            "auth": {
-              "type": "noauth"
-            },
-            "method": "GET",
-            "header": [],
-            "url": {
-              "raw": "{{baseUrl}}/v1/engagement/polls?broadcastId={{broadcastId}}",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "v1",
-                "engagement",
-                "polls"
-              ],
-              "query": [
-                {
-                  "key": "broadcastId",
-                  "value": "{{broadcastId}}"
-                }
-              ]
-            },
-            "description": "**Purpose**: Active polls for a broadcast.\n\n**Called by**: `BackendEngagementRepository.fetchActivePolls` (Sources/VioEngagementSystem/Data/BackendEngagementRepository.swift).\n\n**Expected**: 200 `{polls:[{id,question,options:[{id,text,voteCount,percentage}],duration,isActive}], pagination:{limit,offset,total,hasMore}}`"
-          }
-        },
-        {
-          "name": "2.C2 POST /v1/engagement/polls/:pollId/vote (rate-limit 30/min)",
-          "request": {
-            "auth": {
-              "type": "noauth"
-            },
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json",
-                "type": "text"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/v1/engagement/polls/:pollId/vote",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "v1",
-                "engagement",
-                "polls",
-                ":pollId",
-                "vote"
-              ]
-            },
-            "description": "**Purpose**: Cast a vote.\n\n**Called by**: `BackendEngagementRepository.vote`.\n\n**Expected**: 200 `{success:true, results:{totalVotes, options:[…]}}`. 429 if rate-limited.",
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"optionId\": 1,\n  \"userId\": \"{{externalUserId}}\",\n  \"broadcastId\": \"{{broadcastId}}\"\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            }
-          }
-        },
-        {
-          "name": "2.C3 GET /v1/engagement/contests?broadcastId=",
-          "request": {
-            "auth": {
-              "type": "noauth"
-            },
-            "method": "GET",
-            "header": [],
-            "url": {
-              "raw": "{{baseUrl}}/v1/engagement/contests?broadcastId={{broadcastId}}",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "v1",
-                "engagement",
-                "contests"
-              ],
-              "query": [
-                {
-                  "key": "broadcastId",
-                  "value": "{{broadcastId}}"
-                }
-              ]
-            },
-            "description": "**Purpose**: Active contests for a broadcast.\n\n**Called by**: `BackendEngagementRepository.fetchActiveContests`.\n\n**Expected**: 200 `{contests:[{id,title,prize,isActive}], pagination}`"
-          }
-        },
-        {
-          "name": "2.C4 POST /v1/engagement/contests/:contestId/participate (rate-limit 10/min)",
-          "request": {
-            "auth": {
-              "type": "noauth"
-            },
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json",
-                "type": "text"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/v1/engagement/contests/:contestId/participate",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "v1",
-                "engagement",
-                "contests",
-                ":contestId",
-                "participate"
-              ]
-            },
-            "description": "**Purpose**: Submit contest entry.\n\n**Called by**: `BackendEngagementRepository.participate`.\n\n**Expected**: 200 `{success:true}`. 429 if rate-limited.",
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"userId\": \"{{externalUserId}}\",\n  \"broadcastId\": \"{{broadcastId}}\",\n  \"answers\": {}\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            }
-          }
-        },
-        {
-          "name": "2.D1 GET /v2/commerce/sponsors/:id/catalog — sponsor-scoped catalog",
+          "name": "2.C1 GET /v2/commerce/sponsors/:id/catalog — sponsor-scoped catalog",
           "request": {
             "auth": {
               "type": "noauth"
@@ -922,45 +519,11 @@
                 }
               ]
             },
-            "description": "**Purpose**: Sponsor-scoped catalog (Vio-side proxy over Commerce GraphQL).\n\n**Called by**: `CommerceSdkClientProvider.client(forSponsorId:)` → `ProductService.loadProduct(sponsorId:)` (Sources/VioUI/Services/ProductService.swift:46).\n\n**Expected**: 200 `{sponsorId, products:[{id,name,price,currency,imageUrl,images[…]}]}`"
+            "description": "**Purpose**: Sponsor-scoped product catalog (proxied over Commerce GraphQL).\n\n**Called by**: `CommerceSdkClientProvider.client(forSponsorId:)` → `ProductService.loadProduct(sponsorId:)` (Sources/VioUI/Services/ProductService.swift:46).\n\n**Expected**: 200 `{sponsorId, products:[{id,name,price,currency,imageUrl}]}`"
           }
         },
         {
-          "name": "2.D2 GET /v2/commerce/products — raw proxy (debug)",
-          "request": {
-            "auth": {
-              "type": "noauth"
-            },
-            "method": "GET",
-            "header": [
-              {
-                "key": "X-API-Key",
-                "value": "{{apiKey}}",
-                "type": "text"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/v2/commerce/products?sponsorId={{catalogSponsorId}}",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "v2",
-                "commerce",
-                "products"
-              ],
-              "query": [
-                {
-                  "key": "sponsorId",
-                  "value": "{{catalogSponsorId}}"
-                }
-              ]
-            },
-            "description": "**Purpose**: Raw Commerce GraphQL proxy. Prefer 2.D1 in runtime.\n\n**Called by**: Debug.\n\n**Expected**: 200 `{products:[…]}`"
-          }
-        },
-        {
-          "name": "2.D3 (External) POST graph-ql-dev.vio.live/graphql — Commerce GraphQL (direct)",
+          "name": "2.C2 (External) POST {{commerceUrl}} — Commerce GraphQL direct",
           "request": {
             "auth": {
               "type": "noauth"
@@ -969,7 +532,7 @@
             "header": [
               {
                 "key": "Authorization",
-                "value": "Bearer <sponsor commerce_api_key from 2.A3>",
+                "value": "Bearer <sponsor commerce_api_key>",
                 "type": "text"
               },
               {
@@ -987,7 +550,7 @@
                 "{{commerceUrl}}"
               ]
             },
-            "description": "**Purpose**: **Different host** — iOS SDK also calls the Commerce GraphQL endpoint DIRECTLY for product load (not proxied through Vio backend). Uses the sponsor's commerce_api_key from 2.A3.\n\n**Called by**: `CommerceSdkClientProvider` configured GraphQL client (Sources/VioUI/Services/ProductService.swift + VioCore/Configuration/ConfigurationLoader.swift:309).\n\n**Expected**: 200 with products. Returns 401 if commerce_api_key revoked; iOS falls back to re-fetching 2.A3 via `runWithCommerceAuthRetry`.",
+            "description": "**Purpose**: **Different host** — iOS SDK calls Commerce GraphQL directly for product load. Uses sponsor's `commerce_api_key` from 2.A1. On 401, SDK re-fetches 2.A1 via `runWithCommerceAuthRetry`.\n\n**Called by**: `CommerceSdkClientProvider` GraphQL client.\n\n**Expected**: 200 with products. 401 triggers config re-fetch.",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"query\": \"{ Channel { GetProducts(limit: 20) { id name price { amount currency } images { url } } } }\"\n}",
@@ -1000,7 +563,7 @@
           }
         },
         {
-          "name": "2.E1 POST /v2/mobile/campaigns/:id/cart-intent (mobile Add to cart)",
+          "name": "2.D1 POST /v2/mobile/campaigns/:id/cart-intent (in-app Add to cart)",
           "request": {
             "auth": {
               "type": "noauth"
@@ -1031,7 +594,7 @@
                 "cart-intent"
               ]
             },
-            "description": "**Purpose**: Mobile-originated cart intent (in-app tap, not TV-originated).\n\n**Called by**: `VioCampaignPartnerAPI.sendCartIntent` (Sources/VioCore/Network/VioCampaignPartnerAPI.swift:27).\n\n**Expected**: 200 `{ok:true, cartIntentId, deliveryMode}`",
+            "description": "**Purpose**: Mobile-originated cart intent (user tapped Add to cart inside the iOS app).\n\n**Called by**: `VioCampaignPartnerAPI.sendCartIntent` (Sources/VioCore/Network/VioCampaignPartnerAPI.swift:27).\n\n**Expected**: 200 `{ok:true, cartIntentId, deliveryMode}`",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"userId\": \"{{externalUserId}}\",\n  \"productId\": \"{{productId}}\",\n  \"productName\": \"Samsung QLED\"\n}",
@@ -1044,7 +607,7 @@
           }
         },
         {
-          "name": "2.E2 POST /v2/mobile/campaigns/:id/register-device (APNs token)",
+          "name": "2.D2 POST /v2/mobile/campaigns/:id/register-device (APNs/FCM)",
           "request": {
             "auth": {
               "type": "noauth"
@@ -1075,7 +638,7 @@
                 "register-device"
               ]
             },
-            "description": "**Purpose**: Registers APNs/FCM token. Backend also forwards to partner's `partnerDeviceRegisterUrl` if set (see folder 6.2).\n\n**Called by**: `VioCampaignPartnerAPI.registerDevice` (Sources/VioCore/Network/VioCampaignPartnerAPI.swift:70) via `CampaignManager.submitApnsDeviceTokenForVioRegister`.\n\n**Expected**: 200 `{success:true}`. Also fires outbound POST to partner mock.",
+            "description": "**Purpose**: Registers APNs/FCM token. Backend forwards to partner's partnerDeviceRegisterUrl (see folder 6.2) if set.\n\n**Called by**: `VioCampaignPartnerAPI.registerDevice` (Sources/VioCore/Network/VioCampaignPartnerAPI.swift:70).\n\n**Expected**: 200 `{success:true}`. Triggers outbound partner POST.",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"userId\": \"{{externalUserId}}\",\n  \"deviceToken\": \"apns-hex-<fill>\",\n  \"platform\": \"ios\"\n}",
@@ -1091,7 +654,7 @@
     },
     {
       "name": "3. Commerce proxy (/v2/commerce/*)",
-      "description": "Sponsor-scoped Commerce endpoints. Same surface both iOS and dashboard hit. Duplicated for convenience — these are the same items as 2.D1 and 2.D2 but grouped by surface.",
+      "description": "Sponsor-scoped Commerce endpoints. Same items as 2.C1/2.C2, grouped here for direct access.",
       "item": [
         {
           "name": "3.1 GET /v2/commerce/sponsors/:id/catalog",
@@ -1130,7 +693,7 @@
           }
         },
         {
-          "name": "3.2 GET /v2/commerce/products",
+          "name": "3.2 GET /v2/commerce/products (raw)",
           "request": {
             "auth": {
               "type": "noauth"
@@ -1160,14 +723,14 @@
                 }
               ]
             },
-            "description": "**Purpose**: Raw Commerce GraphQL proxy.\n\n**Called by**: Debug/power users.\n\n**Expected**: 200 `{products:[…]}`"
+            "description": "**Purpose**: Raw Commerce GraphQL proxy.\n\n**Called by**: Debug.\n\n**Expected**: 200 `{products:[…]}`"
           }
         }
       ]
     },
     {
       "name": "4. Admin API (/v2/admin/*, Bearer)",
-      "description": "Platform admin. Requires `Authorization: Bearer <JWT>` — fill `{{adminBearer}}` variable.",
+      "description": "Platform admin. `Authorization: Bearer {{adminBearer}}`.",
       "item": [
         {
           "name": "4.1 POST /v2/admin/broadcasts/:id/shoppable-ad",
@@ -1203,7 +766,7 @@
                 "shoppable-ad"
               ]
             },
-            "description": "**Purpose**: Programmatic ad dispatch (source=admin-api). Same handler as 1.5 but under Bearer.\n\n**Called by**: Internal ops, integrations without a clientApp apiKey.\n\n**Expected**: 200 `{success:true, activationId, product, sponsor}`",
+            "description": "**Purpose**: Programmatic ad dispatch (source=admin-api). Same handler as 1.5 under Bearer.\n\n**Called by**: Internal ops, integrations without clientApp apiKey.\n\n**Expected**: 200 `{success:true, activationId, product, sponsor}`",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"productId\": \"{{productId}}\",\n  \"sponsorId\": \"{{sponsorId}}\"\n}",
@@ -1219,7 +782,7 @@
     },
     {
       "name": "5. Dashboard operator (/api/*, session cookie)",
-      "description": "Dashboard UI endpoints. Not part of the SDK contract. Session cookie via dashboard login.",
+      "description": "Dashboard UI endpoints. Not SDK-facing. Session cookie from dashboard login.",
       "item": [
         {
           "name": "5.1 POST /api/broadcasts/:id/trigger-shoppable-ad",
@@ -1247,7 +810,7 @@
                 "trigger-shoppable-ad"
               ]
             },
-            "description": "**Purpose**: Operator dispatch (source=dashboard).\n\n**Called by**: Dashboard \"Fire shoppable ad\" button.\n\n**Expected**: 200 `{success:true, activationId, product, sponsor}`",
+            "description": "**Purpose**: Operator dispatch (source=dashboard).\n\n**Called by**: Dashboard Fire button.\n\n**Expected**: 200 `{success, activationId, product, sponsor}`",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"productId\": \"{{productId}}\",\n  \"sponsorId\": \"{{sponsorId}}\"\n}",
@@ -1287,7 +850,7 @@
                 "execute"
               ]
             },
-            "description": "**Purpose**: Execute a pre-configured slot (source=slot-scheduler).\n\n**Called by**: Dashboard slot authoring flow / scheduler cron.\n\n**Expected**: 200 `{success:true, activationId, product, sponsor}`\n\n**Pre-conditions**: Slot status=scheduled, not previously executed.",
+            "description": "**Purpose**: Execute pre-configured slot (source=slot-scheduler).\n\n**Called by**: Slot authoring / cron.\n\n**Expected**: 200 `{success, activationId}`\n\n**Pre-conditions**: Slot scheduled + not executed.",
             "body": {
               "mode": "raw",
               "raw": "{}",
@@ -1300,7 +863,7 @@
           }
         },
         {
-          "name": "5.3 GET /api/broadcasts/:id/shoppable-ads — activation log",
+          "name": "5.3 GET /api/broadcasts/:id/shoppable-ads",
           "request": {
             "auth": {
               "type": "noauth"
@@ -1325,7 +888,7 @@
                 }
               ]
             },
-            "description": "**Purpose**: List recent activations for a broadcast.\n\n**Called by**: Dashboard broadcast detail.\n\n**Expected**: 200 `{activations:[…], limit, offset, count}`"
+            "description": "**Purpose**: List recent activations.\n\n**Called by**: Dashboard broadcast detail.\n\n**Expected**: 200 `{activations:[…]}`"
           }
         },
         {
@@ -1348,7 +911,7 @@
                 "secondary-sponsors"
               ]
             },
-            "description": "**Purpose**: List secondaries linked to a campaign.\n\n**Called by**: Dashboard sponsors tab.\n\n**Expected**: 200 `{campaignId, secondarySponsors:[…]}`"
+            "description": "**Purpose**: List secondaries.\n\n**Called by**: Dashboard sponsors tab.\n\n**Expected**: 200 `{campaignId, secondarySponsors:[…]}`"
           }
         },
         {
@@ -1377,7 +940,7 @@
                 "secondary-sponsors"
               ]
             },
-            "description": "**Purpose**: Link secondary sponsor.\n\n**Called by**: Dashboard sponsors tab Add modal.\n\n**Expected**: 201 `{success:true, campaignId, sponsorId}`",
+            "description": "**Purpose**: Link secondary.\n\n**Called by**: Dashboard.\n\n**Expected**: 201 `{success, campaignId, sponsorId}`",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"sponsorId\": \"{{sponsorId}}\"\n}",
@@ -1410,14 +973,14 @@
                 ":sponsorId"
               ]
             },
-            "description": "**Purpose**: Unlink secondary.\n\n**Called by**: Dashboard sponsors tab.\n\n**Expected**: 200 `{success:true}`. 409 if sponsor has active placements (future)."
+            "description": "**Purpose**: Unlink secondary.\n\n**Called by**: Dashboard.\n\n**Expected**: 200 `{success}`"
           }
         }
       ]
     },
     {
       "name": "6. Partner outbound (mock server)",
-      "description": "Endpoints the **partner** hosts; Vio calls outbound. Today the Azure mock at `{{mockUrl}}` implements them. HMAC signing is documented in `docs/API_V2_CONTRACT.md §8` but deferred.",
+      "description": "Endpoints the **partner** hosts; Vio calls outbound. Today via `{{mockUrl}}` Azure mock. HMAC signing in `docs/API_V2_CONTRACT.md §8` (deferred).",
       "item": [
         {
           "name": "6.1 POST {{mockUrl}}/api/v1/partner/webhook — cart_intent envelope",
@@ -1445,7 +1008,7 @@
                 "webhook"
               ]
             },
-            "description": "**Purpose**: Canonical cart_intent envelope Vio POSTs to partner when the mobile user is offline on WS.\n\n**Called by**: Vio backend `notifyCartIntentPartnerFallback` (server/routes.ts) when `deliveryMode in {webhook, dual}`.\n\n**Expected**: 200 `{status:\"success\", message:\"Webhook processed\", devices_notified:<n>}` (cold start ~3s).",
+            "description": "**Purpose**: Vio POSTs this to partner when mobile offline on WS.\n\n**Called by**: Backend `notifyCartIntentPartnerFallback` when deliveryMode in {webhook, dual}.\n\n**Expected**: 200 `{status:\"success\", devices_notified:<n>}`",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"vio_notification_version\": 1,\n  \"vio_event_type\": \"cart_intent\",\n  \"vio_payload\": {\n    \"product_id\": \"{{productId}}\",\n    \"sponsor_id\": 3,\n    \"activation_id\": 1,\n    \"campaign_id\": 36,\n    \"user_id\": \"{{externalUserId}}\",\n    \"client_app_id\": 18,\n    \"triggered_at\": \"2026-04-24T12:34:56Z\"\n  },\n  \"metadata\": {\n    \"source\": \"tv-sdk\"\n  }\n}",
@@ -1458,7 +1021,7 @@
           }
         },
         {
-          "name": "6.2 POST {{mockUrl}}/api/v1/partner/devices/register — APNs forward",
+          "name": "6.2 POST {{mockUrl}}/api/v1/partner/devices/register",
           "request": {
             "auth": {
               "type": "noauth"
@@ -1484,7 +1047,7 @@
                 "register"
               ]
             },
-            "description": "**Purpose**: Vio forwards APNs/FCM token to partner after 2.E2.\n\n**Called by**: Vio backend after mobile `register-device` if clientApp has `partnerDeviceRegisterUrl`.\n\n**Expected**: 200 text `\"Device registered\"`.",
+            "description": "**Purpose**: Vio forwards APNs/FCM token to partner after 2.D2.\n\n**Called by**: Backend after mobile register-device, if clientApp.partnerDeviceRegisterUrl set.\n\n**Expected**: 200 text `\"Device registered\"`",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"userId\": \"{{externalUserId}}\",\n  \"deviceToken\": \"apns-hex-<fill>\",\n  \"platform\": \"ios\"\n}",
@@ -1499,8 +1062,8 @@
       ]
     },
     {
-      "name": "7. WebSocket events (reference — not runnable in Postman)",
-      "description": "WebSocket at `wss://<host>/ws/:campaignId`. iOS + Apple TV both connect here; backend fans out events per connected campaign.\n\nNOT directly runnable via Postman (WS support is limited). Use `wscat -c wss://api-local-angelo.vio.live/ws/36` in a terminal and send `{\"type\":\"identify\",\"userId\":\"demo_user_001\"}` as first frame to observe inbound events.\n\n**Server → client events**:\n- `shoppable_ad` — TV dispatch landed (carries activationId, sponsorId, product, sponsor)\n- `cart_intent` — user-scoped cart-intent envelope (canonical v1 shape)\n- `component_status_changed` — placement toggled active/inactive (carries sponsorId at root)\n- `poll_activated` / `poll_deactivated` / `poll_results_updated`\n- `contest_activated` / `contest_deactivated`\n- `lineup_show`\n- `campaign_started` / `campaign_ended`\n- `broadcast_status_changed`\n- `ping` (every 30s; client must respond `{\"type\":\"pong\"}`)\n\n**Client → server frames**:\n- `{\"type\":\"identify\",\"userId\":\"<externalUserId>\"}` — first frame, required for user-scoped routing\n- `{\"type\":\"pong\"}` — reply to ping\n\nDedup rules: iOS dedups cart_intent by `activationId` in `CampaignManager.publishCartIntentIfChanged` (VioSwiftSDK).",
+      "name": "7. WebSocket events (reference)",
+      "description": "WS at `wss://<host>/ws/:campaignId`. Both SDKs connect here. Not runnable in Postman.\n\n**Server → client events**:\n- `shoppable_ad` (activationId, sponsorId, product, sponsor)\n- `cart_intent` (canonical envelope)\n- `component_status_changed` (sponsorId at root)\n- `poll_activated` / `poll_deactivated` / `poll_results_updated`\n- `contest_activated` / `contest_deactivated`\n- `lineup_show`\n- `campaign_started` / `campaign_ended`\n- `broadcast_status_changed`\n- `ping` (client replies `{\"type\":\"pong\"}`)\n\n**Client → server**:\n- `{\"type\":\"identify\",\"userId\":\"<externalUserId>\"}` (first frame, required)\n- `{\"type\":\"pong\"}`\n\nDedup: iOS dedups cart_intent by activationId in `CampaignManager.publishCartIntentIfChanged`.",
       "item": []
     }
   ],
@@ -1583,11 +1146,6 @@
     {
       "key": "endUserId",
       "value": "1",
-      "type": "string"
-    },
-    {
-      "key": "language",
-      "value": "no",
       "type": "string"
     }
   ]
