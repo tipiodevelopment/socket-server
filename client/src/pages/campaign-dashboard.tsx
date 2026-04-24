@@ -1237,11 +1237,13 @@ const ROLE_LABELS: Record<string, string> = {
   engagement: 'Engagement',
   shoppable: 'Shoppable',
   full: 'Full',
+  primary: 'Primary',
 };
 const ROLE_COLORS: Record<string, string> = {
   engagement: 'bg-blue-500/20 text-blue-400',
   shoppable: 'bg-green-500/20 text-green-400',
   full: 'bg-purple-500/20 text-purple-400',
+  primary: 'bg-amber-500/20 text-amber-400',
 };
 
 function SponsorsTabContent({ campaignId }: { campaignId: number }) {
@@ -1261,6 +1263,20 @@ function SponsorsTabContent({ campaignId }: { campaignId: number }) {
     enabled: !!campaignId,
   });
 
+  // Fetch the campaign itself to know its primarySponsorId — it's stored on
+  // `campaigns.primary_sponsor_id`, NOT in `campaign_sponsors`, so the list
+  // above only returns secondaries. The primary is required + immutable and
+  // must be shown in the Sponsors tab too.
+  const { data: campaign } = useQuery<any>({
+    queryKey: ['/api/campaigns', campaignId],
+    queryFn: async () => {
+      const res = await fetch(`/api/campaigns/${campaignId}`);
+      if (!res.ok) throw new Error('Failed');
+      return res.json();
+    },
+    enabled: !!campaignId,
+  });
+
   // /api/sponsors requires userId — without it the endpoint 400s and the
   // "Add Sponsor" button stays disabled because availableSponsors is empty.
   const { data: allSponsors = [] } = useQuery<any[]>({
@@ -1274,7 +1290,17 @@ function SponsorsTabContent({ campaignId }: { campaignId: number }) {
     enabled: !!userId,
   });
 
-  const linkedSponsorIds = new Set(campaignSponsors.map((s: any) => s.sponsorId));
+  // Resolve the primary sponsor record by id from the user's sponsor pool.
+  const primarySponsor = campaign?.primarySponsorId
+    ? allSponsors.find((s: any) => s.id === campaign.primarySponsorId) ?? null
+    : null;
+
+  // Primary + secondaries both count as "linked" for the Add Sponsor dropdown —
+  // can't re-link the primary as a secondary.
+  const linkedSponsorIds = new Set<number>([
+    ...campaignSponsors.map((s: any) => s.sponsorId),
+    ...(primarySponsor ? [primarySponsor.id] : []),
+  ]);
   const availableSponsors = allSponsors.filter((s: any) => !linkedSponsorIds.has(s.id));
 
   const addMutation = useMutation({
@@ -1386,7 +1412,7 @@ function SponsorsTabContent({ campaignId }: { campaignId: number }) {
         <div className="space-y-3">
           {[1, 2].map(i => <div key={i} className="h-20 bg-white/5 rounded-lg animate-pulse" />)}
         </div>
-      ) : campaignSponsors.length === 0 ? (
+      ) : !primarySponsor && campaignSponsors.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-16 border border-dashed border-white/10 rounded-xl">
           <Users2 className="w-10 h-10 text-white/20 mb-3" />
           <p className="text-sm font-medium text-white/40 mb-1">No sponsors linked</p>
@@ -1394,6 +1420,45 @@ function SponsorsTabContent({ campaignId }: { campaignId: number }) {
         </div>
       ) : (
         <div className="space-y-3">
+          {/* Primary sponsor — always first, immutable (no remove button). */}
+          {primarySponsor && (
+            <div
+              key={`primary-${primarySponsor.id}`}
+              className="flex items-center gap-4 p-4 bg-amber-500/5 border border-amber-500/20 rounded-xl"
+              data-testid={`card-primary-sponsor-${primarySponsor.id}`}
+            >
+              <div className="shrink-0">
+                {primarySponsor.logoUrl ? (
+                  <img src={primarySponsor.logoUrl} alt={primarySponsor.name} className="w-12 h-12 object-contain rounded-lg bg-white/5 p-1" />
+                ) : (
+                  <div
+                    className="w-12 h-12 rounded-lg flex items-center justify-center text-white font-bold text-sm"
+                    style={{ backgroundColor: primarySponsor.primaryColor ?? '#3d8b7a' }}
+                  >
+                    {primarySponsor.name.slice(0, 2).toUpperCase()}
+                  </div>
+                )}
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="font-medium text-white text-sm">{primarySponsor.name}</span>
+                  <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${ROLE_COLORS.primary}`}>
+                    Primary
+                  </span>
+                </div>
+                <div className="flex items-center gap-3 text-[11px] text-white/30">
+                  {primarySponsor.primaryColor && (
+                    <div className="flex items-center gap-1">
+                      <div className="w-3 h-3 rounded-full border border-white/10" style={{ backgroundColor: primarySponsor.primaryColor }} />
+                      {primarySponsor.primaryColor}
+                    </div>
+                  )}
+                  <span className="text-white/20">Immutable · set on campaign creation</span>
+                </div>
+              </div>
+            </div>
+          )}
+
           {campaignSponsors.map((cs: any) => (
             <div
               key={cs.id}
