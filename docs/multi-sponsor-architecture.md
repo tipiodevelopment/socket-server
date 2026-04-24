@@ -1,10 +1,23 @@
-# Vio — Multi-Sponsor Architecture Redesign
+# Vio — Multi-Sponsor Architecture Spec
 
-**Status**: Design document, pre-implementation.
+**Status**: **Implemented** — live on develop (backend + iOS SDK) and main (Apple TV SDK) as of 2026-04-24.
 **Audience**: Backend team, iOS SDK team, Kotlin SDK team, Dashboard team.
-**Last updated**: 2026-04-22.
+**Last updated**: 2026-04-24 (post API v2 direct cut).
 
-This document defines the target architecture for Vio's multi-sponsor model. It consolidates the backend, dashboard, iOS SDK, Kotlin SDK (new), and TV SDK variants so everyone builds against one contract.
+> **New developer**: read [`ARCHITECTURE_OVERVIEW.md`](./ARCHITECTURE_OVERVIEW.md) first for hierarchy + v2 surface + milestones. This doc is the deeper data-model + flow spec.
+
+This document defines the architecture for Vio's multi-sponsor model. It consolidates the backend, dashboard, iOS SDK, Apple TV SDK, and Kotlin SDK (not yet built) so every client speaks the same contract.
+
+### Status by milestone
+
+- ✅ Multi-sponsor schema (Phase 1+2+3) — applied to Neon develop + local branch
+- ✅ TV SDK v2 integration (subscribe + session + per-sponsor commerce + activationId) — merged to `InteractiveAds-vio/main`
+- ✅ iOS SDK multi-sponsor consumption — merged to `VioSwiftSDK/develop`
+- ✅ API v2 direct cut (surface-based namespaces `/v2/{mobile,tv,commerce,admin}/*`) — merged 2026-04-24 across all 3 repos
+- 🟡 3-sponsor smoke test — 3 ads dispatched, Apple Pay verification in progress
+- 🔄 Product placements (`campaign_components`-backed) — Steps 5-12 pending (see [`TASK_PLACEMENTS.md`](./TASK_PLACEMENTS.md))
+- ⏳ Kotlin SDKs — coding starts soon against the v2 contract
+- ⏳ Partner HMAC signing + v1 retirement + production cutover — deferred
 
 ---
 
@@ -14,14 +27,17 @@ These are final as of 2026-04-22. Any change from here requires an explicit doc 
 
 | # | Decision | Choice |
 |---|---|---|
-| 1 | SDK config endpoint versioning | **Flip to `/v2/sdk/config`** with new shape; `/v1/sdk/config` is deprecated and retired in Phase 8. No parallel window. |
+| 1 | SDK config endpoint versioning | **Surface-based namespaces under `/v2/*`** (direct cut landed 2026-04-24): `/v2/mobile/config` replaces both `/v1/sdk/config` and `/v2/sdk/config`. iOS consumes from `/v2/mobile/config`; Apple TV from `/v2/tv/broadcast/subscribe`. No v1 fallbacks, no alias routes. |
 | 2 | Kotlin SDK repo | **Separate repo** (not monorepo with iOS). |
 | 3 | Mixpanel project key | **Dual sourcing**: host app provides their own in local config. Vio has a default fallback project key for partners who don't. |
 | 4 | Commerce → Vio sync of keys / payment methods | **Manual** initial entry by operator + **webhook** from Commerce for subsequent updates. |
 | 5 | Reachu legacy | **100% out**. No backfill of `users.reachu_user_id` or `reachu_*` columns. Column and concept removed cleanly in Phase 4. End-users re-register via new `ensure_user` flow. |
 | 6 | `broadcasts.engagement_enabled` default | **false**. Operator opts in explicitly per broadcast. |
 | 7 | Apple TV SDK repo | **Separate repo `InteractiveAds-vio` (`VioTVSDK`)** — not part of `VioSwiftSDK`. tvOS-only, shoppable_ad-only. |
-| 8 | TV SDK bootstrap | Single combined `POST /api/sdk/tv/broadcast/subscribe` (validate + session + sponsors in one call). Soft-miss when broadcast not registered for the client_app. |
+| 8 | TV SDK bootstrap | Single combined `POST /v2/tv/broadcast/subscribe` (validate + session + sponsors in one call). Soft-miss when broadcast not registered for the client_app. |
+| 9 | VioSwiftSDK branching | **Never merges to `main`**. main = v0.1.0-alpha release branch. Work happens on develop. Locked 2026-04-24. |
+| 10 | No v1 fallbacks in SDK code | Every v2 path call either succeeds or the feature degrades. No "try v2 → catch → call v1" logic. Locked 2026-04-24. |
+| 11 | No hardcoded apiKeys in SDK code | Commerce keys arrive per-sponsor from backend (`/v2/mobile/config` primarySponsor+secondarySponsors, `/v2/tv/broadcast/subscribe` response). Dev fallback to file-config key is out. Locked 2026-04-24. |
 
 **Implication of decision 5** (Reachu fully out): the old end-user identifier flow (`reachu_user_id` varchar) is abandoned. Historical `poll_votes`, `contest_participations`, `device_tokens` rows that reference old string IDs remain but are not bridged into the new user model. New flows use the `external_user_id` provided by partner at SDK init, resolved into an `end_users` row (see §2.3).
 
@@ -202,7 +218,7 @@ ALTER TABLE users DROP COLUMN reachu_user_id;
 -- sponsors: add payment_methods (moved from campaigns)
 ALTER TABLE sponsors
   ADD COLUMN payment_methods JSONB NOT NULL DEFAULT '[]';
--- Values like ["card", "klarna", "vipps"]. Delivered in the /v1/sdk/config response.
+-- Values like ["card", "klarna", "vipps", "apple_pay", "google_pay"]. Delivered in the /v2/mobile/config response per-sponsor.
 
 
 -- campaign_sponsors: simplified (drop role column)
@@ -304,29 +320,29 @@ Broadcasts / Polls / Contests — unchanged.
 
 | Endpoint | Method | Purpose |
 |---|---|---|
-| `GET /v1/sdk/config` | GET | Bootstrap: active campaign, primary sponsor, secondary sponsors, each with commerce block |
+| `GET /v2/mobile/config` | GET | Bootstrap: active campaign, primary sponsor, secondary sponsors, each with commerce block. **Single source of truth** — replaced `/v1/sdk/config` and `/v2/sdk/config` in the direct-cut (2026-04-24). |
 | `GET /v1/sdk/broadcasts/:broadcastId/capabilities` | GET | Per-broadcast capabilities (`engagement`, `shoppable`, `lineup`) |
 | `GET /v1/sdk/broadcasts/:broadcastId/components` | GET | Active component placements for this broadcast (campaign + broadcast-scoped merged). Each carries sponsor_id + config |
 | `GET /v1/sdk/broadcasts/:broadcastId/polls` | GET | Polls for the broadcast, each with its sponsor |
 | `GET /v1/sdk/broadcasts/:broadcastId/contests` | GET | Contests |
 | `POST /v1/sdk/engagement/poll-vote` | POST | Vote on a poll |
 | `POST /v1/sdk/engagement/contest-participate` | POST | Join a contest |
-| `POST /api/campaigns/:campaignId/cart-intent` | POST | **Updated**: accepts optional `activationId` for attribution chain. Now persists a cart_intents row |
-| `POST /api/campaigns/:campaignId/register-device` | POST | Register APNs/FCM token, unchanged |
+| `POST /v2/mobile/campaigns/:campaignId/cart-intent` | POST | **Updated**: accepts optional `activationId` for attribution chain. Now persists a cart_intents row |
+| `POST /v2/mobile/campaigns/:campaignId/register-device` | POST | Register APNs/FCM token, unchanged |
 
 **TV SDK** (separate path for TV-specific behaviour):
 
 | Endpoint | Method | Purpose |
 |---|---|---|
-| **`POST /api/sdk/tv/broadcast/subscribe`** | POST | **Primary bootstrap — the TV SDK uses this.** One-shot that replaces config+capabilities+session/start. Body: `{ broadcastId, externalUserId, platform, tvDeviceId? }`. Validates the partner-provided `broadcastId` against Vio's DB for this client_app; ensures `end_users`; upserts `tv_sessions`; returns campaign + primary/secondary sponsors (with commerce blocks) + `wsUrl` + capabilities. Soft-miss returns 200 with `{ subscribed: false, reason }` (`broadcast_not_registered_for_client_app` / `campaign_has_no_primary_sponsor` / `tv_not_enabled_for_this_platform`) so the SDK can silently skip. |
-| `POST /api/sdk/tv/session/start` | POST | Register a TV session without binding to a broadcast. Kept as a building block; most hosts use `/subscribe`. |
-| `POST /api/sdk/tv/session/heartbeat` | POST | Updates `last_seen_at` on the session |
-| `POST /api/sdk/tv/session/end` | POST | Marks session ended |
-| `POST /api/sdk/tv/broadcasts/:broadcastId/shoppable-ad` | POST | Triggers a shoppable_ad dispatch (source=`tv-sdk`). Rare from a real Apple TV device; mostly for automation. |
-| `POST /api/sdk/tv/cart-intent` | POST | TV-originated cart intent. **v2 minimal body**: `{ externalUserId, productId, activationId }` — the backend derives `campaignId` + `sponsorId` from `shoppable_ad_activations[activationId]`. Legacy body with explicit `{ campaignId, sponsorId, platform }` still accepted for ad-hoc callers (no upstream activation). Persists `cart_intents` with `source_activation_id = activationId` **and forwards the envelope to the user's mobile** via the same delivery tree as `/api/campaigns/:id/cart-intent` (local WS → Redis cluster → partner webhook → APNs). The persisted row records the actual `delivery_mode`. |
+| **`POST /v2/tv/broadcast/subscribe`** | POST | **Primary bootstrap — the TV SDK uses this.** One-shot that replaces config+capabilities+session/start. Body: `{ broadcastId, externalUserId, platform, tvDeviceId? }`. Validates the partner-provided `broadcastId` against Vio's DB for this client_app; ensures `end_users`; upserts `tv_sessions`; returns campaign + primary/secondary sponsors (with commerce blocks) + `wsUrl` + capabilities. Soft-miss returns 200 with `{ subscribed: false, reason }` (`broadcast_not_registered_for_client_app` / `campaign_has_no_primary_sponsor` / `tv_not_enabled_for_this_platform`) so the SDK can silently skip. |
+| `POST /v2/tv/session/start` | POST | Register a TV session without binding to a broadcast. Kept as a building block; most hosts use `/subscribe`. |
+| `POST /v2/tv/session/heartbeat` | POST | Updates `last_seen_at` on the session |
+| `POST /v2/tv/session/end` | POST | Marks session ended |
+| `POST /v2/tv/broadcasts/:broadcastId/shoppable-ad` | POST | Triggers a shoppable_ad dispatch (source=`tv-sdk`). Rare from a real Apple TV device; mostly for automation. |
+| `POST /v2/tv/cart-intent` | POST | TV-originated cart intent. **v2 minimal body**: `{ externalUserId, productId, activationId }` — the backend derives `campaignId` + `sponsorId` from `shoppable_ad_activations[activationId]`. Legacy body with explicit `{ campaignId, sponsorId, platform }` still accepted for ad-hoc callers (no upstream activation). Persists `cart_intents` with `source_activation_id = activationId` **and forwards the envelope to the user's mobile** via the same delivery tree as `/api/campaigns/:id/cart-intent` (local WS → Redis cluster → partner webhook → APNs). The persisted row records the actual `delivery_mode`. |
 | `GET /api/sdk/tv/broadcasts/:broadcastId/capabilities` | GET | Same as mobile `capabilities` but filtered for TV (no engagement UI on TV; only shoppable) |
 
-### 4.4 `/v1/sdk/config` response shape (final)
+### 4.4 `/v2/mobile/config` response shape (final)
 
 ```jsonc
 {
@@ -583,7 +599,7 @@ Host app (Viaplay Apple TV / TV2 Apple TV) launches Vio TV SDK
   │       ↓ reads vio-config.json — only apiKey + userId (no commerceApiKey)
   └── VioTV.connect(broadcastId: "tv2-eliteserien-live-2026-03-08")
           ↓
-SDK → POST /api/sdk/tv/broadcast/subscribe
+SDK → POST /v2/tv/broadcast/subscribe
   body: {
     broadcastId: "tv2-eliteserien-live-2026-03-08",
     externalUserId: "tv2_demo_user",
@@ -616,7 +632,7 @@ Backend — single block:
 SDK on success:
   ├── Cache sessionId + sponsor list for per-sponsor commerce client resolution
   ├── Open WebSocket at wsUrl; send { type: "identify", userId: externalUserId }
-  ├── Start 60s heartbeat → POST /api/sdk/tv/session/heartbeat { sessionId }
+  ├── Start 60s heartbeat → POST /v2/tv/session/heartbeat { sessionId }
   └── Listen for `shoppable_ad` WS events (see §5)
 
 SDK on soft-miss (subscribed: false):
@@ -634,7 +650,7 @@ Already implemented, 4 entry points persisting to `shoppable_ad_activations`:
 | `admin-api` | `POST /api/broadcasts/:id/shoppable-ad` | Bearer JWT |
 | `dashboard` | `POST /api/broadcasts/:id/trigger-shoppable-ad` | Session (implicit) |
 | `slot-scheduler` | `POST /api/broadcasts/:id/sponsor-slots/:slotId/execute` | Session |
-| `tv-sdk` | `POST /api/sdk/tv/broadcasts/:id/shoppable-ad` | API Key |
+| `tv-sdk` | `POST /v2/tv/broadcasts/:id/shoppable-ad` | API Key |
 
 All pass through `persistAndBroadcastShoppableAd()` helper → INSERT activation → broadcast WS → return `activationId`.
 
@@ -654,7 +670,7 @@ Step 2: TV SDK receives WS event
   → VioTVShoppableOverlay renders the product + sponsor branding
 
 Step 3: User presses OK on the remote
-  SDK → POST /api/sdk/tv/cart-intent
+  SDK → POST /v2/tv/cart-intent
   v2 minimal body (backend resolves campaignId + sponsorId from activationId):
   {
     externalUserId: "demo_user_001",
@@ -743,7 +759,7 @@ Repo: `VioSwiftSDK` (branch `develop`). Swift Package, 8 targets.
 
 6. **Cart intent call**: when TV SDK fires cart_intent, pass `activationId` (stored in memory since the WS event).
 
-7. **TV session endpoints**: add client methods for `/api/sdk/tv/session/start`, `/heartbeat`, `/end`.
+7. **TV session endpoints**: add client methods for `/v2/tv/session/start`, `/heartbeat`, `/end`.
 
 8. **Mixpanel events**: ensure `placement_impression`, `placement_click`, `shoppable_ad_shown`, `cart_intent_sent` are emitted from the right places.
 
@@ -782,8 +798,8 @@ fun MyScreen() {
 ```
 
 **TV-specific on Android TV**:
-- `VioTVRuntime.registerTVSession(externalUserId, tvDeviceId)` → calls `/api/sdk/tv/session/start`
-- `VioTVRuntime.onRemotePress(product)` → calls `/api/sdk/tv/cart-intent` with `activationId` from memory
+- `VioTVRuntime.registerTVSession(externalUserId, tvDeviceId)` → calls `/v2/tv/session/start`
+- `VioTVRuntime.onRemotePress(product)` → calls `/v2/tv/cart-intent` with `activationId` from memory
 
 ### 7.3 TV SDK contract (shared Apple TV + Android TV)
 
@@ -792,18 +808,18 @@ Both platforms expose same minimal API:
 ```
 TV SDK
  ├── configure(apiKey, userId, environment)  or  configureFromBundle()
- ├── connect(broadcastId)   → POST /api/sdk/tv/broadcast/subscribe
+ ├── connect(broadcastId)   → POST /v2/tv/broadcast/subscribe
  │    ├── { subscribed: true }  → cache sponsors, open WS, send identify, start heartbeat
  │    └── { subscribed: false } → silent no-op, optional onSubscriptionFailed(reason)
  ├── onShoppableAdReceived(payload):   // WS event
  │    ├── store activationId + sponsorId + product in memory
  │    └── render popup (product info + sponsor branding)
  ├── onUserConfirm():   // remote OK / tap
- │    └── POST /api/sdk/tv/cart-intent
+ │    └── POST /v2/tv/cart-intent
  │         body: { externalUserId, productId, campaignId, activationId, sponsorId, platform }
  │         → backend persists cart_intents + forwards envelope to mobile
- ├── heartbeat() every 60s → POST /api/sdk/tv/session/heartbeat { sessionId }
- └── disconnect() → close WS, stop heartbeat, POST /api/sdk/tv/session/end
+ ├── heartbeat() every 60s → POST /v2/tv/session/heartbeat { sessionId }
+ └── disconnect() → close WS, stop heartbeat, POST /v2/tv/session/end
 ```
 
 ### 7.4 Apple TV SDK — `VioTVSDK` (separate repo `InteractiveAds-vio`)
@@ -829,7 +845,7 @@ Swift Package isolated from `VioSwiftSDK`. Platform gate: tvOS 17+ only (macOS 1
 The JSON key `broadcastId` matches `broadcasts.broadcast_id` in this backend — it was
 previously aliased as `contentId` in early SDK drafts and was renamed for consistency.
 Notably **no `commerceApiKey`** — all commerce keys arrive from
-`/api/sdk/tv/broadcast/subscribe` response (`primarySponsor.commerce.apiKey` +
+`/v2/tv/broadcast/subscribe` response (`primarySponsor.commerce.apiKey` +
 `secondarySponsors[].commerce.apiKey`).
 
 **Host integration (minimum viable)**:
@@ -985,8 +1001,8 @@ In a deployable slice:
 - Update `/v1/sdk/config` to new response shape (MINOR version bump for SDK contract)
 - Implement `/v1/sdk/broadcasts/:id/capabilities`
 - Implement `/v1/sdk/broadcasts/:id/components` with sponsor-per-component
-- Implement `/api/sdk/tv/session/start`, `/heartbeat`, `/end`
-- Implement `/api/sdk/tv/cart-intent`
+- Implement `/v2/tv/session/start`, `/heartbeat`, `/end`
+- Implement `/v2/tv/cart-intent`
 - Update `/api/campaigns/:id/cart-intent` to persist `cart_intents` row and accept `activationId`
 - Implement `/api/campaigns/:id/secondary-sponsors` CRUD
 - Add sponsor validation to: polls, contests, components, shoppable_ad triggers
