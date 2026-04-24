@@ -6,10 +6,15 @@ developer's machine that has all three repos cloned alongside this one.
 
 ## Start here
 
-- **New to this project?** → [`multi-sponsor-architecture.md`](./multi-sponsor-architecture.md)
-  is the authoritative spec (tables, endpoints, WS events, attribution chain).
-- **Planning next steps?** → [`ROLLOUT_ROADMAP.md`](./ROLLOUT_ROADMAP.md)
-  tracks what's landed and what's queued across 5 phases.
+- **Lost context? Resuming a session?** → [`CURRENT_STATE.md`](./CURRENT_STATE.md)
+  is the live truth: branches, DB, runtime, demo data, PRs, current phase.
+- **Building or consuming the API?** → [`API_V2_CONTRACT.md`](./API_V2_CONTRACT.md)
+  is the SDK contract (5 surfaces under `/v2/*`).
+- **Need the map** (schema + endpoints + WS events + recipes) → [`DB_AND_ENDPOINTS.md`](./DB_AND_ENDPOINTS.md).
+- **Authoritative architecture** → [`multi-sponsor-architecture.md`](./multi-sponsor-architecture.md).
+- **Planning next steps?** → [`ROLLOUT_ROADMAP.md`](./ROLLOUT_ROADMAP.md).
+- **Placements plan tracker** → [`TASK_PLACEMENTS.md`](./TASK_PLACEMENTS.md) (paused at Step 4 pending v2 merge).
+- **iOS legacy calls still in code** → [`IOS_V2_MIGRATION_GAP.md`](./IOS_V2_MIGRATION_GAP.md).
 - **Onboarding the Kotlin dev?** → [`KOTLIN_TV_SDK_SPEC.md`](./KOTLIN_TV_SDK_SPEC.md)
   and [`KOTLIN_MOBILE_SDK_SPEC.md`](./KOTLIN_MOBILE_SDK_SPEC.md).
 
