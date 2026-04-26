@@ -70,7 +70,7 @@ Consumed by iOS (`VioSwiftSDK`) and Kotlin mobile SDK.
 | GET | `/v2/mobile/config` | Bootstrap — campaign + primary + secondaries + endpoints + commerce blocks. **Replaces `/v2/sdk/config` + `/v1/sdk/config`.** |
 | GET | `/v2/mobile/broadcasts/:broadcastId/capabilities` | Feature flags per broadcast. **Replaces `/v2/sdk/broadcasts/:id/capabilities`.** |
 | GET | `/v2/mobile/broadcasts/:broadcastId/components` | Active placement list (campaign + broadcast-scoped merged), each with `sponsor` + `commerce` blocks. **Replaces `/v2/sdk/broadcasts/:id/components`.** |
-| POST | `/v2/mobile/campaigns/:campaignId/cart-intent` | Mobile-originated cart intent. Accepts optional `activationId` for attribution. Persists `cart_intents` and fans out WS / webhook. **Replaces `/api/campaigns/:id/cart-intent`.** |
+| POST | `/v2/mobile/campaigns/:campaignId/cart-intent` | Mobile-originated cart intent. Accepts optional `activationId` for attribution. Persists `cart_intents` and fans out WS / webhook. Response `mode` ∈ `'websocket' \| 'dual' \| 'webhook' \| 'apns' \| 'dropped'` (post-2026-04-26 refactor — superset, see below). **Replaces `/api/campaigns/:id/cart-intent`.** |
 | POST | `/v2/mobile/campaigns/:campaignId/register-device` | APNs/FCM token registration. **Replaces `/api/campaigns/:id/register-device`.** |
 | GET | `/v2/mobile/broadcasts/:broadcastId/lineup` | Match lineup (Sportmonks-backed). **Replaces `/v1/sdk/broadcasts/:id/lineup`.** |
 | GET | `/v2/mobile/broadcasts/:broadcastId/chat` | Chat history. **Replaces `/v1/sdk/broadcasts/:id/chat`.** |
@@ -100,7 +100,7 @@ Consumed by `VioTVSDK` (Apple TV) and Kotlin Android TV SDK.
 | POST | `/v2/tv/session/start` | Register a TV session without binding to a broadcast. Kept as building block. **Replaces `/api/sdk/tv/session/start`.** |
 | POST | `/v2/tv/session/heartbeat` | Update `last_seen_at` on the session. **Replaces `/api/sdk/tv/session/heartbeat`.** |
 | POST | `/v2/tv/session/end` | Mark session ended. **Replaces `/api/sdk/tv/session/end`.** |
-| POST | `/v2/tv/cart-intent` | TV-originated cart intent. v2 minimal body `{ externalUserId, productId, activationId }`. **Replaces `/api/sdk/tv/cart-intent`.** |
+| POST | `/v2/tv/cart-intent` | TV-originated cart intent. v2 minimal body `{ externalUserId, productId, activationId }`. Response `mode` ∈ `'websocket' \| 'dual' \| 'webhook' \| 'apns' \| 'dropped'`. **Replaces `/api/sdk/tv/cart-intent`.** |
 | POST | `/v2/tv/broadcasts/:broadcastId/shoppable-ad` | TV SDK-driven ad dispatch (rare from a real device, used by automation). **Replaces `/api/sdk/tv/broadcasts/:id/shoppable-ad`.** |
 | GET | `/v2/tv/broadcasts/:broadcastId/capabilities` | TV-filtered capabilities (shoppable-only, no engagement). |
 
@@ -175,6 +175,41 @@ contract.
 ```jsonc
 { "userId": "<string>", "deviceToken": "<string>", "platform": "ios" | "android" }
 ```
+
+### `delivery_mode` semantics (cart-intent response + cart_intents row)
+
+Both cart-intent endpoints (`/v2/mobile/...` and `/v2/tv/...`) resolve the
+delivery outcome and report it as `mode` in the response + persist it to
+`cart_intents.delivery_mode`. Possible values:
+
+| `mode` | Meaning |
+|---|---|
+| `websocket` | User WS-connected (this node or via Redis cluster forward), envelope delivered over WS only. `dual` flag was off. |
+| `dual` | User WS-connected AND `CART_INTENT_DUAL_DELIVERY=true` → envelope sent over WS AND also POSTed to partner webhook (or APNs fallback) for safety. |
+| `webhook` | User offline; envelope POSTed to `clientApp.webhookUrl`. |
+| `apns` | User offline AND no `webhookUrl` configured; envelope sent as APNs push to all registered iOS device tokens. |
+| `dropped` | User offline AND no `webhookUrl` AND no iOS device tokens registered. The envelope was built and persisted but no delivery happened. |
+
+Pre-2026-04-26 the mobile path collapsed everything offline-ish to
+`'webhook'`. Post-refactor (PR #26 — `routeUserEvent`), both endpoints
+report the precise outcome. Consumers that switched on the previous
+narrower set will still see `'websocket' | 'dual' | 'webhook'` in the
+common path; the new values appear only when the partner webhook is
+unset (rare in production but useful for telemetry).
+
+### Internal helpers (server-side, for adding new TV→user events)
+
+The user-event delivery layer is centralized in `server/routes.ts`:
+
+| Helper | What |
+|---|---|
+| `buildCartIntentEnvelope(args)` | Builds the v1 envelope (`vio_event_type='cart_intent'`). Single source of truth. To add a new event type, write a sibling `buildXxxEnvelope` with `vio_event_type='xxx'`. |
+| `routeUserEvent({envelope, wsEvent, ...})` | Canonical 3-branch dispatcher (local WS / Redis cluster / offline → partner). Returns `{deliveryMode, userConnected}`. Generic — accepts any envelope. |
+| `notifyUserEventViaPartner({envelope, ...})` | Delivery only. POSTs envelope as-is to webhook OR (if no webhook) sends APNs (cart_intent-shaped today; guarded by `vio_event_type` for future event types). |
+
+A new `/v2/tv/<event>` handler is ~30 lines: build the envelope, build the
+`wsEvent` wrapper, call `routeUserEvent`, persist whatever per-event row
+the new event needs with the returned `deliveryMode + userConnected`.
 
 ## 9. WebSocket events
 

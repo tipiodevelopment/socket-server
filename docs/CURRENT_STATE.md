@@ -3,7 +3,7 @@
 > **Purpose**: one file to regain context after a compaction, a break, or a
 > new session. If you read only one doc, read this.
 >
-> **Last updated**: 2026-04-24 — dashboard UX sprint fully unified into develop (#21/#22/#23 all merged). No open PRs.
+> **Last updated**: 2026-04-26 — Phase 5 (Apple Pay smoke test) **CLOSED** + cart-intent unification refactors opened (backend PR #26 + SDK PR #4).
 
 This doc is the single source of truth for:
 - Which branch + commit of each repo is the working tip
@@ -47,7 +47,12 @@ This doc is the single source of truth for:
 
 ## 3. Open PRs awaiting user review
 
-**None.** As of 2026-04-24, all feature PRs from the UX sprint have been merged to develop. Next work → new branches off develop `61e43c1` for Phase 6 cleanup + Phase 7 placements.
+| Repo | PR | Branch | What | Target |
+|---|---|---|---|---|
+| socket-server | [#26](https://github.com/tipiodevelopment/socket-server/pull/26) | `refactor/route-user-event` | Backend extraction of the user-event delivery layer. New helpers `buildCartIntentEnvelope`, `notifyUserEventViaPartner`, `routeUserEvent`. Both cart-intent handlers shrink ~80 lines each; future TV→user events plug in without copy-paste. Behavior preserved (smoke test verde). | develop |
+| VioSwiftSDK | [#4](https://github.com/vio-live/VioSwiftSDK/pull/4) | `refactor/unify-cart-intent-paths` | iOS unification: drops the SDK-self-scheduled `UNNotificationRequest` (the source of duplicate `cart_intents` for sponsors with role=shoppable). Adds `IncomingTVEvent` enum + `CampaignManager.dispatch(_:source:)` so WS + APNs paths converge through one dispatcher. Removes hardcoded Spanish strings from SDK fallbacks. | develop |
+
+The 2 PRs are **independent**: backend refactor doesn't require SDK changes; SDK refactor doesn't require backend changes. Either can merge first.
 
 **Closed / superseded** (do not reopen):
 - #10 superseded by #11 (was a force-push casualty)
@@ -173,22 +178,25 @@ Rebranched 2026-04-24: the original #17/#18/#19 were closed and recreated off fr
 - **`campaign_sponsors` on campaign 36**: deduped row where Elkjøp was simultaneously primary AND secondary (pre-existing data bug).
 - **Sponsor commerce keys aligned**: Elkjøp → `5HPHWJY-…`, Torshov → `36EHG0M-…`, XXL → `KCXF10Y-…`. Before: all 3 shared the `KCXF10Y` key; aligned to what the user confirmed as the real keys.
 
-## 9. Smoke test status (Phase 5)
+## 9. Smoke test status (Phase 5) — ✅ CLOSED 2026-04-26
 
-3 shoppable ads dispatched against campaign 36 earlier today. activationIds:
+Apple Pay end-to-end completed for all 3 sponsors. Validation rows in `cart_intents`:
 
-- **5 and 6** Elkjøp / Samsung QLED
-- **7** Torshov Sport / Nike Fotballdrakt
-- **8** XXL / FC Barcelona Jersey
+| ID | Sponsor | Product | Activation | Mode | Connected |
+|---|---|---|---|---|---|
+| 8  | Elkjøp (3) | 408895 Samsung QLED | 13 | websocket | true |
+| 9+10 | Torshov Sport (4) | 408898 Nike drakt | 14 | websocket | true (duplicate — see §15) |
+| 11 | XXL (7) | 408874 PSG drakt | 15 | websocket | true |
+| 12 | XXL (7) | 408874 (refactor smoke) | 15 | webhook | false (curl test post-refactor) |
 
-Backend responses 200 JSON with correct sponsor blocks. Apple TV overlay should have rendered with per-sponsor branding. Apple Pay checkout verification is **pending user confirmation** — user has been iterating on dashboard UX instead of completing the Apple Pay round-trip.
+All 4 paths validated end-to-end:
+- Apple TV WS connect via `/v2/tv/broadcast/subscribe` → 3 sponsor blocks with correct commerce keys
+- TV remote tap → `/v2/tv/cart-intent` → backend WS fan-out → iOS receives
+- iOS overlay loads product via per-sponsor commerce key
+- Apple Pay sheet → completion → Commerce backend received the order
+- DB attribution chain (`source_activation_id`) intact
 
-Completion requires:
-1. Apple TV demo (InteractiveAds-vio on `main`) connected to `/v2/tv/broadcast/subscribe`
-2. iOS demo (VioSwiftSDK on `develop` via `feature/api-v2-urls`) connected as `demo_user_001`
-3. Fire the 3 ads (via the unified `Add Shoppable Moment` dialog — Fire now mode — or curl to `/api/broadcasts/:id/trigger-shoppable-ad`)
-4. User taps Select/Play on tvOS sim → iOS receives `cart_intent` → overlay opens with Commerce product loaded via the correct sponsor's key → Apple Pay button visible + functional
-5. Verify `cart_intents` DB row has `sponsor_id + source_activation_id + delivery_mode='websocket'`
+**Bug found during smoke**: Torshov consistently produced 2 `cart_intents` per fire (intents 9 + 10 ~1.2s apart, both same activation 14). Root cause: SDK-scheduled local `UNNotificationRequest` re-entering the pipeline via `UNUserNotificationCenterDelegate`. Fixed in SDK PR #4 (drops the local notification path entirely). Backend PR #26 generalizes the delivery layer so future TV→user events don't repeat the same mistake.
 
 ## 10. iOS SDK — 9 legacy v1 calls still in code (deferred)
 
@@ -239,3 +247,80 @@ State change worth persisting → new commit `docs(state): …`. Examples:
 - Regla nueva → add to §2.
 
 Keep terse. If a section grows past ~30 lines, extract + link.
+
+## 15. Cart-intent unified architecture (post-refactor 2026-04-26)
+
+Both backend (PR #26) and iOS SDK (PR #4) refactored on 2026-04-26 so the cart-intent path is **two transports → one dispatcher → one publisher**, with extension hooks for the next TV→user event type (poll_result, score_update, etc.) without copy-paste.
+
+### iOS SDK — VioSwiftSDK
+
+```text
+   ┌──── WebSocket ──── CampaignWebSocketManager.onCartIntent ─────┐
+   │                                                                │
+   │                                                                ▼
+   │                                          CampaignManager.dispatch(.cartIntent(event), source: .webSocket)
+   │                                                                ▲
+   │                                                                │
+   └──── Real APNs ──── UNUserNotificationCenterDelegate ───────────┘
+                                              handlePushNotificationUserInfo
+                                              → applyCartIntentFromNotificationUserInfo
+                                              → dispatch(.cartIntent(merged), source: .push)
+
+   dispatch(.cartIntent(...), source: ...)
+       └─► publishCartIntentIfChanged(event, channel: source.rawValue)
+              └─► dedup by activationId / (productId, campaignId)
+                  └─► activeCartIntentEvent = event  → overlay reacts via @Published
+```
+
+**Files**:
+- `Sources/VioCore/Models/IncomingTVEvent.swift` — discriminated union (only `.cartIntent` case today; extension docs in the file itself)
+- `Sources/VioCore/Managers/CampaignManager.swift` — `dispatch(_:source:)` is the single public entry point. Per-event publishers (`publishCartIntentIfChanged`) stay private, own their dedup
+- `Sources/VioCore/Managers/CampaignWebSocketManager.swift` — WS adapter, no longer self-schedules local notifications
+
+**Removed (legacy, post-PR #4)**: `scheduleCartIntentNotification`, `shouldSkipCartIntentLocalNotificationForForeground`, init-time `UNUserNotificationCenter.requestAuthorization`, hardcoded Spanish defaults, `import UserNotifications`, `import UIKit`, `CampaignManager.showsCartIntentLocalNotificationWhenAppIsActive` flag, `VioCampaignPartnerAPI.sendCartIntent` (was unused dead code).
+
+### Backend — socket-server
+
+```text
+   /v2/mobile/campaigns/:id/cart-intent ──┐
+                                          ├─► buildCartIntentEnvelope(...)
+   /v2/tv/cart-intent ────────────────────┘     │
+                                                ▼
+                                          routeUserEvent({envelope, wsEvent, ...})
+                                                │
+                              ┌─────────────────┼─────────────────┐
+                              ▼                 ▼                 ▼
+                         (local WS)         (Redis cluster)    (offline → notifyUserEventViaPartner)
+                                                                       │
+                                                                  ┌────┴────┐
+                                                                  ▼         ▼
+                                                              webhook    APNs
+```
+
+**Helpers** (`server/routes.ts` top of file):
+- `buildCartIntentEnvelope(args)` — single source of truth for v1 envelope shape. `activation_id + sponsor_id` optional (TV path includes; mobile path omits, matching pre-refactor behavior).
+- `notifyUserEventViaPartner({envelope, ...})` — delivery only. Webhook if `clientApp.webhookUrl` set, else APNs (cart_intent-shaped today; guarded by `vio_event_type` for future expansion).
+- `routeUserEvent({envelope, wsEvent, ...})` — canonical 3-branch dispatcher (local WS / Redis cluster / offline). Returns `{deliveryMode, userConnected}` for the caller to persist.
+
+`wsUserMap` promoted to module-level so helpers can route without parameter plumbing.
+
+### To add the next TV→user event type (e.g. `poll_result`)
+
+1. Backend: write a `buildPollResultEnvelope(args)` (analogous to cart_intent), add a handler `/v2/tv/poll-result` that calls `routeUserEvent({envelope, wsEvent})`. ~30 lines.
+2. iOS SDK: add `case pollResult(PollResultEvent)` to `IncomingTVEvent`, add `@Published var activePollResult` + `publishPollResultIfChanged` to `CampaignManager`, extend the `dispatch` switch. Wire WS adapter (in `bindWebSocketCallbacks`) and APNs adapter (extend the `switch resolved` in `handlePushNotificationUserInfo`). ~40 lines.
+3. APNs builder in `server/services/ios-flow.ts` — generalize `sendAPNs(envelope)` if the new event needs notification-center surface (today it's cart_intent-shaped).
+
+Total: ~70 lines vs the ~250 it would have taken before this refactor.
+
+## 16. Known issues / tracked deferred (2026-04-26)
+
+Issues observed during today's smoke + refactor that are **not blocking** Phase 7 (placements) but worth tracking:
+
+| Severity | Issue | Where | Plan |
+|---|---|---|---|
+| Med | Apple Pay order arrived with `quantity=2` when expected 1 (only 1 of 3 sponsors). Likely `CartModule.addProduct` stacks (`existing.quantity + quantity`) instead of replacing when product is already in cart from a prior incomplete attempt. User says non-critical, will report if recurs. | `VioSwiftSDK/Sources/VioUI/Managers/CartModule.swift:551-572` | Confirm in next test whether cart was empty pre-fire. If recurring → either clear cart on `activeCartIntentEvent` set, or change semantics to `replace` when adding from shoppable_ad context. |
+| Med | TV-side `setupCommerceEnrichment()` called twice during boot (once from `configure(...)`, once from `configureFromBundle(...)`) — possible race that re-emits `activeAd` and could re-render overlay with stale state. | `InteractiveAds-vio/Sources/VioTV/VioTV.swift:38, 48` | Idempotency guard or single entry point. Out of scope of iOS PR #4 (different repo, different surface). |
+| Med | TV WS handler accepts both `type:'product'` (legacy) and `type:'shoppable_ad'` — backend only emits the latter today, so the legacy branch is dead but still parses if someone resurrects it. | `InteractiveAds-vio/Sources/VioTVCore/Managers/VioTVWebSocketManager.swift:104` | Remove legacy branch when we ship the next TV SDK release. |
+| Low | `sendAPNs` in backend (`server/services/ios-flow.ts`) is still cart_intent-shaped — hardcoded Norwegian title `"Produkt lagt til"` + body template + legacy `vio_cartIntent_*` keys. | `server/services/ios-flow.ts:57-68` | Generalize `sendAPNs(envelope)` when next user-event type ships. Backend PR #26 already guards with `if eventType !== 'cart_intent' → skip APNs + log warning` so non-cart_intent envelopes don't accidentally send wrong-shaped pushes. |
+| Low | Spanish hardcoded strings in `VioCastingUI` and `Demo/{Vg,tv2demo,Viaplay}/` (e.g., `"Producto agregado al carrito"`, `"Producto recibido"` in print statements). Outside cart-intent unification scope but real tech debt. | grep `Sources/VioCastingUI Demo/` for `Producto\|Carrito\|Comprar` | Move to `Localizable.strings` per market when Casting feature is touched again. |
+| Low | iOS SDK has 9 legacy `/v1/*` calls still in flight (engagement, lineup, localization, brand config). Tracked separately. | `IOS_V2_MIGRATION_GAP.md` | 5 follow-up PRs (A-E) planned. Each migrates when its feature domain advances. |
