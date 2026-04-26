@@ -159,49 +159,118 @@ function isUserEligibleForCampaign(
   return true;
 }
 
+// ============================================================
+// User-targeted event delivery (TV → individual user mobile)
+// ------------------------------------------------------------
+// Generic envelope + routing layer shared by all "TV-originated, user-scoped"
+// events. Today only `cart_intent` rides this path; future events
+// (`poll_result`, `score_update`, etc.) plug in by:
+//   1. Building a `VioEnvelope` with their `vio_event_type` + `vio_payload`
+//   2. Calling `routeUserEvent(...)` with the envelope + a `wsEvent` wrapper
+//   3. Persisting whatever per-event row they need with the returned
+//      `deliveryMode + userConnected`
+//
+// Three layers:
+//   - `buildCartIntentEnvelope`  → cart_intent-specific envelope shape
+//   - `notifyUserEventViaPartner` → delivery-only (webhook or APNs)
+//   - `routeUserEvent`            → triple-rama (local WS / Redis cluster /
+//                                   partner fallback) + dual-delivery glue
+//
+// `sendAPNs` is still cart_intent-shaped; when a new event type lands we'll
+// either generalize `sendAPNs(envelope)` or branch by `envelope.vio_event_type`.
+// ============================================================
+
+// Map userId → WebSocket for direct user-targeted notifications. Promoted to
+// module level (was inside registerRoutes) so the user-event delivery helpers
+// below can route without taking it as a parameter. Populated/cleaned by the
+// WS upgrade handlers inside registerRoutes — same lifecycle as before.
+const wsUserMap = new Map<string, WebSocket>();
+
+interface VioEnvelope {
+  vio_notification_version: number;
+  vio_user_id: string;
+  vio_event_type: string;
+  vio_payload: Record<string, any>;
+}
+
+type UserEventDeliveryMode = "websocket" | "dual" | "webhook" | "apns" | "dropped";
+
 /**
- * When the user is offline (no WS) or dual-delivery is enabled: POST partner webhook
- * or, if no webhook, Vio direct APNs via stored device tokens.
+ * Builds the canonical cart_intent envelope. Single source of truth for the
+ * shape consumed by both WS push (mobile) and partner webhook / APNs fallback.
+ *
+ * `activationId` and `sponsorId` are optional — only TV-originated cart_intents
+ * carry them (so iOS can route to the right per-sponsor commerce key).
  */
-async function notifyCartIntentPartnerFallback(params: {
-  clientApp: { webhookUrl?: string | null; name: string };
-  campaignId: number;
+function buildCartIntentEnvelope(args: {
   userId: string;
-  productId: unknown;
-  resolvedName: string;
+  campaignId: number | string;
+  productId: string | number;
+  productName: string;
+  clientAppName: string;
+  activationId?: number | null;
+  sponsorId?: number | null;
+}): VioEnvelope {
+  const normalizedAppName = args.clientAppName.toLowerCase().replace(/\s+/g, "_");
+  const source = `apptv_${normalizedAppName}`;
+  const deeplink = `product/${args.productId}?campaignId=${args.campaignId}`;
+
+  const payload: Record<string, any> = {
+    product_id: String(args.productId),
+    campaign_id: String(args.campaignId),
+    product_name: args.productName,
+    notification_title: args.productName,
+    notification_body: `${args.productName} – klikk for å kjøpe.`,
+    source,
+    deeplink,
+  };
+
+  if (args.activationId != null) payload.activation_id = Number(args.activationId);
+  if (args.sponsorId != null) payload.sponsor_id = Number(args.sponsorId);
+
+  return {
+    vio_notification_version: 1,
+    vio_user_id: String(args.userId),
+    vio_event_type: "cart_intent",
+    vio_payload: payload,
+  };
+}
+
+/**
+ * Generic delivery helper for any user-targeted envelope.
+ * - If clientApp.webhookUrl is set → POST envelope as-is to the partner.
+ * - Otherwise, if iOS device tokens are registered → send APNs (currently
+ *   only cart_intent payloads supported; other event types are skipped with
+ *   a warning until per-type APNs builders exist).
+ *
+ * Replaces `notifyCartIntentPartnerFallback`. Construction of the envelope
+ * is now the caller's responsibility — this function only delivers.
+ */
+async function notifyUserEventViaPartner(params: {
+  clientApp: { webhookUrl?: string | null; name: string };
+  envelope: VioEnvelope;
   context: "offline" | "dual";
+  // Used only in the APNs fallback branch when there's no webhookUrl. The
+  // current `sendAPNs` is cart_intent-shaped and needs the campaign id to
+  // look up device tokens; passing it explicitly avoids re-parsing payload.
+  campaignIdForDeviceLookup?: number;
 }): Promise<void> {
-  const { clientApp, campaignId, userId, productId, resolvedName, context } = params;
+  const { clientApp, envelope, context, campaignIdForDeviceLookup } = params;
+  const userId = envelope.vio_user_id;
+  const eventType = envelope.vio_event_type;
+  const tag = `[UserEvent:${eventType}]`;
+
   const webhookUrl = clientApp?.webhookUrl?.trim();
   if (webhookUrl) {
-    // Normalize clientApp name for source field (e.g., "TV2" -> "tv2")
-    const normalizedAppName = clientApp.name.toLowerCase().replace(/\s+/g, '_');
-    const source = `apptv_${normalizedAppName}`;
-    const deeplink = `product/${productId}?campaignId=${campaignId}`;
-
-    const webhookBody = {
-      vio_notification_version: 1,
-      vio_user_id: String(userId),
-      vio_event_type: "cart_intent",
-      vio_payload: {
-        product_id: String(productId),
-        campaign_id: String(campaignId),
-        product_name: resolvedName,
-        notification_title: resolvedName,
-        notification_body: `${resolvedName} – klikk for å kjøpe.`,
-        source,
-        deeplink,
-      },
-    };
-    console.log('[CartIntent] Webhook body BEFORE POST to mock:', JSON.stringify(webhookBody, null, 2));
-    console.log('[CartIntent] userId parameter received:', userId);
+    console.log(`${tag} Webhook body BEFORE POST to mock:`, JSON.stringify(envelope, null, 2));
+    console.log(`${tag} userId=${userId}`);
     try {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 10000);
       const webhookRes = await fetch(webhookUrl, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(webhookBody),
+        body: JSON.stringify(envelope),
         signal: controller.signal,
       });
       clearTimeout(timeoutId);
@@ -209,42 +278,158 @@ async function notifyCartIntentPartnerFallback(params: {
         context === "dual"
           ? "Dual delivery: partner webhook"
           : "Partner webhook called (offline user)";
-      console.log(`[CartIntent] ${label}: ${webhookUrl} → ${webhookRes.status}`);
+      console.log(`${tag} ${label}: ${webhookUrl} → ${webhookRes.status}`);
     } catch (webhookErr: any) {
       if (webhookErr.name === "AbortError") {
-        console.warn("[CartIntent] Webhook timeout (>10s)");
+        console.warn(`${tag} Webhook timeout (>10s)`);
       } else {
-        console.error("[CartIntent] Webhook error:", webhookErr);
+        console.error(`${tag} Webhook error:`, webhookErr);
       }
     }
     return;
   }
 
-  const devices = await storage.getDeviceTokens(campaignId, String(userId));
+  // No webhook → try direct APNs. Today only cart_intent has an APNs builder;
+  // when other event types ship, generalize sendAPNs(envelope) or branch here.
+  if (eventType !== "cart_intent") {
+    console.warn(
+      `${tag} APNs fallback skipped — no APNs builder for vio_event_type='${eventType}'. Configure clientApp.webhookUrl.`,
+    );
+    return;
+  }
+
+  const campaignIdForDevices =
+    campaignIdForDeviceLookup ?? Number(envelope.vio_payload.campaign_id);
+  if (!Number.isFinite(campaignIdForDevices)) {
+    console.warn(`${tag} APNs fallback skipped — invalid campaignId for device lookup`);
+    return;
+  }
+
+  const devices = await storage.getDeviceTokens(campaignIdForDevices, String(userId));
   const iosDevices = devices.filter((d) => d.platform === "ios");
   if (iosDevices.length > 0) {
+    const rawProductId = envelope.vio_payload.product_id;
     const pid =
-      typeof productId === "number" ? productId : parseInt(String(productId), 10);
+      typeof rawProductId === "number" ? rawProductId : parseInt(String(rawProductId), 10);
     await sendAPNs(iosDevices, {
-      campaignId,
+      campaignId: campaignIdForDevices,
       productId: Number.isFinite(pid) ? pid : 0,
-      resolvedName,
+      resolvedName: String(envelope.vio_payload.product_name ?? ""),
       userId: String(userId),
     });
     if (context === "dual") {
-      console.log("[CartIntent] Dual delivery: invoked direct APNs (no webhook on client app)");
+      console.log(`${tag} Dual delivery: invoked direct APNs (no webhook on client app)`);
     }
   } else {
     if (context === "dual") {
-      console.log(
-        "[CartIntent] Dual delivery: skipped — no webhookUrl and no iOS device registered",
-      );
+      console.log(`${tag} Dual delivery: skipped — no webhookUrl and no iOS device registered`);
     } else {
-      console.log(
-        "[CartIntent] User offline/remote and no webhookUrl or iOS device registered",
-      );
+      console.log(`${tag} User offline/remote and no webhookUrl or iOS device registered`);
     }
   }
+}
+
+/**
+ * Routes a user-targeted event through the canonical 3-branch decision tree:
+ *   1. User WS connected to THIS node → send WS direct + (if dual) partner
+ *   2. User WS connected on ANOTHER node → forward via Redis Pub/Sub + (if dual) partner
+ *   3. User offline/unknown → partner webhook (or APNs fallback)
+ *
+ * Returns the delivery outcome so the caller can persist it in their per-event
+ * row (cart_intents.delivery_mode, future analogous columns). Caller decides
+ * what to persist, where, and what response to send.
+ */
+async function routeUserEvent(params: {
+  userId: string;
+  clientApp: { id: number; webhookUrl?: string | null; name: string };
+  envelope: VioEnvelope;
+  /** The WS message wrapping the envelope (typically `{ type, ...envelope, timestamp }`). */
+  wsEvent: any;
+  /** Override for `CART_INTENT_DUAL_DELIVERY` env var. Default: read from env. */
+  dualDelivery?: boolean;
+  /** Campaign id used by APNs fallback to look up device tokens (only matters
+   *  when there's no `webhookUrl`). */
+  campaignIdForDeviceLookup?: number;
+}): Promise<{ deliveryMode: UserEventDeliveryMode; userConnected: boolean }> {
+  const {
+    userId,
+    clientApp,
+    envelope,
+    wsEvent,
+    campaignIdForDeviceLookup,
+  } = params;
+  const dualDelivery =
+    params.dualDelivery ?? process.env.CART_INTENT_DUAL_DELIVERY !== "false";
+
+  const eventType = envelope.vio_event_type;
+  const tag = `[UserEvent:${eventType}]`;
+  const normalizedUserId = String(userId).trim();
+  const directWs = wsUserMap.get(normalizedUserId);
+  const isConnectedLocal = Boolean(directWs && directWs.readyState === WebSocket.OPEN);
+
+  // Cluster check with timeout to avoid hanging if Redis is down.
+  let isConnectedCluster = false;
+  if (isRedisEnabled()) {
+    try {
+      isConnectedCluster = await Promise.race([
+        isUserConnectedAcrossCluster(normalizedUserId),
+        new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 1000)),
+      ]);
+    } catch (err) {
+      console.warn(`${tag} isUserConnectedAcrossCluster error:`, err);
+    }
+  }
+  const userConnected = isConnectedLocal || isConnectedCluster;
+
+  let deliveryMode: UserEventDeliveryMode;
+
+  if (isConnectedLocal && directWs) {
+    directWs.send(JSON.stringify(wsEvent));
+    console.log(`${tag} WS local → userId=${normalizedUserId}`);
+    if (dualDelivery) {
+      console.log(`${tag} Dual delivery: also invoking partner fallback`);
+      await notifyUserEventViaPartner({
+        clientApp, envelope, context: "dual", campaignIdForDeviceLookup,
+      });
+      deliveryMode = "dual";
+    } else {
+      deliveryMode = "websocket";
+    }
+  } else if (isConnectedCluster) {
+    await publishEvent("ws:events:forward", wsEvent);
+    console.log(`${tag} Redis Pub/Sub → cluster for userId=${normalizedUserId}`);
+    if (dualDelivery) {
+      console.log(`${tag} Dual delivery: also invoking partner fallback`);
+      await notifyUserEventViaPartner({
+        clientApp, envelope, context: "dual", campaignIdForDeviceLookup,
+      });
+      deliveryMode = "dual";
+    } else {
+      deliveryMode = "websocket";
+    }
+  } else {
+    // Offline — partner webhook or direct APNs fallback.
+    await notifyUserEventViaPartner({
+      clientApp, envelope, context: "offline", campaignIdForDeviceLookup,
+    });
+    // Best-effort guess at which fallback actually ran (mirrors v2/tv legacy logic).
+    const webhookConfigured = !!clientApp.webhookUrl?.trim();
+    if (webhookConfigured) {
+      deliveryMode = "webhook";
+    } else if (campaignIdForDeviceLookup != null) {
+      const devices = await storage.getDeviceTokens(
+        campaignIdForDeviceLookup,
+        normalizedUserId,
+      );
+      deliveryMode = devices.filter((d) => d.platform === "ios").length > 0
+        ? "apns"
+        : "dropped";
+    } else {
+      deliveryMode = "dropped";
+    }
+  }
+
+  return { deliveryMode, userConnected };
 }
 
 /**
@@ -318,8 +503,8 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   // Flag: true when the server intentionally terminated the socket (zombie)
   const clientTerminatedByServer = new WeakMap<WebSocket, boolean>();
 
-  // Map userId → WebSocket for direct user notifications (cart-intent, etc.)
-  const wsUserMap = new Map<string, WebSocket>();
+  // (wsUserMap promoted to module-level — see top of file. Local references
+  // here still resolve to that single instance.)
   // Map WebSocket → user connection binding for Redis-backed presence
   const clientUserBindings = new WeakMap<WebSocket, { userId: string; connectionId: string }>();
   
@@ -5443,121 +5628,32 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       }
 
       const normalizedUserId = String(userId).trim();
-      const directWs = wsUserMap.get(normalizedUserId);
-      console.log('[CartIntent] directWs', directWs ? 'connected' : 'undefined');
-      const isConnectedLocal = Boolean(directWs && directWs.readyState === WebSocket.OPEN);
-      console.log('[CartIntent] isConnectedLocal', isConnectedLocal);
-      console.log('[CartIntent] isRedisEnabled', isRedisEnabled());
 
-      // Check cluster with timeout to avoid hanging if Redis is down
-      let isConnectedCluster = false;
-      if (isRedisEnabled()) {
-        try {
-          isConnectedCluster = await Promise.race([
-            isUserConnectedAcrossCluster(normalizedUserId),
-            new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 1000))
-          ]);
-        } catch (err) {
-          console.warn('[CartIntent] isUserConnectedAcrossCluster error:', err);
-        }
-      }
-
-      const isUserConnected = isConnectedLocal || isConnectedCluster;
-      console.log('[CartIntent] isUserConnected', isUserConnected);
-
-      // Normalize clientApp name for source field (e.g., "TV2" -> "tv2")
-      const normalizedAppName = clientApp.name.toLowerCase().replace(/\s+/g, '_');
-      const source = `apptv_${normalizedAppName}`;
-      const deeplink = `product/${productId}?campaignId=${campaignId}`;
+      // Build the canonical envelope once — used by WS, partner webhook, APNs and persistence.
+      // Mobile-path callers historically have not propagated activation_id/sponsor_id into the
+      // payload (only into the persisted row); preserve that until we explicitly migrate the
+      // mobile contract. TV-path callers do propagate them — see below.
+      const envelope = buildCartIntentEnvelope({
+        userId: String(userId),
+        campaignId,
+        productId,
+        productName: resolvedName,
+        clientAppName: clientApp.name,
+      });
 
       const wsEvent = {
         type: 'cart_intent',
-        vio_notification_version: 1,
-        vio_user_id: String(userId),
-        vio_event_type: 'cart_intent',
-        vio_payload: {
-          product_id: String(productId),
-          campaign_id: String(campaignId),
-          product_name: resolvedName,
-          notification_title: resolvedName,
-          notification_body: `${resolvedName} – klikk for å kjøpe.`,
-          source,
-          deeplink,
-        },
+        ...envelope,
         timestamp: new Date().toISOString(),
       };
 
-      // Default: **dual delivery** — after WS (local or cluster), also run partner webhook / APNs so push
-      // reaches the device when the app is backgrounded (WS may not run on iOS until foreground).
-      // Opt out: `CART_INTENT_DUAL_DELIVERY=false` (saves duplicate partner calls when you only want WS).
-      const dualDelivery = process.env.CART_INTENT_DUAL_DELIVERY !== "false";
-
-      let deliveryMode: 'websocket' | 'dual' | 'webhook';
-
-      if (isConnectedLocal && directWs) {
-        // Send via local socket
-        directWs.send(JSON.stringify(wsEvent));
-        console.log('[CartIntent] Sent via local socket to userId:', userId);
-        if (dualDelivery) {
-          console.log("[CartIntent] Dual delivery: also invoking partner fallback");
-          await notifyCartIntentPartnerFallback({
-            clientApp,
-            campaignId,
-            userId: String(userId),
-            productId,
-            resolvedName,
-            context: "dual",
-          });
-          deliveryMode = 'dual';
-        } else {
-          deliveryMode = 'websocket';
-        }
-      } else if (isConnectedCluster) {
-        // User is on another cluster node -> Forward via Redis Pub/Sub
-        await publishEvent("ws:events:forward", wsEvent);
-        console.log('[CartIntent] Forwarded via Redis Pub/Sub to cluster for userId:', userId);
-        if (dualDelivery) {
-          console.log("[CartIntent] Dual delivery: also invoking partner fallback");
-          await notifyCartIntentPartnerFallback({
-            clientApp,
-            campaignId,
-            userId: String(userId),
-            productId,
-            resolvedName,
-            context: "dual",
-          });
-          deliveryMode = 'dual';
-        } else {
-          deliveryMode = 'websocket';
-        }
-      } else {
-        // User is offline -> Partner webhook fallback (Partner-first architecture)
-        await notifyCartIntentPartnerFallback({
-          clientApp,
-          campaignId,
-          userId: String(userId),
-          productId,
-          resolvedName,
-          context: "offline",
-        });
-        deliveryMode = 'webhook';
-      }
-
-      // Construct envelope for response (without internal WS fields)
-      const envelope = {
-        vio_notification_version: 1,
-        vio_user_id: String(userId),
-        vio_event_type: 'cart_intent',
-        vio_payload: {
-          product_id: String(productId),
-          campaign_id: String(campaignId),
-          product_name: resolvedName,
-          notification_title: resolvedName,
-          notification_body: `${resolvedName} – klikk for å kjøpe.`,
-          source,
-          deeplink,
-        },
-      };
+      const { deliveryMode, userConnected } = await routeUserEvent({
+        userId: normalizedUserId,
+        clientApp,
+        envelope,
+        wsEvent,
+        campaignIdForDeviceLookup: campaignId,
+      });
 
       // Persist cart_intent with attribution chain (source_activation_id) for later analytics.
       // Ensure-user: resolves (client_app, externalUserId) to the end_users row, creating if needed.
@@ -5574,24 +5670,24 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
           sourceActivationId: activationId ? Number(activationId) : null,
           sourceComponentId: null,
           deliveryMode,
-          userConnected: Boolean(isUserConnected),
+          userConnected,
           envelope,
           metadata: null,
         });
         cartIntentId = created.id;
       } catch (persistErr) {
-        console.error('[CartIntent] persist failed (non-fatal):', persistErr);
+        console.error('[UserEvent:cart_intent] persist failed (non-fatal):', persistErr);
       }
 
       res.json({
         success: true,
         mode: deliveryMode,
-        userConnected: Boolean(isUserConnected),
+        userConnected,
         envelope,
         cartIntentId,
       });
     } catch (error) {
-      console.error('[CartIntent] Error:', error);
+      console.error('[UserEvent:cart_intent] mobile handler error:', error);
       res.status(500).json({ error: 'Failed to process cart intent' });
     }
   });
@@ -6782,43 +6878,17 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
         console.warn('[tv cart-intent] Commerce lookup failed:', err);
       }
 
-      // 2. Build envelope v1 — shipped to mobile WS / partner webhook / APNs.
-      const normalizedAppName = clientApp.name.toLowerCase().replace(/\s+/g, '_');
-      const source = `apptv_${normalizedAppName}`;
-      const deeplink = `product/${productId}?campaignId=${campaign.id}`;
-      const envelope = {
-        vio_notification_version: 1,
-        vio_user_id: String(externalUserId),
-        vio_event_type: 'cart_intent',
-        vio_payload: {
-          product_id: String(productId),
-          campaign_id: String(campaign.id),
-          product_name: resolvedName,
-          notification_title: resolvedName,
-          notification_body: `${resolvedName} – klikk for å kjøpe.`,
-          source,
-          deeplink,
-          activation_id: activationId ? Number(activationId) : null,
-          sponsor_id: sponsorId ? Number(sponsorId) : null,
-        },
-      };
-
-      // 3. Route to user's mobile — same decision tree as legacy cart-intent.
-      const normalizedUserId = String(externalUserId).trim();
-      const directWs = wsUserMap.get(normalizedUserId);
-      const isConnectedLocal = Boolean(directWs && directWs.readyState === WebSocket.OPEN);
-      let isConnectedCluster = false;
-      if (isRedisEnabled()) {
-        try {
-          isConnectedCluster = await Promise.race([
-            isUserConnectedAcrossCluster(normalizedUserId),
-            new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 1000)),
-          ]);
-        } catch (err) {
-          console.warn('[tv cart-intent] isUserConnectedAcrossCluster error:', err);
-        }
-      }
-      const isUserConnected = isConnectedLocal || isConnectedCluster;
+      // 2. Build canonical envelope. TV-path includes activation_id + sponsor_id in
+      //    vio_payload so the iOS overlay can route to the correct per-sponsor commerce key.
+      const envelope = buildCartIntentEnvelope({
+        userId: String(externalUserId),
+        campaignId: campaign.id,
+        productId,
+        productName: resolvedName,
+        clientAppName: clientApp.name,
+        activationId,
+        sponsorId,
+      });
 
       const wsEvent = {
         type: 'cart_intent',
@@ -6826,44 +6896,14 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
         timestamp: new Date().toISOString(),
       };
 
-      const dualDelivery = process.env.CART_INTENT_DUAL_DELIVERY !== 'false';
-      let deliveryMode: 'websocket' | 'dual' | 'webhook' | 'apns' | 'dropped';
-
-      if (isConnectedLocal && directWs) {
-        directWs.send(JSON.stringify(wsEvent));
-        console.log('[tv cart-intent] WS local → userId:', externalUserId);
-        if (dualDelivery) {
-          await notifyCartIntentPartnerFallback({
-            clientApp, campaignId: campaign.id, userId: String(externalUserId),
-            productId, resolvedName, context: 'dual',
-          });
-          deliveryMode = 'dual';
-        } else {
-          deliveryMode = 'websocket';
-        }
-      } else if (isConnectedCluster) {
-        await publishEvent('ws:events:forward', wsEvent);
-        console.log('[tv cart-intent] Redis Pub/Sub → cluster for userId:', externalUserId);
-        if (dualDelivery) {
-          await notifyCartIntentPartnerFallback({
-            clientApp, campaignId: campaign.id, userId: String(externalUserId),
-            productId, resolvedName, context: 'dual',
-          });
-          deliveryMode = 'dual';
-        } else {
-          deliveryMode = 'websocket';
-        }
-      } else {
-        // Offline — mock server / APNs path (same as legacy cart-intent).
-        await notifyCartIntentPartnerFallback({
-          clientApp, campaignId: campaign.id, userId: String(externalUserId),
-          productId, resolvedName, context: 'offline',
-        });
-        // Best-effort guess at which offline fallback actually ran.
-        const webhookConfigured = !!clientApp.webhookUrl?.trim();
-        const devices = webhookConfigured ? [] : await storage.getDeviceTokens(campaign.id, String(externalUserId));
-        deliveryMode = webhookConfigured ? 'webhook' : (devices.filter((d) => d.platform === 'ios').length > 0 ? 'apns' : 'dropped');
-      }
+      // 3. Route — local WS / Redis cluster / partner webhook+APNs fallback.
+      const { deliveryMode, userConnected } = await routeUserEvent({
+        userId: String(externalUserId),
+        clientApp,
+        envelope,
+        wsEvent,
+        campaignIdForDeviceLookup: campaign.id,
+      });
 
       // 4. Persist cart_intents row with the actual delivery outcome.
       const row = await storage.createCartIntent({
@@ -6876,7 +6916,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
         sourceActivationId: activationId ? Number(activationId) : null,
         sourceComponentId: null,
         deliveryMode,
-        userConnected: Boolean(isUserConnected),
+        userConnected,
         envelope,
         metadata: null,
       });
@@ -6885,11 +6925,11 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
         success: true,
         cartIntentId: row.id,
         mode: deliveryMode,
-        userConnected: Boolean(isUserConnected),
+        userConnected,
         envelope,
       });
     } catch (error) {
-      console.error('[tv cart-intent] error', error);
+      console.error('[UserEvent:cart_intent] tv handler error:', error);
       res.status(500).json({ error: 'Failed to record cart intent' });
     }
   });
