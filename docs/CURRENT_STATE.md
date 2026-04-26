@@ -3,7 +3,7 @@
 > **Purpose**: one file to regain context after a compaction, a break, or a
 > new session. If you read only one doc, read this.
 >
-> **Last updated**: 2026-04-26 — Phase 5 (Apple Pay smoke test) **CLOSED** + cart-intent unification refactors opened (backend PR #26 + SDK PR #4).
+> **Last updated**: 2026-04-27 — cart-intent unification + multi-sponsor confirmation logo + foreground banner suppression all merged. 0 open PRs. Backend timestamp/collapse-id work tracked deferred.
 
 This doc is the single source of truth for:
 - Which branch + commit of each repo is the working tip
@@ -19,9 +19,9 @@ This doc is the single source of truth for:
 
 | Repo | Local path | Active branch | HEAD | Purpose |
 |---|---|---|---|---|
-| socket-server (backend + dashboard) | `/Users/angelo/vio-backend/socket-server` | `develop` | `61e43c1` | tip of develop with the full dashboard UX sprint merged |
-| VioSwiftSDK (iOS SDK) | `/Users/angelo/VioSwiftSDK` | `develop` | merged to develop via PR #3 (a8e5730) | |
-| InteractiveAds-vio (Apple TV SDK) | `/Users/angelo/Documents/GitHub/InteractiveAds-vio` | `main` | merged to main via PR #3 (6a23bdf) | |
+| socket-server (backend + dashboard) | `/Users/angelo/vio-backend/socket-server` | `develop` | `d9d9144` | post user-event refactor + state docs merged |
+| VioSwiftSDK (iOS SDK) | `/Users/angelo/VioSwiftSDK` | `develop` | `f35bf6b` | post unification + sponsor logo fix + loader feedback merged |
+| InteractiveAds-vio (Apple TV SDK) | `/Users/angelo/Documents/GitHub/InteractiveAds-vio` | `main` | `6a23bdf` | merged via PR #3 (no in-flight TV work) |
 
 **Branches already merged (don't reuse)**:
 - socket-server `feature/api-v2-cut` → develop (PR #13)
@@ -33,8 +33,17 @@ This doc is the single source of truth for:
 - socket-server `fix/shoppable-moments-unified-v2` → develop (PR #22)
 - socket-server `fix/broadcast-detail-tv-gate-v2` → develop (PR #23, rebased onto #22 before merge — stripped obsolete rename hunks)
 - socket-server `docs/state-after-pr-rebranch` → develop (PR #24)
+- socket-server `docs/state-unified` → develop (PR #25)
+- socket-server `refactor/route-user-event` → develop (PR #26 — user-event delivery layer extraction)
+- socket-server `docs/post-unification-state` → develop (PR #27)
 - VioSwiftSDK `feature/api-v2-urls` → develop (PR #3)
+- VioSwiftSDK `refactor/unify-cart-intent-paths` → develop (PR #4 — IncomingTVEvent dispatcher + drop SDK-scheduled local notification)
+- VioSwiftSDK `fix/cart-intent-loader-feedback` → develop (PR #5 — instant loader after push tap, Norwegian copy)
+- VioSwiftSDK `fix/confirmation-sheet-active-sponsor-logo` → develop (PR #7 — logo per active sponsor + foreground banner suppression + stale event TTL gate)
 - InteractiveAds-vio `feature/api-v2-urls` → main (PR #3)
+
+**Closed without merge** (do not reopen):
+- VioSwiftSDK PR #6 — superseded by PR #7 with a more solid design (active-sponsor anchor on `CommerceSdkClientProvider` instead of `CampaignManager.activeCartIntentEvent`)
 
 ## 2. Rules locked (2026-04-24)
 
@@ -44,15 +53,11 @@ This doc is the single source of truth for:
 4. **No v1 fallbacks in SDK code**. No "try v2 → catch → call v1" logic. Remaining v1 calls are direct calls for unmigrated features, not fallbacks.
 5. **No hardcoded apiKeys in SDK code**. Commerce keys come only from per-sponsor blocks in `/v2/mobile/config` (iOS) and `/v2/tv/broadcast/subscribe` (Apple TV).
 6. **No auto-merge of PRs** by the assistant. Open the PR, push the branch, tell the user the URL and what to test. User triggers merge with explicit "merge #NN". Applies to code AND docs (consistency > special cases).
+7. **No branching off develop while the user is testing on an in-flight PR**. If the user is rebuilding their app from PR #N, derived fixes layer on top of PR #N's branch (or cherry-pick its commits), never branch off develop — that orphans the new fix from their build and the next rebuild silently loses the in-flight changes. Locked 2026-04-26 after the PADELGO confirmation-sheet incident where a logo fix branched off develop reverted the user's iOS test environment to PR #4-less state on rebuild.
 
 ## 3. Open PRs awaiting user review
 
-| Repo | PR | Branch | What | Target |
-|---|---|---|---|---|
-| socket-server | [#26](https://github.com/tipiodevelopment/socket-server/pull/26) | `refactor/route-user-event` | Backend extraction of the user-event delivery layer. New helpers `buildCartIntentEnvelope`, `notifyUserEventViaPartner`, `routeUserEvent`. Both cart-intent handlers shrink ~80 lines each; future TV→user events plug in without copy-paste. Behavior preserved (smoke test verde). | develop |
-| VioSwiftSDK | [#4](https://github.com/vio-live/VioSwiftSDK/pull/4) | `refactor/unify-cart-intent-paths` | iOS unification: drops the SDK-self-scheduled `UNNotificationRequest` (the source of duplicate `cart_intents` for sponsors with role=shoppable). Adds `IncomingTVEvent` enum + `CampaignManager.dispatch(_:source:)` so WS + APNs paths converge through one dispatcher. Removes hardcoded Spanish strings from SDK fallbacks. | develop |
-
-The 2 PRs are **independent**: backend refactor doesn't require SDK changes; SDK refactor doesn't require backend changes. Either can merge first.
+**None.** As of 2026-04-27, all in-flight cart-intent / multi-sponsor work merged. Next work → fresh feature branches off develop; deferred items below need PRs opened when their time comes.
 
 **Closed / superseded** (do not reopen):
 - #10 superseded by #11 (was a force-push casualty)
@@ -312,9 +317,21 @@ Both backend (PR #26) and iOS SDK (PR #4) refactored on 2026-04-26 so the cart-i
 
 Total: ~70 lines vs the ~250 it would have taken before this refactor.
 
-## 16. Known issues / tracked deferred (2026-04-26)
+## 16. Known issues / tracked deferred (last refresh 2026-04-27)
 
-Issues observed during today's smoke + refactor that are **not blocking** Phase 7 (placements) but worth tracking:
+Issues observed during smoke / refactor that are **not blocking** Phase 7 (placements) but worth tracking. Severity reflects user impact, not implementation effort.
+
+### Deferred — backend `cart_intent` envelope hardening (2026-04-27)
+
+User explicitly said "ya arreglamos lo de los stamps después". The SDK PR #7 already accepts these fields and gates dispatching when present; the backend PR fills in what's missing so the gates actually fire.
+
+| Need | What | Where |
+|---|---|---|
+| `vio_payload.dispatched_at` | ISO 8601 timestamp the backend stamps when fanning the event out. Today only present at WS top-level (`wsEvent.timestamp`); has to also live inside `vio_payload` so the APNs path carries it. Without this, the SDK staleness gate (5 min TTL) skips APNs-delivered events. | `buildCartIntentEnvelope` in `server/routes.ts` — add `dispatched_at: new Date().toISOString()` to the payload. |
+| `apns-collapse-id` | APNs header keyed by `cart_intent_${activationId}` so iOS replaces a previous banner instead of stacking when dual_delivery + retries land multiple pushes. | `notification.collapseId` in `server/services/ios-flow.ts:sendAPNs`. Also include `vio_payload.activation_id` in the APNs custom payload (currently only in WS) so the SDK dedup cache works for tap. |
+| Idempotency cache on `/v2/mobile/cart-intent` | Short window (~10 s) keyed by `(activationId, userId)` to drop loopback requests where the partner mock posts back into our endpoint after we forwarded the webhook. Without this, dual_delivery becomes a 3-event cascade (WS + APNs + WS-from-mock-loopback). | New helper near `routeUserEvent`; persistence stays unchanged for the deduped row (or persist as `delivery_mode='dropped-duplicate'`). |
+
+### Other tracked items
 
 | Severity | Issue | Where | Plan |
 |---|---|---|---|
