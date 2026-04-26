@@ -3,7 +3,7 @@
 > **Purpose**: one file to regain context after a compaction, a break, or a
 > new session. If you read only one doc, read this.
 >
-> **Last updated**: 2026-04-26 — Phase 5 (Apple Pay smoke test) **CLOSED** + cart-intent unification refactors opened (backend PR #26 + SDK PR #4).
+> **Last updated**: 2026-04-27 — Hito 6 placements re-engaged with manifest registry: backend PR #29 + iOS SDK PR #8 + dashboard PR #30 open. Self-service flow locked (dev registers component+location once at boot, operator picks from dashboard, never touches code again).
 
 This doc is the single source of truth for:
 - Which branch + commit of each repo is the working tip
@@ -49,10 +49,15 @@ This doc is the single source of truth for:
 
 | Repo | PR | Branch | What | Target |
 |---|---|---|---|---|
-| socket-server | [#26](https://github.com/tipiodevelopment/socket-server/pull/26) | `refactor/route-user-event` | Backend extraction of the user-event delivery layer. New helpers `buildCartIntentEnvelope`, `notifyUserEventViaPartner`, `routeUserEvent`. Both cart-intent handlers shrink ~80 lines each; future TV→user events plug in without copy-paste. Behavior preserved (smoke test verde). | develop |
-| VioSwiftSDK | [#4](https://github.com/vio-live/VioSwiftSDK/pull/4) | `refactor/unify-cart-intent-paths` | iOS unification: drops the SDK-self-scheduled `UNNotificationRequest` (the source of duplicate `cart_intents` for sponsors with role=shoppable). Adds `IncomingTVEvent` enum + `CampaignManager.dispatch(_:source:)` so WS + APNs paths converge through one dispatcher. Removes hardcoded Spanish strings from SDK fallbacks. | develop |
+| socket-server | [#29](https://github.com/tipiodevelopment/socket-server/pull/29) | `feature/placements-manifest-registry` | Backend foundation for placement self-service: new table `app_component_locations`, endpoint `POST /v2/mobile/components/manifest` (idempotent upsert, multi-tenant via apiKey), dashboard read endpoints `GET /api/client-apps/:id/component-locations` + `?withLocations=true` extension. 17 jest tests. | develop |
+| VioSwiftSDK | [#8](https://github.com/vio-live/VioSwiftSDK/pull/8) | `feature/placements-registry` | iOS half: `VioPlacementComponent` protocol + `VioPlacementRegistry` + `VioRuntime.registerPlacementComponent(_:)` + `registerPlacementLocation(_:)`. Manifest auto-upload from `VioSession.start()` after bootstrap. 16 XCTest cases. | develop |
+| socket-server | [#30](https://github.com/tipiodevelopment/socket-server/pull/30) | `feature/placements-dashboard-pickers-on-29` | Dashboard ComponentsTab Add dialog: location picker fed by SDK manifest (replaces hardcoded `sport-*` dropdown), component picker scoped to app. Based on top of PR #29. | feature/placements-manifest-registry → develop after #29 |
 
-The 2 PRs are **independent**: backend refactor doesn't require SDK changes; SDK refactor doesn't require backend changes. Either can merge first.
+**Merge order**: PR #29 first → develop. PR #8 in parallel (independent, just needs the endpoint live for end-to-end). PR #30 auto-rebases to develop after #29 lands.
+
+**Dependencies**:
+- PR #29 ← prerequisite for the manifest endpoint to exist
+- PR #8 (iOS) and PR #30 (dashboard) both consume #29's endpoint but each can merge independently of the other
 
 **Closed / superseded** (do not reopen):
 - #10 superseded by #11 (was a force-push casualty)
