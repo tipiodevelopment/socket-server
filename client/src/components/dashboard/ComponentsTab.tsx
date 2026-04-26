@@ -34,8 +34,44 @@ export function ComponentsTab({ campaignId }: ComponentsTabProps) {
     queryKey: ['/api/campaigns', campaignId, 'components'],
   });
 
+  // Component picker is scoped to the campaign's clientApp. Falls back to the
+  // global /api/components catalog if the campaign isn't linked to any app
+  // (legacy data, edge case). The placements registry PR #29 ensures any
+  // newly-registered app sees an empty list until the SDK uploads a manifest;
+  // the dashboard surfaces an empty state in that case (further down).
+  const clientAppId = (campaign as any)?.clientAppId as number | null | undefined;
   const { data: allComponents = [] } = useQuery<Component[]>({
-    queryKey: ['/api/components'],
+    queryKey: clientAppId
+      ? ['/api/client-apps', clientAppId, 'components']
+      : ['/api/components'],
+    queryFn: async () => {
+      if (clientAppId) {
+        const res = await fetch(`/api/client-apps/${clientAppId}/components`);
+        if (!res.ok) return [];
+        // The endpoint returns Array<AppComponent & { component: Component }>;
+        // we want the inner Component for the picker shape.
+        const rows = (await res.json()) as Array<any>;
+        return rows.map((r) => r.component).filter(Boolean);
+      }
+      const res = await fetch('/api/components');
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: clientAppId !== undefined, // wait until campaign loads
+  });
+
+  // Locations registered by the SDK manifest upload (POST /v2/mobile/components/manifest).
+  // When clientAppId is null or the app has no locations yet, the picker shows
+  // an empty state with a hint to register slots from the SDK.
+  const { data: registeredLocations = [] } = useQuery<Array<{ id: number; locationId: string; displayName: string | null }>>({
+    queryKey: clientAppId ? ['/api/client-apps', clientAppId, 'component-locations'] : [],
+    queryFn: async () => {
+      if (!clientAppId) return [];
+      const res = await fetch(`/api/client-apps/${clientAppId}/component-locations`);
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: !!clientAppId,
   });
 
   const isPaused = campaign?.isPaused === 'true';
@@ -233,22 +269,24 @@ export function ComponentsTab({ campaignId }: ComponentsTabProps) {
                         </p>
                       </div>
                       <div className="space-y-2">
-                        <Label>Location Slot (Optional)</Label>
+                        <Label>Location Slot {registeredLocations.length === 0 ? '(none registered yet)' : '(Optional)'}</Label>
                         <Select value={locationId} onValueChange={setLocationId}>
                           <SelectTrigger data-testid="select-location-id">
-                            <SelectValue placeholder="None (manual activation)" />
+                            <SelectValue placeholder={registeredLocations.length === 0 ? 'No slots registered by the SDK yet' : 'None (manual activation)'} />
                           </SelectTrigger>
                           <SelectContent>
                             <SelectItem value="">None (manual activation)</SelectItem>
-                            <SelectItem value="sport-detail-banner">sport-detail-banner</SelectItem>
-                            <SelectItem value="sport-detail-carousel">sport-detail-carousel</SelectItem>
-                            <SelectItem value="sport-home-banner">sport-home-banner</SelectItem>
-                            <SelectItem value="sport-home-carousel">sport-home-carousel</SelectItem>
-                            <SelectItem value="casting-overlay-banner">casting-overlay-banner</SelectItem>
+                            {registeredLocations.map((loc) => (
+                              <SelectItem key={loc.locationId} value={loc.locationId}>
+                                {loc.displayName ? `${loc.displayName} — ${loc.locationId}` : loc.locationId}
+                              </SelectItem>
+                            ))}
                           </SelectContent>
                         </Select>
                         <p className="text-xs text-muted-foreground">
-                          The SDK fetches the active component for this slot by name
+                          {registeredLocations.length === 0
+                            ? 'The partner SDK declares slots at app boot via Vio.registerPlacementLocation(...). Run the demo once to populate this list.'
+                            : 'The SDK renders the active component for this slot at runtime.'}
                         </p>
                       </div>
                       <Button
