@@ -244,6 +244,32 @@ export const appComponents = pgTable("app_components", {
   createdAt: timestamp("created_at").defaultNow().notNull()
 });
 
+// App Component Locations - Slots declared by the partner SDK (via manifest upload)
+// where placements may render. Operator picks from these in the dashboard when
+// adding a campaign_components instance. The dev declares them once at app boot
+// via `Vio.registerPlacementLocation(...)` and the manifest endpoint upserts
+// them; subsequent runs of the same dev's app are idempotent.
+//
+// `locationId` is a free-form short identifier the dev's SwiftUI/Compose layout
+// uses (e.g. "home_top", "match_sidebar"). It mirrors the same string written
+// to `campaign_components.location_id` when the operator binds a placement to
+// this slot.
+//
+// Scoped per `client_app_id` because two partner apps may legitimately reuse
+// the same `home_top` label without colliding.
+export const appComponentLocations = pgTable("app_component_locations", {
+  id: serial("id").primaryKey(),
+  clientAppId: integer("client_app_id").notNull().references(() => clientApps.id, { onDelete: 'cascade' }),
+  locationId: varchar("location_id", { length: 100 }).notNull(),
+  displayName: varchar("display_name", { length: 255 }),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull()
+}, (table) => ({
+  // Idempotency: one row per (app, locationId). Manifest upserts hit this.
+  uniqAppLocation: uniqueIndex("idx_app_component_locations_unique")
+    .on(table.clientAppId, table.locationId),
+}));
+
 // Broadcasts - represents live events/matches that campaigns are associated with
 export const broadcasts = pgTable("broadcasts", {
   broadcastId: varchar("broadcast_id", { length: 255 }).primaryKey(),
@@ -650,7 +676,15 @@ export const clientAppsRelations = relations(clientApps, ({ one, many }) => ({
   }),
   channels: many(channels),
   campaigns: many(campaigns),
-  appComponents: many(appComponents)
+  appComponents: many(appComponents),
+  appComponentLocations: many(appComponentLocations)
+}));
+
+export const appComponentLocationsRelations = relations(appComponentLocations, ({ one }) => ({
+  clientApp: one(clientApps, {
+    fields: [appComponentLocations.clientAppId],
+    references: [clientApps.id]
+  })
 }));
 
 export const channelsRelations = relations(channels, ({ one, many }) => ({
@@ -977,9 +1011,15 @@ export const insertCampaignComponentSchema = createInsertSchema(campaignComponen
   updatedAt: true 
 });
 
-export const insertAppComponentSchema = createInsertSchema(appComponents).omit({ 
+export const insertAppComponentSchema = createInsertSchema(appComponents).omit({
   id: true,
-  createdAt: true 
+  createdAt: true
+});
+
+export const insertAppComponentLocationSchema = createInsertSchema(appComponentLocations).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true
 });
 
 export const insertCampaignTranslationSchema = createInsertSchema(campaignTranslations).omit({ 
@@ -1118,6 +1158,8 @@ export type CampaignComponent = typeof campaignComponents.$inferSelect;
 export type InsertCampaignComponent = z.infer<typeof insertCampaignComponentSchema>;
 export type AppComponent = typeof appComponents.$inferSelect;
 export type InsertAppComponent = z.infer<typeof insertAppComponentSchema>;
+export type AppComponentLocation = typeof appComponentLocations.$inferSelect;
+export type InsertAppComponentLocation = z.infer<typeof insertAppComponentLocationSchema>;
 export type CampaignTranslation = typeof campaignTranslations.$inferSelect;
 export type InsertCampaignTranslation = z.infer<typeof insertCampaignTranslationSchema>;
 export type CampaignEngagementConfig = typeof campaignEngagementConfig.$inferSelect;

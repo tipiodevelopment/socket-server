@@ -1,6 +1,6 @@
-import { WebSocketEvent, Campaign, InsertCampaign, Event, InsertEvent, CampaignFormState, InsertFormState, ScheduledComponent, InsertScheduledComponent, Component, InsertComponent, CampaignComponent, InsertCampaignComponent, AppComponent, InsertAppComponent, User, InsertUser, ClientApp, InsertClientApp, Channel, InsertChannel, CampaignTranslation, InsertCampaignTranslation, CampaignEngagementConfig, InsertCampaignEngagementConfig, CampaignUiConfig, InsertCampaignUiConfig, CampaignFeatureFlags, InsertCampaignFeatureFlags, SdkTranslation, InsertSdkTranslation, Broadcast, InsertBroadcast, Poll, InsertPoll, PollOptionRecord, InsertPollOption, PollVote, InsertPollVote, Contest, InsertContest, ContestParticipation, InsertContestParticipation, Sponsor, InsertSponsor, BroadcastAd, InsertBroadcastAd, BroadcastProduct, InsertBroadcastProduct, ChatMessage, InsertChatMessage, DeviceToken, InsertDeviceToken, SportmonksCache, type InsertCampaignSponsor, type InsertBroadcastSponsorSlot, type InsertShoppableAdActivation, type ShoppableAdActivation, type EndUser, type TvSession, type CartIntent, type InsertCartIntent, type TvPlatform } from "@shared/schema";
+import { WebSocketEvent, Campaign, InsertCampaign, Event, InsertEvent, CampaignFormState, InsertFormState, ScheduledComponent, InsertScheduledComponent, Component, InsertComponent, CampaignComponent, InsertCampaignComponent, AppComponent, InsertAppComponent, AppComponentLocation, InsertAppComponentLocation, User, InsertUser, ClientApp, InsertClientApp, Channel, InsertChannel, CampaignTranslation, InsertCampaignTranslation, CampaignEngagementConfig, InsertCampaignEngagementConfig, CampaignUiConfig, InsertCampaignUiConfig, CampaignFeatureFlags, InsertCampaignFeatureFlags, SdkTranslation, InsertSdkTranslation, Broadcast, InsertBroadcast, Poll, InsertPoll, PollOptionRecord, InsertPollOption, PollVote, InsertPollVote, Contest, InsertContest, ContestParticipation, InsertContestParticipation, Sponsor, InsertSponsor, BroadcastAd, InsertBroadcastAd, BroadcastProduct, InsertBroadcastProduct, ChatMessage, InsertChatMessage, DeviceToken, InsertDeviceToken, SportmonksCache, type InsertCampaignSponsor, type InsertBroadcastSponsorSlot, type InsertShoppableAdActivation, type ShoppableAdActivation, type EndUser, type TvSession, type CartIntent, type InsertCartIntent, type TvPlatform } from "@shared/schema";
 import { db } from "./db";
-import { campaigns, events, campaignFormState, scheduledComponents, components, campaignComponents, appComponents, users, clientApps, channels, campaignTranslations, campaignEngagementConfig, campaignUiConfig, campaignFeatureFlags, sdkTranslations, broadcasts, polls, pollOptions, pollVotes, contests, contestParticipations, sponsors, broadcastAds, broadcastProducts, chatMessages, deviceTokens, sportmonksCache, campaignSponsors, broadcastSponsorSlots, shoppableAdActivations, endUsers, tvSessions, cartIntents } from "@shared/schema";
+import { campaigns, events, campaignFormState, scheduledComponents, components, campaignComponents, appComponents, appComponentLocations, users, clientApps, channels, campaignTranslations, campaignEngagementConfig, campaignUiConfig, campaignFeatureFlags, sdkTranslations, broadcasts, polls, pollOptions, pollVotes, contests, contestParticipations, sponsors, broadcastAds, broadcastProducts, chatMessages, deviceTokens, sportmonksCache, campaignSponsors, broadcastSponsorSlots, shoppableAdActivations, endUsers, tvSessions, cartIntents } from "@shared/schema";
 import { eq, desc, and, or, gte, ne, isNull, isNotNull, sql, lte, inArray } from "drizzle-orm";
 
 export interface IStorage {
@@ -91,6 +91,14 @@ export interface IStorage {
   getAppComponents(clientAppId: number): Promise<Array<AppComponent & { component: Component }>>;
   addComponentToApp(appComponent: InsertAppComponent): Promise<AppComponent>;
   removeComponentFromApp(clientAppId: number, componentId: string): Promise<void>;
+  /** Idempotent: ensures (client_app_id, component_id) link exists. No-op when present. */
+  ensureAppComponentLink(clientAppId: number, componentId: string, customConfig?: any): Promise<AppComponent>;
+  /** Resolve `is_template=true` template id by type. Returns null if no template exists for that type. */
+  getCanonicalComponentByType(type: string): Promise<Component | null>;
+  // App component location methods (manifest registry)
+  getAppComponentLocations(clientAppId: number): Promise<AppComponentLocation[]>;
+  /** Idempotent upsert by (client_app_id, location_id). Updates display_name + updated_at if row exists. */
+  upsertAppComponentLocation(clientAppId: number, locationId: string, displayName: string | null): Promise<AppComponentLocation>;
 
   // Campaign translation methods
   getCampaignTranslations(campaignId: number): Promise<CampaignTranslation[]>;
@@ -796,6 +804,84 @@ export class MemStorage implements IStorage {
         eq(appComponents.clientAppId, clientAppId),
         eq(appComponents.componentId, componentId)
       ));
+  }
+
+  /**
+   * Idempotent: ensures the (clientAppId, componentId) link exists. If a row
+   * is already there, returns it untouched. Used by the manifest endpoint so
+   * the SDK can safely re-upload on every cold start.
+   */
+  async ensureAppComponentLink(clientAppId: number, componentId: string, customConfig?: any): Promise<AppComponent> {
+    const existing = await db.select()
+      .from(appComponents)
+      .where(and(
+        eq(appComponents.clientAppId, clientAppId),
+        eq(appComponents.componentId, componentId)
+      ))
+      .limit(1);
+    if (existing.length > 0) {
+      return existing[0];
+    }
+    const [created] = await db.insert(appComponents).values({
+      clientAppId,
+      componentId,
+      customConfig: customConfig ?? null,
+    }).returning();
+    return created;
+  }
+
+  /**
+   * Resolve canonical (`is_template=true`) component template by type. The
+   * manifest endpoint uses this to map a dev-declared type string (e.g.
+   * `product_carousel`) to the actual `components.id` row to link via
+   * `app_components`. Returns null when the requested type has no template
+   * registered globally — the caller surfaces this as 400 to the SDK so a
+   * typo in `Vio.registerPlacementComponent(...)` shows up loudly.
+   */
+  async getCanonicalComponentByType(type: string): Promise<Component | null> {
+    const rows = await db.select()
+      .from(components)
+      .where(and(
+        eq(components.type, type),
+        eq(components.isTemplate, true)
+      ))
+      .limit(1);
+    return rows[0] ?? null;
+  }
+
+  // App component location methods (manifest registry)
+  async getAppComponentLocations(clientAppId: number): Promise<AppComponentLocation[]> {
+    return db.select()
+      .from(appComponentLocations)
+      .where(eq(appComponentLocations.clientAppId, clientAppId))
+      .orderBy(appComponentLocations.locationId);
+  }
+
+  /**
+   * Idempotent upsert keyed by (client_app_id, location_id). If the row
+   * already exists, refreshes `display_name` + `updated_at` and returns the
+   * updated row. Otherwise inserts a new row.
+   *
+   * The unique index on (client_app_id, location_id) protects against race
+   * conditions if two SDK boots overlap.
+   */
+  async upsertAppComponentLocation(
+    clientAppId: number,
+    locationId: string,
+    displayName: string | null
+  ): Promise<AppComponentLocation> {
+    const [row] = await db
+      .insert(appComponentLocations)
+      .values({ clientAppId, locationId, displayName })
+      .onConflictDoUpdate({
+        target: [appComponentLocations.clientAppId, appComponentLocations.locationId],
+        set: {
+          displayName,
+          updatedAt: new Date(),
+        },
+      })
+      .returning();
+    return row;
   }
 
   // Campaign translation methods
