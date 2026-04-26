@@ -209,6 +209,42 @@ Dedup rule (iOS): `cart_intent` events are deduped by `activationId` in
 mobile-originated carry the same `activationId` → mobile SDK opens the
 overlay once.
 
+### Unified inbound dispatcher (post-2026-04-26 refactor)
+
+The iOS SDK now routes both transports through a single dispatcher so
+new TV→user event types (poll_result, score_update, …) plug in without
+copy-paste:
+
+```text
+WebSocket  →  CampaignWebSocketManager.onCartIntent  ─┐
+                                                      ▼
+                          CampaignManager.dispatch(.cartIntent(event), source: .webSocket)
+                                                      ▲
+APNs (real)→  UNUserNotificationCenterDelegate ───────┘
+              → handlePushNotificationUserInfo
+              → applyCartIntentFromNotificationUserInfo
+              → dispatch(.cartIntent(merged), source: .push)
+
+dispatch(_:source:)
+   └─► publishCartIntentIfChanged(event, channel: source.rawValue)
+          └─► dedup → activeCartIntentEvent  → overlay reacts via @Published
+```
+
+`IncomingTVEvent` is a discriminated union (`Sources/VioCore/Models/IncomingTVEvent.swift`).
+Today only `.cartIntent` exists; doc inside the file describes how to add
+the next case (model + publisher + adapter wires). Per-event dedup +
+publishing stays inside `publishXxxIfChanged`; `dispatch` only routes.
+
+The SDK no longer self-schedules local `UNNotificationRequest`s — that
+path was redundant with the overlay AND the source of duplicate
+`cart_intents` rows for sponsors with role=shoppable. Anything reaching
+`UNUserNotificationCenterDelegate` is now genuinely a remote APNs push.
+
+Backend mirror: `server/routes.ts` exposes `buildCartIntentEnvelope` +
+`notifyUserEventViaPartner` + `routeUserEvent` so any future
+`/v2/tv/<event>` handler is ~30 lines. See `CURRENT_STATE.md §15` for
+the architecture diagram.
+
 ---
 
 ## 6. End-to-end data flow — a shoppable_ad life cycle

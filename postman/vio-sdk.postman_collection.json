@@ -267,7 +267,7 @@
                 "cart-intent"
               ]
             },
-            "description": "**Purpose**: TV-originated cart intent. Persists cart_intents + forwards envelope to mobile (WS direct → webhook/APNs fallback).\n\n**Called by**: `VioTVManager.sendCartIntent` (Sources/VioTVCore/VioTVManager.swift:88).\n\n**Expected**: 200 `{success:true, cartIntentId, deliveryMode}` + WS `cart_intent` to iOS.\n\n**Pre-conditions**: activationId exists in shoppable_ad_activations.",
+            "description": "**Purpose**: TV-originated cart intent. Persists cart_intents + forwards envelope to the user's mobile via the canonical user-event delivery layer (`buildCartIntentEnvelope` → `routeUserEvent` → local WS / Redis cluster / partner webhook / APNs).\n\n**Called by**: `VioTVManager.sendCartIntent` (Sources/VioTVCore/VioTVManager.swift:88).\n\n**Expected**: 200 `{success:true, cartIntentId, mode, userConnected, envelope}` + WS `cart_intent` to iOS (when user connected).\n\n**`mode`** ∈ `'websocket' | 'dual' | 'webhook' | 'apns' | 'dropped'` (post-2026-04-26 refactor — see `docs/API_V2_CONTRACT.md §8` for semantics). Same string is persisted as `cart_intents.delivery_mode`.\n\n**Pre-conditions**: activationId exists in shoppable_ad_activations.",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"externalUserId\": \"{{externalUserId}}\",\n  \"productId\": \"{{productId}}\",\n  \"campaignId\": \"{{campaignId}}\",\n  \"platform\": \"{{tvPlatform}}\",\n  \"activationId\": \"{{activationId}}\",\n  \"sponsorId\": \"{{sponsorId}}\"\n}",
@@ -594,7 +594,7 @@
                 "cart-intent"
               ]
             },
-            "description": "**Purpose**: Mobile-originated cart intent (user tapped Add to cart inside the iOS app).\n\n**Called by**: `VioCampaignPartnerAPI.sendCartIntent` (Sources/VioCore/Network/VioCampaignPartnerAPI.swift:27).\n\n**Expected**: 200 `{ok:true, cartIntentId, deliveryMode}`",
+            "description": "**Purpose**: Mobile-originated cart intent (user tapped Add to cart inside the iOS app, or partner mock posts back after receiving APNs envelope).\n\n**Called by**: SDK no longer self-calls this endpoint. `VioCampaignPartnerAPI.sendCartIntent` was removed in VioSwiftSDK PR #4 (2026-04-26) as dead code — iOS only consumes WS + APNs (push). This endpoint is exercised by the partner mock posting back after a webhook delivery, by curl smoke tests, and by future SDKs that may need a server-to-server confirmation path.\n\n**Expected**: 200 `{success:true, cartIntentId, mode, userConnected, envelope}`.\n\n**`mode`** ∈ `'websocket' | 'dual' | 'webhook' | 'apns' | 'dropped'` (post-2026-04-26 refactor — see `docs/API_V2_CONTRACT.md §8` for semantics). Same string is persisted as `cart_intents.delivery_mode`.\n\n**Backend internals**: routes through the canonical user-event delivery layer (`buildCartIntentEnvelope` → `routeUserEvent`). Same triple-rama as `/v2/tv/cart-intent`.",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"userId\": \"{{externalUserId}}\",\n  \"productId\": \"{{productId}}\",\n  \"productName\": \"Samsung QLED\"\n}",
