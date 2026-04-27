@@ -120,10 +120,15 @@ erDiagram
 #### `components` (catalog, platform-wide)
 `id varchar(50) default gen_random_uuid(), type (product_carousel | product_spotlight | product_store | product_banner | product_slider | banner | countdown | offer_banner | offer_badge), name, config (json), isTemplate`
 
-#### `app_components` (admin-only)
+#### `app_components` (manifest-populated)
 `id, clientAppId → client_apps, componentId → components, customConfig (json)`
 
-Registered by admin at SDK integration time — "this app can use these component types".
+Populated by SDK manifest upload at app boot via `POST /v2/mobile/components/manifest`. Each call upserts the rows for the component types the app declares via `VioPlacementRegistry.register(_:)`. Idempotent — re-registering is a no-op.
+
+#### `app_component_locations` (manifest-populated)
+`id, clientAppId → client_apps, locationId varchar, displayName varchar nullable` — UNIQUE `(client_app_id, location_id)`.
+
+Populated by the same manifest upload. Lists which slot ids the app exposes via `VioPlacementRegistry.registerLocation(_:)`. The dashboard's "Add placement" location picker reads from here so an operator can never bind a `campaign_components` instance to a slot the dev's code doesn't actually render to.
 
 #### `campaign_components` ⭐ the placement table
 | column | type | notes |
@@ -177,8 +182,9 @@ Auth column: `apiKey` = `X-API-Key` header; `session` = dashboard cookie; `Beare
 | PATCH | `/api/client-apps/:id` | update app |
 | POST | `/api/client-apps/:id/regenerate-key` | rotate apiKey |
 | DELETE | `/api/client-apps/:id` | delete app |
-| GET | `/api/client-apps/:id/components` | list app_components |
-| POST | `/api/client-apps/:id/components` | register a component to the app |
+| GET | `/api/client-apps/:id/components` | list app_components (accepts `?withLocations=true` to also embed declared locations) |
+| GET | `/api/client-apps/:id/component-locations` | list app_component_locations declared by the SDK manifest (dashboard "Add placement" location picker source) |
+| POST | `/api/client-apps/:id/components` | register a component to the app (admin-side; same effect as the SDK manifest) |
 | DELETE | `/api/client-apps/:id/components/:componentId` | unregister |
 | POST | `/api/components` | create catalog template |
 | GET | `/api/components` / `/:id` | list / detail catalog |
@@ -234,15 +240,17 @@ Auth column: `apiKey` = `X-API-Key` header; `session` = dashboard cookie; `Beare
 
 | method | path | what |
 |---|---|---|
-| GET | `/v2/sdk/config` | **bootstrap**: active campaign + primary + secondaries + endpoints |
-| GET | `/v2/sdk/broadcasts/:broadcastId/capabilities` | per-broadcast feature flags |
-| GET | `/v2/sdk/broadcasts/:broadcastId/components` | placements for this broadcast (campaign-scoped + broadcast-scoped merged) |
-| POST | `/api/campaigns/:campaignId/register-device` | APNs/FCM token registration for push fallback |
-| POST | `/api/campaigns/:campaignId/cart-intent` | mobile cart-intent |
-| POST | `/api/sdk/tv/broadcast/subscribe` | **TV combined bootstrap** — subscribe + session + wsUrl + identify in one call |
-| POST | `/api/sdk/tv/session/{start,heartbeat,end}` | TV session lifecycle |
-| POST | `/api/sdk/tv/cart-intent` | TV cart-intent (v2 minimal body: `{ externalUserId, productId, activationId }`) |
-| POST | `/api/sdk/tv/broadcasts/:broadcastId/shoppable-ad` | TV SDK ad dispatch |
+| GET | `/v2/mobile/config` | **bootstrap**: active campaign + primary + secondaries + endpoints |
+| GET | `/v2/mobile/broadcasts/:broadcastId/capabilities` | per-broadcast feature flags |
+| GET | `/v2/mobile/broadcasts/:broadcastId/components` | broadcast-scoped placements (legacy path, may retire) |
+| GET | `/v2/mobile/campaigns/:campaignId/components` | **primary placement fetch** — campaign-scoped instances with `templateConfig + customConfig` merged server-side |
+| POST | `/v2/mobile/components/manifest` | **SDK boot manifest upload** — registers `app_components` + `app_component_locations` for this clientApp from the body's `{components, locations}` arrays |
+| POST | `/v2/mobile/campaigns/:campaignId/register-device` | APNs/FCM token registration for push fallback |
+| POST | `/v2/mobile/campaigns/:campaignId/cart-intent` | mobile cart-intent |
+| POST | `/v2/tv/broadcast/subscribe` | **TV combined bootstrap** — subscribe + session + wsUrl + identify in one call |
+| POST | `/v2/tv/session/{start,heartbeat,end}` | TV session lifecycle |
+| POST | `/v2/tv/cart-intent` | TV cart-intent (v2 minimal body: `{ externalUserId, productId, activationId }`) |
+| POST | `/v2/tv/broadcasts/:broadcastId/shoppable-ad` | TV SDK ad dispatch |
 
 ### 3.5 Commerce proxy (apiKey)
 
@@ -302,16 +310,17 @@ POST /api/campaigns/:id/components          PATCH /.../components/:componentId
        └───────────────────────────────┘
 ```
 
-**1. Initial fetch.** When the SDK knows `broadcastId`, it calls:
-`GET /v2/sdk/broadcasts/:broadcastId/components` → returns the merged set (campaign-wide placements + broadcast-scoped overrides). Each item carries `sponsor:{id,…}` and `commerce:{apiKey,channelId}` for that sponsor — the SDK resolves branding + Commerce routing per placement.
+**0. Boot — manifest upload.** App init calls `VioPlacementRegistry.register(_:)` for each component type and `registerLocation(_:)` for each slot the layout exposes, then `VioPlacementManifestUploader` posts to `POST /v2/mobile/components/manifest` with `X-API-Key`. Backend upserts `app_components` + `app_component_locations`. Idempotent.
 
-**2. WS updates.** The SDK connects to `wss://<host>/ws/:campaignId`, sends `{type:"identify", userId}`. It listens for `component_status_changed` and upserts its local placement map keyed by `componentId`. Status transitions are visible in near-real-time.
+**1. Initial fetch.** As part of `fetchAndApplySdkBootstrapNow`, the SDK calls `GET /v2/mobile/campaigns/:campaignId/components`. Backend merges `templateConfig + customConfig` server-side so the iOS `ComponentConfig` decoder sees a complete object. SDK upserts `activeComponents`, deduping by **`(id, locationId)`** composite key (so 2 instances of the same template in different slots coexist).
+
+**2. WS updates.** The SDK connects to `wss://<host>/ws/:campaignId`, sends `{type:"identify", userId}`. It listens for `component_status_changed` (which carries `sponsorId` at root since 2026-04-23) and upserts its local placement map by `(id, locationId)` — same composite key.
 
 **3. Scheduler-driven.** `server/scheduler.ts` runs periodically; when a placement's `scheduledTime` is reached it flips `status → active` and emits the WS event. At `endTime` same pattern to `inactive`.
 
-**4. Render.** Each UI slot (`VProductCarousel(locationId: "home-hero")` in iOS, equivalent on Android) queries the local placement map for its `locationId`. If found and `active`, render with `placement.sponsor.{avatarUrl, primaryColor}` + pass `sponsor.id` to `ProductService.loadProducts(sponsorId:)` so GraphQL routes through that sponsor's `commerceApiKey`.
+**4. Render.** Each UI slot (`VProductCarousel(locationId: "home_top")` in iOS, equivalent on Android) calls `getActiveComponent(type:locationId:)` against the local placement map. If found and `active`, render with `placement.sponsor.{avatarUrl, primaryColor}` + pass `sponsor.id` to `ProductService.loadProducts(sponsorId:)` so GraphQL routes through that sponsor's `commerceApiKey`.
 
-**5. Missing or offline.** If no placement for a `locationId`, render nothing (or a host-app fallback). If the WS drops, poll `/v2/sdk/broadcasts/:broadcastId/components` on reconnect to re-sync.
+**5. Missing or offline.** If no placement for a `locationId`, render nothing (or a host-app fallback). If the WS drops, poll `/v2/mobile/campaigns/:campaignId/components` on reconnect to re-sync.
 
 ---
 

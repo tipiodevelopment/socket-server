@@ -76,7 +76,9 @@ Platform
 | `broadcast_sponsor_slots` | Scheduled or manually-fired shoppable ads attached to a broadcast. |
 | `shoppable_ad_activations` | Dispatch log. Every shoppable_ad WS event creates one of these rows (with `activationId`). |
 | `cart_intents` | User-initiated intent to purchase. Carries `source_activation_id` to close the attribution chain. |
-| `campaign_components` | Product placements (carousels, banners, spotlights) — not in the smoke-test scope yet, see §7. |
+| `app_components` | Which canonical component templates each clientApp implements. Populated by SDK manifest upload at app boot. |
+| `app_component_locations` | Which slot ids each clientApp exposes. Populated by SDK manifest upload. UNIQUE `(client_app_id, location_id)`. |
+| `campaign_components` | Product placement instances (component × location × sponsor × products) per campaign. |
 | `end_users` | SDK viewer identity (opaque `externalUserId` per clientApp). |
 | `tv_sessions` | Active TV SDK session row (heartbeat-kept). |
 
@@ -142,7 +144,9 @@ POST /v2/tv/broadcasts/:broadcastId/shoppable-ad    SDK-originated + automation 
 ```
 GET  /v2/mobile/config                                bootstrap: campaign + primary + secondaries + commerce blocks
 GET  /v2/mobile/broadcasts/:broadcastId/capabilities  per-broadcast feature flags
-GET  /v2/mobile/broadcasts/:broadcastId/components    placements (campaign + broadcast-scoped merged)
+GET  /v2/mobile/broadcasts/:broadcastId/components    placements (broadcast-scoped only — legacy, may retire)
+GET  /v2/mobile/campaigns/:campaignId/components      campaign-scoped placements with templateConfig+customConfig merged (primary placement fetch)
+POST /v2/mobile/components/manifest                   SDK boot manifest upload (registers app_components + app_component_locations)
 POST /v2/mobile/campaigns/:campaignId/cart-intent     in-app "Add to cart"
 POST /v2/mobile/campaigns/:campaignId/register-device APNs/FCM token
 ```
@@ -321,17 +325,17 @@ Merged PRs:
 
 Pending user verification of Apple Pay checkout flow end-to-end (Apple TV tap → iOS overlay → per-sponsor Commerce → Apple Pay button → checkout completes).
 
-### 🔄 Hito 6 — Product Placements (upcoming, paused at Step 4 of 12)
+### ✅ Hito 6 — Product Placements (runtime landed 2026-04-27)
 
-Placements = always-on product UI (carousels, banners, spotlights, stores, sliders) that render at host-app-declared `locationId`s. Three-layer model: `components` (catalog) → `app_components` (app scope, admin-only) → `campaign_components` (instances per campaign with sponsor + location + scheduling).
+Placements = always-on product UI (carousels, banners, spotlights, stores, sliders) that render at host-app-declared `locationId`s. **Self-service registry** model: dev declares components + locations once at app boot via manifest upload → operator drives content from the dashboard → SDK never recompiled.
 
-Status: backend WS event `component_status_changed` now emits `sponsorId` at root. Dashboard `ComponentsTab` has the sponsor picker. Remaining (Steps 5-12):
-- Dashboard: catalog scope to `app_components`, product picker for `product_*` types, scheduling fields.
-- iOS SDK: 5 views (`VProductCarousel`, `VProductSpotlight`, `VProductStore`, `VProductBanner`, `VProductSlider`) pass `component.sponsorId` to `ProductService.loadProduct(sponsorId:)`.
-- `Product.sponsorId` stamped by `ProductService` at hydrate; `CartManager` reads it for per-sponsor checkout.
-- E2E: reconstruct TV2 campaign with 2 placements (Elkjøp carousel + XXL spotlight), validate end-to-end with Apple Pay.
+Four-layer data model: `components` (canonical templates, `is_template=true`) → `app_components` (which templates each app implements, populated by manifest) → `app_component_locations` (which slots each app exposes, populated by manifest) → `campaign_components` (instances bound to component × location × sponsor × products).
 
-Tracked in [`TASK_PLACEMENTS.md`](./TASK_PLACEMENTS.md).
+Status: ✅ end-to-end. Smoke verde 2026-04-27 with TV2 campaign 36 (Elkjøp en `home_top` + XXL en `match_pre_kickoff`). See [`CURRENT_STATE.md §17`](./CURRENT_STATE.md#17-placement-self-service-registry-post-runtime-2026-04-27) for the full architecture diagram + file map. Merge commits:
+- socket-server `f97bebd` (PR #29 + #32)
+- VioSwiftSDK `0d3383d` (PR #8)
+
+Pending non-blocker tasks: 4 of 5 product views (`VProductSpotlight`, `VProductStore`, `VProductBanner`, `VProductSlider`) still need the same `sponsorId` plumbing pattern as `VProductCarousel`. Scheduling fields (`scheduledTime` + `endTime`) deferred until first operator request. Tracked in [`TASK_PLACEMENTS.md`](./TASK_PLACEMENTS.md).
 
 ### ⏳ Hito 7 — Kotlin SDKs
 
