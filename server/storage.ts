@@ -1,6 +1,6 @@
-import { WebSocketEvent, Campaign, InsertCampaign, Event, InsertEvent, CampaignFormState, InsertFormState, ScheduledComponent, InsertScheduledComponent, Component, InsertComponent, CampaignComponent, InsertCampaignComponent, AppComponent, InsertAppComponent, AppComponentLocation, InsertAppComponentLocation, User, InsertUser, ClientApp, InsertClientApp, Channel, InsertChannel, CampaignTranslation, InsertCampaignTranslation, CampaignEngagementConfig, InsertCampaignEngagementConfig, CampaignUiConfig, InsertCampaignUiConfig, CampaignFeatureFlags, InsertCampaignFeatureFlags, SdkTranslation, InsertSdkTranslation, Broadcast, InsertBroadcast, Poll, InsertPoll, PollOptionRecord, InsertPollOption, PollVote, InsertPollVote, Contest, InsertContest, ContestParticipation, InsertContestParticipation, Sponsor, InsertSponsor, BroadcastAd, InsertBroadcastAd, BroadcastProduct, InsertBroadcastProduct, ChatMessage, InsertChatMessage, DeviceToken, InsertDeviceToken, SportmonksCache, type InsertCampaignSponsor, type InsertBroadcastSponsorSlot, type InsertShoppableAdActivation, type ShoppableAdActivation, type EndUser, type TvSession, type CartIntent, type InsertCartIntent, type TvPlatform } from "@shared/schema";
+import { WebSocketEvent, Campaign, InsertCampaign, Event, InsertEvent, CampaignFormState, InsertFormState, ScheduledComponent, InsertScheduledComponent, Component, InsertComponent, CampaignComponent, InsertCampaignComponent, AppComponent, InsertAppComponent, AppComponentLocation, InsertAppComponentLocation, AppPlacement, InsertAppPlacement, User, InsertUser, ClientApp, InsertClientApp, Channel, InsertChannel, CampaignTranslation, InsertCampaignTranslation, CampaignEngagementConfig, InsertCampaignEngagementConfig, CampaignUiConfig, InsertCampaignUiConfig, CampaignFeatureFlags, InsertCampaignFeatureFlags, SdkTranslation, InsertSdkTranslation, Broadcast, InsertBroadcast, Poll, InsertPoll, PollOptionRecord, InsertPollOption, PollVote, InsertPollVote, Contest, InsertContest, ContestParticipation, InsertContestParticipation, Sponsor, InsertSponsor, BroadcastAd, InsertBroadcastAd, BroadcastProduct, InsertBroadcastProduct, ChatMessage, InsertChatMessage, DeviceToken, InsertDeviceToken, SportmonksCache, type InsertCampaignSponsor, type InsertBroadcastSponsorSlot, type InsertShoppableAdActivation, type ShoppableAdActivation, type EndUser, type TvSession, type CartIntent, type InsertCartIntent, type TvPlatform } from "@shared/schema";
 import { db } from "./db";
-import { campaigns, events, campaignFormState, scheduledComponents, components, campaignComponents, appComponents, appComponentLocations, users, clientApps, channels, campaignTranslations, campaignEngagementConfig, campaignUiConfig, campaignFeatureFlags, sdkTranslations, broadcasts, polls, pollOptions, pollVotes, contests, contestParticipations, sponsors, broadcastAds, broadcastProducts, chatMessages, deviceTokens, sportmonksCache, campaignSponsors, broadcastSponsorSlots, shoppableAdActivations, endUsers, tvSessions, cartIntents } from "@shared/schema";
+import { campaigns, events, campaignFormState, scheduledComponents, components, campaignComponents, appComponents, appComponentLocations, appPlacements, users, clientApps, channels, campaignTranslations, campaignEngagementConfig, campaignUiConfig, campaignFeatureFlags, sdkTranslations, broadcasts, polls, pollOptions, pollVotes, contests, contestParticipations, sponsors, broadcastAds, broadcastProducts, chatMessages, deviceTokens, sportmonksCache, campaignSponsors, broadcastSponsorSlots, shoppableAdActivations, endUsers, tvSessions, cartIntents } from "@shared/schema";
 import { eq, desc, and, or, gte, ne, isNull, isNotNull, sql, lte, inArray } from "drizzle-orm";
 
 export interface IStorage {
@@ -99,6 +99,26 @@ export interface IStorage {
   getAppComponentLocations(clientAppId: number): Promise<AppComponentLocation[]>;
   /** Idempotent upsert by (client_app_id, location_id). Updates display_name + updated_at if row exists. */
   upsertAppComponentLocation(clientAppId: number, locationId: string, displayName: string | null): Promise<AppComponentLocation>;
+
+  // App placements (named instances) — manifest v2 + dashboard picker source.
+  /** List placements for a clientApp, joined with component metadata. */
+  getAppPlacements(clientAppId: number): Promise<Array<AppPlacement & { component: Component }>>;
+  /**
+   * Idempotent upsert keyed on (client_app_id, name).
+   *
+   * Conflict handling matches the dual-UNIQUE schema (name UNIQUE per app +
+   * slot UNIQUE per app). Caller resolves a (componentId, locationId) tuple
+   * and calls this; the function swaps the resolved fields if the same
+   * `name` already exists, OR throws if a different name already occupies
+   * that (componentId, locationId) slot.
+   */
+  upsertAppPlacement(args: {
+    clientAppId: number;
+    componentId: string;
+    locationId: string;
+    name: string;
+    customConfig?: any;
+  }): Promise<AppPlacement>;
 
   // Campaign translation methods
   getCampaignTranslations(campaignId: number): Promise<CampaignTranslation[]>;
@@ -880,6 +900,87 @@ export class MemStorage implements IStorage {
           updatedAt: new Date(),
         },
       })
+      .returning();
+    return row;
+  }
+
+  // App placements (named instances — manifest v2 + dashboard picker source)
+  async getAppPlacements(clientAppId: number): Promise<Array<AppPlacement & { component: Component }>> {
+    const rows = await db.select()
+      .from(appPlacements)
+      .innerJoin(components, eq(appPlacements.componentId, components.id))
+      .where(eq(appPlacements.clientAppId, clientAppId))
+      .orderBy(appPlacements.name);
+    return rows.map(r => ({ ...r.app_placements, component: r.components }));
+  }
+
+  /**
+   * Smart upsert that respects the dual-UNIQUE schema (name-unique +
+   * slot-unique). The dev's mental model: each app boot reuploads the
+   * manifest with the current set of placements; slot is the immutable
+   * identity, name is mutable label.
+   *
+   * Resolution by case:
+   *  (i)  Slot row exists with same name → refresh customConfig only.
+   *  (ii) Slot row exists with different name AND new name is unused →
+   *       rename in place. Dev's "Carrusel home" replaces backfill's
+   *       "Carousel1" at the same (type, location).
+   *  (iii) Slot row exists, but new name is already used by another row →
+   *       throw `placement_name_collision`. Dev needs to pick a unique
+   *       name (e.g., "Carrusel home v2").
+   *  (iv) No slot row, name unused → insert.
+   *  (v)  No slot row, name taken at a different slot → throw
+   *       `placement_name_collision` (same as iii).
+   */
+  async upsertAppPlacement(args: {
+    clientAppId: number;
+    componentId: string;
+    locationId: string;
+    name: string;
+    customConfig?: any;
+  }): Promise<AppPlacement> {
+    const { clientAppId, componentId, locationId, name, customConfig } = args;
+    const config = customConfig ?? null;
+
+    const [bySlot] = await db.select().from(appPlacements).where(and(
+      eq(appPlacements.clientAppId, clientAppId),
+      eq(appPlacements.componentId, componentId),
+      eq(appPlacements.locationId, locationId),
+    )).limit(1);
+
+    const [byName] = await db.select().from(appPlacements).where(and(
+      eq(appPlacements.clientAppId, clientAppId),
+      eq(appPlacements.name, name),
+    )).limit(1);
+
+    // Case (i)+(ii): slot row exists.
+    if (bySlot) {
+      if (byName && byName.id !== bySlot.id) {
+        // Case (iii): renaming slot to a name already taken elsewhere.
+        const err: any = new Error(`placement_name_collision: name '${name}' already used at a different slot`);
+        err.code = 'PLACEMENT_NAME_COLLISION';
+        throw err;
+      }
+      // (i) same name OR (ii) name unused: update.
+      const [updated] = await db
+        .update(appPlacements)
+        .set({ name, customConfig: config, updatedAt: new Date() })
+        .where(eq(appPlacements.id, bySlot.id))
+        .returning();
+      return updated;
+    }
+
+    // Case (v): no slot row but name taken elsewhere.
+    if (byName) {
+      const err: any = new Error(`placement_name_collision: name '${name}' already used at a different slot`);
+      err.code = 'PLACEMENT_NAME_COLLISION';
+      throw err;
+    }
+
+    // Case (iv): fresh insert.
+    const [row] = await db
+      .insert(appPlacements)
+      .values({ clientAppId, componentId, locationId, name, customConfig: config })
       .returning();
     return row;
   }

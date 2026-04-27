@@ -1974,6 +1974,25 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
     }
   });
 
+  /**
+   * Named app placements — the dashboard "Add placement" picker reads from
+   * here. Each row is a (component_id, location_id, name) tuple the SDK
+   * declared via the v2 manifest.
+   *
+   * Returns rows joined with the canonical component template so the picker
+   * can render the dropdown label as `{name} (type, location)`.
+   */
+  app.get('/api/client-apps/:id/placements', async (req, res) => {
+    try {
+      const appId = parseInt(req.params.id);
+      const placements = await storage.getAppPlacements(appId);
+      res.json(placements);
+    } catch (error) {
+      console.error('Error fetching app placements:', error);
+      res.status(500).json({ message: 'Error fetching app placements' });
+    }
+  });
+
   // Add component to app
   app.post('/api/client-apps/:id/components', async (req, res) => {
     try {
@@ -6751,13 +6770,18 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   app.post('/v2/mobile/components/manifest', validateApiKey, async (req, res) => {
     try {
       const clientApp = (req as any).clientApp;
-      const { components: declaredComponents, locations: declaredLocations } = req.body ?? {};
-      if (!Array.isArray(declaredComponents) && !Array.isArray(declaredLocations)) {
-        return res.status(400).json({ error: 'Body must include `components` and/or `locations` arrays' });
+      const {
+        components: declaredComponents,
+        locations: declaredLocations,
+        placements: declaredPlacements, // v2: named instances (preferred)
+      } = req.body ?? {};
+      if (!Array.isArray(declaredComponents) && !Array.isArray(declaredLocations) && !Array.isArray(declaredPlacements)) {
+        return res.status(400).json({ error: 'Body must include `components`, `locations`, and/or `placements` arrays' });
       }
 
       const persistedComponents: any[] = [];
       const persistedLocations: any[] = [];
+      const persistedPlacements: any[] = [];
       const warnings: { kind: string; detail: string }[] = [];
 
       // Process components: resolve canonical template by type, then ensure link.
@@ -6818,14 +6842,122 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
         }
       }
 
+      // Process placements (v2 — named instances). Each entry must carry
+      // `name`, `componentType`, `locationId`. Backend resolves componentType
+      // → canonical template id, upserts the named placement.
+      //
+      // Conflict semantics:
+      //   - Repeated upload of the same `name` updates its (componentType,
+      //     locationId, customConfig) — dev can rename their slot via SDK
+      //     edit without breaking continuity.
+      //   - If another name already claims this (componentType, locationId)
+      //     slot for this app, Postgres rejects via the slot-unique index;
+      //     we surface a warning and skip rather than throwing.
+      if (Array.isArray(declaredPlacements)) {
+        // Within a single manifest payload, two entries cannot legitimately
+        // claim the same slot or the same name. Catch programming errors
+        // loudly instead of silently letting "last writer wins".
+        const seenSlots = new Set<string>();
+        const seenNames = new Set<string>();
+        for (const entry of declaredPlacements) {
+          if (!entry || typeof entry !== 'object') {
+            warnings.push({ kind: 'invalid_placement_entry', detail: 'Entry must be an object with `name`, `componentType`, `locationId`' });
+            continue;
+          }
+          const name = typeof entry.name === 'string' ? entry.name.trim() : '';
+          const componentType = typeof entry.componentType === 'string' ? entry.componentType.trim() : '';
+          const locationId = typeof entry.locationId === 'string' ? entry.locationId.trim() : '';
+          if (!name || !componentType || !locationId) {
+            warnings.push({
+              kind: 'missing_placement_fields',
+              detail: `Placement entry missing required fields (name='${name}', componentType='${componentType}', locationId='${locationId}')`,
+            });
+            continue;
+          }
+          if (name.length > 255 || locationId.length > 100) {
+            warnings.push({ kind: 'placement_field_too_long', detail: `Placement '${name}' has fields exceeding length limits; ignored.` });
+            continue;
+          }
+          const template = await storage.getCanonicalComponentByType(componentType);
+          if (!template) {
+            warnings.push({
+              kind: 'unknown_component_type',
+              detail: `No canonical template registered for placement '${name}' componentType='${componentType}'.`,
+            });
+            continue;
+          }
+
+          // Within-manifest dedupe: catch the dev sending two placements
+          // for the same slot or the same name in a single payload.
+          const slotKey = `${template.id}|${locationId}`;
+          if (seenSlots.has(slotKey)) {
+            warnings.push({
+              kind: 'duplicate_slot_in_manifest',
+              detail: `Slot (componentType='${componentType}', locationId='${locationId}') declared more than once in this manifest. Keeping first; ignoring placement '${name}'.`,
+            });
+            continue;
+          }
+          if (seenNames.has(name)) {
+            warnings.push({
+              kind: 'duplicate_name_in_manifest',
+              detail: `Name '${name}' declared more than once in this manifest. Keeping first; ignoring this duplicate.`,
+            });
+            continue;
+          }
+          seenSlots.add(slotKey);
+          seenNames.add(name);
+
+          // Ensure the legacy app_components + app_component_locations rows
+          // also exist — the dashboard's existing data still reads from them
+          // for some views, and the campaign placement-create endpoint
+          // validates against `isSponsorAllowedForCampaign` + the legacy
+          // location list. Dual-write while we phase the new table in.
+          await storage.ensureAppComponentLink(clientApp.id, template.id);
+          await storage.upsertAppComponentLocation(clientApp.id, locationId, null);
+          try {
+            const placement = await storage.upsertAppPlacement({
+              clientAppId: clientApp.id,
+              componentId: template.id,
+              locationId,
+              name,
+              customConfig: entry.customConfig ?? null,
+            });
+            persistedPlacements.push({
+              id: placement.id,
+              name: placement.name,
+              componentId: placement.componentId,
+              componentType,
+              locationId: placement.locationId,
+            });
+          } catch (e: any) {
+            // Most common path: name collision — the dev tried to claim a
+            // name that already belongs to another (component, location)
+            // slot. The slot itself is fine, just need a different name.
+            // Other unexpected errors surface as generic.
+            if (e?.code === 'PLACEMENT_NAME_COLLISION') {
+              warnings.push({
+                kind: 'placement_name_collision',
+                detail: `Name '${name}' is already used by another placement in this app at a different slot. Pick a unique name (e.g. '${name} v2').`,
+              });
+            } else {
+              warnings.push({
+                kind: 'placement_upsert_error',
+                detail: `Unexpected error upserting placement '${name}': ${e?.message ?? e}`,
+              });
+            }
+          }
+        }
+      }
+
       console.log(
-        `[ManifestRegistry] clientApp=${clientApp.id} components=${persistedComponents.length} locations=${persistedLocations.length} warnings=${warnings.length}`
+        `[ManifestRegistry] clientApp=${clientApp.id} components=${persistedComponents.length} locations=${persistedLocations.length} placements=${persistedPlacements.length} warnings=${warnings.length}`
       );
 
       res.json({
         clientAppId: clientApp.id,
         components: persistedComponents,
         locations: persistedLocations,
+        placements: persistedPlacements,
         warnings,
       });
     } catch (error) {

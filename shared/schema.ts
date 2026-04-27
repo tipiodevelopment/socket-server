@@ -270,6 +270,43 @@ export const appComponentLocations = pgTable("app_component_locations", {
     .on(table.clientAppId, table.locationId),
 }));
 
+// Named app-instances of placements — the explicit declaration of which
+// (component_type, location, name) tuples the dev's app actually renders.
+// Replaces the implicit cross-product of (app_components × app_component_locations).
+//
+// Populated by the manifest v2 endpoint: SDK at app boot calls
+//   Vio.registerPlacement(name: "Carrusel home", type: .productCarousel,
+//                         locationId: "home_top")
+// → backend resolves componentType → component_id and upserts a row here.
+//
+// The dashboard's "Add placement" picker reads exclusively from this table
+// (filtered by the campaign's clientAppId). Operator picks one named
+// placement, then assigns sponsor + product list. Cannot bind to a combo
+// the dev hasn't declared — strict contract.
+//
+// Two UNIQUE indexes:
+//   - (client_app_id, name) — name is human-facing id, unique per app so
+//     picker labels are unambiguous.
+//   - (client_app_id, component_id, location_id) — only one placement per
+//     (type, slot) per app. For A/B variants, declare distinct locations
+//     (`home_top_a`, `home_top_b`) instead of two carousels at `home_top`.
+export const appPlacements = pgTable("app_placements", {
+  id: serial("id").primaryKey(),
+  clientAppId: integer("client_app_id").notNull().references(() => clientApps.id, { onDelete: 'cascade' }),
+  componentId: varchar("component_id").notNull().references(() => components.id, { onDelete: 'restrict' }),
+  locationId: varchar("location_id", { length: 100 }).notNull(),
+  name: varchar("name", { length: 255 }).notNull(),
+  customConfig: json("custom_config"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull()
+}, (table) => ({
+  uniqByName: uniqueIndex("idx_app_placements_unique_name")
+    .on(table.clientAppId, table.name),
+  uniqBySlot: uniqueIndex("idx_app_placements_unique_slot")
+    .on(table.clientAppId, table.componentId, table.locationId),
+  byClientApp: index("idx_app_placements_client_app").on(table.clientAppId),
+}));
+
 // Broadcasts - represents live events/matches that campaigns are associated with
 export const broadcasts = pgTable("broadcasts", {
   broadcastId: varchar("broadcast_id", { length: 255 }).primaryKey(),
@@ -677,13 +714,25 @@ export const clientAppsRelations = relations(clientApps, ({ one, many }) => ({
   channels: many(channels),
   campaigns: many(campaigns),
   appComponents: many(appComponents),
-  appComponentLocations: many(appComponentLocations)
+  appComponentLocations: many(appComponentLocations),
+  appPlacements: many(appPlacements)
 }));
 
 export const appComponentLocationsRelations = relations(appComponentLocations, ({ one }) => ({
   clientApp: one(clientApps, {
     fields: [appComponentLocations.clientAppId],
     references: [clientApps.id]
+  })
+}));
+
+export const appPlacementsRelations = relations(appPlacements, ({ one }) => ({
+  clientApp: one(clientApps, {
+    fields: [appPlacements.clientAppId],
+    references: [clientApps.id]
+  }),
+  component: one(components, {
+    fields: [appPlacements.componentId],
+    references: [components.id]
   })
 }));
 
@@ -1022,6 +1071,12 @@ export const insertAppComponentLocationSchema = createInsertSchema(appComponentL
   updatedAt: true
 });
 
+export const insertAppPlacementSchema = createInsertSchema(appPlacements).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true
+});
+
 export const insertCampaignTranslationSchema = createInsertSchema(campaignTranslations).omit({ 
   id: true 
 });
@@ -1160,6 +1215,8 @@ export type AppComponent = typeof appComponents.$inferSelect;
 export type InsertAppComponent = z.infer<typeof insertAppComponentSchema>;
 export type AppComponentLocation = typeof appComponentLocations.$inferSelect;
 export type InsertAppComponentLocation = z.infer<typeof insertAppComponentLocationSchema>;
+export type AppPlacement = typeof appPlacements.$inferSelect;
+export type InsertAppPlacement = z.infer<typeof insertAppPlacementSchema>;
 export type CampaignTranslation = typeof campaignTranslations.$inferSelect;
 export type InsertCampaignTranslation = z.infer<typeof insertCampaignTranslationSchema>;
 export type CampaignEngagementConfig = typeof campaignEngagementConfig.$inferSelect;
