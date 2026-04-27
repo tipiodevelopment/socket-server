@@ -13,6 +13,7 @@ import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useState } from "react";
 import { Link } from "wouter";
 import { ImageUploadWithPreview } from "@/components/ImageUploadWithPreview";
+import { useSponsorCatalog } from "@/hooks/use-sponsor-catalog";
 
 interface ComponentsTabProps {
   campaignId: number;
@@ -24,6 +25,14 @@ export function ComponentsTab({ campaignId }: ComponentsTabProps) {
   const [selectedComponentId, setSelectedComponentId] = useState<string>('');
   const [instanceName, setInstanceName] = useState<string>('');
   const [locationId, setLocationId] = useState<string>('');
+  // Multi-sponsor: every placement instance must declare which sponsor owns
+  // the slot (drives commerce key routing on the SDK + branding). Required.
+  const [selectedSponsorId, setSelectedSponsorId] = useState<string>('');
+  // Per-sponsor product picker for `product_*` types. Stores the productIds
+  // the operator picked from the chosen sponsor's commerce catalog. Sent in
+  // customConfig.productIds so the SDK component reads them via existing
+  // config plumbing.
+  const [selectedProductIds, setSelectedProductIds] = useState<Set<string>>(new Set());
   const [editingConfigFor, setEditingConfigFor] = useState<(CampaignComponent & { component: Component }) | null>(null);
 
   const { data: campaign } = useQuery<Campaign>({
@@ -34,18 +43,102 @@ export function ComponentsTab({ campaignId }: ComponentsTabProps) {
     queryKey: ['/api/campaigns', campaignId, 'components'],
   });
 
+  // Component picker is scoped to the campaign's clientApp. Falls back to the
+  // global /api/components catalog if the campaign isn't linked to any app
+  // (legacy data, edge case). The placements registry PR #29 ensures any
+  // newly-registered app sees an empty list until the SDK uploads a manifest;
+  // the dashboard surfaces an empty state in that case (further down).
+  const clientAppId = (campaign as any)?.clientAppId as number | null | undefined;
   const { data: allComponents = [] } = useQuery<Component[]>({
-    queryKey: ['/api/components'],
+    queryKey: clientAppId
+      ? ['/api/client-apps', clientAppId, 'components']
+      : ['/api/components'],
+    queryFn: async () => {
+      if (clientAppId) {
+        const res = await fetch(`/api/client-apps/${clientAppId}/components`);
+        if (!res.ok) return [];
+        // The endpoint returns Array<AppComponent & { component: Component }>;
+        // we want the inner Component for the picker shape.
+        const rows = (await res.json()) as Array<any>;
+        return rows.map((r) => r.component).filter(Boolean);
+      }
+      const res = await fetch('/api/components');
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: clientAppId !== undefined, // wait until campaign loads
   });
+
+  // Locations registered by the SDK manifest upload (POST /v2/mobile/components/manifest).
+  // When clientAppId is null or the app has no locations yet, the picker shows
+  // an empty state with a hint to register slots from the SDK.
+  const { data: registeredLocations = [] } = useQuery<Array<{ id: number; locationId: string; displayName: string | null }>>({
+    queryKey: clientAppId ? ['/api/client-apps', clientAppId, 'component-locations'] : [],
+    queryFn: async () => {
+      if (!clientAppId) return [];
+      const res = await fetch(`/api/client-apps/${clientAppId}/component-locations`);
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: !!clientAppId,
+  });
+
+  // Campaign sponsors: primary + secondaries merged into one array. Returned
+  // shape: { sponsorId, name, role, logoUrl, primaryColor, ... } per sponsor.
+  // Mandatory picker — submit is blocked until the operator picks one.
+  const { data: campaignSponsors = [] } = useQuery<Array<{
+    sponsorId: number;
+    name: string;
+    role: string;
+    logoUrl: string | null;
+    primaryColor: string | null;
+  }>>({
+    queryKey: ['/api/campaigns', campaignId, 'sponsors'],
+    queryFn: async () => {
+      const res = await fetch(`/api/campaigns/${campaignId}/sponsors`);
+      if (!res.ok) return [];
+      return res.json();
+    },
+  });
+
+  // Per-sponsor product catalog. Only relevant when a sponsor is selected AND
+  // the picked component is a `product_*` type (the only kinds that bind
+  // products). Reuses the existing useSponsorCatalog hook (already wired to
+  // /v2/commerce/sponsors/:id/catalog with pagination + cache).
+  const isProductComponent = (() => {
+    const comp = allComponents.find((c) => c.id === selectedComponentId);
+    return !!comp?.type && comp.type.startsWith('product_');
+  })();
+  const sponsorCatalog = useSponsorCatalog(
+    selectedSponsorId && isProductComponent ? selectedSponsorId : null,
+    { limit: 100 }
+  );
 
   const isPaused = campaign?.isPaused === 'true';
 
   const addComponentMutation = useMutation({
-    mutationFn: async ({ componentId, instanceName, locationId }: { componentId: string; instanceName?: string; locationId?: string }) => {
+    mutationFn: async (params: {
+      componentId: string;
+      instanceName?: string;
+      locationId?: string;
+      sponsorId: number;
+      productIds?: string[];
+    }) => {
+      // customConfig.productIds is the convention the SDK product views read
+      // when rendering. Empty array → fall back to component template's
+      // baseline config (legacy behavior). Only set when the operator picked
+      // products, so the SDK can distinguish "operator left default" from
+      // "operator explicitly chose 0 products".
+      const customConfig =
+        params.productIds && params.productIds.length > 0
+          ? { productIds: params.productIds }
+          : undefined;
       return await apiRequest('POST', `/api/campaigns/${campaignId}/components`, {
-        componentId,
-        instanceName: instanceName || undefined,
-        locationId: locationId || undefined,
+        componentId: params.componentId,
+        instanceName: params.instanceName || undefined,
+        locationId: params.locationId || undefined,
+        sponsorId: params.sponsorId,
+        customConfig,
         status: 'inactive',
       });
     },
@@ -56,6 +149,8 @@ export function ComponentsTab({ campaignId }: ComponentsTabProps) {
       setSelectedComponentId('');
       setInstanceName('');
       setLocationId('');
+      setSelectedSponsorId('');
+      setSelectedProductIds(new Set());
       toast({
         title: 'Component Added',
         description: 'The component has been added to this campaign.',
@@ -140,9 +235,11 @@ export function ComponentsTab({ campaignId }: ComponentsTabProps) {
   });
 
   // Show all template components, allowing multiple instances of the same template
-  // (e.g., Countdown 1, Countdown 2, etc. with different instanceNames)
+  // (e.g., Countdown 1, Countdown 2, etc. with different instanceNames).
+  // Accepts both boolean true (current `components.is_template` column type) and
+  // the legacy string 'true' that older API paths sometimes returned.
   const availableComponents = allComponents.filter(
-    (comp) => comp.isTemplate === 'true'
+    (comp) => (comp.isTemplate as unknown) === true || (comp.isTemplate as unknown) === 'true'
   );
 
   const getComponentTypeLabel = (type: string) => {
@@ -233,27 +330,121 @@ export function ComponentsTab({ campaignId }: ComponentsTabProps) {
                         </p>
                       </div>
                       <div className="space-y-2">
-                        <Label>Location Slot (Optional)</Label>
-                        <Select value={locationId} onValueChange={setLocationId}>
+                        <Label>Location Slot {registeredLocations.length === 0 ? '(none registered yet)' : '(Optional)'}</Label>
+                        <Select
+                          value={locationId === '' ? '__none__' : locationId}
+                          onValueChange={(v) => setLocationId(v === '__none__' ? '' : v)}
+                        >
                           <SelectTrigger data-testid="select-location-id">
-                            <SelectValue placeholder="None (manual activation)" />
+                            <SelectValue placeholder={registeredLocations.length === 0 ? 'No slots registered by the SDK yet' : 'None (manual activation)'} />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="">None (manual activation)</SelectItem>
-                            <SelectItem value="sport-detail-banner">sport-detail-banner</SelectItem>
-                            <SelectItem value="sport-detail-carousel">sport-detail-carousel</SelectItem>
-                            <SelectItem value="sport-home-banner">sport-home-banner</SelectItem>
-                            <SelectItem value="sport-home-carousel">sport-home-carousel</SelectItem>
-                            <SelectItem value="casting-overlay-banner">casting-overlay-banner</SelectItem>
+                            {/* Radix forbids value="" on SelectItem, so use a sentinel and
+                                translate in onValueChange (above) → keeps the
+                                campaign_components.location_id stored as NULL/empty. */}
+                            <SelectItem value="__none__">None (manual activation)</SelectItem>
+                            {registeredLocations.map((loc) => (
+                              <SelectItem key={loc.locationId} value={loc.locationId}>
+                                {loc.displayName ? `${loc.displayName} — ${loc.locationId}` : loc.locationId}
+                              </SelectItem>
+                            ))}
                           </SelectContent>
                         </Select>
                         <p className="text-xs text-muted-foreground">
-                          The SDK fetches the active component for this slot by name
+                          {registeredLocations.length === 0
+                            ? 'The partner SDK declares slots at app boot via Vio.registerPlacementLocation(...). Run the demo once to populate this list.'
+                            : 'The SDK renders the active component for this slot at runtime.'}
                         </p>
                       </div>
+
+                      {/* Sponsor picker — required. Drives commerce-key routing
+                          + branding for this placement instance at runtime. */}
+                      <div className="space-y-2">
+                        <Label>
+                          Sponsor <span className="text-red-400">*</span>
+                        </Label>
+                        <Select value={selectedSponsorId} onValueChange={(v) => { setSelectedSponsorId(v); setSelectedProductIds(new Set()); }}>
+                          <SelectTrigger data-testid="select-sponsor-id">
+                            <SelectValue placeholder="Pick the sponsor that owns this slot" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {campaignSponsors.map((s) => (
+                              <SelectItem key={s.sponsorId} value={String(s.sponsorId)}>
+                                {s.name} <span className="text-muted-foreground">({s.role})</span>
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <p className="text-xs text-muted-foreground">
+                          Required. The SDK uses this to load the product via the sponsor's commerce key.
+                        </p>
+                      </div>
+
+                      {/* Product picker — only shown for product_* component types.
+                          Multi-select from the chosen sponsor's commerce catalog.
+                          Stored as customConfig.productIds. */}
+                      {isProductComponent && selectedSponsorId && (
+                        <div className="space-y-2">
+                          <Label>Products from {campaignSponsors.find(s => String(s.sponsorId) === selectedSponsorId)?.name}'s catalog</Label>
+                          {sponsorCatalog.isLoading ? (
+                            <p className="text-xs text-muted-foreground">Loading catalog…</p>
+                          ) : sponsorCatalog.isError ? (
+                            <p className="text-xs text-red-400">Failed to load catalog: {(sponsorCatalog.error as any)?.message}</p>
+                          ) : !sponsorCatalog.data?.products?.length ? (
+                            <p className="text-xs text-muted-foreground">No products in this sponsor's catalog yet.</p>
+                          ) : (
+                            <>
+                              <div className="max-h-48 overflow-y-auto space-y-1 rounded border border-white/10 p-2">
+                                {sponsorCatalog.data.products.map((p) => {
+                                  const idStr = String(p.id);
+                                  const checked = selectedProductIds.has(idStr);
+                                  return (
+                                    <label
+                                      key={idStr}
+                                      className="flex items-center gap-2 cursor-pointer hover:bg-white/5 px-1 py-0.5 rounded"
+                                    >
+                                      <input
+                                        type="checkbox"
+                                        checked={checked}
+                                        onChange={(e) => {
+                                          setSelectedProductIds((prev) => {
+                                            const next = new Set(prev);
+                                            if (e.target.checked) next.add(idStr); else next.delete(idStr);
+                                            return next;
+                                          });
+                                        }}
+                                        data-testid={`checkbox-product-${idStr}`}
+                                      />
+                                      {p.imageUrl && (
+                                        <img src={p.imageUrl} alt="" className="w-8 h-8 object-contain rounded bg-white/5" />
+                                      )}
+                                      <span className="text-sm flex-1 line-clamp-1">{p.name || `Product ${p.id}`}</span>
+                                      <span className="text-xs text-muted-foreground">
+                                        {p.price != null ? `${p.price} ${p.currency}` : '—'}
+                                      </span>
+                                    </label>
+                                  );
+                                })}
+                              </div>
+                              <p className="text-xs text-muted-foreground">
+                                {selectedProductIds.size === 0
+                                  ? 'No products selected — placement will use the component template default.'
+                                  : `${selectedProductIds.size} product${selectedProductIds.size > 1 ? 's' : ''} selected.`}
+                              </p>
+                            </>
+                          )}
+                        </div>
+                      )}
+
                       <Button
-                        onClick={() => selectedComponentId && addComponentMutation.mutate({ componentId: selectedComponentId, instanceName: instanceName.trim() || undefined, locationId: locationId || undefined })}
-                        disabled={!selectedComponentId || addComponentMutation.isPending}
+                        onClick={() => selectedComponentId && selectedSponsorId && addComponentMutation.mutate({
+                          componentId: selectedComponentId,
+                          instanceName: instanceName.trim() || undefined,
+                          locationId: locationId || undefined,
+                          sponsorId: parseInt(selectedSponsorId, 10),
+                          productIds: Array.from(selectedProductIds),
+                        })}
+                        disabled={!selectedComponentId || !selectedSponsorId || addComponentMutation.isPending}
                         className="w-full"
                         data-testid="button-confirm-add"
                       >
