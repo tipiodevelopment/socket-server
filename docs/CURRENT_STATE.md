@@ -50,7 +50,7 @@ This doc is the single source of truth for:
 - socket-server #31 (`docs/post-pr32-merge-state`) — premature snapshot, superseded by this update
 - VioSwiftSDK #6 (`fix/confirmation-sheet-active-sponsor-logo`) — superseded by #7 (better fix anchored on `CommerceSdkClientProvider.activeSponsorId`)
 
-## 2. Rules locked (2026-04-24)
+## 2. Rules locked (2026-04-24, last extended 2026-04-27)
 
 1. **VioSwiftSDK NEVER merges to `main`**. main is the v0.1.0-alpha release branch. All work lives on `develop` + feature branches off develop. PRs target develop.
 2. **InteractiveAds-vio works on `main`**. Apple TV repo has no develop. Feature branches off main, PRs target main.
@@ -58,6 +58,8 @@ This doc is the single source of truth for:
 4. **No v1 fallbacks in SDK code**. No "try v2 → catch → call v1" logic. Remaining v1 calls are direct calls for unmigrated features, not fallbacks.
 5. **No hardcoded apiKeys in SDK code**. Commerce keys come only from per-sponsor blocks in `/v2/mobile/config` (iOS) and `/v2/tv/broadcast/subscribe` (Apple TV).
 6. **No auto-merge of PRs** by the assistant. Open the PR, push the branch, tell the user the URL and what to test. User triggers merge with explicit "merge #NN". Applies to code AND docs (consistency > special cases).
+7. **No new doc files** (added 2026-04-27). When state changes, update existing docs in place: `CURRENT_STATE.md`, `DB_AND_ENDPOINTS.md`, `ARCHITECTURE_OVERVIEW.md`, `TASK_PLACEMENTS.md`, `multi-sponsor-architecture.md`, `API_V2_CONTRACT.md`, `IOS_V2_MIGRATION_GAP.md`, `ROLLOUT_ROADMAP.md`, KOTLIN specs. Don't create one-off snapshot/state docs (`docs/state-runtime-snapshot-...`, `docs/post-...-state.md`, etc.) — they go stale within hours and pollute the doc tree. If a new concept legitimately needs its own file, ask first.
+8. **No AI attribution in commit messages** (already in user memory). Skip the `Co-Authored-By: Claude…` trailer.
 
 ## 3. Open PRs awaiting user review
 

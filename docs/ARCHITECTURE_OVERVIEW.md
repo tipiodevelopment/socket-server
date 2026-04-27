@@ -47,7 +47,7 @@ Platform
     │       │
     │       ├── secondarySponsors  (M:N via campaign_sponsors.role ∈ {full, shoppable, engagement})
     │       │
-    │       ├── campaign_components (PLACEMENTS — not fully shipped yet, see §7)
+    │       ├── campaign_components (PLACEMENTS — runtime landed 2026-04-27, see Hito 6)
     │       │     [component + sponsor + locationId + status + scheduling]
     │       │
     │       └── Broadcasts (live events under the campaign)

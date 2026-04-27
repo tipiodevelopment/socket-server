@@ -118,37 +118,44 @@ erDiagram
 `id, campaignId → campaigns, sponsorId → sponsors, role ('engagement' | 'shoppable' | 'full')`
 
 #### `components` (catalog, platform-wide)
-`id varchar(50) default gen_random_uuid(), type (product_carousel | product_spotlight | product_store | product_banner | product_slider | banner | countdown | offer_banner | offer_badge), name, config (json), isTemplate`
+`id varchar PK default gen_random_uuid(), type (product_carousel | product_spotlight | product_store | product_banner | product_slider | banner | countdown | offer_banner | offer_badge | …), name, config (json), is_template boolean NOT NULL default false, created_at`
+
+`is_template = true` means this row is a canonical platform-wide template that any client app can register via the SDK manifest. Custom (non-template) rows are app-scoped and not exposed to the dashboard's "Add placement" picker.
 
 #### `app_components` (manifest-populated)
-`id, clientAppId → client_apps, componentId → components, customConfig (json)`
+`id serial PK, client_app_id → client_apps, component_id varchar → components, custom_config (json), created_at`
 
-Populated by SDK manifest upload at app boot via `POST /v2/mobile/components/manifest`. Each call upserts the rows for the component types the app declares via `VioPlacementRegistry.register(_:)`. Idempotent — re-registering is a no-op.
+Populated by SDK manifest upload at app boot via `POST /v2/mobile/components/manifest`. Each call upserts the rows for the component types the app declares via `VioPlacementRegistry.register(_:)`. Idempotency is **app-side** (`storage.ensureAppComponentLink` checks before insert) — there is **no DB-level UNIQUE constraint** on `(client_app_id, component_id)`, so duplicate writes via the legacy `POST /api/client-apps/:id/components` could create dupes. Use the manifest endpoint or `ensureAppComponentLink` to be safe.
 
 #### `app_component_locations` (manifest-populated)
-`id, clientAppId → client_apps, locationId varchar, displayName varchar nullable` — UNIQUE `(client_app_id, location_id)`.
+`id serial PK, client_app_id → client_apps, location_id varchar NOT NULL, display_name varchar NULLABLE, created_at, updated_at` — **UNIQUE `(client_app_id, location_id)`** (`idx_app_component_locations_unique`).
 
-Populated by the same manifest upload. Lists which slot ids the app exposes via `VioPlacementRegistry.registerLocation(_:)`. The dashboard's "Add placement" location picker reads from here so an operator can never bind a `campaign_components` instance to a slot the dev's code doesn't actually render to.
+Populated by the same manifest upload. Lists which slot ids the app exposes via `VioPlacementRegistry.registerLocation(_:)`. The dashboard's "Add placement" location picker reads from here so an operator can never bind a `campaign_components` instance to a slot the dev's code doesn't actually render to. `display_name` is refreshed on every upload, so devs can rename slots without admin intervention.
 
 #### `campaign_components` ⭐ the placement table
 | column | type | notes |
 |---|---|---|
-| `id` | serial | placement row id |
-| `campaignId` | integer FK | |
-| `componentId` | varchar FK → `components` | which template |
-| `sponsorId` | integer FK → `sponsors` | **NOT NULL** (Phase 3). Must be primary or in `campaign_sponsors` — enforced by `isSponsorAllowedForCampaign` |
-| `broadcastId` | varchar FK → `broadcasts` **nullable** | null = campaign-wide, set = broadcast-scoped override |
-| `locationId` | varchar | SDK slot (e.g., `home-hero`, `sport-detail-banner`) |
-| `instanceName` | varchar | human-readable label |
-| `status` | varchar | `active` \| `inactive` |
-| `customConfig` | json nullable | overrides `components.config` |
-| `scheduledTime` | timestamp nullable | auto-activate at this time |
-| `endTime` | timestamp nullable | auto-deactivate at this time |
-| `videoStartTime`, `videoEndTime` | integer | seconds relative to broadcast video |
-| `matchId` | varchar | optional external match id |
+| `id` | serial PK | placement row id (numeric, the per-instance id) |
+| `campaign_id` | integer FK → `campaigns` | NOT NULL |
+| `component_id` | varchar FK → `components` | template id (uuid string) |
+| `sponsor_id` | integer FK → `sponsors` | **NOT NULL** (Phase 3). Must be primary or in `campaign_sponsors` — enforced by `isSponsorAllowedForCampaign` |
+| `broadcast_id` | varchar FK → `broadcasts` **nullable** | null = campaign-wide, set = broadcast-scoped override |
+| `location_id` | varchar nullable | SDK slot (e.g., `home_top`, `match_pre_kickoff`); together with `component_id` forms the dedupe key on the iOS side |
+| `instance_name` | varchar nullable | human-readable label (e.g., "Carousel1", "Carousel psg") |
+| `status` | varchar NOT NULL default `'inactive'` | `active` \| `inactive` |
+| `custom_config` | json nullable | operator overlay (e.g., `{"productIds": [...]}`); merged with `components.config` server-side before SDK consumption |
+| `scheduled_time` | timestamp nullable | auto-activate at this time (legacy column, used by `server/scheduler.ts`) |
+| `end_time` | timestamp nullable | auto-deactivate at this time (legacy) |
+| `scheduled_start_time`, `scheduled_end_time` | timestamp nullable | newer scheduling pair — both columns coexist; scheduler reads `scheduled_time + end_time` |
+| `activated_at` | timestamp nullable | last activation timestamp |
+| `updated_at` | timestamp NOT NULL | row last-modified (touched by every PATCH) |
+| `video_start_time`, `video_end_time` | integer | seconds relative to broadcast video |
+| `match_id` | varchar nullable | optional external match id |
+
+**No DB-level uniqueness** on `(campaign_id, component_id, location_id)` — the dashboard prevents collisions via UX, but two rows with the same `(campaign_id, component_id, location_id)` would NOT be rejected by the DB. iOS dedupes by `(component_id, location_id)` post-fetch.
 
 #### `broadcasts`
-`broadcastId varchar PK, campaignId → campaigns nullable, startTime, endTime, status (upcoming | live | ended), engagementEnabled, showLineup, viewerCount, peakViewers, matchStartingAt, home/awayTeamName + logo, leagueName, sportmonksFixtureId`
+`broadcast_id varchar PK, campaign_id → campaigns nullable, channel_id, broadcast_name, description, start_time, end_time, status (upcoming | live | ended), metadata (json), engagement_enabled boolean, show_lineup boolean, viewer_count, peak_viewers, started_at, match_starting_at, home/away_team_name + _logo, league_name, sportmonks_fixture_id, external_id, created_at, updated_at`
 
 #### `end_users`
 `id, clientAppId → client_apps, externalUserId varchar (opaque partner user id), firstSeenAt, lastSeenAt, metadata (json)` — unique on `(clientAppId, externalUserId)`.
@@ -162,9 +169,17 @@ Populated by the same manifest upload. Lists which slot ids the app exposes via 
 One row per shoppable ad dispatch. `productSnapshot` + `sponsorSnapshot` freeze the data at dispatch time for audit.
 
 #### `cart_intents`
-`id, endUserId → end_users, campaignId, clientAppId, tvSessionId → tv_sessions nullable, sponsorId, productId, sourceActivationId → shoppable_ad_activations nullable, sourceComponentId → campaign_components nullable, deliveryMode (websocket | dual | webhook | apns | dropped), userConnected, envelope (json, canonical v1), metadata, triggeredAt`
+`id, end_user_id → end_users, campaign_id, client_app_id, tv_session_id → tv_sessions nullable, sponsor_id nullable, product_id varchar, source_activation_id → shoppable_ad_activations nullable, source_component_id → campaign_components nullable, delivery_mode (websocket | dual | webhook | apns | dropped), user_connected boolean, envelope (json, canonical v1), metadata json, triggered_at`
 
-`sourceActivationId` closes the TV → Mobile attribution chain. `sourceComponentId` closes the placement → cart attribution chain.
+`source_activation_id` closes the TV → Mobile attribution chain. `source_component_id` closes the placement → cart attribution chain.
+
+#### `broadcast_sponsor_slots` (shoppable TV ads, scheduled or manual)
+`id, broadcast_id, sponsor_id, campaign_id nullable, role default 'shoppable', trigger_type ('manual'|...), trigger_value, auto_execute boolean, product_ids integer[] default {}, status default 'scheduled', executed_at, type default 'product', config json default {}, created_at`
+
+Each slot is a pre-configured shoppable ad attached to a broadcast. `POST /api/broadcasts/:broadcastId/sponsor-slots/:slotId/execute` dispatches it (writes `shoppable_ad_activations` + WS fan-out).
+
+#### `polls` and `contests`
+Both engagement tables include `sponsor_id NOT NULL` (per-question sponsorship). Schema columns: `id, broadcast_id, … , scheduled_start_time, scheduled_end_time, sponsor_id NOT NULL, video_start_time, video_end_time, is_active`. Fully out-of-scope of the placement subsystem — listed here so the relationship to `sponsors` is visible.
 
 ---
 
@@ -177,18 +192,25 @@ Auth column: `apiKey` = `X-API-Key` header; `session` = dashboard cookie; `Beare
 | method | path | what |
 |---|---|---|
 | GET | `/api/client-apps` | list apps |
+| GET | `/api/client-apps/with-stats` | list apps with placement / campaign counts |
 | POST | `/api/client-apps` | create app |
 | GET | `/api/client-apps/:id` | app detail |
 | PATCH | `/api/client-apps/:id` | update app |
 | POST | `/api/client-apps/:id/regenerate-key` | rotate apiKey |
 | DELETE | `/api/client-apps/:id` | delete app |
-| GET | `/api/client-apps/:id/components` | list app_components (accepts `?withLocations=true` to also embed declared locations) |
-| GET | `/api/client-apps/:id/component-locations` | list app_component_locations declared by the SDK manifest (dashboard "Add placement" location picker source) |
-| POST | `/api/client-apps/:id/components` | register a component to the app (admin-side; same effect as the SDK manifest) |
+| GET | `/api/client-apps/:id/channels` | reachu channels linked to this app |
+| GET | `/api/client-apps/:id/campaigns` | campaigns owned by this app (clientAppId-linked + channel-linked) |
+| GET | `/api/client-apps/:id/components` | list `app_components` (accepts `?withLocations=true` → returns `{components, locations}`) |
+| GET | `/api/client-apps/:id/component-locations` | list `app_component_locations` declared by SDK manifest (dashboard "Add placement" location picker source) |
+| POST | `/api/client-apps/:id/components` | register a component to the app (legacy admin path; manifest endpoint preferred) |
 | DELETE | `/api/client-apps/:id/components/:componentId` | unregister |
+| GET | `/api/components` | list catalog templates |
+| GET | `/api/components/usage` | catalog usage stats |
+| GET | `/api/components/:id` | template detail |
+| GET | `/api/components/:id/availability` | availability check (used by the Add-placement form) |
 | POST | `/api/components` | create catalog template |
-| GET | `/api/components` / `/:id` | list / detail catalog |
-| PATCH / DELETE | `/api/components/:id` | update / delete template |
+| PATCH | `/api/components/:id` | update template — **fires WS `component_config_updated`** if the template is in use by an active campaign |
+| DELETE | `/api/components/:id` | delete template |
 
 ### 3.2 Dashboard operator (session)
 
@@ -197,44 +219,81 @@ Auth column: `apiKey` = `X-API-Key` header; `session` = dashboard cookie; `Beare
 |---|---|---|
 | GET / POST | `/api/sponsors` | list / create sponsor |
 | GET / PATCH / DELETE | `/api/sponsors/:id` | detail / update / delete |
-| GET | `/api/campaigns/:id/sponsors` | sponsors linked to campaign |
+| GET | `/api/campaigns/:id/sponsors` | sponsors linked to campaign (primary + secondaries as one array since PR #21) |
 | POST | `/api/campaigns/:id/sponsors` | add secondary sponsor |
 | DELETE | `/api/campaigns/:id/sponsors/:sponsorId` | remove secondary |
+| GET | `/api/campaigns/:id/secondary-sponsors` | secondaries only (legacy view; prefer `/sponsors`) |
+| POST / DELETE | `/api/campaigns/:id/secondary-sponsors[/:sponsorId]` | secondary CRUD (legacy) |
 
 #### Campaigns
 | method | path | what |
 |---|---|---|
 | GET / POST | `/api/campaigns` | list / create |
 | GET | `/api/campaigns/:id` | detail with sponsors |
+| GET | `/api/campaigns/:id/stats` | counters (broadcasts, placements, etc.) |
+| GET | `/api/campaigns/:id/broadcasts` | broadcasts under this campaign |
+| GET | `/api/campaigns/:id/events` | dispatch / activation log |
 | PUT | `/api/campaigns/:id` | update (immutable primary sponsor if children exist) |
 | DELETE | `/api/campaigns/:id` | delete cascade |
 | PATCH | `/api/campaigns/:id/toggle-pause` | pause/resume |
+| GET / PUT | `/api/campaigns/:id/engagement-config` | engagement settings (polls/contests on/off, etc.) |
+| GET / PUT | `/api/campaigns/:id/ui-config` | brand/theme overrides |
+| GET / PUT | `/api/campaigns/:id/feature-flags` | per-campaign flags |
 
 #### Placements (`campaign_components`)
 | method | path | what |
 |---|---|---|
 | GET | `/api/campaigns/:id/components` | list placements |
-| POST | `/api/campaigns/:id/components` | **create placement** (needs `componentId` + `sponsorId`, optional `locationId`, `broadcastId`, `scheduledTime`, `endTime`, `customConfig`) |
-| PATCH | `/api/campaigns/:id/components/:componentId` | toggle status / update schedule — **fires WS `component_status_changed`** |
-| PATCH | `/api/campaigns/:id/components/:componentId/config` | override customConfig |
-| DELETE | `/api/campaigns/:id/components/:componentId` | remove placement |
 | GET | `/api/campaigns/:id/active-components` | list currently active |
+| POST | `/api/campaigns/:id/components` | **create placement** (body: `componentId`, `sponsorId` (optional → defaults to primary), `locationId`, `broadcastId`, `customConfig`, `instanceName`, `status`) |
+| PATCH | `/api/campaigns/:id/components/:componentId` | toggle status / update fields — **fires WS `component_status_changed`** when `status` flips and campaign is active |
+| PATCH | `/api/campaigns/:id/components/:componentId/config` | override `customConfig` only — **fires WS `component_config_updated`** if active |
+| DELETE | `/api/campaigns/:id/components/:componentId` | remove placement |
+
+#### Scheduled placements (separate scheduling surface)
+| method | path | what |
+|---|---|---|
+| GET | `/api/campaigns/:id/scheduled-components` | list scheduled placement runs |
+| POST | `/api/campaigns/:id/scheduled-components` | schedule a placement window |
+| PATCH | `/api/scheduled-components/:id` | reschedule / update |
+| DELETE | `/api/scheduled-components/:id` | cancel |
+
+This is parallel to `campaign_components.scheduledTime` — kept for the dashboard's calendar view. If you only need a one-shot start/end window, prefer setting `scheduledTime + endTime` on the `campaign_components` row directly.
 
 #### Broadcasts
 | method | path | what |
 |---|---|---|
 | GET / POST | `/api/broadcasts` | list / create |
 | GET / PUT / DELETE | `/api/broadcasts/:broadcastId` | detail / update / delete |
-| GET / POST / PUT / DELETE | `/api/broadcasts/:broadcastId/sponsor-slots[/:slotId]` | shoppable ad slot CRUD |
+| GET | `/api/broadcasts/:broadcastId/analytics` | viewer counts / chart data |
+| GET / POST | `/api/broadcasts/:broadcastId/sponsor-slots` | list / create shoppable ad slots |
+| PUT / DELETE | `/api/broadcasts/:broadcastId/sponsor-slots/:slotId` | update / delete slot |
 | POST | `/api/broadcasts/:broadcastId/sponsor-slots/:slotId/execute` | dispatch slot now |
 | POST | `/api/broadcasts/:broadcastId/trigger-shoppable-ad` | ad-hoc dispatch |
 | GET | `/api/broadcasts/:broadcastId/shoppable-ads` | activation log |
+| GET / POST | `/api/broadcasts/:broadcastId/{polls,contests,ads,products,chat}` | engagement / chat CRUD |
+| PUT | `/api/broadcasts/:broadcastId/match-data` | sportmonks fixture data |
 
-### 3.3 Admin API (Bearer JWT)
+#### Form persistence (dashboard UX state)
+| method | path | what |
+|---|---|---|
+| POST | `/api/form-state` | save dashboard form draft |
+| GET | `/api/form-state/:campaignId/:formType` | load specific draft |
+| GET | `/api/form-state/:campaignId` | list drafts for a campaign |
+
+### 3.3 Admin programmatic API (Bearer JWT)
+
+Used by external tooling / partner automation that doesn't go through the dashboard UI.
 
 | method | path | what |
 |---|---|---|
-| POST | `/api/broadcasts/:broadcastId/shoppable-ad` | programmatic dispatch (platform admin) |
+| POST | `/v2/admin/broadcasts/:broadcastId/shoppable-ad` | programmatic shoppable-ad dispatch (replaces the legacy `/api/broadcasts/:id/shoppable-ad` which no longer exists) |
+| POST / GET / PUT / DELETE | `/v1/broadcasts[/:broadcastId]` | broadcast CRUD |
+| GET | `/v1/campaigns/:campaignId/broadcasts` | broadcasts under a campaign |
+| POST / GET / PUT / DELETE | `/v1/broadcasts/:broadcastId/polls` + `/v1/polls/:pollId` | poll CRUD |
+| GET | `/v1/polls/:pollId/results` | poll results |
+| POST / GET / PUT / DELETE | `/v1/broadcasts/:broadcastId/contests` + `/v1/contests/:contestId` | contest CRUD |
+| GET | `/v1/contests/:contestId/participations` | contest entries |
 
 ### 3.4 SDK v2 runtime (apiKey)
 
@@ -256,8 +315,29 @@ Auth column: `apiKey` = `X-API-Key` header; `session` = dashboard cookie; `Beare
 
 | method | path | what |
 |---|---|---|
-| GET | `/api/commerce/products` | raw Commerce GraphQL proxy |
-| GET | `/api/commerce/sponsors/:sponsorId/catalog` | sponsor-scoped product catalog |
+| GET | `/v2/commerce/products` | raw Commerce GraphQL proxy (debug) |
+| GET | `/v2/commerce/sponsors/:sponsorId/catalog` | sponsor-scoped product catalog (used by the dashboard product picker via `useSponsorCatalog`) |
+| POST | `/api/checkout/confirm-apple-pay` (apiKey) | Apple Pay token finalize on the backend (server-side Stripe leg) |
+
+### 3.6 Legacy v1 SDK surface (apiKey, deferred retirement)
+
+These endpoints are still in use by the iOS SDK for unmigrated feature domains. Tracked in [`IOS_V2_MIGRATION_GAP.md`](./IOS_V2_MIGRATION_GAP.md). Do **not** point new SDKs (Kotlin) at these — they're scheduled to retire as their feature domains migrate.
+
+| method | path | feature domain |
+|---|---|---|
+| GET | `/v1/sdk/config` | bootstrap (replaced by `/v2/mobile/config`) |
+| GET | `/v1/sdk/campaigns` | campaign discovery |
+| GET | `/v1/sdk/broadcast?contentId=…` | Viaplay content-id lookup |
+| GET | `/v1/sdk/components` | placements (replaced by `/v2/mobile/campaigns/:id/components`) |
+| GET | `/v1/sdk/livescores` | sport scores ticker |
+| GET | `/v1/sdk/broadcasts/:broadcastId/{lineup,chat,score,stats}` | per-broadcast feature data |
+| GET | `/v1/campaigns/:campaignId/config` | brand/theme |
+| GET | `/v1/engagement/config` | engagement config |
+| GET | `/v1/engagement/{polls,contests}` | engagement lists |
+| POST | `/v1/engagement/polls/:pollId/vote` | poll voting (rate-limited) |
+| POST | `/v1/engagement/contests/:contestId/participate` | contest entry (rate-limited) |
+| GET | `/v1/localization/:language` | i18n strings |
+| GET | `/v1/offers` | offer banner content |
 
 ---
 
@@ -272,7 +352,8 @@ All WS connections target `wss://<host>/ws/:campaignId`. The client identifies w
 | `campaign_started` | `campaignId, startDate, endDate, matchId?` | campaign starts |
 | `campaign_ended` | `campaignId, endDate` | campaign ends |
 | `broadcast_status_changed` | `broadcastId, status` | status transitions (upcoming → live → ended) |
-| `component_status_changed` | `campaignId, componentId, sponsorId, status, component:{id,type,name,config}` | placement active/inactive (manual toggle, scheduler) |
+| `component_status_changed` | `campaignId, componentId (template uuid), status, component:{id,type,name,config}, matchId?` — **does NOT carry `locationId` nor `sponsorId` today** (latent multi-location dedupe gap on iOS — see `CURRENT_STATE.md §17` follow-ups) | placement active/inactive (manual toggle, scheduler) |
+| `component_config_updated` | `campaignId, componentId, component:{id,type,name,config}, matchId?` — same payload shape, fires when operator edits `customConfig` (e.g., productIds list) on an active placement | operator edits placement config |
 | `poll_activated` / `poll_deactivated` | `pollId, broadcastId` | engagement |
 | `contest_activated` / `contest_deactivated` | `contestId, broadcastId` | engagement |
 | `lineup_show` | `broadcastId, videoTimestamp, …` | lineup scheduling |
@@ -332,7 +413,10 @@ shoppable_ad dispatched (slot, tv-sdk, dashboard, admin-api)
   → WS `shoppable_ad` { activationId: X, sponsorId, product } to connected clients
   ↓
 user taps "Add to cart" (TV SDK or mobile placement)
-  → POST /api/sdk/tv/cart-intent { externalUserId, productId, activationId: X }
+  → POST /v2/tv/cart-intent { externalUserId, productId, activationId: X }
+        (TV path)
+  → POST /v2/mobile/campaigns/:campaignId/cart-intent
+        (in-app placement path)
   ↓
 backend:
   → resolve campaignId + sponsorId from activation row
@@ -357,10 +441,13 @@ Also supported: placement-originated cart intents carry `sourceComponentId` (the
 2. Dashboard → campaign detail → **Sponsors** tab → Add → pick sponsor + role (`shoppable` / `engagement` / `full`).
 3. Backend: `POST /api/campaigns/:id/sponsors { sponsorId, role }` → inserts `campaign_sponsors`.
 
-### Register a component to an app (admin-only)
-1. Template exists in `components` (create in Component Library).
-2. Admin → app detail → Components → "Add Component".
-3. Backend: `POST /api/client-apps/:id/components { componentId }` → inserts `app_components`.
+### Register a component to an app (self-service via SDK manifest — preferred)
+1. Template exists in `components` (admin creates via Component Library, `is_template = true`).
+2. Partner SDK at app boot: `Vio.registerPlacementComponent(MyCarousel.self)` + `Vio.registerPlacementLocation(VioPlacementLocation(id: "home_top", displayName: "Home — Top"))`.
+3. SDK posts `POST /v2/mobile/components/manifest` with `X-API-Key` and `{components, locations}` arrays. Backend resolves type → template, upserts `app_components` + `app_component_locations`. Idempotent.
+
+### Register a component to an app (admin manual fallback)
+Only for one-offs / data fixes. Prefer the SDK manifest path. Admin → app detail → Components → "Add Component" → `POST /api/client-apps/:id/components { componentId }`.
 
 ### Create a placement on a campaign
 1. Campaign has ≥1 sponsor (previous recipe).
@@ -392,4 +479,4 @@ Post Phase 1+2+3 schema migration, a working demo needs:
 8. One `campaign_components` row linking everything: campaign + component + sponsor + locationId. Status `active` or scheduled.
 9. One `broadcasts` row with `campaignId` set, status `live` or `upcoming`.
 
-Validate by calling `GET /v2/sdk/config?apiKey=<key>` — you should get the campaign + primary + secondary sponsors + all commerce blocks.
+Validate by calling `GET /v2/mobile/config` with `X-API-Key: <key>` — you should get the campaign + primary + secondary sponsors + all commerce blocks. Then `GET /v2/mobile/campaigns/:id/components` should return the rendered placement list with merged `templateConfig + customConfig`.
