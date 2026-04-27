@@ -25,6 +25,8 @@ import {
   shoppableAdActivations,
   campaignComponents,
   components,
+  appPlacements,
+  appComponentLocations,
   polls,
   contests,
   sponsors,
@@ -1931,27 +1933,16 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
     }
   });
 
-  // Get components assigned to an app
-  app.get('/api/client-apps/:id/components', async (req, res) => {
-    try {
-      const appId = parseInt(req.params.id);
-      // Backwards-compatible: if the dashboard sends `?withLocations=true` the
-      // response is the union { components, locations } so the placement
-      // picker can show both in a single fetch. Without the flag, returns the
-      // legacy array shape that the existing operator dashboard already
-      // consumes — no breaking change for callers that haven't migrated.
-      const withLocations = req.query.withLocations === 'true' || req.query.withLocations === '1';
-      const appComps = await storage.getAppComponents(appId);
-      if (!withLocations) {
-        res.json(appComps);
-        return;
-      }
-      const locations = await storage.getAppComponentLocations(appId);
-      res.json({ components: appComps, locations });
-    } catch (error) {
-      console.error('Error fetching app components:', error);
-      res.status(500).json({ message: 'Error fetching app components' });
-    }
+  // GET /api/client-apps/:id/components — RETIRED (migration 0004).
+  // The legacy `app_components` table was dropped; the dashboard now reads
+  // `/api/client-apps/:id/placements` (named instances) and
+  // `/api/client-apps/:id/component-locations` (slot manifest). The route
+  // returns 410 Gone with a pointer so old dashboard builds fail loudly.
+  app.get('/api/client-apps/:id/components', async (_req, res) => {
+    res.status(410).json({
+      error: 'gone',
+      message: 'Legacy `app_components` retired. Use GET /api/client-apps/:id/placements + /api/client-apps/:id/component-locations.',
+    });
   });
 
   /**
@@ -1975,17 +1966,21 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   });
 
   /**
-   * Named app placements — the dashboard "Add placement" picker reads from
-   * here. Each row is a (component_id, location_id, name) tuple the SDK
-   * declared via the v2 manifest.
+   * Named app placements (post-2026-04-27 model: created by dashboard, not
+   * SDK manifest). Each row is a (template, location, name) tuple the
+   * operator declared via `/apps/:id` "Add from library" form.
    *
-   * Returns rows joined with the canonical component template so the picker
-   * can render the dropdown label as `{name} (type, location)`.
+   * Returns rows joined with the canonical template so the picker can
+   * render `{name} (type, location)`.
+   *
+   * `?includeDeprecated=true` includes soft-deleted rows for admin views.
+   * Default omits them.
    */
   app.get('/api/client-apps/:id/placements', async (req, res) => {
     try {
       const appId = parseInt(req.params.id);
-      const placements = await storage.getAppPlacements(appId);
+      const includeDeprecated = req.query.includeDeprecated === 'true' || req.query.includeDeprecated === '1';
+      const placements = await storage.getAppPlacements(appId, includeDeprecated);
       res.json(placements);
     } catch (error) {
       console.error('Error fetching app placements:', error);
@@ -1993,33 +1988,103 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
     }
   });
 
-  // Add component to app
-  app.post('/api/client-apps/:id/components', async (req, res) => {
+  /**
+   * Create a named placement for an app. Operator-driven (dashboard form):
+   * pick template + name + locationId. Backend validates the chosen
+   * locationId is one the SDK declared (and not deprecated), and the
+   * template is canonical (`is_template = true`).
+   *
+   * Body: `{ componentId, locationId, name, customConfig?, createdBy? }`.
+   *
+   * Errors (HTTP 400 with `code` field for dashboard branching):
+   *   - PLACEMENT_LOCATION_INVALID — location not declared (or deprecated)
+   *   - PLACEMENT_TEMPLATE_INVALID — componentId not in canonical library
+   *   - PLACEMENT_NAME_COLLISION   — name already used (active row)
+   *   - PLACEMENT_SLOT_COLLISION   — (template, location) slot already claimed
+   */
+  app.post('/api/client-apps/:id/placements', async (req, res) => {
     try {
-      const clientAppId = parseInt(req.params.id);
-      const { componentId, customConfig } = req.body;
-      if (!componentId) {
-        return res.status(400).json({ message: 'componentId is required' });
+      const appId = parseInt(req.params.id);
+      const { componentId, locationId, name, customConfig, createdBy } = req.body ?? {};
+      if (!componentId || !locationId || !name) {
+        return res.status(400).json({ error: 'componentId, locationId, and name are required' });
       }
-      const appComp = await storage.addComponentToApp({ clientAppId, componentId, customConfig });
-      res.status(201).json(appComp);
-    } catch (error) {
-      console.error('Error adding component to app:', error);
-      res.status(500).json({ message: 'Error adding component to app' });
+      const placement = await storage.createAppPlacement({
+        clientAppId: appId,
+        componentId: String(componentId),
+        locationId: String(locationId),
+        name: String(name).trim(),
+        customConfig: customConfig ?? null,
+        createdBy: createdBy ? Number(createdBy) : undefined,
+      });
+      res.status(201).json(placement);
+    } catch (error: any) {
+      if (error?.code?.startsWith('PLACEMENT_')) {
+        return res.status(400).json({ code: error.code, error: error.message });
+      }
+      console.error('Error creating app placement:', error);
+      res.status(500).json({ error: 'Failed to create app placement' });
     }
   });
 
-  // Remove component from app
-  app.delete('/api/client-apps/:id/components/:componentId', async (req, res) => {
+  /**
+   * Soft-delete an app placement. Sets `deprecated_at = now()`. Existing
+   * `campaign_components` referencing this placement keep rendering — the
+   * dashboard surfaces the deprecated state with a warning so operators
+   * can clean up at their own pace.
+   *
+   * Emits WebSocket `app_placement_deprecated` (campaign-scoped fan-out for
+   * any campaign currently using this placement) so live SDK clients can
+   * react in real-time.
+   */
+  app.delete('/api/client-apps/:id/placements/:placementId', async (req, res) => {
     try {
-      const clientAppId = parseInt(req.params.id);
-      const componentId = req.params.componentId;
-      await storage.removeComponentFromApp(clientAppId, componentId);
-      res.json({ message: 'Component removed from app' });
-    } catch (error) {
-      console.error('Error removing component from app:', error);
-      res.status(500).json({ message: 'Error removing component from app' });
+      const placementId = parseInt(req.params.placementId);
+      if (Number.isNaN(placementId)) return res.status(400).json({ error: 'Invalid placementId' });
+      const row = await storage.deprecateAppPlacement(placementId);
+
+      // Find any active campaigns using this placement and broadcast the
+      // deprecation event so connected clients can update warnings live.
+      const campaignsAffected = await db
+        .selectDistinct({ campaignId: campaignComponents.campaignId })
+        .from(campaignComponents)
+        .where(eq(campaignComponents.appPlacementId, placementId));
+
+      for (const { campaignId } of campaignsAffected) {
+        broadcastToCampaign(campaignId, JSON.stringify({
+          type: 'app_placement_deprecated',
+          campaignId,
+          appPlacementId: placementId,
+          name: row.name,
+          deprecatedAt: row.deprecatedAt,
+        }));
+      }
+
+      res.json({ success: true, placement: row, campaignsAffected: campaignsAffected.length });
+    } catch (error: any) {
+      if (error?.code === 'PLACEMENT_NOT_FOUND') {
+        return res.status(404).json({ code: error.code, error: error.message });
+      }
+      console.error('Error deprecating app placement:', error);
+      res.status(500).json({ error: 'Failed to deprecate app placement' });
     }
+  });
+
+  // POST /api/client-apps/:id/components — RETIRED (migration 0004).
+  // Use POST /api/client-apps/:id/placements (named instances).
+  app.post('/api/client-apps/:id/components', async (_req, res) => {
+    res.status(410).json({
+      error: 'gone',
+      message: 'Legacy app_components endpoint retired. Use POST /api/client-apps/:id/placements with { componentId, locationId, name }.',
+    });
+  });
+
+  // DELETE /api/client-apps/:id/components/:componentId — RETIRED.
+  app.delete('/api/client-apps/:id/components/:componentId', async (_req, res) => {
+    res.status(410).json({
+      error: 'gone',
+      message: 'Legacy app_components endpoint retired. Use DELETE /api/client-apps/:id/placements/:placementId (soft delete).',
+    });
   });
 
   // Get campaigns for a specific app (includes both clientAppId-linked and channel-linked)
@@ -3110,33 +3175,85 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
     }
   });
 
-  // Add component to campaign
+  // Add placement to campaign (post-2026-04-27 model: references an
+  // app_placement instead of (componentId, locationId) pair).
+  //
+  // Body: `{ appPlacementId, sponsorId, status?, instanceName?,
+  //          customConfig?, broadcastId?, createdBy? }`.
+  //
+  // Validates:
+  //   - app_placement exists, not deprecated, belongs to the same clientApp as the campaign
+  //   - sponsor is primary or in campaign_sponsors
+  //   - if status='active', no other active row for same (campaign, app_placement)
+  //     (defense-in-depth — DB partial UNIQUE index also enforces)
   app.post('/api/campaigns/:id/components', async (req, res) => {
     try {
       const campaignId = parseInt(req.params.id);
-      const { componentId, status, instanceName, locationId } = req.body;
+      const { appPlacementId, status, instanceName, sponsorId, broadcastId, customConfig, createdBy } = req.body ?? {};
 
-      if (!componentId) {
-        return res.status(400).json({ message: 'Missing required field: componentId' });
+      if (!appPlacementId) {
+        return res.status(400).json({ message: 'Missing required field: appPlacementId' });
       }
 
-      // Get component details
-      const component = await storage.getComponentById(componentId);
-      if (!component) {
-        return res.status(404).json({ message: 'Component not found' });
+      // 1. Validate app_placement exists, not deprecated, same clientApp.
+      const placement = await storage.getAppPlacementById(Number(appPlacementId));
+      if (!placement) {
+        return res.status(404).json({ message: `App placement ${appPlacementId} not found` });
+      }
+      if (placement.deprecatedAt) {
+        return res.status(400).json({ message: `App placement ${appPlacementId} is deprecated; cannot bind new instances` });
       }
 
-      // Generate default instanceName if not provided
+      // 2. Validate campaign + clientApp match.
+      const campaign = await storage.getCampaign(campaignId);
+      if (!campaign) {
+        return res.status(404).json({ message: 'Campaign not found' });
+      }
+      if (placement.clientAppId !== campaign.clientAppId) {
+        return res.status(400).json({
+          message: `App placement belongs to clientApp ${placement.clientAppId}, but campaign is for clientApp ${campaign.clientAppId}`,
+        });
+      }
+      if (!campaign.primarySponsorId) {
+        return res.status(400).json({ message: 'Campaign has no primary sponsor' });
+      }
+
+      // 3. Validate sponsor.
+      const requestedSponsorId: number = sponsorId ? Number(sponsorId) : campaign.primarySponsorId;
+      const sponsorAllowed = await storage.isSponsorAllowedForCampaign(requestedSponsorId, campaignId);
+      if (!sponsorAllowed) {
+        return res.status(400).json({ message: 'Sponsor is not associated with this campaign (must be primary or secondary)' });
+      }
+
+      // 4. Multi-sponsor "one active per (campaign, placement)" — partial
+      //    UNIQUE index on the DB enforces this; we pre-check for a clearer
+      //    400 error so the dashboard can surface the in-use sponsor.
+      if ((status || 'inactive') === 'active') {
+        const existing = await db.select({ id: campaignComponents.id, sponsorId: campaignComponents.sponsorId })
+          .from(campaignComponents)
+          .where(and(
+            eq(campaignComponents.campaignId, campaignId),
+            eq(campaignComponents.appPlacementId, Number(appPlacementId)),
+            eq(campaignComponents.status, 'active'),
+          ))
+          .limit(1);
+        if (existing.length > 0) {
+          return res.status(409).json({
+            code: 'PLACEMENT_ACTIVE_CONFLICT',
+            message: `Placement is already active in this campaign with sponsor ${existing[0].sponsorId}. Deactivate it first or schedule a rotation.`,
+            activeCampaignComponentId: existing[0].id,
+          });
+        }
+      }
+
+      // 5. Generate sequential instanceName if not provided.
       let finalInstanceName = instanceName;
       if (!finalInstanceName) {
         const existingComponents = await storage.getCampaignComponents(campaignId);
-        const sameTemplateInstances = existingComponents.filter(cc => cc.componentId === componentId);
-        const sdkName = componentSDKNames[component.type as keyof typeof componentSDKNames] || component.name;
-
-        // Find highest number in existing instance names
+        const sameTemplateInstances = existingComponents.filter(cc => cc.appPlacementId === Number(appPlacementId));
+        const sdkName = componentSDKNames[placement.component.type as keyof typeof componentSDKNames] || placement.name;
         const instancePattern = new RegExp(`^${sdkName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} (\\d+)$`);
         let maxNumber = 0;
-
         for (const instance of sameTemplateInstances) {
           if (!instance.instanceName) continue;
           const match = instance.instanceName.match(instancePattern);
@@ -3145,56 +3262,33 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
             if (num > maxNumber) maxNumber = num;
           }
         }
-
-        // Generate next sequential name
         finalInstanceName = `${sdkName} ${maxNumber + 1}`;
       }
 
-      // Validate component availability if status is active
-      if (status === 'active') {
-        const availability = await storage.validateComponentAvailability(componentId, component.isTemplate === 'true', campaignId);
-        if (!availability.available) {
-          return res.status(409).json({
-            message: 'Component is already active in another campaign',
-            activeCampaignId: availability.activeCampaignId
-          });
-        }
-      }
-
-      // Resolve sponsor for this placement: explicit or default to campaign primary.
-      const campaignForSponsor = await storage.getCampaign(campaignId);
-      if (!campaignForSponsor || !campaignForSponsor.primarySponsorId) {
-        return res.status(400).json({ message: 'Campaign has no primary sponsor' });
-      }
-      const requestedSponsorId: number = req.body.sponsorId ? Number(req.body.sponsorId) : campaignForSponsor.primarySponsorId;
-      const sponsorAllowed = await storage.isSponsorAllowedForCampaign(requestedSponsorId, campaignId);
-      if (!sponsorAllowed) {
-        return res.status(400).json({ message: 'Sponsor is not associated with this campaign (must be primary or secondary)' });
-      }
-      const broadcastScope: string | null = req.body.broadcastId ? String(req.body.broadcastId) : null;
-
-      // Operator-supplied placement config. The most common shape is
-      // `{ productIds: [...] }` for `product_*` types, written by the
-      // dashboard's product picker (multi-select per sponsor catalog). The
-      // SDK reads it through the existing `customConfig` plumbing, falling
-      // back to the component template's baseline config when null.
-      const customConfig = req.body.customConfig ?? null;
+      const broadcastScope: string | null = broadcastId ? String(broadcastId) : null;
 
       const campaignComponent = await storage.addComponentToCampaign({
         campaignId,
-        componentId,
+        appPlacementId: Number(appPlacementId),
         sponsorId: requestedSponsorId,
         broadcastId: broadcastScope,
         instanceName: finalInstanceName,
         status: status || 'inactive',
-        locationId: locationId || null,
-        customConfig,
-      });
+        customConfig: customConfig ?? null,
+        createdBy: createdBy ? Number(createdBy) : null,
+      } as any);
 
       res.status(201).json(campaignComponent);
-    } catch (error) {
-      console.error('Error adding component to campaign:', error);
-      res.status(500).json({ message: 'Error adding component to campaign' });
+    } catch (error: any) {
+      // DB partial UNIQUE index trips here if dashboard validation missed.
+      if (error?.code === '23505' && /one_active/i.test(error?.message ?? '')) {
+        return res.status(409).json({
+          code: 'PLACEMENT_ACTIVE_CONFLICT',
+          message: 'A row is already active for this (campaign, app_placement). Deactivate it first.',
+        });
+      }
+      console.error('Error adding placement to campaign:', error);
+      res.status(500).json({ message: 'Error adding placement to campaign' });
     }
   });
 
@@ -6743,221 +6837,89 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   });
 
   // ============================================================
-  // POST /v2/mobile/components/manifest — SDK manifest upload
+  // POST /v2/mobile/components/manifest — SDK location declaration
   // ============================================================
-  // Self-service registry: the partner's SDK uploads at app boot which
-  // placement component types it implements + which placement locations
-  // ("slots") its layout exposes. The dashboard's "Add placement" picker
-  // reads from this registry — operators can only bind a campaign_components
-  // instance to a (component, location) pair the dev's code actually
-  // declared, eliminating the desync where an operator picks a slot the app
-  // never renders to.
+  // The partner SDK uploads at app boot **only the slot locations** its
+  // layout exposes (e.g. "home_top", "match_pre_kickoff"). The dashboard's
+  // "Add from library" form reads from these so an operator can never bind
+  // an `app_placement` to a slot the dev's code doesn't actually render to.
   //
-  // The endpoint is **idempotent**: SDK can re-upload on every cold start.
-  // - components[] → upserts `app_components` rows by (client_app_id,
-  //   component_id), where component_id is resolved from `type` against the
-  //   global `components` table (rows with `is_template = true`). Unknown
-  //   types accumulate in `warnings[]` and are skipped, so a typo in the
-  //   dev's `Vio.registerPlacementComponent(...)` is loud but doesn't 400
-  //   the entire manifest.
-  // - locations[] → upserts `app_component_locations` rows by
-  //   (client_app_id, location_id). `display_name` is refreshed on each
-  //   upload so the dev can rename slots without admin intervention.
+  // Decision (sprint 2026-04-27 PM):
+  //   - **Sync semantics**: locations not in the new payload get
+  //     `deprecated_at = now()`. Re-uploading clears the deprecated flag.
+  //   - Manifest does NOT create `app_placements` (those are created via
+  //     dashboard `/apps/:id` "Add from library" form). The SDK only owns
+  //     the slot manifest.
+  //   - **No legacy support**: `placements[]` and `components[]` arrays are
+  //     rejected with HTTP 400. Callers must update to v2 manifest.
   //
   // Auth: `validateApiKey` resolves the `client_app_id` from the SDK's
-  // `X-API-Key`. The endpoint can only ever write to that app's rows —
-  // multi-tenant isolation by construction.
+  // `X-API-Key` header. Multi-tenant isolation by construction.
   app.post('/v2/mobile/components/manifest', validateApiKey, async (req, res) => {
     try {
       const clientApp = (req as any).clientApp;
-      const {
-        components: declaredComponents,
-        locations: declaredLocations,
-        placements: declaredPlacements, // v2: named instances (preferred)
-      } = req.body ?? {};
-      if (!Array.isArray(declaredComponents) && !Array.isArray(declaredLocations) && !Array.isArray(declaredPlacements)) {
-        return res.status(400).json({ error: 'Body must include `components`, `locations`, and/or `placements` arrays' });
+      const body = req.body ?? {};
+
+      // Reject legacy v1/v2 fields explicitly so partners hit a hard error
+      // instead of silent no-op while the contract is still in flux.
+      if ('components' in body || 'placements' in body) {
+        return res.status(400).json({
+          error: 'Manifest only accepts `locations[]`. The legacy `components[]` and `placements[]` arrays were retired in the dashboard-driven placement model — placements are now created via the dashboard `/apps/:id` "Add from library" form. See docs/TASK_PLACEMENTS.md.',
+        });
       }
 
-      const persistedComponents: any[] = [];
+      const declaredLocations = body.locations;
+      if (!Array.isArray(declaredLocations)) {
+        return res.status(400).json({ error: 'Body must include `locations` array' });
+      }
+
       const persistedLocations: any[] = [];
-      const persistedPlacements: any[] = [];
       const warnings: { kind: string; detail: string }[] = [];
+      const seenLocationIds: string[] = [];
 
-      // Process components: resolve canonical template by type, then ensure link.
-      if (Array.isArray(declaredComponents)) {
-        for (const entry of declaredComponents) {
-          if (!entry || typeof entry !== 'object') {
-            warnings.push({ kind: 'invalid_component_entry', detail: 'Entry must be an object with `type`' });
-            continue;
-          }
-          const type = typeof entry.type === 'string' ? entry.type.trim() : '';
-          if (!type) {
-            warnings.push({ kind: 'missing_component_type', detail: 'Component entry missing `type` string' });
-            continue;
-          }
-          const template = await storage.getCanonicalComponentByType(type);
-          if (!template) {
-            warnings.push({
-              kind: 'unknown_component_type',
-              detail: `No canonical template registered globally for type='${type}'. Either Vio admin needs to seed a templates row, or the SDK is using a typo.`,
-            });
-            continue;
-          }
-          const link = await storage.ensureAppComponentLink(clientApp.id, template.id);
-          persistedComponents.push({
-            type,
-            componentId: template.id,
-            templateName: template.name,
-            appComponentId: link.id,
-          });
+      for (const entry of declaredLocations) {
+        if (!entry || typeof entry !== 'object') {
+          warnings.push({ kind: 'invalid_location_entry', detail: 'Entry must be an object with `id`' });
+          continue;
         }
+        const id = typeof entry.id === 'string' ? entry.id.trim() : '';
+        if (!id) {
+          warnings.push({ kind: 'missing_location_id', detail: 'Location entry missing `id` string' });
+          continue;
+        }
+        if (id.length > 100) {
+          warnings.push({ kind: 'location_id_too_long', detail: `Location id '${id}' exceeds 100 chars; ignored.` });
+          continue;
+        }
+        if (seenLocationIds.includes(id)) {
+          warnings.push({ kind: 'duplicate_location_in_manifest', detail: `Location '${id}' declared more than once in this manifest; keeping first.` });
+          continue;
+        }
+        const displayName = typeof entry.displayName === 'string' && entry.displayName.trim() !== ''
+          ? entry.displayName.trim().slice(0, 255)
+          : null;
+        const row = await storage.upsertAppComponentLocation(clientApp.id, id, displayName);
+        seenLocationIds.push(id);
+        persistedLocations.push({
+          id: row.id,
+          locationId: row.locationId,
+          displayName: row.displayName,
+        });
       }
 
-      // Process locations: idempotent upsert.
-      if (Array.isArray(declaredLocations)) {
-        for (const entry of declaredLocations) {
-          if (!entry || typeof entry !== 'object') {
-            warnings.push({ kind: 'invalid_location_entry', detail: 'Entry must be an object with `id`' });
-            continue;
-          }
-          const id = typeof entry.id === 'string' ? entry.id.trim() : '';
-          if (!id) {
-            warnings.push({ kind: 'missing_location_id', detail: 'Location entry missing `id` string' });
-            continue;
-          }
-          if (id.length > 100) {
-            warnings.push({ kind: 'location_id_too_long', detail: `Location id '${id}' exceeds 100 chars; ignored.` });
-            continue;
-          }
-          const displayName = typeof entry.displayName === 'string' && entry.displayName.trim() !== ''
-            ? entry.displayName.trim().slice(0, 255)
-            : null;
-          const row = await storage.upsertAppComponentLocation(clientApp.id, id, displayName);
-          persistedLocations.push({
-            id: row.id,
-            locationId: row.locationId,
-            displayName: row.displayName,
-          });
-        }
-      }
-
-      // Process placements (v2 — named instances). Each entry must carry
-      // `name`, `componentType`, `locationId`. Backend resolves componentType
-      // → canonical template id, upserts the named placement.
-      //
-      // Conflict semantics:
-      //   - Repeated upload of the same `name` updates its (componentType,
-      //     locationId, customConfig) — dev can rename their slot via SDK
-      //     edit without breaking continuity.
-      //   - If another name already claims this (componentType, locationId)
-      //     slot for this app, Postgres rejects via the slot-unique index;
-      //     we surface a warning and skip rather than throwing.
-      if (Array.isArray(declaredPlacements)) {
-        // Within a single manifest payload, two entries cannot legitimately
-        // claim the same slot or the same name. Catch programming errors
-        // loudly instead of silently letting "last writer wins".
-        const seenSlots = new Set<string>();
-        const seenNames = new Set<string>();
-        for (const entry of declaredPlacements) {
-          if (!entry || typeof entry !== 'object') {
-            warnings.push({ kind: 'invalid_placement_entry', detail: 'Entry must be an object with `name`, `componentType`, `locationId`' });
-            continue;
-          }
-          const name = typeof entry.name === 'string' ? entry.name.trim() : '';
-          const componentType = typeof entry.componentType === 'string' ? entry.componentType.trim() : '';
-          const locationId = typeof entry.locationId === 'string' ? entry.locationId.trim() : '';
-          if (!name || !componentType || !locationId) {
-            warnings.push({
-              kind: 'missing_placement_fields',
-              detail: `Placement entry missing required fields (name='${name}', componentType='${componentType}', locationId='${locationId}')`,
-            });
-            continue;
-          }
-          if (name.length > 255 || locationId.length > 100) {
-            warnings.push({ kind: 'placement_field_too_long', detail: `Placement '${name}' has fields exceeding length limits; ignored.` });
-            continue;
-          }
-          const template = await storage.getCanonicalComponentByType(componentType);
-          if (!template) {
-            warnings.push({
-              kind: 'unknown_component_type',
-              detail: `No canonical template registered for placement '${name}' componentType='${componentType}'.`,
-            });
-            continue;
-          }
-
-          // Within-manifest dedupe: catch the dev sending two placements
-          // for the same slot or the same name in a single payload.
-          const slotKey = `${template.id}|${locationId}`;
-          if (seenSlots.has(slotKey)) {
-            warnings.push({
-              kind: 'duplicate_slot_in_manifest',
-              detail: `Slot (componentType='${componentType}', locationId='${locationId}') declared more than once in this manifest. Keeping first; ignoring placement '${name}'.`,
-            });
-            continue;
-          }
-          if (seenNames.has(name)) {
-            warnings.push({
-              kind: 'duplicate_name_in_manifest',
-              detail: `Name '${name}' declared more than once in this manifest. Keeping first; ignoring this duplicate.`,
-            });
-            continue;
-          }
-          seenSlots.add(slotKey);
-          seenNames.add(name);
-
-          // Ensure the legacy app_components + app_component_locations rows
-          // also exist — the dashboard's existing data still reads from them
-          // for some views, and the campaign placement-create endpoint
-          // validates against `isSponsorAllowedForCampaign` + the legacy
-          // location list. Dual-write while we phase the new table in.
-          await storage.ensureAppComponentLink(clientApp.id, template.id);
-          await storage.upsertAppComponentLocation(clientApp.id, locationId, null);
-          try {
-            const placement = await storage.upsertAppPlacement({
-              clientAppId: clientApp.id,
-              componentId: template.id,
-              locationId,
-              name,
-              customConfig: entry.customConfig ?? null,
-            });
-            persistedPlacements.push({
-              id: placement.id,
-              name: placement.name,
-              componentId: placement.componentId,
-              componentType,
-              locationId: placement.locationId,
-            });
-          } catch (e: any) {
-            // Most common path: name collision — the dev tried to claim a
-            // name that already belongs to another (component, location)
-            // slot. The slot itself is fine, just need a different name.
-            // Other unexpected errors surface as generic.
-            if (e?.code === 'PLACEMENT_NAME_COLLISION') {
-              warnings.push({
-                kind: 'placement_name_collision',
-                detail: `Name '${name}' is already used by another placement in this app at a different slot. Pick a unique name (e.g. '${name} v2').`,
-              });
-            } else {
-              warnings.push({
-                kind: 'placement_upsert_error',
-                detail: `Unexpected error upserting placement '${name}': ${e?.message ?? e}`,
-              });
-            }
-          }
-        }
-      }
+      // Sync semantics: locations not in this payload get deprecated.
+      // Idempotent — already-deprecated rows stay deprecated; re-uploaded
+      // ones get their `deprecated_at` cleared by the upsert above.
+      const deprecatedCount = await storage.deprecateAppComponentLocationsNotIn(clientApp.id, seenLocationIds);
 
       console.log(
-        `[ManifestRegistry] clientApp=${clientApp.id} components=${persistedComponents.length} locations=${persistedLocations.length} placements=${persistedPlacements.length} warnings=${warnings.length}`
+        `[ManifestRegistry] clientApp=${clientApp.id} locations=${persistedLocations.length} deprecated=${deprecatedCount} warnings=${warnings.length}`
       );
 
       res.json({
         clientAppId: clientApp.id,
-        components: persistedComponents,
         locations: persistedLocations,
-        placements: persistedPlacements,
+        deprecatedCount,
         warnings,
       });
     } catch (error) {
@@ -7018,34 +6980,38 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       const campaign = await storage.getCampaign(campaignId);
       if (!campaign) return res.status(404).json({ error: 'Campaign not found' });
 
+      // Post-migration 0004: campaign_components → app_placements → components.
+      // Filter rules:
+      //   - status = 'active'
+      //   - broadcast_id IS NULL (campaign-wide, not broadcast-scoped)
+      //   - app_placements.deprecated_at IS NULL — operator soft-deleted
+      //     placements stop rendering; existing campaign_components keep
+      //     existing in DB but the SDK is shielded from them.
       const rows = await db.select({
         cc: campaignComponents,
+        ap: appPlacements,
         comp: components,
         sp: sponsors,
       })
         .from(campaignComponents)
-        .innerJoin(components, eq(campaignComponents.componentId, components.id))
+        .innerJoin(appPlacements, eq(campaignComponents.appPlacementId, appPlacements.id))
+        .innerJoin(components, eq(appPlacements.componentId, components.id))
         .innerJoin(sponsors, eq(campaignComponents.sponsorId, sponsors.id))
         .where(and(
           eq(campaignComponents.campaignId, campaignId),
           eq(campaignComponents.status, 'active'),
           isNull(campaignComponents.broadcastId),
+          isNull(appPlacements.deprecatedAt),
         ));
 
-      // Shape matches the Swift `Component` model on iOS (CampaignModels.swift):
-      // - `id` = the component TEMPLATE id (components.id), so the SDK's existing
-      //   getActiveComponent(componentId:) keeps working with the same uuid the
-      //   demo previously hardcoded.
-      // - `campaignComponentId` = the per-instance id (campaign_components.id),
-      //   exposed for analytics/observability so the SDK can echo it back on
-      //   any instance-scoped event.
-      // - `config` is the template's baseline merged with the operator's
-      //   customConfig overlay. Critical: the iOS ComponentConfig decoder
-      //   discriminates between cases by which keys are present (autoPlay+
-      //   interval → product_carousel; only productIds → carousel_manual),
-      //   so we MERGE rather than replace — operator-supplied productIds
-      //   coexist with the template's autoPlay/interval defaults.
-      const items = rows.map(({ cc, comp, sp }) => {
+      // Response shape kept stable for iOS — `id` = template uuid (so the
+      // SDK's getActiveComponent(componentId:) keeps working with the
+      // template id), `locationId` sourced from app_placements (no longer
+      // on campaign_components post-migration). The new `appPlacementId`
+      // field exposes the FK so future SDK features can echo it back.
+      // Config: template baseline merged with operator's customConfig
+      // overlay (productIds, etc.).
+      const items = rows.map(({ cc, ap, comp, sp }) => {
         const templateConfig = (comp as any).config ?? {};
         const overlayConfig = cc.customConfig ?? {};
         const mergedConfig =
@@ -7053,12 +7019,14 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
             ? { ...templateConfig, ...overlayConfig }
             : (overlayConfig || templateConfig);
         return {
-          id: comp.id,                                  // template id (string uuid)
+          id: comp.id,                                  // template id (uuid string)
           campaignComponentId: cc.id,                   // instance id (numeric)
+          appPlacementId: ap.id,                        // FK to app_placements
+          appPlacementName: ap.name,                    // human-friendly label ("Carrusel home")
           type: comp.type,
-          name: cc.instanceName ?? comp.name,
+          name: cc.instanceName ?? ap.name,
           status: cc.status,
-          locationId: cc.locationId ?? null,
+          locationId: ap.locationId,                    // sourced from app_placements
           sponsorId: sp.id,
           sponsor: {
             id: sp.id,
@@ -7081,6 +7049,10 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
     }
   });
 
+  // Broadcast-scoped placements (campaign-wide + broadcast-overridden,
+  // merged). Same JOIN-through-app_placements path as the campaign-scoped
+  // endpoint. Filters out deprecated placements so the SDK never sees
+  // stale slots after operator soft-delete.
   app.get('/v2/mobile/broadcasts/:broadcastId/components', validateApiKey, async (req, res) => {
     try {
       const { broadcastId } = req.params;
@@ -7089,23 +7061,28 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
 
       const rows = await db.select({
         cc: campaignComponents,
+        ap: appPlacements,
         comp: components,
         sp: sponsors,
       })
         .from(campaignComponents)
-        .innerJoin(components, eq(campaignComponents.componentId, components.id))
+        .innerJoin(appPlacements, eq(campaignComponents.appPlacementId, appPlacements.id))
+        .innerJoin(components, eq(appPlacements.componentId, components.id))
         .innerJoin(sponsors, eq(campaignComponents.sponsorId, sponsors.id))
         .where(and(
           eq(campaignComponents.campaignId, broadcast.campaignId),
           eq(campaignComponents.status, 'active'),
+          isNull(appPlacements.deprecatedAt),
           or(isNull(campaignComponents.broadcastId), eq(campaignComponents.broadcastId, broadcastId)),
         ));
 
-      const items = rows.map(({ cc, comp, sp }) => ({
+      const items = rows.map(({ cc, ap, comp, sp }) => ({
         id: cc.id,
         campaignComponentId: cc.id,
+        appPlacementId: ap.id,
+        appPlacementName: ap.name,
         type: comp.type,
-        locationId: cc.locationId ?? null,
+        locationId: ap.locationId,
         instanceName: cc.instanceName ?? null,
         sponsor: {
           id: sp.id,

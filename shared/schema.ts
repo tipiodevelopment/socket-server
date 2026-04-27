@@ -207,42 +207,50 @@ export const components = pgTable("components", {
   createdAt: timestamp("created_at").defaultNow().notNull()
 });
 
-// Campaign Components - Links components to campaigns with status and custom config
-// Can be manual toggle OR scheduled OR both
-// Supports multiple instances of the same component template with different instanceNames
+// Campaign Components — instances of a named placement bound to a campaign,
+// with sponsor + product overrides + scheduling. Each row references an
+// `app_placements` entry directly (the named instance the operator picked
+// from the dashboard) — the underlying component template + locationId
+// live there, not duplicated here.
+//
+// Multi-sponsor rotation: operator can create multiple rows for the same
+// (campaign, app_placement) with different sponsors / scheduled times,
+// but only ONE may be `status='active'` at a time. Enforced by partial
+// UNIQUE index `idx_campaign_components_one_active`.
 export const campaignComponents = pgTable("campaign_components", {
   id: serial("id").primaryKey(),
   campaignId: integer("campaign_id").notNull().references(() => campaigns.id, { onDelete: 'cascade' }),
-  componentId: varchar("component_id", { length: 50 }).notNull().references(() => components.id, { onDelete: 'cascade' }),
+  /** FK to the named app_placement the operator picked. Source of truth for
+   *  the underlying template + locationId; this row only adds sponsor +
+   *  product overrides + scheduling. */
+  appPlacementId: integer("app_placement_id").notNull().references(() => appPlacements.id, { onDelete: 'restrict' }),
   /** Sponsor that owns this placement (branding + commerce key source).
-   *  Must be the campaign's primary sponsor or one of its secondary sponsors. Phase 3 enforced. */
+   *  Must be the campaign's primary sponsor or one of its secondary
+   *  sponsors. Phase 3 enforced. */
   sponsorId: integer("sponsor_id").notNull().references(() => sponsors.id, { onDelete: 'restrict' }),
-  /** Optional broadcast scope. NULL = placement active for the whole campaign.
-   *  Set = placement only active during that specific broadcast. */
+  /** Optional broadcast scope. NULL = placement active for the whole
+   *  campaign. Set = placement only active during that specific broadcast. */
   broadcastId: varchar("broadcast_id", { length: 255 }).references((): AnyPgColumn => broadcasts.broadcastId, { onDelete: 'cascade' }),
-  instanceName: varchar("instance_name", { length: 255 }), // Optional: Name for this instance (e.g., "Vitamins Carousel", "Omega-3 Banner")
+  instanceName: varchar("instance_name", { length: 255 }), // Optional UX label distinct from app_placement.name (e.g. "Carrusel home — XXL drop")
   status: varchar("status", { length: 20 }).notNull().default('inactive'), // active, inactive
-  customConfig: json("custom_config"), // Campaign-specific config override (optional)
-  scheduledTime: timestamp("scheduled_time"), // Optional: auto-activate at this time (null = manual toggle only)
-  endTime: timestamp("end_time"), // Optional: auto-deactivate at this time (null = no end)
+  customConfig: json("custom_config"), // Campaign-specific overlay (e.g. productIds list)
+  scheduledTime: timestamp("scheduled_time"), // Auto-activate at this time
+  endTime: timestamp("end_time"), // Auto-deactivate at this time
   activatedAt: timestamp("activated_at"),
   matchId: varchar("match_id", { length: 255 }),
-  locationId: varchar("location_id", { length: 100 }), // SDK slot identifier e.g. "top-banner", "sidebar-carousel"
   videoStartTime: integer("video_start_time"),
   videoEndTime: integer("video_end_time"),
   scheduledStartTime: timestamp("scheduled_start_time"),
   scheduledEndTime: timestamp("scheduled_end_time"),
+  /** User who created this campaign placement (operator audit trail). */
+  createdBy: integer("created_by").references(() => users.id, { onDelete: 'set null' }),
   updatedAt: timestamp("updated_at").defaultNow().notNull()
 });
 
-// App Components - Links components to apps (components are shared across all app campaigns)
-export const appComponents = pgTable("app_components", {
-  id: serial("id").primaryKey(),
-  clientAppId: integer("client_app_id").notNull().references(() => clientApps.id, { onDelete: 'cascade' }),
-  componentId: varchar("component_id", { length: 50 }).notNull().references(() => components.id, { onDelete: 'cascade' }),
-  customConfig: json("custom_config"),
-  createdAt: timestamp("created_at").defaultNow().notNull()
-});
+// NOTE: `app_components` table dropped in migration 0004 — fully redundant
+// with `app_placements` (a placement implies the app supports the underlying
+// template). Schema definition removed; storage helpers + endpoints have
+// been migrated to read from `app_placements` instead.
 
 // App Component Locations - Slots declared by the partner SDK (via manifest upload)
 // where placements may render. Operator picks from these in the dashboard when
@@ -262,6 +270,12 @@ export const appComponentLocations = pgTable("app_component_locations", {
   clientAppId: integer("client_app_id").notNull().references(() => clientApps.id, { onDelete: 'cascade' }),
   locationId: varchar("location_id", { length: 100 }).notNull(),
   displayName: varchar("display_name", { length: 255 }),
+  /** Soft-delete: SDK manifest is sync-semantic — locations not in the new
+   *  payload get `deprecated_at = now()` instead of being deleted. The
+   *  dashboard hides deprecated locations from the "Add from library"
+   *  picker; existing app_placements pointing at them keep working with
+   *  a warning. */
+  deprecatedAt: timestamp("deprecated_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull()
 }, (table) => ({
@@ -271,25 +285,29 @@ export const appComponentLocations = pgTable("app_component_locations", {
 }));
 
 // Named app-instances of placements — the explicit declaration of which
-// (component_type, location, name) tuples the dev's app actually renders.
-// Replaces the implicit cross-product of (app_components × app_component_locations).
+// (template, location, name) tuples the partner app implements.
 //
-// Populated by the manifest v2 endpoint: SDK at app boot calls
-//   Vio.registerPlacement(name: "Carrusel home", type: .productCarousel,
-//                         locationId: "home_top")
-// → backend resolves componentType → component_id and upserts a row here.
+// Created by **operator/admin via the dashboard `/apps/:id` "Add from
+// library" form** — NOT by the SDK manifest. The dashboard combines:
+//   - a template id (from the read-only library)
+//   - a locationId (from `app_component_locations`, the SDK's slot manifest)
+//   - a name (human-readable, e.g. "Carrusel home")
 //
-// The dashboard's "Add placement" picker reads exclusively from this table
-// (filtered by the campaign's clientAppId). Operator picks one named
-// placement, then assigns sponsor + product list. Cannot bind to a combo
-// the dev hasn't declared — strict contract.
+// The campaign placement picker (`/campaigns/:id`) reads exclusively from
+// this table and offers `(name)` to the operator; the operator then adds
+// `sponsor + products` to create a `campaign_components` instance.
 //
 // Two UNIQUE indexes:
 //   - (client_app_id, name) — name is human-facing id, unique per app so
 //     picker labels are unambiguous.
 //   - (client_app_id, component_id, location_id) — only one placement per
 //     (type, slot) per app. For A/B variants, declare distinct locations
-//     (`home_top_a`, `home_top_b`) instead of two carousels at `home_top`.
+//     (`home_top_a`, `home_top_b`).
+//
+// Soft-delete: operator removal sets `deprecated_at = now()` (ON DELETE
+// from a deprecated location cascade-deprecates these too). Existing
+// `campaign_components` referring to a deprecated placement keep
+// rendering with a dashboard warning until the operator unbinds them.
 export const appPlacements = pgTable("app_placements", {
   id: serial("id").primaryKey(),
   clientAppId: integer("client_app_id").notNull().references(() => clientApps.id, { onDelete: 'cascade' }),
@@ -297,6 +315,11 @@ export const appPlacements = pgTable("app_placements", {
   locationId: varchar("location_id", { length: 100 }).notNull(),
   name: varchar("name", { length: 255 }).notNull(),
   customConfig: json("custom_config"),
+  /** Soft-delete (operator removal or location cascade). Existing
+   *  campaign_components keep rendering with a dashboard warning. */
+  deprecatedAt: timestamp("deprecated_at"),
+  /** Audit: operator user who created this placement. */
+  createdBy: integer("created_by").references(() => users.id, { onDelete: 'set null' }),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull()
 }, (table) => ({
@@ -713,7 +736,6 @@ export const clientAppsRelations = relations(clientApps, ({ one, many }) => ({
   }),
   channels: many(channels),
   campaigns: many(campaigns),
-  appComponents: many(appComponents),
   appComponentLocations: many(appComponentLocations),
   appPlacements: many(appPlacements)
 }));
@@ -831,19 +853,7 @@ export const scheduledComponentsRelations = relations(scheduledComponents, ({ on
 }));
 
 export const componentsRelations = relations(components, ({ many }) => ({
-  campaignComponents: many(campaignComponents),
-  appComponents: many(appComponents)
-}));
-
-export const appComponentsRelations = relations(appComponents, ({ one }) => ({
-  clientApp: one(clientApps, {
-    fields: [appComponents.clientAppId],
-    references: [clientApps.id]
-  }),
-  component: one(components, {
-    fields: [appComponents.componentId],
-    references: [components.id]
-  })
+  appPlacements: many(appPlacements),
 }));
 
 export const campaignComponentsRelations = relations(campaignComponents, ({ one }) => ({
@@ -851,9 +861,13 @@ export const campaignComponentsRelations = relations(campaignComponents, ({ one 
     fields: [campaignComponents.campaignId],
     references: [campaigns.id]
   }),
-  component: one(components, {
-    fields: [campaignComponents.componentId],
-    references: [components.id]
+  appPlacement: one(appPlacements, {
+    fields: [campaignComponents.appPlacementId],
+    references: [appPlacements.id]
+  }),
+  sponsor: one(sponsors, {
+    fields: [campaignComponents.sponsorId],
+    references: [sponsors.id]
   })
 }));
 
@@ -1060,11 +1074,6 @@ export const insertCampaignComponentSchema = createInsertSchema(campaignComponen
   updatedAt: true 
 });
 
-export const insertAppComponentSchema = createInsertSchema(appComponents).omit({
-  id: true,
-  createdAt: true
-});
-
 export const insertAppComponentLocationSchema = createInsertSchema(appComponentLocations).omit({
   id: true,
   createdAt: true,
@@ -1211,8 +1220,6 @@ export type Component = typeof components.$inferSelect;
 export type InsertComponent = z.infer<typeof insertComponentSchema>;
 export type CampaignComponent = typeof campaignComponents.$inferSelect;
 export type InsertCampaignComponent = z.infer<typeof insertCampaignComponentSchema>;
-export type AppComponent = typeof appComponents.$inferSelect;
-export type InsertAppComponent = z.infer<typeof insertAppComponentSchema>;
 export type AppComponentLocation = typeof appComponentLocations.$inferSelect;
 export type InsertAppComponentLocation = z.infer<typeof insertAppComponentLocationSchema>;
 export type AppPlacement = typeof appPlacements.$inferSelect;

@@ -6,7 +6,94 @@
 > **Scope**: backend + **iOS SDK** (VioSwiftSDK) + dashboard. Apple TV SDK
 > (`InteractiveAds-vio`) está fuera — no se re-abre aquí.
 
-## Status — ✅ runtime end-to-end landed (2026-04-27)
+## Sprint 2026-04-27 (PM) — Architecture pivot to dashboard-driven placements
+
+The morning's "self-service named placements" design (Phases A→C) had the
+SDK declare `placements[]` directly. After hands-on testing we pivoted:
+**operator/admin creates app_placements via dashboard**, the SDK declares
+**only the slot locations** it implements. This gives operator full control
+while keeping a thin self-service contract for slot discovery.
+
+### Decisions locked (afternoon)
+
+1. **Library is read-only** — 6 canonical templates only (countdown, offer_banner,
+   product_banner, product_carousel, product_spotlight, product_store).
+   No "New Component" button. Vio admin edits via SQL when needed.
+2. **Locations declared by SDK** (`POST /v2/mobile/components/manifest` with
+   `locations[]` only). Manifest is sync-semantic: locations not present in
+   the new payload are **soft-deprecated**, not deleted.
+3. **App_placements created by dashboard** — `/apps/:id` "Add from library"
+   form: pick template + name + locationId (dropdown of dev's declared
+   locations). NOT created by SDK.
+4. **Campaign_components picker** — `/campaigns/:id/components`: simplified
+   to `placement (from app_placements) + sponsor + products`. The
+   component+location pair lives implicitly inside the placement.
+5. **Multi-sponsor rotation** — only ONE active campaign_component per
+   `(campaign, app_placement)` at a time. Enforced by partial UNIQUE in DB
+   AND by dashboard validation (defense in depth).
+6. **Soft-delete everywhere**: `deprecated_at` columns on
+   `app_component_locations` and `app_placements`. Existing campaign_components
+   pointing at deprecated rows keep rendering with dashboard warning.
+7. **Drop `app_components` table** — fully redundant with `app_placements`.
+8. **No legacy support** — manifest endpoint rejects `placements[]` and
+   `components[]` arrays. Phase C iOS API `Vio.registerPlacement(...)` is
+   removed (was added this morning, superseded).
+9. **Audit columns** — `created_by` on `app_placements` and
+   `campaign_components` for operator accountability.
+10. **WebSocket events** — new `app_placement_deprecated` and
+    `app_placement_status_changed` so SDK can react in real-time.
+
+### Sub-sprint checklist
+
+- [ ] **DB migration `0004_named_placements_consolidation.sql`**:
+  - DROP TABLE `app_components`
+  - ALTER `app_component_locations` ADD `deprecated_at TIMESTAMP NULL`
+  - ALTER `app_placements` ADD `deprecated_at TIMESTAMP NULL`, `created_by INTEGER → users(id)`
+  - ALTER `campaign_components` ADD `app_placement_id INTEGER → app_placements(id)`, `created_by INTEGER → users(id)`
+  - Backfill `campaign_components.app_placement_id` from existing `(component_id, location_id, campaign→client_app_id)` lookup
+  - DROP `campaign_components.component_id`, `location_id` (after backfill verified)
+  - CREATE PARTIAL UNIQUE INDEX `idx_campaign_components_one_active` on `(campaign_id, app_placement_id) WHERE status = 'active'`
+- [ ] **`shared/schema.ts`** — drop `appComponents`, update `appPlacements`, `appComponentLocations`, `campaignComponents` schemas + relations
+- [ ] **`server/storage.ts`** — drop `getAppComponents` / `addComponentToApp` / `removeComponentFromApp`. Add `createAppPlacement`, `deprecateAppPlacement`, `getCanonicalLibraryTemplates`. Update `addComponentToCampaign` to take `appPlacementId`.
+- [ ] **`server/routes.ts`**:
+  - Manifest endpoint: accept only `locations[]`, reject `placements[]`/`components[]`. Sync-semantic deprecation.
+  - DROP `/api/client-apps/:id/components` POST/DELETE (legacy).
+  - NEW `POST /api/client-apps/:id/placements` (operator creates app_placement).
+  - NEW `DELETE /api/client-apps/:id/placements/:id` (soft-delete).
+  - UPDATE `POST /api/campaigns/:id/components` to take `appPlacementId` instead of `componentId+locationId`. Validate placement is from same clientApp as campaign + slot is not already active.
+  - UPDATE `GET /v2/mobile/campaigns/:id/components` to JOIN through `app_placements`. Filter out rows where placement is deprecated (or include but flag).
+  - WebSocket: emit `app_placement_deprecated` on soft-delete. Add `locationId` to `component_status_changed` payload.
+- [ ] **iOS SDK**:
+  - Remove `Vio.registerPlacement(name:type:locationId:)` (Phase C addition)
+  - Restore `Vio.registerPlacementLocation(...)` as primary (un-deprecate)
+  - Remove `VioPlacementComponent` protocol + `VioPlacementRegistration` struct
+  - Manifest payload: only `locations[]` array
+  - Update TV2 demo (`TV2PlacementRegistration.swift`) to register only locations
+- [ ] **Dashboard**:
+  - `/apps/:id` Placements section: "Add from library" button → dialog with template picker + name + locationId dropdown (declared locations)
+  - `/apps/:id`: badge for `deprecated_at IS NOT NULL` rows
+  - `/campaigns/:id` Components tab: simplified Add dialog (placement + sponsor + products)
+  - Validation: cross-clientApp placement assignment rejected
+- [ ] **Postman**: regenerate `vio-sdk.postman_collection.json` with new manifest body shape, new placement endpoints, removed legacy paths
+- [ ] **Docs accumulate** (in-place, no new files):
+  - `CURRENT_STATE.md §17` — diagram updated with the dashboard-driven flow
+  - `DB_AND_ENDPOINTS.md` — schema for `app_placements` updated, new endpoints, dropped legacy paths
+  - `ARCHITECTURE_OVERVIEW.md` — Hito 6 details consolidated
+
+### Smoke E2E
+
+1. Wipe TV2 (clientApp 18) state.
+2. Run iOS demo → manifest uploads `locations[]` only → DB has `app_component_locations` rows but `app_placements` empty.
+3. Dashboard `/apps/18` Placements section: empty + locations list shows from manifest.
+4. Click "Add from library" → pick "Product Carousel" + name "Carrusel home" + location "home_top" → save → `app_placements` row created.
+5. Repeat for "Carrusel pre-kickoff" @ match_pre_kickoff.
+6. Dashboard `/campaigns/36` Components tab → Add → pick placement "Carrusel home" + sponsor XXL + products → save → `campaign_components` row.
+7. iOS demo cold-restart → carousel renders.
+8. Operator deprecates "Carrusel home" → existing campaign_components shows warning + WS event fires + iOS dev log.
+
+---
+
+## Status — runtime PRE-pivot (2026-04-27 morning, superseded)
 
 El plan original (12 steps) se ejecutó hasta Step 4, después se **reshapeó a self-service registry** durante la sesión del 2026-04-27 cuando el usuario reframeó el goal: _"dev nunca toca código, operador drives todo desde el dashboard"_. La nueva arquitectura está documentada en `CURRENT_STATE.md §17` (single source of truth para resumen + diagrama de flujo).
 

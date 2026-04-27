@@ -1,7 +1,7 @@
-import { WebSocketEvent, Campaign, InsertCampaign, Event, InsertEvent, CampaignFormState, InsertFormState, ScheduledComponent, InsertScheduledComponent, Component, InsertComponent, CampaignComponent, InsertCampaignComponent, AppComponent, InsertAppComponent, AppComponentLocation, InsertAppComponentLocation, AppPlacement, InsertAppPlacement, User, InsertUser, ClientApp, InsertClientApp, Channel, InsertChannel, CampaignTranslation, InsertCampaignTranslation, CampaignEngagementConfig, InsertCampaignEngagementConfig, CampaignUiConfig, InsertCampaignUiConfig, CampaignFeatureFlags, InsertCampaignFeatureFlags, SdkTranslation, InsertSdkTranslation, Broadcast, InsertBroadcast, Poll, InsertPoll, PollOptionRecord, InsertPollOption, PollVote, InsertPollVote, Contest, InsertContest, ContestParticipation, InsertContestParticipation, Sponsor, InsertSponsor, BroadcastAd, InsertBroadcastAd, BroadcastProduct, InsertBroadcastProduct, ChatMessage, InsertChatMessage, DeviceToken, InsertDeviceToken, SportmonksCache, type InsertCampaignSponsor, type InsertBroadcastSponsorSlot, type InsertShoppableAdActivation, type ShoppableAdActivation, type EndUser, type TvSession, type CartIntent, type InsertCartIntent, type TvPlatform } from "@shared/schema";
+import { WebSocketEvent, Campaign, InsertCampaign, Event, InsertEvent, CampaignFormState, InsertFormState, ScheduledComponent, InsertScheduledComponent, Component, InsertComponent, CampaignComponent, InsertCampaignComponent, AppComponentLocation, InsertAppComponentLocation, AppPlacement, InsertAppPlacement, User, InsertUser, ClientApp, InsertClientApp, Channel, InsertChannel, CampaignTranslation, InsertCampaignTranslation, CampaignEngagementConfig, InsertCampaignEngagementConfig, CampaignUiConfig, InsertCampaignUiConfig, CampaignFeatureFlags, InsertCampaignFeatureFlags, SdkTranslation, InsertSdkTranslation, Broadcast, InsertBroadcast, Poll, InsertPoll, PollOptionRecord, InsertPollOption, PollVote, InsertPollVote, Contest, InsertContest, ContestParticipation, InsertContestParticipation, Sponsor, InsertSponsor, BroadcastAd, InsertBroadcastAd, BroadcastProduct, InsertBroadcastProduct, ChatMessage, InsertChatMessage, DeviceToken, InsertDeviceToken, SportmonksCache, type InsertCampaignSponsor, type InsertBroadcastSponsorSlot, type InsertShoppableAdActivation, type ShoppableAdActivation, type EndUser, type TvSession, type CartIntent, type InsertCartIntent, type TvPlatform } from "@shared/schema";
 import { db } from "./db";
-import { campaigns, events, campaignFormState, scheduledComponents, components, campaignComponents, appComponents, appComponentLocations, appPlacements, users, clientApps, channels, campaignTranslations, campaignEngagementConfig, campaignUiConfig, campaignFeatureFlags, sdkTranslations, broadcasts, polls, pollOptions, pollVotes, contests, contestParticipations, sponsors, broadcastAds, broadcastProducts, chatMessages, deviceTokens, sportmonksCache, campaignSponsors, broadcastSponsorSlots, shoppableAdActivations, endUsers, tvSessions, cartIntents } from "@shared/schema";
-import { eq, desc, and, or, gte, ne, isNull, isNotNull, sql, lte, inArray } from "drizzle-orm";
+import { campaigns, events, campaignFormState, scheduledComponents, components, campaignComponents, appComponentLocations, appPlacements, users, clientApps, channels, campaignTranslations, campaignEngagementConfig, campaignUiConfig, campaignFeatureFlags, sdkTranslations, broadcasts, polls, pollOptions, pollVotes, contests, contestParticipations, sponsors, broadcastAds, broadcastProducts, chatMessages, deviceTokens, sportmonksCache, campaignSponsors, broadcastSponsorSlots, shoppableAdActivations, endUsers, tvSessions, cartIntents } from "@shared/schema";
+import { eq, desc, and, or, gte, ne, isNull, isNotNull, sql, lte, inArray, notInArray } from "drizzle-orm";
 
 export interface IStorage {
   addEvent(event: WebSocketEvent): Promise<void>;
@@ -87,38 +87,42 @@ export interface IStorage {
   removeComponentFromCampaign(campaignId: number, componentId: string): Promise<void>;
   validateComponentAvailability(componentId: string, isTemplate: boolean, campaignId?: number): Promise<{ available: boolean; activeCampaignId?: number }>;
   
-  // App component methods
-  getAppComponents(clientAppId: number): Promise<Array<AppComponent & { component: Component }>>;
-  addComponentToApp(appComponent: InsertAppComponent): Promise<AppComponent>;
-  removeComponentFromApp(clientAppId: number, componentId: string): Promise<void>;
-  /** Idempotent: ensures (client_app_id, component_id) link exists. No-op when present. */
-  ensureAppComponentLink(clientAppId: number, componentId: string, customConfig?: any): Promise<AppComponent>;
-  /** Resolve `is_template=true` template id by type. Returns null if no template exists for that type. */
+  /** Resolve `is_template=true` template id by type. Returns null if no
+   *  template exists for that type. Used by dashboard "Add from library"
+   *  to validate the operator's selection. */
   getCanonicalComponentByType(type: string): Promise<Component | null>;
-  // App component location methods (manifest registry)
-  getAppComponentLocations(clientAppId: number): Promise<AppComponentLocation[]>;
-  /** Idempotent upsert by (client_app_id, location_id). Updates display_name + updated_at if row exists. */
-  upsertAppComponentLocation(clientAppId: number, locationId: string, displayName: string | null): Promise<AppComponentLocation>;
+  /** All read-only library templates (`is_template = true`). Source of the
+   *  dashboard's library picker. */
+  getCanonicalLibraryTemplates(): Promise<Component[]>;
 
-  // App placements (named instances) — manifest v2 + dashboard picker source.
-  /** List placements for a clientApp, joined with component metadata. */
-  getAppPlacements(clientAppId: number): Promise<Array<AppPlacement & { component: Component }>>;
-  /**
-   * Idempotent upsert keyed on (client_app_id, name).
-   *
-   * Conflict handling matches the dual-UNIQUE schema (name UNIQUE per app +
-   * slot UNIQUE per app). Caller resolves a (componentId, locationId) tuple
-   * and calls this; the function swaps the resolved fields if the same
-   * `name` already exists, OR throws if a different name already occupies
-   * that (componentId, locationId) slot.
-   */
-  upsertAppPlacement(args: {
+  // App component locations — declared by SDK manifest (slots the dev's
+  // app exposes). Sync semantics: locations not in a new manifest payload
+  // get `deprecated_at = now()` instead of being deleted.
+  getAppComponentLocations(clientAppId: number, includeDeprecated?: boolean): Promise<AppComponentLocation[]>;
+  /** Idempotent upsert by (client_app_id, location_id). Updates display_name +
+   *  updated_at + clears deprecated_at if row exists. */
+  upsertAppComponentLocation(clientAppId: number, locationId: string, displayName: string | null): Promise<AppComponentLocation>;
+  /** Soft-delete locations not present in the latest manifest payload. */
+  deprecateAppComponentLocationsNotIn(clientAppId: number, keepLocationIds: string[]): Promise<number>;
+
+  // App placements — named (template, location) instances created by the
+  // operator via the dashboard `/apps/:id` "Add from library" form.
+  /** List placements for a clientApp, joined with template metadata. */
+  getAppPlacements(clientAppId: number, includeDeprecated?: boolean): Promise<Array<AppPlacement & { component: Component }>>;
+  /** Lookup by id (joined). Used to validate dashboard picker selections. */
+  getAppPlacementById(id: number): Promise<(AppPlacement & { component: Component }) | null>;
+  /** Create a named placement. Validates: location is not deprecated, template is canonical. */
+  createAppPlacement(args: {
     clientAppId: number;
     componentId: string;
     locationId: string;
     name: string;
     customConfig?: any;
+    createdBy?: number;
   }): Promise<AppPlacement>;
+  /** Soft-delete a placement (sets deprecated_at = now()). Existing
+   *  campaign_components keep rendering with a dashboard warning. */
+  deprecateAppPlacement(id: number): Promise<AppPlacement>;
 
   // Campaign translation methods
   getCampaignTranslations(campaignId: number): Promise<CampaignTranslation[]>;
@@ -640,18 +644,23 @@ export class MemStorage implements IStorage {
     await db.delete(components).where(eq(components.id, id));
   }
 
+  /**
+   * Component usage by template — for the library page's "used in N
+   * campaigns" badge. Walks campaign_components → app_placements →
+   * components since campaign_components no longer carries component_id
+   * directly (post-migration 0004).
+   */
   async getComponentUsage(): Promise<Record<string, Array<{ campaignId: number; campaignName: string }>>> {
     const results = await db.select({
-      componentId: campaignComponents.componentId,
+      componentId: appPlacements.componentId,
       campaignId: campaigns.id,
       campaignName: campaigns.name
     })
       .from(campaignComponents)
+      .innerJoin(appPlacements, eq(campaignComponents.appPlacementId, appPlacements.id))
       .innerJoin(campaigns, eq(campaignComponents.campaignId, campaigns.id));
-    
-    // Group by componentId
+
     const usage: Record<string, Array<{ campaignId: number; campaignName: string }>> = {};
-    
     for (const row of results) {
       if (!usage[row.componentId]) {
         usage[row.componentId] = [];
@@ -661,20 +670,30 @@ export class MemStorage implements IStorage {
         campaignName: row.campaignName
       });
     }
-    
     return usage;
   }
 
-  // Campaign component methods (database-backed)
-  async getCampaignComponents(campaignId: number): Promise<Array<CampaignComponent & { component: Component }>> {
+  /**
+   * Campaign placements with the canonical template + named placement
+   * joined in. Synthesizes the legacy `componentId` and `locationId`
+   * fields on each row (sourced from `app_placements`) so callers that
+   * predate migration 0004 keep working without rewrites.
+   */
+  async getCampaignComponents(campaignId: number): Promise<Array<CampaignComponent & { component: Component; componentId: string; locationId: string | null; appPlacement: AppPlacement }>> {
     const results = await db.select()
       .from(campaignComponents)
-      .leftJoin(components, eq(campaignComponents.componentId, components.id))
+      .innerJoin(appPlacements, eq(campaignComponents.appPlacementId, appPlacements.id))
+      .innerJoin(components, eq(appPlacements.componentId, components.id))
       .where(eq(campaignComponents.campaignId, campaignId));
-    
+
     return results.map(row => ({
       ...row.campaign_components,
-      component: row.components!
+      // Legacy synthesized fields — column dropped from campaign_components
+      // in migration 0004; values now sourced from app_placements.
+      componentId: row.app_placements.componentId,
+      locationId: row.app_placements.locationId,
+      component: row.components,
+      appPlacement: row.app_placements,
     }));
   }
 
@@ -693,52 +712,65 @@ export class MemStorage implements IStorage {
     return newCampaignComponent;
   }
 
+  /**
+   * Status toggle. The `componentId` parameter is the campaign_components
+   * row PK (numeric, passed as a string from `req.params`). Pre-migration
+   * the same parameter was the FK to `components.id`; the column is gone
+   * post-migration 0004 so we look up by row PK now.
+   */
   async updateCampaignComponentStatus(campaignId: number, componentId: string, status: 'active' | 'inactive'): Promise<CampaignComponent | undefined> {
-    const updateData: any = { 
+    const rowId = parseInt(componentId);
+    if (Number.isNaN(rowId)) return undefined;
+    const updateData: any = {
       status,
       updatedAt: new Date()
     };
-    
-    // Set activatedAt when activating
     if (status === 'active') {
       updateData.activatedAt = new Date();
     }
-    
     const [updated] = await db.update(campaignComponents)
       .set(updateData)
       .where(
         and(
           eq(campaignComponents.campaignId, campaignId),
-          eq(campaignComponents.componentId, componentId)
+          eq(campaignComponents.id, rowId)
         )
       )
       .returning();
     return updated || undefined;
   }
 
-  async updateCampaignComponentLocationId(campaignId: number, componentId: string, locationId: string | null): Promise<CampaignComponent | undefined> {
-    const [updated] = await db.update(campaignComponents)
-      .set({ locationId, updatedAt: new Date() })
-      .where(
-        and(
-          eq(campaignComponents.campaignId, campaignId),
-          eq(campaignComponents.componentId, componentId)
-        )
-      )
-      .returning();
-    return updated || undefined;
+  /**
+   * NO-OP shim. `location_id` was dropped from `campaign_components` in
+   * migration 0004 — the location now lives on the linked `app_placements`
+   * row and is immutable from the campaign-side. Kept as a safety net for
+   * callers that haven't been migrated yet; returns the row unchanged.
+   */
+  async updateCampaignComponentLocationId(campaignId: number, componentId: string, _locationId: string | null): Promise<CampaignComponent | undefined> {
+    const rowId = parseInt(componentId);
+    if (Number.isNaN(rowId)) return undefined;
+    const [row] = await db.select()
+      .from(campaignComponents)
+      .where(and(
+        eq(campaignComponents.campaignId, campaignId),
+        eq(campaignComponents.id, rowId)
+      ))
+      .limit(1);
+    return row || undefined;
   }
 
   async updateCampaignComponentConfig(campaignId: number, componentId: string, customConfig: any): Promise<CampaignComponent | undefined> {
+    const rowId = parseInt(componentId);
+    if (Number.isNaN(rowId)) return undefined;
     const [updated] = await db.update(campaignComponents)
-      .set({ 
+      .set({
         customConfig,
         updatedAt: new Date()
       })
       .where(
         and(
           eq(campaignComponents.campaignId, campaignId),
-          eq(campaignComponents.componentId, componentId)
+          eq(campaignComponents.id, rowId)
         )
       )
       .returning();
@@ -757,106 +789,21 @@ export class MemStorage implements IStorage {
   }
 
   /**
-   * Validates if a component is available to be activated in a campaign.
-   * 
-   * Preconditions:
-   * - Caller must provide the true isTemplate value from the component
-   * - Caller is responsible for verifying component exists before calling this
-   * 
-   * Rules:
-   * - Template components (isTemplate=true) can be active in multiple campaigns simultaneously
-   * - Regular components (isTemplate=false) can only be active in one campaign at a time
-   * 
-   * @param componentId - ID of the component to validate
-   * @param isTemplate - Whether the component is a template (must be truthful value from component.isTemplate === 'true')
-   * @param campaignId - Optional campaign ID to exclude from the check (when updating existing component)
-   * @returns Object with available flag and optional activeCampaignId if not available
+   * No longer enforced — kept as a stub for callers that predate migration
+   * 0004. The new model allows the same template to be reused across
+   * campaigns through different `app_placements` (different per-app named
+   * instances), so the old "one-active-elsewhere" rule doesn't apply.
+   * The partial UNIQUE index on `campaign_components` already enforces
+   * "one active per (campaign, app_placement)".
    */
-  async validateComponentAvailability(componentId: string, isTemplate: boolean, campaignId?: number): Promise<{ available: boolean; activeCampaignId?: number }> {
-    // Templates can be used in multiple campaigns - always available
-    if (isTemplate) {
-      return { available: true };
-    }
-    
-    // Regular components: check if active in any other campaign
-    const conditions = [
-      eq(campaignComponents.componentId, componentId),
-      eq(campaignComponents.status, 'active')
-    ];
-    
-    // Exclude the current campaign if specified
-    if (campaignId !== undefined) {
-      conditions.push(ne(campaignComponents.campaignId, campaignId));
-    }
-    
-    const [activeInOtherCampaign] = await db.select()
-      .from(campaignComponents)
-      .where(and(...conditions))
-      .limit(1);
-    
-    if (activeInOtherCampaign) {
-      return {
-        available: false,
-        activeCampaignId: activeInOtherCampaign.campaignId
-      };
-    }
-    
+  async validateComponentAvailability(_componentId: string, _isTemplate: boolean, _campaignId?: number): Promise<{ available: boolean; activeCampaignId?: number }> {
     return { available: true };
   }
   
-  // App component methods
-  async getAppComponents(clientAppId: number): Promise<Array<AppComponent & { component: Component }>> {
-    const results = await db.select()
-      .from(appComponents)
-      .innerJoin(components, eq(appComponents.componentId, components.id))
-      .where(eq(appComponents.clientAppId, clientAppId));
-    return results.map(r => ({ ...r.app_components, component: r.components }));
-  }
-
-  async addComponentToApp(appComponent: InsertAppComponent): Promise<AppComponent> {
-    const [result] = await db.insert(appComponents).values(appComponent).returning();
-    return result;
-  }
-
-  async removeComponentFromApp(clientAppId: number, componentId: string): Promise<void> {
-    await db.delete(appComponents)
-      .where(and(
-        eq(appComponents.clientAppId, clientAppId),
-        eq(appComponents.componentId, componentId)
-      ));
-  }
-
   /**
-   * Idempotent: ensures the (clientAppId, componentId) link exists. If a row
-   * is already there, returns it untouched. Used by the manifest endpoint so
-   * the SDK can safely re-upload on every cold start.
-   */
-  async ensureAppComponentLink(clientAppId: number, componentId: string, customConfig?: any): Promise<AppComponent> {
-    const existing = await db.select()
-      .from(appComponents)
-      .where(and(
-        eq(appComponents.clientAppId, clientAppId),
-        eq(appComponents.componentId, componentId)
-      ))
-      .limit(1);
-    if (existing.length > 0) {
-      return existing[0];
-    }
-    const [created] = await db.insert(appComponents).values({
-      clientAppId,
-      componentId,
-      customConfig: customConfig ?? null,
-    }).returning();
-    return created;
-  }
-
-  /**
-   * Resolve canonical (`is_template=true`) component template by type. The
-   * manifest endpoint uses this to map a dev-declared type string (e.g.
-   * `product_carousel`) to the actual `components.id` row to link via
-   * `app_components`. Returns null when the requested type has no template
-   * registered globally — the caller surfaces this as 400 to the SDK so a
-   * typo in `Vio.registerPlacementComponent(...)` shows up loudly.
+   * Resolve canonical (`is_template=true`) component template by type.
+   * Used by the dashboard's "Add from library" form to validate operator
+   * picks against the read-only library.
    */
   async getCanonicalComponentByType(type: string): Promise<Component | null> {
     const rows = await db.select()
@@ -869,12 +816,48 @@ export class MemStorage implements IStorage {
     return rows[0] ?? null;
   }
 
-  // App component location methods (manifest registry)
-  async getAppComponentLocations(clientAppId: number): Promise<AppComponentLocation[]> {
+  /** Read-only library: all canonical templates (`is_template=true`). */
+  async getCanonicalLibraryTemplates(): Promise<Component[]> {
+    return db.select()
+      .from(components)
+      .where(eq(components.isTemplate, true))
+      .orderBy(components.type, components.name);
+  }
+
+  // App component location methods (manifest registry — sync semantics)
+  async getAppComponentLocations(clientAppId: number, includeDeprecated: boolean = false): Promise<AppComponentLocation[]> {
+    const conditions: any[] = [eq(appComponentLocations.clientAppId, clientAppId)];
+    if (!includeDeprecated) {
+      conditions.push(isNull(appComponentLocations.deprecatedAt));
+    }
     return db.select()
       .from(appComponentLocations)
-      .where(eq(appComponentLocations.clientAppId, clientAppId))
+      .where(and(...conditions))
       .orderBy(appComponentLocations.locationId);
+  }
+
+  /**
+   * Soft-delete locations not present in the latest manifest payload. Sets
+   * deprecated_at = now() on rows that are not in `keepLocationIds`. Returns
+   * the number of rows deprecated.
+   *
+   * Idempotent: previously-deprecated rows that come back in a new payload
+   * will have their deprecated_at cleared by `upsertAppComponentLocation`.
+   */
+  async deprecateAppComponentLocationsNotIn(clientAppId: number, keepLocationIds: string[]): Promise<number> {
+    const conditions: any[] = [
+      eq(appComponentLocations.clientAppId, clientAppId),
+      isNull(appComponentLocations.deprecatedAt),
+    ];
+    if (keepLocationIds.length > 0) {
+      conditions.push(notInArray(appComponentLocations.locationId, keepLocationIds));
+    }
+    const result = await db
+      .update(appComponentLocations)
+      .set({ deprecatedAt: new Date(), updatedAt: new Date() })
+      .where(and(...conditions))
+      .returning({ id: appComponentLocations.id });
+    return result.length;
   }
 
   /**
@@ -898,90 +881,138 @@ export class MemStorage implements IStorage {
         set: {
           displayName,
           updatedAt: new Date(),
+          // Clear deprecated_at on re-upload — location is back in the
+          // manifest, so it's no longer deprecated.
+          deprecatedAt: null,
         },
       })
       .returning();
     return row;
   }
 
-  // App placements (named instances — manifest v2 + dashboard picker source)
-  async getAppPlacements(clientAppId: number): Promise<Array<AppPlacement & { component: Component }>> {
+  // App placements (named instances — created by dashboard `/apps/:id`
+  // "Add from library" form; the SDK does NOT create these directly).
+  async getAppPlacements(clientAppId: number, includeDeprecated: boolean = false): Promise<Array<AppPlacement & { component: Component }>> {
+    const conditions: any[] = [eq(appPlacements.clientAppId, clientAppId)];
+    if (!includeDeprecated) {
+      conditions.push(isNull(appPlacements.deprecatedAt));
+    }
     const rows = await db.select()
       .from(appPlacements)
       .innerJoin(components, eq(appPlacements.componentId, components.id))
-      .where(eq(appPlacements.clientAppId, clientAppId))
+      .where(and(...conditions))
       .orderBy(appPlacements.name);
     return rows.map(r => ({ ...r.app_placements, component: r.components }));
   }
 
+  async getAppPlacementById(id: number): Promise<(AppPlacement & { component: Component }) | null> {
+    const [row] = await db.select()
+      .from(appPlacements)
+      .innerJoin(components, eq(appPlacements.componentId, components.id))
+      .where(eq(appPlacements.id, id))
+      .limit(1);
+    if (!row) return null;
+    return { ...row.app_placements, component: row.components };
+  }
+
   /**
-   * Smart upsert that respects the dual-UNIQUE schema (name-unique +
-   * slot-unique). The dev's mental model: each app boot reuploads the
-   * manifest with the current set of placements; slot is the immutable
-   * identity, name is mutable label.
+   * Operator-driven creation. Validates:
+   *   - location exists for this client app and is not deprecated
+   *   - template is canonical (`is_template = true`)
+   *   - dual-UNIQUE not violated (name unique per app, slot unique per app)
    *
-   * Resolution by case:
-   *  (i)  Slot row exists with same name → refresh customConfig only.
-   *  (ii) Slot row exists with different name AND new name is unused →
-   *       rename in place. Dev's "Carrusel home" replaces backfill's
-   *       "Carousel1" at the same (type, location).
-   *  (iii) Slot row exists, but new name is already used by another row →
-   *       throw `placement_name_collision`. Dev needs to pick a unique
-   *       name (e.g., "Carrusel home v2").
-   *  (iv) No slot row, name unused → insert.
-   *  (v)  No slot row, name taken at a different slot → throw
-   *       `placement_name_collision` (same as iii).
+   * Throws with `code` in {PLACEMENT_LOCATION_INVALID, PLACEMENT_TEMPLATE_INVALID,
+   * PLACEMENT_NAME_COLLISION, PLACEMENT_SLOT_COLLISION} so the dashboard
+   * can render specific UX per case.
    */
-  async upsertAppPlacement(args: {
+  async createAppPlacement(args: {
     clientAppId: number;
     componentId: string;
     locationId: string;
     name: string;
     customConfig?: any;
+    createdBy?: number;
   }): Promise<AppPlacement> {
-    const { clientAppId, componentId, locationId, name, customConfig } = args;
-    const config = customConfig ?? null;
+    const { clientAppId, componentId, locationId, name, customConfig, createdBy } = args;
 
+    // 1. Validate location is declared + not deprecated.
+    const [loc] = await db.select().from(appComponentLocations).where(and(
+      eq(appComponentLocations.clientAppId, clientAppId),
+      eq(appComponentLocations.locationId, locationId),
+      isNull(appComponentLocations.deprecatedAt),
+    )).limit(1);
+    if (!loc) {
+      const err: any = new Error(`location '${locationId}' not declared by app ${clientAppId} (or deprecated)`);
+      err.code = 'PLACEMENT_LOCATION_INVALID';
+      throw err;
+    }
+
+    // 2. Validate template is canonical (read-only library).
+    const [tpl] = await db.select().from(components).where(and(
+      eq(components.id, componentId),
+      eq(components.isTemplate, true),
+    )).limit(1);
+    if (!tpl) {
+      const err: any = new Error(`template '${componentId}' not in canonical library`);
+      err.code = 'PLACEMENT_TEMPLATE_INVALID';
+      throw err;
+    }
+
+    // 3. Validate name + slot uniqueness among non-deprecated rows.
+    //    DB-level UNIQUE indexes also enforce (defense-in-depth) but this
+    //    gives nicer errors with stable error codes.
+    const [byName] = await db.select().from(appPlacements).where(and(
+      eq(appPlacements.clientAppId, clientAppId),
+      eq(appPlacements.name, name),
+      isNull(appPlacements.deprecatedAt),
+    )).limit(1);
+    if (byName) {
+      const err: any = new Error(`name '${name}' already used by app placement ${byName.id}`);
+      err.code = 'PLACEMENT_NAME_COLLISION';
+      throw err;
+    }
     const [bySlot] = await db.select().from(appPlacements).where(and(
       eq(appPlacements.clientAppId, clientAppId),
       eq(appPlacements.componentId, componentId),
       eq(appPlacements.locationId, locationId),
+      isNull(appPlacements.deprecatedAt),
     )).limit(1);
-
-    const [byName] = await db.select().from(appPlacements).where(and(
-      eq(appPlacements.clientAppId, clientAppId),
-      eq(appPlacements.name, name),
-    )).limit(1);
-
-    // Case (i)+(ii): slot row exists.
     if (bySlot) {
-      if (byName && byName.id !== bySlot.id) {
-        // Case (iii): renaming slot to a name already taken elsewhere.
-        const err: any = new Error(`placement_name_collision: name '${name}' already used at a different slot`);
-        err.code = 'PLACEMENT_NAME_COLLISION';
-        throw err;
-      }
-      // (i) same name OR (ii) name unused: update.
-      const [updated] = await db
-        .update(appPlacements)
-        .set({ name, customConfig: config, updatedAt: new Date() })
-        .where(eq(appPlacements.id, bySlot.id))
-        .returning();
-      return updated;
-    }
-
-    // Case (v): no slot row but name taken elsewhere.
-    if (byName) {
-      const err: any = new Error(`placement_name_collision: name '${name}' already used at a different slot`);
-      err.code = 'PLACEMENT_NAME_COLLISION';
+      const err: any = new Error(`slot (componentId=${componentId}, locationId=${locationId}) already claimed by placement '${bySlot.name}'`);
+      err.code = 'PLACEMENT_SLOT_COLLISION';
       throw err;
     }
 
-    // Case (iv): fresh insert.
     const [row] = await db
       .insert(appPlacements)
-      .values({ clientAppId, componentId, locationId, name, customConfig: config })
+      .values({
+        clientAppId,
+        componentId,
+        locationId,
+        name,
+        customConfig: customConfig ?? null,
+        createdBy: createdBy ?? null,
+      })
       .returning();
+    return row;
+  }
+
+  /**
+   * Soft-delete: sets `deprecated_at = now()`. Existing campaign_components
+   * referencing this placement keep rendering — the dashboard surfaces the
+   * deprecated state with a warning so operators can clean up at their own pace.
+   */
+  async deprecateAppPlacement(id: number): Promise<AppPlacement> {
+    const [row] = await db
+      .update(appPlacements)
+      .set({ deprecatedAt: new Date(), updatedAt: new Date() })
+      .where(eq(appPlacements.id, id))
+      .returning();
+    if (!row) {
+      const err: any = new Error(`app placement ${id} not found`);
+      err.code = 'PLACEMENT_NOT_FOUND';
+      throw err;
+    }
     return row;
   }
 
