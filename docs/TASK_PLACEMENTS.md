@@ -1,75 +1,78 @@
 # Task — Product Placement System (backend + iOS SDK + dashboard)
 
 > Tracking doc para la implementación del Product Placement System. Plan
-> aprobado en `~/.claude/plans/purrfect-exploring-iverson.md`. Paso por paso,
-> commit + smoke test por cada paso. No avanzar al siguiente hasta verde.
+> original en `~/.claude/plans/purrfect-exploring-iverson.md`.
 >
 > **Scope**: backend + **iOS SDK** (VioSwiftSDK) + dashboard. Apple TV SDK
 > (`InteractiveAds-vio`) está fuera — no se re-abre aquí.
 
-## Pausado — prioridad cambió a API v2 consolidation (2026-04-24)
+## Status — ✅ runtime end-to-end landed (2026-04-27)
 
-El trabajo de placements quedó pausado en Step 4 para ejecutar primero el
-**direct cut de API v2** (3 repos). El v2 ya está dispachado y probado con
-3 shoppable ads multi-sponsor. Cuando cierre el smoke test y mergeen los
-3 PRs v2, retomamos este plan desde Step 5 (dashboard). Ver `CURRENT_STATE.md`.
+El plan original (12 steps) se ejecutó hasta Step 4, después se **reshapeó a self-service registry** durante la sesión del 2026-04-27 cuando el usuario reframeó el goal: _"dev nunca toca código, operador drives todo desde el dashboard"_. La nueva arquitectura está documentada en `CURRENT_STATE.md §17` (single source of truth para resumen + diagrama de flujo).
 
-**Lo que quedó landeado del plan de placements** (Steps 1-4) se mantiene en
-`feature/placements-v2` del socket-server. Cuando avancemos a Step 5 se
-rebasa sobre develop (ya con v2 + PRs docs merged).
+### Phases consolidadas
 
-## Status (snapshot 2026-04-23 18:30)
+| Phase | What | Repos | Status | Merge commits |
+|---|---|---|---|---|
+| **A — Backend WS + openapi** | Steps 1-4 (sponsorId at root, openapi schema, dashboard sponsor picker) | socket-server | ✅ done (2026-04-23) | tracked in `feature/placements-v2` (folded into PR #29 base) |
+| **B — Self-service backend** | `app_component_locations` table + `POST /v2/mobile/components/manifest` + `getCanonicalComponentByType` + 17 jest tests | socket-server | ✅ done (2026-04-27) | **PR #29 → `688b9d4`** |
+| **C — Dashboard pickers** | Location/sponsor/product pickers in `ComponentsTab` + `GET /v2/mobile/campaigns/:id/components` con merge `templateConfig + customConfig` | socket-server | ✅ done (2026-04-27) | **PR #32 → `f97bebd`** (replaced PR #30, rebased onto develop after #29 merge auto-closed it) |
+| **D — iOS runtime** | `VioPlacementRegistry` + manifest upload at boot + cold-start fetch + `(id, locationId)` dedupe + per-sponsor `ProductService.loadProducts(sponsorId:)` | VioSwiftSDK | ✅ done (2026-04-27) | **PR #8 → `0d3383d`** |
+| **E — TV2 demo wired** | `TV2PlacementRegistration.registerAll()` + `HomeView` + `MatchDetailView` use `VProductCarousel(locationId:)` | VioSwiftSDK demo | ✅ done (2026-04-27) | folded into PR #8 |
+| **F — Smoke test** | Elkjøp en `home_top` + XXL en `match_pre_kickoff`, products cargan via per-sponsor key, dashboard pickers populate from registry | all 3 | ✅ verde (2026-04-27) | — |
 
-- [x] **Step 1 — Preparación** — this doc + wipe TV2 existing components (on the previous Neon feature branch). Commit `3f41583`.
-- [x] **Step 2 — A.1/A.2** backend WS event `sponsorId` at root (scheduler + manual toggle). Commit `b5d74df`. Smoke test: WS payload carries `sponsorId: 3`.
-- [x] **Step 3 — A.4** openapi `ComponentStatusChangedEvent` schema + Postman reorganised into 6 folders by audience + legacy v1 dropped. Commits `1d0ae3c` + `4663e56`.
-- [x] **Step 4 — C.1** dashboard sponsor picker obligatorio in `ComponentsTab` Add dialog. `Select` constrained to `GET /api/campaigns/:id/sponsors`, submit disabled without it, `sponsorId` viaja en POST body. Backend auto-fallback a primary (routes.ts:2895) se mantiene como defensa. Commit `ca7ae21`.
-- [x] **Docs refresh** — DB_AND_ENDPOINTS.md (developer reference para onboarding) + multi-sponsor-architecture.md (v1→v2 + `component_status_changed` con sponsorId) + ROLLOUT_ROADMAP §2.6 (este sub-track) + README topic index. Commits `4987b06` + `648ca4a` en branch `docs/placements-v2-refresh` → **PR #11** (https://github.com/tipiodevelopment/socket-server/pull/11). PR #10 cerrada (apuntaba a commits ajenos tras force-push cross-session en `docs/multi-sponsor-architecture`).
-- [ ] **Step 5 — C.2** dashboard component catalog scope a `app_components` (queryKey de `/api/components` → `/api/client-apps/:clientAppId/components`; empty state si app sin registros).
-- [ ] **Step 6 — C.3** dashboard product picker para types `product_*` (embed `SponsorCatalogPicker` cuando el component seleccionado es `product_*`; escribe `customConfig.productIds`).
-- [ ] **Step 7 — C.4** dashboard scheduling fields — `scheduledTime` + `endTime` en el Add dialog.
-- [ ] **Step 8 — B.1** iOS `Component` + `ComponentStatusChangedEvent` decode `sponsorId` (`Sources/VioCore/Models/OfferBannerModels.swift`).
-- [ ] **Step 9 — B.2** las 5 views pasan `component.sponsorId` a `ProductService`:
-  - `VProductCarousel.swift:1303`
-  - `VProductSpotlight.swift:659`
-  - `VProductStore.swift:450`
-  - `VProductBanner.swift:722`
-  - `VProductSlider/VProductSliderViewModel.swift:68,75`
-- [ ] **Step 10 — B.3/B.4** `Product.sponsorId` optional + estampado por `ProductService.loadProduct(sponsorId:)` al hidratar.
-- [ ] **Step 11 — B.5** `CartManager.addProduct` lee `product.sponsorId` → checkout con la key del sponsor correcto (Apple Pay gate + per-sponsor commerce client).
-- [ ] **Step 12 — E2E** reconstruir TV2 con 2 placements (Elkjøp + XXL), validar logs + render + checkout dual.
+### Mapping del plan original (12 steps)
 
-## Branches de trabajo (safety net)
-
-| Repo / env | Branch | Base / estado |
+| Step original | Estado actual | Nota |
 |---|---|---|
-| `socket-server` | `feature/placements-v2` | `develop` @ `be8df59`. Steps 1-4 committed + pushed (tip `268a446`). |
-| `socket-server` | `docs/placements-v2-refresh` | `develop` @ `be8df59`. Tip `648ca4a`. PR #11 open. Separate from feature branch — docs only. |
-| `VioSwiftSDK` | `feature/placements-v2` | safety branch creada. Steps 8-11 aún sin tocar. Working branch activa: `feature/tv-cart-intent-attribution`. |
-| **Neon (activa)** | `local/angelo-20260423-1814` (`br-summer-morning-a8y0i36l`) | forkeada de `develop` (`br-royal-mode-a8e8mdq1`) el 2026-04-23 18:14. Phase 3 aplicada. TV2 campaign 36 tiene 6 `campaign_components` y 1 `app_component` (no wipeada todavía en esta branch). |
-| **Neon (idle, safety)** | `feature/placements-v2-20260423-1250` (`br-damp-snow-a8rv0cnc`) | forkeada de develop el 2026-04-23 12:50. TV2 wipeada (0 placements). Se mantiene por si se necesita rollback del estado con scheduling de pruebas. |
-| **Neon (idle, test)** | `test/tv-subscribe-validation` (`br-patient-meadow-a8dat89p`) | histórica. No tocar. |
+| 1. Preparación | ✅ done (Phase A) | TV2 wipe + tracking doc |
+| 2. Backend WS sponsorId | ✅ done (Phase A) | scheduler + toggle |
+| 3. openapi + Postman | ✅ done (Phase A) | 6 folders |
+| 4. Dashboard sponsor picker | ✅ done (Phase A) | PR #29 también lo refuerza |
+| 5. Component catalog scope `app_components` | ✅ done (Phase C, PR #32) | reshaped: location-first picker + manifest source |
+| 6. Product picker para `product_*` | ✅ done (Phase C, PR #32) | `useSponsorCatalog` reused |
+| 7. Scheduling fields | ⏸ deferred | no blocker para smoke; first operator request lo activa |
+| 8. iOS `Component.sponsorId` decode | ✅ done (Phase D, PR #8) | `CartIntentEvent.dispatchedAt` también |
+| 9. 5 views pasan `sponsorId` a `ProductService` | ✅ partial (Phase D, PR #8) | Solo `VProductCarousel` migrado para el smoke. Spotlight/Store/Banner/Slider siguen el mismo patrón cuando los toque la siguiente campaña |
+| 10. `Product.sponsorId` optional + stamping | ⏸ deferred | no necesario hoy: `CartManager` rutea via `CommerceSdkClientProvider.activeSponsorId` que `ProductService.loadProducts(sponsorId:)` ya setea |
+| 11. `CartManager.addProduct` per-sponsor | ✅ done (precedió placements en PR #7 de VioSwiftSDK) | `activeSponsorId` is owned exclusively by `client(forSponsorId:)` |
+| 12. E2E TV2 con 2 placements | ✅ done (Phase F) | Elkjøp + XXL verde |
+
+## Branches de trabajo (post-landing)
+
+Todas las branches del placement sprint están merged + safe to delete localmente. El siguiente trabajo arranca de `develop` fresh en cada repo.
+
+| Repo / env | Branch | Estado |
+|---|---|---|
+| `socket-server` | `feature/placements-manifest-registry` | ✅ merged via PR #29 (`688b9d4`). Safe to delete. |
+| `socket-server` | `feature/placements-dashboard-pickers-on-29` | ✅ merged via PR #32 (`f97bebd`). Safe to delete. |
+| `socket-server` | `feature/placements-dashboard-pickers` | ⚠️ stale — auto-closed when PR #30 base #29 was deleted on merge. Reemplazada por la `-on-29` rebased. Safe to delete. |
+| `socket-server` | `feature/placements-v2` (legacy) | ⚠️ pre-reshape carrier de Steps 1-4. Folded into PR #29. Safe to delete. |
+| `VioSwiftSDK` | `feature/placements-registry` | ✅ merged via PR #8 (`0d3383d`). Safe to delete. |
+| `VioSwiftSDK` | `feature/placements-v2` | ⚠️ legacy safety branch nunca usada. Safe to delete. |
+| **Neon (activa)** | `local/angelo-20260423-1814` (`br-summer-morning-a8y0i36l`) | 🟢 active — `DATABASE_URL` + `PGHOST` apuntan aquí. Tiene los 2 placements del smoke test (TV2 campaign 36 ids 108 + 109). |
 
 ### `.env` backups
 
 - `/tmp/vio-env-develop-before-placements.bak` — antes del primer fork (Step 1, 12:50).
 - `/tmp/vio-env-placements-v2-before-local-fork.bak` — antes del fork actual a `local/angelo-*` (18:14).
 
-### git state (2026-04-23 18:30)
+### git state (2026-04-27 final)
 
-- `socket-server` HEAD = `feature/placements-v2` @ `268a446` (sincronizado con origin). Working tree clean.
-- `VioSwiftSDK` HEAD = `feature/tv-cart-intent-attribution`. Working tree clean — no placement changes locally.
-- `InteractiveAds-vio` (out of scope) HEAD = `feat/sdk-consolidation`. Demo video `Demo/tv2demo-appletv/demo-video.f137.mp4` **recuperado y staged** post-merge loss.
+- `socket-server` HEAD = `develop` @ `f97bebd`. Working tree clean.
+- `VioSwiftSDK` HEAD = `develop` @ `0d3383d`. Working tree clean.
+- `InteractiveAds-vio` HEAD = `main`. Sin cambios este ciclo (placements no requirió tocar Apple TV SDK).
 
-Criterio de merge a develop: pasos 1-12 verdes + E2E demo TV2 funcional.
+## Decisiones locked
 
-## Decisiones locked (desde el plan)
-
+- **Self-service over admin-only**. Dev declara components + locations una vez al boot vía manifest upload; operador drive el resto desde el dashboard. (Reframed during sesión 2026-04-27.)
+- **Manifest-declared locations** (no fixed list en backend). Dashboard's location picker reads from `app_component_locations` que el SDK populated. Operator nunca puede bind a slot que el dev no expone.
+- **Dedupe key `(id, locationId)`** en cliente. Supports multiple instances del mismo template en diferentes slots de la misma campaña. La vieja key `id` colapsaba 2 instances con mismo template.
+- **Server-side merge `templateConfig + customConfig`**. Backend devuelve config completa; SDK decoder no necesita defaults. Operator solo escribe el overlay (productIds, etc.).
+- **Adapt existing SDK components, don't recreate**. `VProductCarousel(locationId:)` + `getActiveComponent(locationId:)` — no nuevo `VioPlacementSlot` view abstraction.
+- **`activeSponsorId` exclusively owned by `client(forSponsorId:)`**. `client(configuration:)` never overwrites. Apple Pay confirmation logo deriva de aquí.
 - Commerce NO viaja en payload — SDK resuelve con `sponsorId` vía `VioConfiguration.commerce(forSponsorId:)`.
 - `broadcast_id` en `campaign_components` solo para override — null en caso base.
-- Component catalog picker en dashboard limitado a **app_components** del app de la campaña (strict).
-- Registro de `app_components` es **admin-only** por ahora (no inline desde operador).
-- Smoke test con campaña TV2 (id 36) — cuando empiece el E2E (Step 12), wipear placements actuales en la Neon branch local y reconstruir con el nuevo flow.
 - No force-push (regla operativa post-incidente docs branch).
 
 ## Issues / decisiones encontradas por paso
@@ -92,10 +95,10 @@ Criterio de merge a develop: pasos 1-12 verdes + E2E demo TV2 funcional.
 
 ## Archivos de referencia
 
-- Plan completo: `~/.claude/plans/purrfect-exploring-iverson.md`
-- Roadmap general: `docs/ROLLOUT_ROADMAP.md` §2.6 (ficha pública de este sub-track, en `docs/placements-v2-refresh`)
-- Arquitectura: `docs/multi-sponsor-architecture.md` §4.6 + §6.3 (tip actual en `docs/placements-v2-refresh`)
-- Developer reference: `docs/DB_AND_ENDPOINTS.md` (disponible vía `docs/placements-v2-refresh` PR #11)
+- **`CURRENT_STATE.md §17`** — single source of truth para la arquitectura del placement runtime (post-landing). Diagrama completo + lista de archivos tocados + design decisions.
+- `docs/multi-sponsor-architecture.md` §4.6 + §6.3 — multi-sponsor commerce key resolution.
+- `docs/DB_AND_ENDPOINTS.md` — developer reference para tablas + endpoints involucrados.
+- Plan original: `~/.claude/plans/purrfect-exploring-iverson.md` (kept for historical reference).
 
 ## Comandos frecuentes
 

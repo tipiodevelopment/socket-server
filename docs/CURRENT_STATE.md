@@ -3,7 +3,7 @@
 > **Purpose**: one file to regain context after a compaction, a break, or a
 > new session. If you read only one doc, read this.
 >
-> **Last updated**: 2026-04-26 — Phase 5 (Apple Pay smoke test) **CLOSED** + cart-intent unification refactors opened (backend PR #26 + SDK PR #4).
+> **Last updated**: 2026-04-27 — Placement self-service runtime **landed end-to-end** (socket-server PR #29 + #32 + VioSwiftSDK PR #8). Dashboard pickers + iOS runtime probados con TV2 campaign 36 (Elkjøp + XXL placements en `home_top` y `match_pre_kickoff`). 0 open PRs.
 
 This doc is the single source of truth for:
 - Which branch + commit of each repo is the working tip
@@ -19,9 +19,9 @@ This doc is the single source of truth for:
 
 | Repo | Local path | Active branch | HEAD | Purpose |
 |---|---|---|---|---|
-| socket-server (backend + dashboard) | `/Users/angelo/vio-backend/socket-server` | `develop` | `61e43c1` | tip of develop with the full dashboard UX sprint merged |
-| VioSwiftSDK (iOS SDK) | `/Users/angelo/VioSwiftSDK` | `develop` | merged to develop via PR #3 (a8e5730) | |
-| InteractiveAds-vio (Apple TV SDK) | `/Users/angelo/Documents/GitHub/InteractiveAds-vio` | `main` | merged to main via PR #3 (6a23bdf) | |
+| socket-server (backend + dashboard) | `/Users/angelo/vio-backend/socket-server` | `develop` | `f97bebd` | tip of develop with placement runtime end-to-end (PR #32 merged) |
+| VioSwiftSDK (iOS SDK) | `/Users/angelo/VioSwiftSDK` | `develop` | `0d3383d` | tip of develop with placement registry + per-sponsor product loading (PR #8 merged) |
+| InteractiveAds-vio (Apple TV SDK) | `/Users/angelo/Documents/GitHub/InteractiveAds-vio` | `main` | merged to main via PR #3 (6a23bdf) | unchanged this cycle |
 
 **Branches already merged (don't reuse)**:
 - socket-server `feature/api-v2-cut` → develop (PR #13)
@@ -33,8 +33,22 @@ This doc is the single source of truth for:
 - socket-server `fix/shoppable-moments-unified-v2` → develop (PR #22)
 - socket-server `fix/broadcast-detail-tv-gate-v2` → develop (PR #23, rebased onto #22 before merge — stripped obsolete rename hunks)
 - socket-server `docs/state-after-pr-rebranch` → develop (PR #24)
+- socket-server `refactor/route-user-event` → develop (PR #26)
+- socket-server `docs/post-unification-state` → develop (PR #27)
+- socket-server `feature/placements-manifest-registry` → develop (PR #29 — backend foundation: `/v2/mobile/components/manifest`, `app_component_locations` table, `getCanonicalComponentByType`, 17 jest tests)
+- socket-server `feature/placements-dashboard-pickers-on-29` → develop (PR #32 — dashboard location/sponsor/product pickers + `GET /v2/mobile/campaigns/:id/components` with template+overlay merge. Replaced PR #30 after rebase, since #30 auto-closed when its base #29 branch was deleted on merge)
 - VioSwiftSDK `feature/api-v2-urls` → develop (PR #3)
+- VioSwiftSDK `refactor/unify-cart-intent-paths` → develop (PR #4)
+- VioSwiftSDK `fix/confirmation-sheet-active-sponsor-logo` → develop (PR #7)
+- VioSwiftSDK `fix/cart-intent-loader-feedback` → develop (PR #5)
+- VioSwiftSDK `feature/placements-registry` → develop (PR #8 — `VioPlacementRegistry` + manifest upload + cold-start fetch + `(id, locationId)` dedupe + per-sponsor `ProductService.loadProducts(sponsorId:)` plumbing)
 - InteractiveAds-vio `feature/api-v2-urls` → main (PR #3)
+
+**Closed without merge (do not reopen)**:
+- socket-server #28 (`docs/state-runtime-snapshot-2026-04-26`) — outdated by the time it landed
+- socket-server #30 (`feature/placements-dashboard-pickers`) — auto-closed by GitHub when base branch #29 was deleted on merge; replaced by #32 (rebased onto develop)
+- socket-server #31 (`docs/post-pr32-merge-state`) — premature snapshot, superseded by this update
+- VioSwiftSDK #6 (`fix/confirmation-sheet-active-sponsor-logo`) — superseded by #7 (better fix anchored on `CommerceSdkClientProvider.activeSponsorId`)
 
 ## 2. Rules locked (2026-04-24)
 
@@ -47,20 +61,16 @@ This doc is the single source of truth for:
 
 ## 3. Open PRs awaiting user review
 
-| Repo | PR | Branch | What | Target |
-|---|---|---|---|---|
-| socket-server | [#26](https://github.com/tipiodevelopment/socket-server/pull/26) | `refactor/route-user-event` | Backend extraction of the user-event delivery layer. New helpers `buildCartIntentEnvelope`, `notifyUserEventViaPartner`, `routeUserEvent`. Both cart-intent handlers shrink ~80 lines each; future TV→user events plug in without copy-paste. Behavior preserved (smoke test verde). | develop |
-| VioSwiftSDK | [#4](https://github.com/vio-live/VioSwiftSDK/pull/4) | `refactor/unify-cart-intent-paths` | iOS unification: drops the SDK-self-scheduled `UNNotificationRequest` (the source of duplicate `cart_intents` for sponsors with role=shoppable). Adds `IncomingTVEvent` enum + `CampaignManager.dispatch(_:source:)` so WS + APNs paths converge through one dispatcher. Removes hardcoded Spanish strings from SDK fallbacks. | develop |
+**None.** All PRs from the placements sprint landed 2026-04-27. Develop tips for both repos are listed in §1.
 
-The 2 PRs are **independent**: backend refactor doesn't require SDK changes; SDK refactor doesn't require backend changes. Either can merge first.
-
-**Closed / superseded** (do not reopen):
+**Historical closed / superseded** (do not reopen):
 - #10 superseded by #11 (was a force-push casualty)
 - #11 superseded by #13 (docs folded into the v2 cut)
 - #12 superseded by #13 (idem)
 - #17 superseded by #23 (rebranched off fresh develop 2026-04-24)
 - #18 superseded by #21 (idem)
 - #19 superseded by #22 (idem)
+- #28, #30, #31 — see §1 "Closed without merge" for the placements-cycle casualties
 
 ## 4. Runtime state (local dev)
 
@@ -210,15 +220,21 @@ Tracked in `IOS_V2_MIGRATION_GAP.md`. NOT fallbacks — direct calls for feature
 
 5 follow-up PRs (A-E) planned. Backend legacy handlers retire after each migration ships.
 
-## 11. Placements plan (Hito 6, paused)
+## 11. Placements plan (Hito 6) — ✅ runtime landed 2026-04-27
 
-`TASK_PLACEMENTS.md` on socket-server. 12 steps total, 1-4 done, 5-12 pending:
+`TASK_PLACEMENTS.md` on socket-server. The original 12-step plan was reshaped during execution: instead of a rigid catalog/picker-based flow, the system pivoted to a **self-service registry** (dev declares components + locations once at app boot → manifest upload → operator picks from registered set). See §17 for the full architecture.
 
-- Steps 5-7 — dashboard Components tab (catalog scope to `app_components`, product picker for `product_*` types, scheduling fields)
-- Steps 8-11 — iOS SDK Component.sponsorId propagation through 5 product views + CartManager per-sponsor checkout
-- Step 12 — E2E with TV2 campaign + 2 placements
+**Done end-to-end**:
+- Steps 1-4 — backend WS event `sponsorId`, openapi schema, dashboard sponsor picker (tracked from earlier)
+- **Self-service registry foundation** (PR #29) — `app_component_locations` table, `POST /v2/mobile/components/manifest`, `getCanonicalComponentByType`, 17 jest tests
+- **Dashboard pickers + campaign-components endpoint** (PR #32) — operator picks location/sponsor/products from manifest data; `GET /v2/mobile/campaigns/:id/components` merges template + customConfig overlay
+- **iOS runtime** (VioSwiftSDK PR #8) — `VioPlacementRegistry` + manifest upload at boot + cold-start fetch for `activeComponents` + `(id, locationId)` dedupe + per-sponsor `ProductService.loadProducts(sponsorId:)`
+- **TV2 demo wired** — `TV2PlacementRegistration.registerAll()` registers 3 components + 5 locations; `HomeView` and `MatchDetailView` use `VProductCarousel(locationId:)`. Smoke test verde con Elkjøp en `home_top` y XXL en `match_pre_kickoff`.
 
-Paused at Step 4. Dashboard UX sprint (#21/#22/#23) is now merged — next blocker is the Apple Pay smoke test (Phase 5) closing. Once that's green, Phase 7 resumes from Step 5.
+**Deferred (out of original scope, not blocking)**:
+- Steps 9-11 partial — `VProductSpotlight`, `VProductStore`, `VProductBanner`, `VProductSlider` still need the `sponsorId` plumbing (only `VProductCarousel` was migrated for the TV2 smoke). Migration follows the exact same pattern as `VProductCarousel.swift`.
+- Scheduling fields (`scheduledTime` + `endTime`) — not needed for the smoke; deferred until first operator request.
+- `Product.sponsorId` stamping at hydration — not needed today since `CartManager` already routes via `CommerceSdkClientProvider.activeSponsorId` (set by `ProductService.loadProducts(sponsorId:)`).
 
 ## 12. Kotlin SDKs (Hito 7, not started)
 
@@ -230,12 +246,13 @@ Kotlin dev codes against v2 surface from day 1, tests with campaign 36 (TV2) AND
 
 ## 13. How to resume in a fresh session
 
-1. Read this doc top-to-bottom.
+1. Read this doc top-to-bottom (especially §1 develop tips, §11 placements summary, §17 placement architecture).
 2. `cd /Users/angelo/vio-backend/socket-server`.
 3. Check backend: `lsof -nP -iTCP:5001 -sTCP:LISTEN` — if not running, `npm run dev &`.
-4. Check PR state: `gh pr list --state open` — should be empty.
-5. Check local branches: `git branch` — develop is the latest working tip; next work lives on fresh feature branches off develop.
-6. See `ARCHITECTURE_OVERVIEW.md` for the big picture, `API_V2_CONTRACT.md` for endpoint shapes.
+4. Check PR state: `gh pr list --state open` — should be empty for both repos. If not, see if it's a leftover that needs closing.
+5. Check local branches: `git branch` — `develop` is the latest working tip on socket-server (`f97bebd`) and VioSwiftSDK (`0d3383d`). Next work lives on fresh feature branches off develop.
+6. See `ARCHITECTURE_OVERVIEW.md` for the big picture, `API_V2_CONTRACT.md` for endpoint shapes, `TASK_PLACEMENTS.md` for the placement plan history (now landed).
+7. Quick smoke for placements: cold-start TV2 demo (`Demo/tv2demo/`), open dashboard ComponentsTab on campaign 36, verify location/sponsor pickers populate from registry. See §17 for full trace.
 
 ## 14. How to update this doc
 
@@ -324,3 +341,133 @@ Issues observed during today's smoke + refactor that are **not blocking** Phase 
 | Low | `sendAPNs` in backend (`server/services/ios-flow.ts`) is still cart_intent-shaped — hardcoded Norwegian title `"Produkt lagt til"` + body template + legacy `vio_cartIntent_*` keys. | `server/services/ios-flow.ts:57-68` | Generalize `sendAPNs(envelope)` when next user-event type ships. Backend PR #26 already guards with `if eventType !== 'cart_intent' → skip APNs + log warning` so non-cart_intent envelopes don't accidentally send wrong-shaped pushes. |
 | Low | Spanish hardcoded strings in `VioCastingUI` and `Demo/{Vg,tv2demo,Viaplay}/` (e.g., `"Producto agregado al carrito"`, `"Producto recibido"` in print statements). Outside cart-intent unification scope but real tech debt. | grep `Sources/VioCastingUI Demo/` for `Producto\|Carrito\|Comprar` | Move to `Localizable.strings` per market when Casting feature is touched again. |
 | Low | iOS SDK has 9 legacy `/v1/*` calls still in flight (engagement, lineup, localization, brand config). Tracked separately. | `IOS_V2_MIGRATION_GAP.md` | 5 follow-up PRs (A-E) planned. Each migrates when its feature domain advances. |
+
+## 17. Placement self-service registry (post-runtime 2026-04-27)
+
+Three repos got a coordinated change so a partner dev can declare placement components + slot locations **once at app boot**, and from then on the operator drives content from the dashboard without ever touching code.
+
+### End-to-end flow
+
+```text
+   ┌─ Partner App (boot) ────────────────────────────────────────┐
+   │ TV2PlacementRegistration.registerAll()                       │
+   │   ├─ register(MyCarousel.self)        ─┐                     │
+   │   ├─ register(MySpotlight.self)        │  VioPlacementRegistry │
+   │   ├─ registerLocation(home_top)        │  (process-wide,        │
+   │   ├─ registerLocation(match_pre…)     ─┘  @MainActor singleton)│
+   │                                                                 │
+   │ POST /v2/mobile/components/manifest  ←  VioPlacementManifestUploader │
+   │      X-API-Key: tv2_…                                           │
+   │      { components: [{type, productMode, maxProducts}],          │
+   │        locations:  [{id, displayName?}] }                       │
+   └─────────────────────────────────────────────────────────────────┘
+                                    │
+                                    ▼
+   ┌─ Backend ───────────────────────────────────────────────────────┐
+   │  routes.ts  POST /v2/mobile/components/manifest                  │
+   │   ├─ resolveClientAppByApiKey()                                  │
+   │   ├─ for each component: getCanonicalComponentByType()           │
+   │   │     + ensureAppComponentLink(clientAppId, componentId)       │
+   │   ├─ for each location:  upsertAppComponentLocation()            │
+   │   └─ returns { ok:true, components_registered, locations_registered, warnings } │
+   │                                                                  │
+   │  Tables touched:                                                 │
+   │   - app_components            (clientAppId × componentId)        │
+   │   - app_component_locations   (clientAppId × locationId, UNIQUE) │
+   └──────────────────────────────────────────────────────────────────┘
+                                    │
+                                    ▼
+   ┌─ Dashboard (operator) ──────────────────────────────────────────┐
+   │ ComponentsTab → "Add placement" dialog                           │
+   │   ├─ component select   ← GET /api/client-apps/:id/components    │
+   │   │     (filtered by isTemplate=true; only types this app has)   │
+   │   ├─ location select    ← GET /api/client-apps/:id/component-locations │
+   │   ├─ sponsor select     ← GET /api/campaigns/:id/sponsors        │
+   │   └─ product picker     ← useSponsorCatalog (only when type startsWith "product_") │
+   │                                                                  │
+   │ POST /api/campaigns/:id/components                                │
+   │   body: { componentId, locationId, sponsorId, customConfig:{productIds:[...]} } │
+   └──────────────────────────────────────────────────────────────────┘
+                                    │
+                                    ▼
+   ┌─ iOS SDK (cold-start + WS) ─────────────────────────────────────┐
+   │ CampaignManager.fetchAndApplyCampaignComponentsIfPossible()      │
+   │   ← GET /v2/mobile/campaigns/:id/components                       │
+   │   (server merges templateConfig + customConfig overlay before    │
+   │    returning, preserving autoPlay/interval that ComponentConfig  │
+   │    decoder needs)                                                │
+   │                                                                  │
+   │   for each: dedupe by (id + locationId), then append/replace in │
+   │   activeComponents.                                              │
+   │                                                                  │
+   │ Partner views call:                                              │
+   │   VProductCarousel(locationId: "home_top")                       │
+   │     └─ getActiveComponent(type: "product_carousel",              │
+   │                           locationId: "home_top")                │
+   │     └─ loadProducts(productIds, …, sponsorId: comp.sponsorId)    │
+   │           └─ ProductService.loadProducts(sponsorId:)             │
+   │                └─ CommerceSdkClientProvider.client(forSponsorId:) │
+   │                     ← per-sponsor commerce key                   │
+   └──────────────────────────────────────────────────────────────────┘
+```
+
+### Files touched (single source of truth per concern)
+
+**Backend** (PR #29 + #32):
+- `shared/schema.ts` — `appComponentLocations` table, relations, insertSchema
+- `migrations/0002_add_app_component_locations.sql` — table + UNIQUE `(client_app_id, location_id)`
+- `server/storage.ts` — `ensureAppComponentLink`, `getCanonicalComponentByType`, `getAppComponentLocations`, `upsertAppComponentLocation`
+- `server/routes.ts` —
+  - `POST /v2/mobile/components/manifest` (manifest endpoint, apiKey auth)
+  - `GET /api/client-apps/:id/component-locations` (operator picker source)
+  - `GET /api/client-apps/:id/components?withLocations=true` (extended)
+  - `GET /v2/mobile/campaigns/:campaignId/components` (templateConfig + overlayConfig merge before returning)
+  - `POST /api/campaigns/:id/components` (passes through `customConfig` from body — was silently dropping it)
+- `__tests__/components-manifest.test.ts` — 17 jest tests (1 self-skipping multi-tenant)
+- `client/src/components/dashboard/ComponentsTab.tsx` — 3 pickers + sentinel `__none__` for Radix Select empty value + `isTemplate` filter accepts boolean OR string
+
+**iOS SDK** (PR #8):
+- `Sources/VioCore/Placements/VioPlacementRegistry.swift` — protocol `VioPlacementComponent`, enum `VioProductBindingMode`, struct `VioPlacementLocation`, `@MainActor` singleton with idempotent `register(_:)` / `registerLocation(_:)` / `manifestPayload()`
+- `Sources/VioCore/Placements/VioPlacementManifestUploader.swift` — POST manifest with `X-API-Key`
+- `Sources/VioCore/VioCore.swift` — `VioRuntime.registerPlacementComponent<T>(_:)` + `registerPlacementLocation(_:)` entry points
+- `Sources/VioCore/Managers/CampaignManager.swift` — `fetchAndApplyCampaignComponentsIfPossible()` hooked in `fetchAndApplySdkBootstrapNow`; dedupe by `(id, locationId)` composite key (also fixed the WS `handleComponentStatusChanged` to use the same composite key — same bug at line ~1522)
+- `Sources/VioCore/Models/CampaignModels.swift` — `Component.sponsorId: Int?` + `CartIntentEvent.dispatchedAt: Date?`
+- `Sources/VioUI/Services/ProductService.swift` — `loadProducts(productIds:currency:country:sponsorId:)` plumbed through
+- `Sources/VioUI/Components/VProductCarousel.swift` — passes `activeComponent?.sponsorId` to viewModel
+- `Tests/VioCoreTests/VioPlacementRegistryTests.swift` — 17 tests covering registration idempotency, manifest payload, location dedup
+
+**TV2 demo wiring** (in VioSwiftSDK PR #8):
+- `Demo/tv2demo/tv2demo/Helpers/TV2PlacementRegistration.swift` — 3 components + 5 locations declared in code
+- `Demo/tv2demo/tv2demo/tv2demoApp.swift` — `TV2PlacementRegistration.registerAll()` in `init`
+- `Demo/tv2demo/tv2demo/Views/HomeView.swift` — `VProductCarousel(locationId: "home_top", layout: "compact")`
+- `Demo/tv2demo/tv2demo/Views/MatchDetailView.swift` — `VProductCarousel(locationId: "match_pre_kickoff", layout: "compact")`
+
+### Key design decisions (locked)
+
+1. **Self-service over admin-only**. Originally Step 5 said "admin-only registration"; the user reframed to "dev nunca toca código" and we pivoted. Result: dev declares once, operator drives forever.
+2. **Manifest-declared locations** (not a fixed dashboard list). Operator's location picker reads from what the SDK uploaded → dashboard never offers a slot the dev doesn't actually render to.
+3. **Predefined components, multiple instances per campaign**. A single `components` template (e.g. `product_carousel`) gives rise to N `campaign_components` rows distinguished by `location_id` (and `sponsor_id`). The dedupe key on the iOS side is `(id, locationId)` precisely so 2 instances of the same template can coexist.
+4. **TemplateConfig + customConfig overlay** (server-side merge). The backend merges `templateConfig` with the operator's `customConfig` before returning to the SDK, so the iOS `ComponentConfig` decoder still sees the fields it needs (`autoPlay`, `interval`) even if the operator only set `productIds`.
+5. **Adapt existing SDK components, don't recreate**. The user explicitly required `VProductCarousel(locationId:)` to use the existing `getActiveComponent(locationId:)` mechanism — no new `VioPlacementSlot` view abstraction.
+6. **`activeSponsorId` is owned exclusively by `client(forSponsorId:)`**. Set once when the carousel loads with a sponsorId, never overwritten by `client(configuration:)`. Apple Pay confirmation sheet logo derives from this — fixes the cross-sponsor-logo bug.
+
+### Smoke test results (2026-04-27)
+
+- TV2 demo cold-starts → manifest upload returns `components_registered=3, locations_registered=5`
+- Dashboard "Add placement" dialog populates location dropdown with 5 entries, sponsor dropdown with 3 entries
+- Operator creates instance: Elkjøp × `product_carousel` × `home_top` × `[408895]` — saved as `campaign_components` row id 108
+- Operator creates instance: XXL × `product_carousel` × `match_pre_kickoff` × `[408841]` — saved as id 109
+- iOS demo cold-starts → `GET /v2/mobile/campaigns/36/components` returns 2 rows merged with template config
+- HomeView renders Elkjøp carousel; products load via `5HPHWJY-…` key
+- MatchDetailView renders XXL carousel; products load via `KCXF10Y-…` key
+- Verified `[getActiveComponent] looking for type=product_carousel componentId=nil locationId=match_pre_kickoff isCampaignActive=true` logs
+
+### How to add a new placement component
+
+1. **Dev side** (one-time): conform a Swift type to `VioPlacementComponent`, add `register(MyType.self)` to the boot helper.
+2. **Dev side** (one-time): add `registerLocation(VioPlacementLocation(id:displayName:))` for any new slot.
+3. **View side**: render with `VProductCarousel(locationId: "my_slot")` (or equivalent) — the view looks up the registered component by `(type, locationId)` and pulls products via the bound sponsor's commerce key.
+4. **Operator** (per campaign): "Add placement" → pick component, location, sponsor, products. Save.
+5. **Operator** can disable/re-enable instances any time via the existing component status toggle — WS event `component_status_changed` fans out by `(id, locationId)`.
+
+No code change required for the dev once a component type is registered.
