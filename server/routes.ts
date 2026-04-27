@@ -1935,11 +1935,42 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   app.get('/api/client-apps/:id/components', async (req, res) => {
     try {
       const appId = parseInt(req.params.id);
+      // Backwards-compatible: if the dashboard sends `?withLocations=true` the
+      // response is the union { components, locations } so the placement
+      // picker can show both in a single fetch. Without the flag, returns the
+      // legacy array shape that the existing operator dashboard already
+      // consumes — no breaking change for callers that haven't migrated.
+      const withLocations = req.query.withLocations === 'true' || req.query.withLocations === '1';
       const appComps = await storage.getAppComponents(appId);
-      res.json(appComps);
+      if (!withLocations) {
+        res.json(appComps);
+        return;
+      }
+      const locations = await storage.getAppComponentLocations(appId);
+      res.json({ components: appComps, locations });
     } catch (error) {
       console.error('Error fetching app components:', error);
       res.status(500).json({ message: 'Error fetching app components' });
+    }
+  });
+
+  /**
+   * Dashboard-only read endpoint for the locations registered by the SDK
+   * manifest upload. Used by the operator's "Add placement" dialog so the
+   * location picker matches what the dev's app actually exposes.
+   *
+   * No auth on this read mirrors the rest of `/api/client-apps/:id/...`.
+   * (Session auth on the dashboard is enforced upstream by Vite + the
+   * frontend route guard, not by this Express endpoint.)
+   */
+  app.get('/api/client-apps/:id/component-locations', async (req, res) => {
+    try {
+      const appId = parseInt(req.params.id);
+      const locations = await storage.getAppComponentLocations(appId);
+      res.json(locations);
+    } catch (error) {
+      console.error('Error fetching app component locations:', error);
+      res.status(500).json({ message: 'Error fetching app component locations' });
     }
   });
 
@@ -6681,6 +6712,117 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
     } catch (error) {
       console.error('[v2 config] error', error);
       res.status(500).json({ error: 'Failed to build config' });
+    }
+  });
+
+  // ============================================================
+  // POST /v2/mobile/components/manifest — SDK manifest upload
+  // ============================================================
+  // Self-service registry: the partner's SDK uploads at app boot which
+  // placement component types it implements + which placement locations
+  // ("slots") its layout exposes. The dashboard's "Add placement" picker
+  // reads from this registry — operators can only bind a campaign_components
+  // instance to a (component, location) pair the dev's code actually
+  // declared, eliminating the desync where an operator picks a slot the app
+  // never renders to.
+  //
+  // The endpoint is **idempotent**: SDK can re-upload on every cold start.
+  // - components[] → upserts `app_components` rows by (client_app_id,
+  //   component_id), where component_id is resolved from `type` against the
+  //   global `components` table (rows with `is_template = true`). Unknown
+  //   types accumulate in `warnings[]` and are skipped, so a typo in the
+  //   dev's `Vio.registerPlacementComponent(...)` is loud but doesn't 400
+  //   the entire manifest.
+  // - locations[] → upserts `app_component_locations` rows by
+  //   (client_app_id, location_id). `display_name` is refreshed on each
+  //   upload so the dev can rename slots without admin intervention.
+  //
+  // Auth: `validateApiKey` resolves the `client_app_id` from the SDK's
+  // `X-API-Key`. The endpoint can only ever write to that app's rows —
+  // multi-tenant isolation by construction.
+  app.post('/v2/mobile/components/manifest', validateApiKey, async (req, res) => {
+    try {
+      const clientApp = (req as any).clientApp;
+      const { components: declaredComponents, locations: declaredLocations } = req.body ?? {};
+      if (!Array.isArray(declaredComponents) && !Array.isArray(declaredLocations)) {
+        return res.status(400).json({ error: 'Body must include `components` and/or `locations` arrays' });
+      }
+
+      const persistedComponents: any[] = [];
+      const persistedLocations: any[] = [];
+      const warnings: { kind: string; detail: string }[] = [];
+
+      // Process components: resolve canonical template by type, then ensure link.
+      if (Array.isArray(declaredComponents)) {
+        for (const entry of declaredComponents) {
+          if (!entry || typeof entry !== 'object') {
+            warnings.push({ kind: 'invalid_component_entry', detail: 'Entry must be an object with `type`' });
+            continue;
+          }
+          const type = typeof entry.type === 'string' ? entry.type.trim() : '';
+          if (!type) {
+            warnings.push({ kind: 'missing_component_type', detail: 'Component entry missing `type` string' });
+            continue;
+          }
+          const template = await storage.getCanonicalComponentByType(type);
+          if (!template) {
+            warnings.push({
+              kind: 'unknown_component_type',
+              detail: `No canonical template registered globally for type='${type}'. Either Vio admin needs to seed a templates row, or the SDK is using a typo.`,
+            });
+            continue;
+          }
+          const link = await storage.ensureAppComponentLink(clientApp.id, template.id);
+          persistedComponents.push({
+            type,
+            componentId: template.id,
+            templateName: template.name,
+            appComponentId: link.id,
+          });
+        }
+      }
+
+      // Process locations: idempotent upsert.
+      if (Array.isArray(declaredLocations)) {
+        for (const entry of declaredLocations) {
+          if (!entry || typeof entry !== 'object') {
+            warnings.push({ kind: 'invalid_location_entry', detail: 'Entry must be an object with `id`' });
+            continue;
+          }
+          const id = typeof entry.id === 'string' ? entry.id.trim() : '';
+          if (!id) {
+            warnings.push({ kind: 'missing_location_id', detail: 'Location entry missing `id` string' });
+            continue;
+          }
+          if (id.length > 100) {
+            warnings.push({ kind: 'location_id_too_long', detail: `Location id '${id}' exceeds 100 chars; ignored.` });
+            continue;
+          }
+          const displayName = typeof entry.displayName === 'string' && entry.displayName.trim() !== ''
+            ? entry.displayName.trim().slice(0, 255)
+            : null;
+          const row = await storage.upsertAppComponentLocation(clientApp.id, id, displayName);
+          persistedLocations.push({
+            id: row.id,
+            locationId: row.locationId,
+            displayName: row.displayName,
+          });
+        }
+      }
+
+      console.log(
+        `[ManifestRegistry] clientApp=${clientApp.id} components=${persistedComponents.length} locations=${persistedLocations.length} warnings=${warnings.length}`
+      );
+
+      res.json({
+        clientAppId: clientApp.id,
+        components: persistedComponents,
+        locations: persistedLocations,
+        warnings,
+      });
+    } catch (error) {
+      console.error('[ManifestRegistry] error', error);
+      res.status(500).json({ error: 'Failed to process manifest' });
     }
   });
 
