@@ -3154,6 +3154,13 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       }
       const broadcastScope: string | null = req.body.broadcastId ? String(req.body.broadcastId) : null;
 
+      // Operator-supplied placement config. The most common shape is
+      // `{ productIds: [...] }` for `product_*` types, written by the
+      // dashboard's product picker (multi-select per sponsor catalog). The
+      // SDK reads it through the existing `customConfig` plumbing, falling
+      // back to the component template's baseline config when null.
+      const customConfig = req.body.customConfig ?? null;
+
       const campaignComponent = await storage.addComponentToCampaign({
         campaignId,
         componentId,
@@ -3162,6 +3169,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
         instanceName: finalInstanceName,
         status: status || 'inactive',
         locationId: locationId || null,
+        customConfig,
       });
 
       res.status(201).json(campaignComponent);
@@ -6859,6 +6867,88 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
 
   // GET /v2/sdk/broadcasts/:broadcastId/components — component placements for this broadcast
   // Merges campaign-scoped (broadcast_id IS NULL) + broadcast-scoped (broadcast_id = this)
+  /**
+   * Campaign-level placement components for the SDK.
+   *
+   * Returns the active `campaign_components` rows for a campaign that are
+   * **not** scoped to a specific broadcast (i.e. `broadcast_id IS NULL`),
+   * with sponsor + commerce + customConfig flattened. Mirrors the shape of
+   * the broadcast-scoped endpoint below so the SDK can use the same decoder.
+   *
+   * Used by CampaignManager after discoverCampaigns to populate
+   * `activeComponents` on cold start — without this, a fresh app install
+   * sees no placements until a `component_status_changed` WS event arrives.
+   */
+  app.get('/v2/mobile/campaigns/:campaignId/components', validateApiKey, async (req, res) => {
+    try {
+      const campaignId = parseInt(req.params.campaignId);
+      if (Number.isNaN(campaignId)) return res.status(400).json({ error: 'Invalid campaignId' });
+      const campaign = await storage.getCampaign(campaignId);
+      if (!campaign) return res.status(404).json({ error: 'Campaign not found' });
+
+      const rows = await db.select({
+        cc: campaignComponents,
+        comp: components,
+        sp: sponsors,
+      })
+        .from(campaignComponents)
+        .innerJoin(components, eq(campaignComponents.componentId, components.id))
+        .innerJoin(sponsors, eq(campaignComponents.sponsorId, sponsors.id))
+        .where(and(
+          eq(campaignComponents.campaignId, campaignId),
+          eq(campaignComponents.status, 'active'),
+          isNull(campaignComponents.broadcastId),
+        ));
+
+      // Shape matches the Swift `Component` model on iOS (CampaignModels.swift):
+      // - `id` = the component TEMPLATE id (components.id), so the SDK's existing
+      //   getActiveComponent(componentId:) keeps working with the same uuid the
+      //   demo previously hardcoded.
+      // - `campaignComponentId` = the per-instance id (campaign_components.id),
+      //   exposed for analytics/observability so the SDK can echo it back on
+      //   any instance-scoped event.
+      // - `config` is the template's baseline merged with the operator's
+      //   customConfig overlay. Critical: the iOS ComponentConfig decoder
+      //   discriminates between cases by which keys are present (autoPlay+
+      //   interval → product_carousel; only productIds → carousel_manual),
+      //   so we MERGE rather than replace — operator-supplied productIds
+      //   coexist with the template's autoPlay/interval defaults.
+      const items = rows.map(({ cc, comp, sp }) => {
+        const templateConfig = (comp as any).config ?? {};
+        const overlayConfig = cc.customConfig ?? {};
+        const mergedConfig =
+          typeof templateConfig === 'object' && typeof overlayConfig === 'object'
+            ? { ...templateConfig, ...overlayConfig }
+            : (overlayConfig || templateConfig);
+        return {
+          id: comp.id,                                  // template id (string uuid)
+          campaignComponentId: cc.id,                   // instance id (numeric)
+          type: comp.type,
+          name: cc.instanceName ?? comp.name,
+          status: cc.status,
+          locationId: cc.locationId ?? null,
+          sponsorId: sp.id,
+          sponsor: {
+            id: sp.id,
+            name: sp.name,
+            logoUrl: sp.logoUrl ?? null,
+            primaryColor: sp.primaryColor ?? null,
+          },
+          commerce: sp.commerceApiKey ? {
+            apiKey: sp.commerceApiKey,
+            channelId: sp.commerceChannelId ?? null,
+          } : null,
+          config: mergedConfig,
+        };
+      });
+
+      res.json({ campaignId, components: items });
+    } catch (error) {
+      console.error('[v2 campaign-components] error', error);
+      res.status(500).json({ error: 'Failed to fetch campaign components' });
+    }
+  });
+
   app.get('/v2/mobile/broadcasts/:broadcastId/components', validateApiKey, async (req, res) => {
     try {
       const { broadcastId } = req.params;
