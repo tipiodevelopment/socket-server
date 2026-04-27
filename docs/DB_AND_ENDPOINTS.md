@@ -4,7 +4,16 @@ Reference map for anyone (new dev, Kotlin dev, integration partner) working
 on the Vio backend or the SDKs that consume it. Focus is on the **product
 placement + multi-sponsor + cart-intent** slice.
 
+> ⚠️ **Updated 2026-04-28**. The placement model pivoted from "self-service
+> SDK declares full placements" to "dashboard-driven; SDK declares only
+> locations". Migration `0004_named_placements_consolidation.sql` drops
+> `app_components`, adds `app_placements` as the source of truth, and
+> rewrites `campaign_components` to FK into placements. **The architecture
+> diagram + flow live in `CURRENT_STATE.md` §17 (canonical)**. This doc
+> covers schema + endpoint shapes; treat §17 as the design contract.
+
 Cross-refs:
+- Architecture flow: **`CURRENT_STATE.md` §17** (canonical)
 - Conceptual model: [`multi-sponsor-architecture.md`](./multi-sponsor-architecture.md)
 - End-to-end cart-intent: `VioSwiftSDK/Documentation/CART_INTENT_FLOW.md`
 - Apple TV SDK runtime: `InteractiveAds-vio/docs/SDK_ARCHITECTURE.md`
@@ -122,26 +131,54 @@ erDiagram
 
 `is_template = true` means this row is a canonical platform-wide template that any client app can register via the SDK manifest. Custom (non-template) rows are app-scoped and not exposed to the dashboard's "Add placement" picker.
 
-#### `app_components` (manifest-populated)
-`id serial PK, client_app_id → client_apps, component_id varchar → components, custom_config (json), created_at`
-
-Populated by SDK manifest upload at app boot via `POST /v2/mobile/components/manifest`. Each call upserts the rows for the component types the app declares via `VioPlacementRegistry.register(_:)`. Idempotency is **app-side** (`storage.ensureAppComponentLink` checks before insert) — there is **no DB-level UNIQUE constraint** on `(client_app_id, component_id)`, so duplicate writes via the legacy `POST /api/client-apps/:id/components` could create dupes. Use the manifest endpoint or `ensureAppComponentLink` to be safe.
+#### `app_components` — **DROPPED** (migration 0004)
+Fully redundant with `app_placements` post-pivot. A placement row implies the
+app supports the underlying template; the explicit "this app uses this
+template" link is no longer needed. Routes that referenced this table return
+HTTP 410 Gone.
 
 #### `app_component_locations` (manifest-populated)
-`id serial PK, client_app_id → client_apps, location_id varchar NOT NULL, display_name varchar NULLABLE, created_at, updated_at` — **UNIQUE `(client_app_id, location_id)`** (`idx_app_component_locations_unique`).
+`id serial PK, client_app_id → client_apps, location_id varchar NOT NULL, display_name varchar NULLABLE, deprecated_at timestamp NULLABLE, created_at, updated_at` — **UNIQUE `(client_app_id, location_id)`** (`idx_app_component_locations_unique`).
 
-Populated by the same manifest upload. Lists which slot ids the app exposes via `VioPlacementRegistry.registerLocation(_:)`. The dashboard's "Add placement" location picker reads from here so an operator can never bind a `campaign_components` instance to a slot the dev's code doesn't actually render to. `display_name` is refreshed on every upload, so devs can rename slots without admin intervention.
+Populated by the SDK manifest at app boot via `POST /v2/mobile/components/manifest`. Lists which slot ids the app's UI exposes (`Vio.registerPlacementLocation(_:)`).
 
-#### `campaign_components` ⭐ the placement table
+**Sync semantics**: locations not present in a new manifest payload get `deprecated_at = now()`. Re-uploading the same id clears the flag. `display_name` is refreshed on every upload.
+
+The dashboard's "Add from library" form's location picker reads from here filtered by `deprecated_at IS NULL`.
+
+#### `app_placements` ⭐ the named-instance table (migration 0004)
 | column | type | notes |
 |---|---|---|
-| `id` | serial PK | placement row id (numeric, the per-instance id) |
+| `id` | serial PK | row id |
+| `client_app_id` | integer FK → `client_apps` | NOT NULL, ON DELETE CASCADE |
+| `component_id` | varchar FK → `components` | the canonical template (`is_template = true`) |
+| `location_id` | varchar(100) | the slot (matches `app_component_locations.location_id` when active) |
+| `name` | varchar(255) | human-friendly label, e.g. "Carrusel home" |
+| `custom_config` | json NULLABLE | optional per-instance config baseline (rarely used; campaign-level overrides preferred) |
+| `deprecated_at` | timestamp NULLABLE | soft-delete; existing campaign uses keep rendering with a warning |
+| `created_by` | integer FK → `users` | audit (operator user id at create time) |
+| `created_at`, `updated_at` | timestamp | row audit |
+
+**Two UNIQUE indexes**:
+- `idx_app_placements_unique_name` on `(client_app_id, name)` — name is the human id, unique per app.
+- `idx_app_placements_unique_slot` on `(client_app_id, component_id, location_id)` — slot is unique per app. For A/B variants, declare distinct location_ids (`home_top_a`, `home_top_b`).
+
+Created by **operator/admin via dashboard** (`POST /api/client-apps/:id/placements`), NOT by the SDK manifest. Service-layer validation rejects with stable error codes:
+- `PLACEMENT_LOCATION_INVALID` — locationId not declared (or deprecated)
+- `PLACEMENT_TEMPLATE_INVALID` — componentId not in canonical library (`is_template = true`)
+- `PLACEMENT_NAME_COLLISION` — name already used by another active placement
+- `PLACEMENT_SLOT_COLLISION` — slot already claimed by another active placement
+- `PLACEMENT_NOT_FOUND` — for delete (soft-delete via DELETE endpoint)
+
+#### `campaign_components` ⭐ the campaign-binding table
+| column | type | notes |
+|---|---|---|
+| `id` | serial PK | per-instance id |
 | `campaign_id` | integer FK → `campaigns` | NOT NULL |
-| `component_id` | varchar FK → `components` | template id (uuid string) |
+| `app_placement_id` | integer FK → `app_placements` | NOT NULL, ON DELETE RESTRICT (post-migration 0004; replaces the old component_id + location_id pair) |
 | `sponsor_id` | integer FK → `sponsors` | **NOT NULL** (Phase 3). Must be primary or in `campaign_sponsors` — enforced by `isSponsorAllowedForCampaign` |
 | `broadcast_id` | varchar FK → `broadcasts` **nullable** | null = campaign-wide, set = broadcast-scoped override |
-| `location_id` | varchar nullable | SDK slot (e.g., `home_top`, `match_pre_kickoff`); together with `component_id` forms the dedupe key on the iOS side |
-| `instance_name` | varchar nullable | human-readable label (e.g., "Carousel1", "Carousel psg") |
+| `instance_name` | varchar nullable | UX label distinct from app_placement.name (e.g. "Carrusel home — XXL drop") |
 | `status` | varchar NOT NULL default `'inactive'` | `active` \| `inactive` |
 | `custom_config` | json nullable | operator overlay (e.g., `{"productIds": [...]}`); merged with `components.config` server-side before SDK consumption |
 | `scheduled_time` | timestamp nullable | auto-activate at this time (legacy column, used by `server/scheduler.ts`) |
@@ -151,8 +188,11 @@ Populated by the same manifest upload. Lists which slot ids the app exposes via 
 | `updated_at` | timestamp NOT NULL | row last-modified (touched by every PATCH) |
 | `video_start_time`, `video_end_time` | integer | seconds relative to broadcast video |
 | `match_id` | varchar nullable | optional external match id |
+| `created_by` | integer FK → `users` | audit (operator user id at create time, post-migration 0004) |
 
-**No DB-level uniqueness** on `(campaign_id, component_id, location_id)` — the dashboard prevents collisions via UX, but two rows with the same `(campaign_id, component_id, location_id)` would NOT be rejected by the DB. iOS dedupes by `(component_id, location_id)` post-fetch.
+**Multi-sponsor "one active per (campaign, placement)"** — partial UNIQUE index `idx_campaign_components_one_active` on `(campaign_id, app_placement_id) WHERE status = 'active'`. Enforces that only one row per placement can be `active` at a time; rotation is done by toggling status / scheduling other rows. Backend pre-checks and returns `PLACEMENT_ACTIVE_CONFLICT` (HTTP 409) before hitting the DB constraint, so the dashboard gets a friendlier error.
+
+The `component_id` and `location_id` columns are **gone** — info lives on the linked `app_placement` row. Storage's `getCampaignComponents` synthesizes them on read for callers that haven't migrated.
 
 #### `broadcasts`
 `broadcast_id varchar PK, campaign_id → campaigns nullable, channel_id, broadcast_name, description, start_time, end_time, status (upcoming | live | ended), metadata (json), engagement_enabled boolean, show_lineup boolean, viewer_count, peak_viewers, started_at, match_starting_at, home/away_team_name + _logo, league_name, sportmonks_fixture_id, external_id, created_at, updated_at`
@@ -200,10 +240,11 @@ Auth column: `apiKey` = `X-API-Key` header; `session` = dashboard cookie; `Beare
 | DELETE | `/api/client-apps/:id` | delete app |
 | GET | `/api/client-apps/:id/channels` | reachu channels linked to this app |
 | GET | `/api/client-apps/:id/campaigns` | campaigns owned by this app (clientAppId-linked + channel-linked) |
-| GET | `/api/client-apps/:id/components` | list `app_components` (accepts `?withLocations=true` → returns `{components, locations}`) |
-| GET | `/api/client-apps/:id/component-locations` | list `app_component_locations` declared by SDK manifest (dashboard "Add placement" location picker source) |
-| POST | `/api/client-apps/:id/components` | register a component to the app (legacy admin path; manifest endpoint preferred) |
-| DELETE | `/api/client-apps/:id/components/:componentId` | unregister |
+| GET | `/api/client-apps/:id/component-locations` | list slots declared by SDK manifest. Default filters out `deprecated_at IS NOT NULL`; pass `?includeDeprecated=true` to see all. Source for the dashboard's "Add from library" form's location picker. |
+| GET | `/api/client-apps/:id/placements` | list named placements (post-migration 0004). Returns rows joined with the canonical template. `?includeDeprecated=true` includes soft-deleted. |
+| POST | `/api/client-apps/:id/placements` | **create named placement** (body: `componentId`, `locationId`, `name`, `customConfig?`, `createdBy?`). Validation errors return HTTP 400 with `code` ∈ {PLACEMENT_LOCATION_INVALID, PLACEMENT_TEMPLATE_INVALID, PLACEMENT_NAME_COLLISION, PLACEMENT_SLOT_COLLISION}. |
+| DELETE | `/api/client-apps/:id/placements/:placementId` | **soft-delete** placement (sets deprecated_at). Existing campaign_components keep rendering with a warning. Emits WS `app_placement_deprecated` per affected campaign. |
+| GET / POST / DELETE | ~~/api/client-apps/:id/components[…]~~ | **HTTP 410 Gone** post-migration 0004 — the legacy `app_components` table is dropped. Use the placements endpoints above. |
 | GET | `/api/components` | list catalog templates |
 | GET | `/api/components/usage` | catalog usage stats |
 | GET | `/api/components/:id` | template detail |
@@ -243,12 +284,12 @@ Auth column: `apiKey` = `X-API-Key` header; `session` = dashboard cookie; `Beare
 #### Placements (`campaign_components`)
 | method | path | what |
 |---|---|---|
-| GET | `/api/campaigns/:id/components` | list placements |
+| GET | `/api/campaigns/:id/components` | list placements joined with `app_placements` + canonical template |
 | GET | `/api/campaigns/:id/active-components` | list currently active |
-| POST | `/api/campaigns/:id/components` | **create placement** (body: `componentId`, `sponsorId` (optional → defaults to primary), `locationId`, `broadcastId`, `customConfig`, `instanceName`, `status`) |
-| PATCH | `/api/campaigns/:id/components/:componentId` | toggle status / update fields — **fires WS `component_status_changed`** when `status` flips and campaign is active |
-| PATCH | `/api/campaigns/:id/components/:componentId/config` | override `customConfig` only — **fires WS `component_config_updated`** if active |
-| DELETE | `/api/campaigns/:id/components/:componentId` | remove placement |
+| POST | `/api/campaigns/:id/components` | **create placement** (post-migration 0004 body: `appPlacementId`, `sponsorId?` (defaults to campaign primary), `customConfig?`, `instanceName?`, `status?`, `broadcastId?`, `createdBy?`). Validates: placement matches campaign's clientApp + sponsor in campaign_sponsors. If `status='active'` is requested, returns HTTP 409 `PLACEMENT_ACTIVE_CONFLICT` if another row is already active for `(campaign, app_placement)`. |
+| PATCH | `/api/campaigns/:id/components/:componentId` | **`:componentId` is the campaign_components row PK** (not the template id, post-migration 0004). Toggle status. Fires WS `component_status_changed` with `appPlacementId + locationId + componentId(template)` payload. Pre-checks PLACEMENT_ACTIVE_CONFLICT. |
+| PATCH | `/api/campaigns/:id/components/:componentId/config` | override `customConfig` (productIds, title, showSponsorLogo, autoPlay, …). Fires WS `component_config_updated`. |
+| DELETE | `/api/campaigns/:id/components/:componentId` | remove placement (hard delete of the campaign binding; the underlying app_placement is untouched). |
 
 #### Scheduled placements (separate scheduling surface)
 | method | path | what |
@@ -302,8 +343,8 @@ Used by external tooling / partner automation that doesn't go through the dashbo
 | GET | `/v2/mobile/config` | **bootstrap**: active campaign + primary + secondaries + endpoints |
 | GET | `/v2/mobile/broadcasts/:broadcastId/capabilities` | per-broadcast feature flags |
 | GET | `/v2/mobile/broadcasts/:broadcastId/components` | broadcast-scoped placements (legacy path, may retire) |
-| GET | `/v2/mobile/campaigns/:campaignId/components` | **primary placement fetch** — campaign-scoped instances with `templateConfig + customConfig` merged server-side |
-| POST | `/v2/mobile/components/manifest` | **SDK boot manifest upload** — registers `app_components` + `app_component_locations` for this clientApp from the body's `{components, locations}` arrays |
+| GET | `/v2/mobile/campaigns/:campaignId/components` | **primary placement fetch** — campaign-scoped instances joined through `app_placements`. Backend filters out where `app_placements.deprecated_at IS NOT NULL`. Response includes `appPlacementId + appPlacementName + locationId` + sponsor block (logoUrl + avatarUrl) + template config merged with customConfig. |
+| POST | `/v2/mobile/components/manifest` | **SDK boot location manifest** — body must be `{ locations: [{id, displayName?}, …] }`. Sync semantics: locations not in payload get `deprecated_at = now()` (soft). **Rejects body with `placements[]` or `components[]`** (HTTP 400) — those legacy arrays were retired post-migration 0004. |
 | POST | `/v2/mobile/campaigns/:campaignId/register-device` | APNs/FCM token registration for push fallback |
 | POST | `/v2/mobile/campaigns/:campaignId/cart-intent` | mobile cart-intent |
 | POST | `/v2/tv/broadcast/subscribe` | **TV combined bootstrap** — subscribe + session + wsUrl + identify in one call |

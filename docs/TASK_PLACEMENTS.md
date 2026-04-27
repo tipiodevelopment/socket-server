@@ -6,6 +6,28 @@
 > **Scope**: backend + **iOS SDK** (VioSwiftSDK) + dashboard. Apple TV SDK
 > (`InteractiveAds-vio`) está fuera — no se re-abre aquí.
 
+## Pending for 2026-04-29 morning (resume here)
+
+End-of-day 2026-04-28: full E2E smoke working. Two feature branches in
+flight, awaiting review/merge:
+
+- socket-server `feature/placements-app-placements-table` @ `74b39c7` (3 commits: schema, dashboard, today's polish)
+- VioSwiftSDK `feature/placements-named-instances` @ `95eafdb` (3 commits)
+
+Outstanding work:
+
+1. **Postman regen** — see checklist below for folder-specific changes needed.
+2. **Edit existing campaign_components in dashboard** — Customize / pencil dialog already works for the new fields (title + showSponsorLogo) but lightly tested. Walk through and polish if anything looks off.
+3. **Banner / Spotlight `locationId:` plumbing** — only `VProductCarousel` accepts `locationId:` today. Spotlight/Banner/Store views need the same `getActiveComponent(type:locationId:)` lookup so the new model covers all template types. **Follow the carousel as the reference pattern.**
+4. **Scheduling fields** — `scheduled_time` + `end_time` exist in DB but the dashboard placement form doesn't expose them. Add 2 datetime inputs in the campaign placement form for time-based rotations.
+5. **Multi-sponsor rotation UX** — the dashboard should make "create another row with a different sponsor" obvious (today operator has to figure out the +Add flow). Maybe a "Rotate sponsor" button on existing placement cards.
+6. **Schema consistency vs Apple TV SDK** — sponsor block on backend now ships both `logoUrl` + `avatarUrl` (additive — Apple TV unaffected). Verify Apple TV SDK still builds + flows still work. No code changes expected on that side.
+
+Open question for tomorrow:
+- The Apple TV SDK lives in `InteractiveAds-vio` and calls the same backend. Did any of today's backend changes break its consumption path? Smoke test it before merging the backend feature branch.
+
+---
+
 ## Sprint 2026-04-27 (PM) — Architecture pivot to dashboard-driven placements
 
 The morning's "self-service named placements" design (Phases A→C) had the
@@ -45,40 +67,17 @@ while keeping a thin self-service contract for slot discovery.
 
 ### Sub-sprint checklist
 
-- [ ] **DB migration `0004_named_placements_consolidation.sql`**:
-  - DROP TABLE `app_components`
-  - ALTER `app_component_locations` ADD `deprecated_at TIMESTAMP NULL`
-  - ALTER `app_placements` ADD `deprecated_at TIMESTAMP NULL`, `created_by INTEGER → users(id)`
-  - ALTER `campaign_components` ADD `app_placement_id INTEGER → app_placements(id)`, `created_by INTEGER → users(id)`
-  - Backfill `campaign_components.app_placement_id` from existing `(component_id, location_id, campaign→client_app_id)` lookup
-  - DROP `campaign_components.component_id`, `location_id` (after backfill verified)
-  - CREATE PARTIAL UNIQUE INDEX `idx_campaign_components_one_active` on `(campaign_id, app_placement_id) WHERE status = 'active'`
-- [ ] **`shared/schema.ts`** — drop `appComponents`, update `appPlacements`, `appComponentLocations`, `campaignComponents` schemas + relations
-- [ ] **`server/storage.ts`** — drop `getAppComponents` / `addComponentToApp` / `removeComponentFromApp`. Add `createAppPlacement`, `deprecateAppPlacement`, `getCanonicalLibraryTemplates`. Update `addComponentToCampaign` to take `appPlacementId`.
-- [ ] **`server/routes.ts`**:
-  - Manifest endpoint: accept only `locations[]`, reject `placements[]`/`components[]`. Sync-semantic deprecation.
-  - DROP `/api/client-apps/:id/components` POST/DELETE (legacy).
-  - NEW `POST /api/client-apps/:id/placements` (operator creates app_placement).
-  - NEW `DELETE /api/client-apps/:id/placements/:id` (soft-delete).
-  - UPDATE `POST /api/campaigns/:id/components` to take `appPlacementId` instead of `componentId+locationId`. Validate placement is from same clientApp as campaign + slot is not already active.
-  - UPDATE `GET /v2/mobile/campaigns/:id/components` to JOIN through `app_placements`. Filter out rows where placement is deprecated (or include but flag).
-  - WebSocket: emit `app_placement_deprecated` on soft-delete. Add `locationId` to `component_status_changed` payload.
-- [ ] **iOS SDK**:
-  - Remove `Vio.registerPlacement(name:type:locationId:)` (Phase C addition)
-  - Restore `Vio.registerPlacementLocation(...)` as primary (un-deprecate)
-  - Remove `VioPlacementComponent` protocol + `VioPlacementRegistration` struct
-  - Manifest payload: only `locations[]` array
-  - Update TV2 demo (`TV2PlacementRegistration.swift`) to register only locations
-- [ ] **Dashboard**:
-  - `/apps/:id` Placements section: "Add from library" button → dialog with template picker + name + locationId dropdown (declared locations)
-  - `/apps/:id`: badge for `deprecated_at IS NOT NULL` rows
-  - `/campaigns/:id` Components tab: simplified Add dialog (placement + sponsor + products)
-  - Validation: cross-clientApp placement assignment rejected
-- [ ] **Postman**: regenerate `vio-sdk.postman_collection.json` with new manifest body shape, new placement endpoints, removed legacy paths
-- [ ] **Docs accumulate** (in-place, no new files):
-  - `CURRENT_STATE.md §17` — diagram updated with the dashboard-driven flow
-  - `DB_AND_ENDPOINTS.md` — schema for `app_placements` updated, new endpoints, dropped legacy paths
-  - `ARCHITECTURE_OVERVIEW.md` — Hito 6 details consolidated
+- [x] **DB migration `0004_named_placements_consolidation.sql`** — applied to local Neon `local/angelo-…` only; develop pending re-promote.
+- [x] **`shared/schema.ts`** — appComponents dropped; appPlacements + appComponentLocations + campaignComponents updated.
+- [x] **`server/storage.ts`** — legacy helpers gone; createAppPlacement + deprecateAppPlacement + getCanonicalLibraryTemplates + deprecateAppComponentLocationsNotIn added.
+- [x] **`server/routes.ts`** — manifest accepts only `locations[]`; legacy app_components endpoints return 410 Gone; new POST/DELETE app_placements endpoints; campaign placement endpoints take `appPlacementId`; PATCH refactored to row PK; SDK fetch endpoints JOIN through app_placements + filter deprecated; WS payloads include appPlacementId + locationId.
+- [x] **iOS SDK** — Vio.registerPlacement and registerPlacementComponent dropped; registerPlacementLocation un-deprecated as primary; manifest payload only `locations[]`; VioSponsor adds avatarUrl + renderableLogoUrl; ProductCarouselConfig adds title + showSponsorLogo; VProductCarousel renders placementHeader; VRemoteImage handles SVG via WKWebView; TV2 demo cleaned to declaration ≡ render.
+- [x] **Dashboard** — `/apps/:id` Placements section + "Add from library" form (template + locationId + name); deprecated badge; `/campaigns/:id` Add Component simplified to placement + sponsor + products + (optional) title + showSponsorLogo + autoPlay/interval; ID semantics fixed (mutations pass `String(cc.id)` row PK).
+- [x] **Docs accumulated in-place**: `CURRENT_STATE.md §17` rewritten with the post-pivot diagram + smoke test results + new-session cheat sheet; `DB_AND_ENDPOINTS.md` schema/endpoints updated; this checklist.
+- [ ] **Postman** — `vio-sdk.postman_collection.json` regen pending. Folders affected:
+  - `2. iOS Mobile SDK` — manifest body shape changed to `{locations: [{id, displayName?}]}`; legacy 410-Gone paths.
+  - `5. Dashboard operator` — new POST/DELETE `/api/client-apps/:id/placements`; updated POST `/api/campaigns/:id/components` body (`appPlacementId` not `componentId+locationId`); new error codes documented.
+  - **Tomorrow**: regen the collection from openapi or hand-edit; smoke each request.
 
 ### Smoke E2E
 
