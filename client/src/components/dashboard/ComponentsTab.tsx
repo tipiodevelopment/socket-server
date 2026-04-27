@@ -801,8 +801,8 @@ export function CampaignComponentConfigForm({
                 value={config.productIds?.join(', ') || ''}
                 onChange={(e) => {
                   const ids = e.target.value.split(',').map((id: string) => id.trim()).filter((id: string) => id);
-                  setConfig({ 
-                    ...config, 
+                  setConfig({
+                    ...config,
                     productIds: ids.length > 0 ? ids : undefined
                   });
                 }}
@@ -810,10 +810,44 @@ export function CampaignComponentConfigForm({
                 data-testid="input-productIds"
               />
               <p className="text-xs text-muted-foreground">
-                {config.productIds && config.productIds.length > 0 
+                {config.productIds && config.productIds.length > 0
                   ? `Showing ${config.productIds.length} specific products`
                   : "Will display all products from Reachu channel"}
               </p>
+            </div>
+
+            {/* Header section opt-ins. Both default off — when off, the
+                carousel renders without a header band (legacy behavior).
+                Operator turns them on per-placement so the same template
+                can serve "Ukens tilbud", "Featured", or no-header variants. */}
+            <div className="pt-4 border-t">
+              <h4 className="text-sm font-semibold mb-3">Header (optional)</h4>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="title">Title</Label>
+              <Input
+                id="title"
+                value={config.title || ''}
+                onChange={(e) => setConfig({ ...config, title: e.target.value || undefined })}
+                placeholder="e.g. Ukens tilbud — leave empty to hide header"
+                data-testid="input-carousel-title"
+              />
+              <p className="text-xs text-muted-foreground">Renders above the carousel. Empty → no header.</p>
+            </div>
+            <div className="space-y-2 flex items-center gap-2">
+              <input
+                type="checkbox"
+                id="showSponsorLogo"
+                checked={config.showSponsorLogo === true}
+                onChange={(e) => setConfig({ ...config, showSponsorLogo: e.target.checked || undefined })}
+                data-testid="checkbox-showSponsorLogo"
+                className="rounded"
+              />
+              <Label htmlFor="showSponsorLogo">Show sponsor logo in header</Label>
+            </div>
+
+            <div className="pt-4 border-t">
+              <h4 className="text-sm font-semibold mb-3">Auto-play (optional)</h4>
             </div>
             <div className="space-y-2 flex items-center gap-2">
               <input

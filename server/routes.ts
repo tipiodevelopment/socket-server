@@ -40,7 +40,7 @@ import {
   Broadcast
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, and, or, isNull, desc, sql } from "drizzle-orm";
+import { eq, and, or, isNull, desc, sql, ne } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import {
   ObjectStorageService,
@@ -3293,6 +3293,13 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   });
 
   // Update campaign component status (toggle ON/OFF)
+  // PATCH /api/campaigns/:id/components/:componentId — toggle status / locationId.
+  //
+  // `:componentId` is the **campaign_components row PK** (a numeric id passed as
+  // string from the URL). Pre-migration 0004 it was the FK to `components.id`
+  // (template uuid); the column is gone and the routes now consistently
+  // reference the row PK. The locationId update is a no-op shim — location is
+  // immutable post-migration (lives on app_placements).
   app.patch('/api/campaigns/:id/components/:componentId', async (req, res) => {
     try {
       const campaignId = parseInt(req.params.id);
@@ -3306,19 +3313,39 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
         return res.status(400).json({ message: 'Invalid status. Must be "active" or "inactive"' });
       }
 
-      // Get component details to check type
-      const component = await storage.getComponentById(componentId);
-      if (!component) {
-        return res.status(404).json({ message: 'Component not found' });
+      const rowId = parseInt(componentId);
+      if (Number.isNaN(rowId)) {
+        return res.status(400).json({ message: 'componentId must be a numeric campaign_components row id' });
       }
 
-      // Validate component availability if activating
+      // Multi-sponsor "one active per (campaign, app_placement)" — the partial
+      // UNIQUE index on the DB enforces this; pre-check to surface a friendlier
+      // 409 with the active row's id so the dashboard can prompt to deactivate.
       if (status === 'active') {
-        const availability = await storage.validateComponentAvailability(componentId, component.isTemplate === 'true', campaignId);
-        if (!availability.available) {
+        const target = await db.select().from(campaignComponents)
+          .where(eq(campaignComponents.id, rowId))
+          .limit(1);
+        if (target.length === 0) {
+          return res.status(404).json({ message: 'Campaign component not found' });
+        }
+        const targetRow = target[0];
+        if (targetRow.campaignId !== campaignId) {
+          return res.status(404).json({ message: 'Campaign component not found in this campaign' });
+        }
+        const otherActive = await db.select({ id: campaignComponents.id, sponsorId: campaignComponents.sponsorId })
+          .from(campaignComponents)
+          .where(and(
+            eq(campaignComponents.campaignId, campaignId),
+            eq(campaignComponents.appPlacementId, targetRow.appPlacementId),
+            eq(campaignComponents.status, 'active'),
+            ne(campaignComponents.id, rowId),
+          ))
+          .limit(1);
+        if (otherActive.length > 0) {
           return res.status(409).json({
-            message: 'Component is already active in another campaign',
-            activeCampaignId: availability.activeCampaignId
+            code: 'PLACEMENT_ACTIVE_CONFLICT',
+            message: `Another row is already active for this placement (sponsor ${otherActive[0].sponsorId}). Deactivate it first.`,
+            activeCampaignComponentId: otherActive[0].id,
           });
         }
       }
@@ -3326,11 +3353,10 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       let updated: any;
       if (status) {
         updated = await storage.updateCampaignComponentStatus(campaignId, componentId, status);
-      } else {
-        updated = await storage.getComponentById(componentId);
       }
-
       if (locationId !== undefined) {
+        // No-op shim — location_id was dropped from campaign_components in
+        // migration 0004. Location is immutable; lives on app_placements.
         updated = await storage.updateCampaignComponentLocationId(campaignId, componentId, locationId || null);
       }
 
@@ -3338,22 +3364,28 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
         return res.status(404).json({ message: 'Campaign component not found' });
       }
 
-      // Only broadcast WS event when status changes (not for locationId-only updates)
+      // Broadcast WS `component_status_changed` so live SDK clients react in
+      // real time. Payload keeps the legacy `componentId` (template uuid) +
+      // `component.{id,type,name,config}` shape the iOS SDK expects, plus the
+      // new `appPlacementId` and `locationId` fields sourced from the linked
+      // app_placement (the SDK uses these to dedupe by `(id, locationId)`).
       if (status) {
         const campaign = await storage.getCampaign(campaignId);
         if (campaign && isCampaignActive(campaign)) {
-          const fullComponent = await storage.getComponentById(componentId);
+          const placement = await storage.getAppPlacementById(updated.appPlacementId);
           const event: any = {
             type: 'component_status_changed',
             campaignId,
-            componentId,
+            componentId: placement?.componentId ?? null,
+            appPlacementId: updated.appPlacementId,
+            locationId: placement?.locationId ?? null,
             status,
-            component: fullComponent ? {
-              id: fullComponent.id,
-              type: fullComponent.type,
-              name: fullComponent.name,
-              config: normalizeUrls(updated.customConfig || fullComponent.config, req.protocol, req.get('host'))
-            } : null
+            component: placement ? {
+              id: placement.componentId,
+              type: placement.component?.type,
+              name: placement.component?.name,
+              config: normalizeUrls(updated.customConfig || (placement.component as any)?.config, req.protocol, req.get('host')),
+            } : null,
           };
           if (updated.matchId) {
             event.matchId = updated.matchId;
@@ -7031,7 +7063,12 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
           sponsor: {
             id: sp.id,
             name: sp.name,
+            // logoUrl is the wide / vector brand asset (often SVG which
+            // SwiftUI's AsyncImage can't decode). Pair it with the
+            // raster avatarUrl so SDK clients prefer the raster for
+            // inline UI rendering.
             logoUrl: sp.logoUrl ?? null,
+            avatarUrl: sp.avatarUrl ?? null,
             primaryColor: sp.primaryColor ?? null,
           },
           commerce: sp.commerceApiKey ? {
@@ -7088,6 +7125,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
           id: sp.id,
           name: sp.name,
           logoUrl: sp.logoUrl ?? null,
+          avatarUrl: sp.avatarUrl ?? null,
           primaryColor: sp.primaryColor ?? null,
         },
         commerce: sp.commerceApiKey ? {
