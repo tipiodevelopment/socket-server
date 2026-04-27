@@ -43,40 +43,16 @@ export function ComponentsTab({ campaignId }: ComponentsTabProps) {
     queryKey: ['/api/campaigns', campaignId, 'components'],
   });
 
-  // Component picker is scoped to the campaign's clientApp. Falls back to the
-  // global /api/components catalog if the campaign isn't linked to any app
-  // (legacy data, edge case). The placements registry PR #29 ensures any
-  // newly-registered app sees an empty list until the SDK uploads a manifest;
-  // the dashboard surfaces an empty state in that case (further down).
+  // Placement picker reads from the campaign's clientApp. Each row has
+  // `{id, name, locationId, component:{type,...}, deprecatedAt, ...}`.
+  // Operator picks one; backend uses the FK to resolve template + slot
+  // when creating the campaign_components instance.
   const clientAppId = (campaign as any)?.clientAppId as number | null | undefined;
-  const { data: allComponents = [] } = useQuery<Component[]>({
-    queryKey: clientAppId
-      ? ['/api/client-apps', clientAppId, 'components']
-      : ['/api/components'],
-    queryFn: async () => {
-      if (clientAppId) {
-        const res = await fetch(`/api/client-apps/${clientAppId}/components`);
-        if (!res.ok) return [];
-        // The endpoint returns Array<AppComponent & { component: Component }>;
-        // we want the inner Component for the picker shape.
-        const rows = (await res.json()) as Array<any>;
-        return rows.map((r) => r.component).filter(Boolean);
-      }
-      const res = await fetch('/api/components');
-      if (!res.ok) return [];
-      return res.json();
-    },
-    enabled: clientAppId !== undefined, // wait until campaign loads
-  });
-
-  // Locations registered by the SDK manifest upload (POST /v2/mobile/components/manifest).
-  // When clientAppId is null or the app has no locations yet, the picker shows
-  // an empty state with a hint to register slots from the SDK.
-  const { data: registeredLocations = [] } = useQuery<Array<{ id: number; locationId: string; displayName: string | null }>>({
-    queryKey: clientAppId ? ['/api/client-apps', clientAppId, 'component-locations'] : [],
+  const { data: appPlacements = [] } = useQuery<Array<any>>({
+    queryKey: clientAppId ? ['/api/client-apps', clientAppId, 'placements'] : [],
     queryFn: async () => {
       if (!clientAppId) return [];
-      const res = await fetch(`/api/client-apps/${clientAppId}/component-locations`);
+      const res = await fetch(`/api/client-apps/${clientAppId}/placements`);
       if (!res.ok) return [];
       return res.json();
     },
@@ -101,14 +77,10 @@ export function ComponentsTab({ campaignId }: ComponentsTabProps) {
     },
   });
 
-  // Per-sponsor product catalog. Only relevant when a sponsor is selected AND
-  // the picked component is a `product_*` type (the only kinds that bind
-  // products). Reuses the existing useSponsorCatalog hook (already wired to
-  // /v2/commerce/sponsors/:id/catalog with pagination + cache).
-  const isProductComponent = (() => {
-    const comp = allComponents.find((c) => c.id === selectedComponentId);
-    return !!comp?.type && comp.type.startsWith('product_');
-  })();
+  // Per-sponsor product catalog. Only relevant when a sponsor is selected
+  // AND the picked placement is bound to a `product_*` template.
+  const selectedPlacement = appPlacements.find((p: any) => String(p.id) === String(selectedComponentId));
+  const isProductComponent = !!selectedPlacement?.component?.type && selectedPlacement.component.type.startsWith('product_');
   const sponsorCatalog = useSponsorCatalog(
     selectedSponsorId && isProductComponent ? selectedSponsorId : null,
     { limit: 100 }
@@ -118,25 +90,22 @@ export function ComponentsTab({ campaignId }: ComponentsTabProps) {
 
   const addComponentMutation = useMutation({
     mutationFn: async (params: {
-      componentId: string;
+      appPlacementId: number;
       instanceName?: string;
-      locationId?: string;
       sponsorId: number;
       productIds?: string[];
     }) => {
-      // customConfig.productIds is the convention the SDK product views read
-      // when rendering. Empty array → fall back to component template's
-      // baseline config (legacy behavior). Only set when the operator picked
-      // products, so the SDK can distinguish "operator left default" from
-      // "operator explicitly chose 0 products".
+      // customConfig.productIds is the convention the SDK product views
+      // read when rendering. Only set when the operator picked products
+      // explicitly (so the SDK can distinguish "operator left default"
+      // from "operator chose 0 products").
       const customConfig =
         params.productIds && params.productIds.length > 0
           ? { productIds: params.productIds }
           : undefined;
       return await apiRequest('POST', `/api/campaigns/${campaignId}/components`, {
-        componentId: params.componentId,
+        appPlacementId: params.appPlacementId,
         instanceName: params.instanceName || undefined,
-        locationId: params.locationId || undefined,
         sponsorId: params.sponsorId,
         customConfig,
         status: 'inactive',
@@ -234,13 +203,10 @@ export function ComponentsTab({ campaignId }: ComponentsTabProps) {
     },
   });
 
-  // Show all template components, allowing multiple instances of the same template
-  // (e.g., Countdown 1, Countdown 2, etc. with different instanceNames).
-  // Accepts both boolean true (current `components.is_template` column type) and
-  // the legacy string 'true' that older API paths sometimes returned.
-  const availableComponents = allComponents.filter(
-    (comp) => (comp.isTemplate as unknown) === true || (comp.isTemplate as unknown) === 'true'
-  );
+  // Active (non-deprecated) named placements available to bind in this
+  // campaign. Empty when the operator hasn't created any from /apps/:id
+  // — the dashboard surfaces an empty state with a hint to go set them up.
+  const availablePlacements = appPlacements.filter((p: any) => !p.deprecatedAt);
 
   const getComponentTypeLabel = (type: string) => {
     const labels: Record<string, string> = {
@@ -288,72 +254,48 @@ export function ComponentsTab({ campaignId }: ComponentsTabProps) {
               </DialogTrigger>
               <DialogContent>
                 <DialogHeader>
-                  <DialogTitle>Add Component to Campaign</DialogTitle>
+                  <DialogTitle>Add placement to campaign</DialogTitle>
                   <DialogDescription>
-                    Select a component from your library to add to this campaign.
+                    Pick one of the app's named placements + a sponsor + (for product placements) products.
                   </DialogDescription>
                 </DialogHeader>
                 <div className="space-y-4">
-                  {availableComponents.length === 0 ? (
+                  {availablePlacements.length === 0 ? (
                     <div className="text-center py-8 text-muted-foreground">
-                      <p>No available components.</p>
-                      <p className="text-sm mt-2">Create components in the Component Library.</p>
+                      <p>No placements available for this app.</p>
+                      <p className="text-sm mt-2">
+                        Go to the app detail page (<code className="text-gray-400">/apps/{clientAppId}</code>)
+                        and use "Add from library" to declare placements first.
+                      </p>
                     </div>
                   ) : (
                     <>
                       <div className="space-y-2">
-                        <Label>Select Component</Label>
+                        <Label>Placement</Label>
                         <Select value={selectedComponentId} onValueChange={setSelectedComponentId}>
                           <SelectTrigger data-testid="select-component">
-                            <SelectValue placeholder="Choose a component..." />
+                            <SelectValue placeholder="Choose a placement..." />
                           </SelectTrigger>
                           <SelectContent>
-                            {availableComponents.map((comp) => (
-                              <SelectItem key={comp.id} value={comp.id}>
-                                {comp.name} ({getComponentTypeLabel(comp.type)})
+                            {availablePlacements.map((pl: any) => (
+                              <SelectItem key={pl.id} value={String(pl.id)}>
+                                {pl.name} <span className="text-muted-foreground">({getComponentTypeLabel(pl.component?.type ?? 'unknown')} · {pl.locationId})</span>
                               </SelectItem>
                             ))}
                           </SelectContent>
                         </Select>
                       </div>
                       <div className="space-y-2">
-                        <Label htmlFor="instance-name">Instance Name (Optional)</Label>
+                        <Label htmlFor="instance-name">Instance label (Optional)</Label>
                         <Input
                           id="instance-name"
-                          placeholder="e.g., RProductCarousel 1"
+                          placeholder="e.g. Carrusel home — XXL drop"
                           value={instanceName}
                           onChange={(e) => setInstanceName(e.target.value)}
                           data-testid="input-instance-name"
                         />
                         <p className="text-xs text-muted-foreground">
-                          Leave empty to auto-generate a name using SDK conventions
-                        </p>
-                      </div>
-                      <div className="space-y-2">
-                        <Label>Location Slot {registeredLocations.length === 0 ? '(none registered yet)' : '(Optional)'}</Label>
-                        <Select
-                          value={locationId === '' ? '__none__' : locationId}
-                          onValueChange={(v) => setLocationId(v === '__none__' ? '' : v)}
-                        >
-                          <SelectTrigger data-testid="select-location-id">
-                            <SelectValue placeholder={registeredLocations.length === 0 ? 'No slots registered by the SDK yet' : 'None (manual activation)'} />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {/* Radix forbids value="" on SelectItem, so use a sentinel and
-                                translate in onValueChange (above) → keeps the
-                                campaign_components.location_id stored as NULL/empty. */}
-                            <SelectItem value="__none__">None (manual activation)</SelectItem>
-                            {registeredLocations.map((loc) => (
-                              <SelectItem key={loc.locationId} value={loc.locationId}>
-                                {loc.displayName ? `${loc.displayName} — ${loc.locationId}` : loc.locationId}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        <p className="text-xs text-muted-foreground">
-                          {registeredLocations.length === 0
-                            ? 'The partner SDK declares slots at app boot via Vio.registerPlacementLocation(...). Run the demo once to populate this list.'
-                            : 'The SDK renders the active component for this slot at runtime.'}
+                          Optional override of the placement's name for this campaign run (e.g. for dashboard reporting). Auto-generated if blank.
                         </p>
                       </div>
 
@@ -438,9 +380,8 @@ export function ComponentsTab({ campaignId }: ComponentsTabProps) {
 
                       <Button
                         onClick={() => selectedComponentId && selectedSponsorId && addComponentMutation.mutate({
-                          componentId: selectedComponentId,
+                          appPlacementId: parseInt(selectedComponentId, 10),
                           instanceName: instanceName.trim() || undefined,
-                          locationId: locationId || undefined,
                           sponsorId: parseInt(selectedSponsorId, 10),
                           productIds: Array.from(selectedProductIds),
                         })}
@@ -518,7 +459,7 @@ export function ComponentsTab({ campaignId }: ComponentsTabProps) {
                         if (cc.component.type === 'offer_banner' && config?.title) {
                           return <div key="banner-title">Title: {config.title}</div>;
                         }
-                        return <div key="component-id" className="font-mono text-xs">ID: {cc.componentId}</div>;
+                        return <div key="component-id" className="font-mono text-xs">ID: {(cc as any).componentId}</div>;
                       })()}
                     </div>
                   </div>
@@ -537,7 +478,7 @@ export function ComponentsTab({ campaignId }: ComponentsTabProps) {
                       size="sm"
                       onClick={() =>
                         toggleStatusMutation.mutate({
-                          componentId: cc.componentId,
+                          componentId: String(cc.id),
                           status: cc.status === 'active' ? 'inactive' : 'active',
                         })
                       }
@@ -595,15 +536,15 @@ export function ComponentsTab({ campaignId }: ComponentsTabProps) {
             <CampaignComponentConfigForm
               campaignComponent={editingConfigFor}
               onSubmit={(customConfig) =>
-                updateConfigMutation.mutate({ 
-                  componentId: editingConfigFor.componentId, 
-                  customConfig 
+                updateConfigMutation.mutate({
+                  componentId: String(editingConfigFor.id),
+                  customConfig
                 })
               }
               onRevertToDefault={() => {
-                updateConfigMutation.mutate({ 
-                  componentId: editingConfigFor.componentId, 
-                  customConfig: null 
+                updateConfigMutation.mutate({
+                  componentId: String(editingConfigFor.id),
+                  customConfig: null
                 });
               }}
               onCancel={() => setEditingConfigFor(null)}

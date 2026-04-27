@@ -1,6 +1,6 @@
 import { useParams, Link, useLocation } from 'wouter';
 import { useQuery, useMutation } from '@tanstack/react-query';
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -110,20 +110,40 @@ export default function AppDetailPage() {
     enabled: !!appIdNum
   });
 
-  const { data: appComponentsData = [] } = useQuery<any[]>({
-    queryKey: ['/api/client-apps', appIdNum, 'components'],
+  // App placements (named instances declared by the SDK manifest):
+  // each row is a (name, componentType, locationId) tuple the dev's app
+  // registered via Vio.registerPlacement(...). This replaces the legacy
+  // app_components view where the dashboard listed raw types — operators
+  // now see the actual named placements they can bind in campaigns.
+  const { data: appPlacementsData = [] } = useQuery<any[]>({
+    queryKey: ['/api/client-apps', appIdNum, 'placements'],
     queryFn: async () => {
-      const res = await fetch(`/api/client-apps/${appIdNum}/components`);
-      if (!res.ok) throw new Error('Failed to fetch components');
+      const res = await fetch(`/api/client-apps/${appIdNum}/placements`);
+      if (!res.ok) throw new Error('Failed to fetch placements');
       return res.json();
     },
     enabled: !!appIdNum
   });
 
+  // Locations declared by the SDK manifest. Source for the "Add from
+  // library" form's locationId dropdown — operator can only assign a
+  // placement to a slot the dev's app actually exposes.
+  const { data: appLocationsData = [] } = useQuery<any[]>({
+    queryKey: ['/api/client-apps', appIdNum, 'component-locations'],
+    queryFn: async () => {
+      const res = await fetch(`/api/client-apps/${appIdNum}/component-locations`);
+      if (!res.ok) throw new Error('Failed to fetch app locations');
+      return res.json();
+    },
+    enabled: !!appIdNum
+  });
+
+  // Read-only library templates (`is_template = true`). Source for the
+  // "Add from library" form's template dropdown.
   const { data: allComponents = [] } = useQuery<ComponentType[]>({
     queryKey: ['/api/components'],
     queryFn: async () => {
-      const res = await fetch('/api/components');
+      const res = await fetch('/api/components?isTemplate=true');
       if (!res.ok) throw new Error('Failed to fetch components');
       return res.json();
     },
@@ -161,6 +181,40 @@ export default function AppDetailPage() {
     }
   });
 
+  // Create a named app_placement (operator-driven). Body shape matches
+  // the backend's POST /api/client-apps/:id/placements endpoint.
+  const createPlacementMutation = useMutation({
+    mutationFn: async (args: { componentId: string; locationId: string; name: string }) => {
+      const response = await apiRequest('POST', `/api/client-apps/${appIdNum}/placements`, args);
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/client-apps', appIdNum, 'placements'] });
+      toast({ title: 'Placement created', description: 'Available now in campaign placement pickers.' });
+    },
+    onError: (err: any) => {
+      const code = err?.code ?? '';
+      const msg = err?.message ?? 'Failed to create placement';
+      toast({ title: code || 'Error', description: msg, variant: 'destructive' });
+    }
+  });
+
+  // Soft-delete a named placement. Existing campaign_components keep
+  // rendering with a deprecation warning until the operator unbinds them.
+  const deprecatePlacementMutation = useMutation({
+    mutationFn: async (placementId: number) => {
+      await apiRequest('DELETE', `/api/client-apps/${appIdNum}/placements/${placementId}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/client-apps', appIdNum, 'placements'] });
+      toast({ title: 'Placement deprecated', description: 'Existing campaign instances stay live with a warning.' });
+    },
+    onError: () => {
+      toast({ title: 'Error', description: 'Failed to deprecate placement', variant: 'destructive' });
+    }
+  });
+
+  // ── Legacy mutations (RETIRED — endpoints return 410) ──────────────────
   const addComponentMutation = useMutation({
     mutationFn: async (componentId: string) => {
       const response = await apiRequest('POST', `/api/client-apps/${appIdNum}/components`, { componentId });
@@ -227,8 +281,10 @@ export default function AppDetailPage() {
   const totalViewers = currentAppStats?.stats?.totalViewers ?? 0;
   const engagementRate = currentAppStats?.stats?.engagementPercent ?? 0;
 
-  const assignedComponentIds = new Set(appComponentsData.map((ac: any) => ac.componentId));
-  const availableComponents = allComponents.filter(c => !assignedComponentIds.has(c.id));
+  // All canonical templates are pickable for the "Add from library" form.
+  // The dual-UNIQUE on app_placements (per name + per slot) and the
+  // server-side validation handle dedupe — no need to filter client-side.
+  const availableComponents = allComponents;
 
   if (appLoading || userLoading || (!app && !userId)) {
     return (
@@ -371,49 +427,71 @@ export default function AppDetailPage() {
             <div className="border border-white/10 rounded-lg p-6">
               <div className="flex items-center justify-between mb-6">
                 <div>
-                  <h2 className="text-sm font-semibold text-gray-400 uppercase mb-1">Components</h2>
-                  <p className="text-xs text-gray-500">Components assigned to this app</p>
+                  <h2 className="text-sm font-semibold text-gray-400 uppercase mb-1">Placements</h2>
+                  <p className="text-xs text-gray-500">
+                    Named placements available to campaigns. Each is a (template, slot, name) trio
+                    — pick from <code className="text-gray-400">{appLocationsData.filter((l: any) => !l.deprecatedAt).length} declared slot{appLocationsData.filter((l: any) => !l.deprecatedAt).length !== 1 ? 's' : ''}</code>.
+                  </p>
                 </div>
                 <button
-                  data-testid="button-add-component"
+                  data-testid="button-add-placement"
                   onClick={() => setAddComponentOpen(true)}
-                  className="px-4 py-1.5 bg-white hover:bg-gray-200 text-black rounded text-xs font-medium flex items-center gap-2 transition"
+                  disabled={appLocationsData.filter((l: any) => !l.deprecatedAt).length === 0}
+                  className="px-4 py-1.5 bg-white hover:bg-gray-200 disabled:opacity-30 disabled:cursor-not-allowed text-black rounded text-xs font-medium flex items-center gap-2 transition"
                 >
                   <Plus className="w-3 h-3" />
-                  Add Component
+                  Add from library
                 </button>
               </div>
 
               <div className="space-y-3">
-                {appComponentsData.length === 0 ? (
+                {appPlacementsData.length === 0 ? (
                   <div className="text-center py-8">
                     <Puzzle className="w-10 h-10 text-gray-500 mx-auto mb-3" />
-                    <p className="text-sm text-gray-500">No components assigned yet</p>
+                    <p className="text-sm text-gray-500">No placements created yet</p>
+                    {appLocationsData.filter((l: any) => !l.deprecatedAt).length === 0 ? (
+                      <p className="text-xs text-amber-400 mt-1">
+                        ⚠ The app's SDK hasn't declared any locations yet. Cold-start the app once so the manifest registers slots.
+                      </p>
+                    ) : (
+                      <p className="text-xs text-gray-600 mt-1">Click "Add from library" to bind a template to a declared slot.</p>
+                    )}
                   </div>
                 ) : (
-                  appComponentsData.map((ac: any) => (
-                    <div
-                      key={ac.id}
-                      className="border border-white/10 rounded-lg p-4 flex items-center justify-between hover:border-white/30 transition"
-                    >
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 bg-white/10 rounded flex items-center justify-center">
-                          <Puzzle className="w-4 h-4 text-white" />
-                        </div>
-                        <div>
-                          <h3 className="font-semibold text-sm text-white">{ac.component?.name || ac.componentId}</h3>
-                          <p className="text-xs text-gray-500">{ac.component?.type || 'Component'}</p>
-                        </div>
-                      </div>
-                      <button
-                        onClick={() => removeComponentMutation.mutate(ac.componentId)}
-                        className="w-8 h-8 flex items-center justify-center rounded hover:bg-white/10 text-gray-500 hover:text-white transition"
-                        data-testid={`button-remove-component-${ac.componentId}`}
+                  appPlacementsData.map((pl: any) => {
+                    const deprecated = !!pl.deprecatedAt;
+                    return (
+                      <div
+                        key={pl.id}
+                        className={`border ${deprecated ? 'border-amber-700/40 bg-amber-950/20' : 'border-white/10 hover:border-white/30'} rounded-lg p-4 flex items-center justify-between transition`}
                       >
-                        <X className="w-4 h-4" />
-                      </button>
-                    </div>
-                  ))
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 bg-white/10 rounded flex items-center justify-center">
+                            <Puzzle className="w-4 h-4 text-white" />
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <h3 className="font-semibold text-sm text-white">{pl.name}</h3>
+                              {deprecated && <span className="text-[9px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-amber-700/30 text-amber-300">deprecated</span>}
+                            </div>
+                            <p className="text-xs text-gray-500">
+                              {pl.component?.type || 'unknown_type'} · <span className="text-gray-400">{pl.locationId}</span>
+                            </p>
+                          </div>
+                        </div>
+                        {!deprecated && (
+                          <button
+                            onClick={() => deprecatePlacementMutation.mutate(pl.id)}
+                            className="w-8 h-8 flex items-center justify-center rounded hover:bg-white/10 text-gray-500 hover:text-white transition"
+                            data-testid={`button-deprecate-placement-${pl.id}`}
+                            title="Deprecate placement (soft-delete; existing campaign uses keep rendering)"
+                          >
+                            <X className="w-4 h-4" />
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })
                 )}
               </div>
             </div>
@@ -936,45 +1014,19 @@ ReachuSDK.configure(
         </DialogContent>
       </Dialog>
 
-      <Dialog open={addComponentOpen} onOpenChange={setAddComponentOpen}>
-        <DialogContent className="bg-[#141824] border border-white/10 max-w-lg">
-          <DialogHeader>
-            <DialogTitle className="text-white">Add Component</DialogTitle>
-            <DialogDescription className="text-gray-500">
-              Select a component from the library to add to this app
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-2 max-h-[60vh] overflow-y-auto py-2">
-            {availableComponents.length === 0 ? (
-              <div className="text-center py-8">
-                <Puzzle className="w-10 h-10 text-gray-600 mx-auto mb-3" />
-                <p className="text-sm text-gray-500">No available components to add</p>
-              </div>
-            ) : (
-              availableComponents.map(comp => (
-                <button
-                  key={comp.id}
-                  onClick={() => {
-                    addComponentMutation.mutate(comp.id);
-                    setAddComponentOpen(false);
-                  }}
-                  className="w-full flex items-center gap-3 p-3 rounded hover:bg-white/5 transition text-left border border-white/10"
-                  data-testid={`button-select-component-${comp.id}`}
-                >
-                  <div className="w-10 h-10 bg-white/10 rounded flex items-center justify-center">
-                    <Puzzle className="w-4 h-4 text-white" />
-                  </div>
-                  <div className="flex-1">
-                    <div className="text-sm font-medium text-white">{comp.name}</div>
-                    <div className="text-xs text-gray-500">{comp.type}</div>
-                  </div>
-                  <Plus className="w-4 h-4 text-gray-500" />
-                </button>
-              ))
-            )}
-          </div>
-        </DialogContent>
-      </Dialog>
+      <AddPlacementFromLibraryDialog
+        open={addComponentOpen}
+        onOpenChange={setAddComponentOpen}
+        availableComponents={availableComponents}
+        availableLocations={appLocationsData.filter((l: any) => !l.deprecatedAt)}
+        existingPlacementNames={new Set(appPlacementsData.filter((p: any) => !p.deprecatedAt).map((p: any) => p.name))}
+        onSubmit={(args) => {
+          createPlacementMutation.mutate(args, {
+            onSuccess: () => setAddComponentOpen(false)
+          });
+        }}
+        submitting={createPlacementMutation.isPending}
+      />
 
       <AlertDialog open={regenerateDialogOpen} onOpenChange={setRegenerateDialogOpen}>
         <AlertDialogContent className="bg-[#141824] border border-white/10">
@@ -996,5 +1048,123 @@ ReachuSDK.configure(
         </AlertDialogContent>
       </AlertDialog>
     </AppLayout>
+  );
+}
+
+// ── Add-from-library dialog ────────────────────────────────────────────────
+// Inline component (per rule #7: no new files for this iteration). Renders
+// the 3-field form for creating a named app_placement from a library
+// template + a declared location.
+function AddPlacementFromLibraryDialog({
+  open,
+  onOpenChange,
+  availableComponents,
+  availableLocations,
+  existingPlacementNames,
+  onSubmit,
+  submitting,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  availableComponents: any[];
+  availableLocations: any[];
+  existingPlacementNames: Set<string>;
+  onSubmit: (args: { componentId: string; locationId: string; name: string }) => void;
+  submitting: boolean;
+}) {
+  const [componentId, setComponentId] = useState('');
+  const [locationId, setLocationId] = useState('');
+  const [name, setName] = useState('');
+
+  // Reset on open/close so the form is fresh each time.
+  React.useEffect(() => {
+    if (!open) {
+      setComponentId('');
+      setLocationId('');
+      setName('');
+    }
+  }, [open]);
+
+  const trimmedName = name.trim();
+  const nameTaken = trimmedName !== '' && existingPlacementNames.has(trimmedName);
+  const canSubmit = componentId !== '' && locationId !== '' && trimmedName !== '' && !nameTaken && !submitting;
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="bg-[#141824] border border-white/10 max-w-lg">
+        <DialogHeader>
+          <DialogTitle className="text-white">Add placement from library</DialogTitle>
+          <DialogDescription className="text-gray-500">
+            Pick a template, a slot the SDK declared, and give it a human name.
+            The result is available to all campaigns of this app.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-4 py-2">
+          <div>
+            <label className="block text-xs uppercase tracking-wider text-gray-400 mb-1">Template</label>
+            <select
+              data-testid="select-placement-component"
+              value={componentId}
+              onChange={(e) => setComponentId(e.target.value)}
+              className="w-full bg-[#0d1018] border border-white/10 rounded px-3 py-2 text-sm text-white focus:outline-none focus:border-white/30"
+            >
+              <option value="">— Select a template —</option>
+              {availableComponents.map(c => (
+                <option key={c.id} value={c.id}>{c.name} ({c.type})</option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-xs uppercase tracking-wider text-gray-400 mb-1">Slot location (declared by SDK)</label>
+            <select
+              data-testid="select-placement-location"
+              value={locationId}
+              onChange={(e) => setLocationId(e.target.value)}
+              className="w-full bg-[#0d1018] border border-white/10 rounded px-3 py-2 text-sm text-white focus:outline-none focus:border-white/30"
+            >
+              <option value="">— Select a slot —</option>
+              {availableLocations.map((l: any) => (
+                <option key={l.locationId} value={l.locationId}>
+                  {l.locationId}{l.displayName ? ` — ${l.displayName}` : ''}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-xs uppercase tracking-wider text-gray-400 mb-1">Name</label>
+            <input
+              data-testid="input-placement-name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="e.g. Carrusel home"
+              className="w-full bg-[#0d1018] border border-white/10 rounded px-3 py-2 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-white/30"
+            />
+            {nameTaken && (
+              <p className="text-xs text-red-400 mt-1">Name already used by another placement in this app.</p>
+            )}
+          </div>
+        </div>
+
+        <DialogFooter>
+          <button
+            onClick={() => onOpenChange(false)}
+            className="px-4 py-1.5 text-xs text-gray-300 hover:text-white transition"
+          >
+            Cancel
+          </button>
+          <button
+            data-testid="button-submit-placement"
+            disabled={!canSubmit}
+            onClick={() => onSubmit({ componentId, locationId, name: trimmedName })}
+            className="px-4 py-1.5 bg-white hover:bg-gray-200 disabled:opacity-30 disabled:cursor-not-allowed text-black rounded text-xs font-medium transition"
+          >
+            {submitting ? 'Creating…' : 'Create placement'}
+          </button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

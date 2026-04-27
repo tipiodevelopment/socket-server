@@ -462,7 +462,7 @@ export function OverviewTab({ campaignId, campaign, onNavigateTab }: OverviewTab
                         <Pencil className="w-3 h-3" />
                       </button>
                       <button
-                        onClick={() => toggleStatusMutation.mutate({ componentId: cc.componentId, status: 'inactive' })}
+                        onClick={() => toggleStatusMutation.mutate({ componentId: String(cc.id), status: 'inactive' })}
                         disabled={toggleStatusMutation.isPending || !isCampaignActive() || isPaused}
                         className="p-1 hover:bg-white/10 rounded text-gray-500 hover:text-white transition"
                         data-testid={`overview-toggle-${cc.id}`}
@@ -535,13 +535,13 @@ export function OverviewTab({ campaignId, campaign, onNavigateTab }: OverviewTab
               campaignComponent={editingConfigFor}
               onSubmit={(customConfig) =>
                 updateConfigMutation.mutate({
-                  componentId: editingConfigFor.componentId,
+                  componentId: String(editingConfigFor.id),
                   customConfig
                 })
               }
               onRevertToDefault={() => {
                 updateConfigMutation.mutate({
-                  componentId: editingConfigFor.componentId,
+                  componentId: String(editingConfigFor.id),
                   customConfig: null
                 });
               }}
