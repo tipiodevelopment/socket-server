@@ -87,14 +87,16 @@ Backend is launched via `npm run dev` which runs `tsx server/index.ts` **without
 
 ## 5. Database state (Neon)
 
-**⚠️ Seguimos usando esta branch** — locked decision, no re-forkear.
+**⚠️ Seguimos usando `local/angelo-…` localmente — develop refrescado 2026-04-27 para que otros devs puedan trabajar.**
 
-| Branch | ID | Role |
-|---|---|---|
-| `local/angelo-20260423-1814` | `br-summer-morning-a8y0i36l` | **🟢 active** — `DATABASE_URL` + `PGHOST` apuntan aquí. Forkeada de develop 2026-04-23 18:14. Phase 3 NOT NULL aplicada. Campaign 36 sponsors alineados con keys reales. Broadcast `barcelona-psg-2026-03-03` tiene `endTime` pushed al futuro + `status=live` para smoke tests. |
-| `feature/placements-v2-20260423-1250` | `br-damp-snow-a8rv0cnc` | idle safety net |
-| `develop` | `br-royal-mode-a8e8mdq1` | shared dev, intact |
-| others | (production, staging, dev/*, test/*, backup/*) | idle / historical |
+| Branch | ID | Endpoint host | Role |
+|---|---|---|---|
+| `local/angelo-20260423-1814` | `br-summer-morning-a8y0i36l` | `ep-odd-tree-a8c6hlj0` | **🟢 active** — `DATABASE_URL` + `PGHOST` apuntan aquí. Forkeada de develop 2026-04-23 18:14. Phase 3 NOT NULL aplicada. Campaign 36 sponsors alineados con keys reales. Broadcast `barcelona-psg-2026-03-03` con `endTime` pushed + `status=live` para smoke. |
+| `develop` | `br-royal-mode-a8e8mdq1` | `ep-summer-star-a89av46e` | 🟢 **refrescado 2026-04-27 12:34 UTC desde local** vía Neon's `restore` (preserve_under_name). Mismo schema + datos del sprint. Nadie tiene que re-forkear para trabajar. |
+| `backup/develop-pre-promote-20260427-1435` | `br-still-rice-a8ms51nu` | (suspended) | snapshot atómico del develop pre-promote, by-product del restore. **No tocar** — safety net. |
+| `feature/placements-v2-20260423-1250` | `br-damp-snow-a8rv0cnc` | (suspended) | idle safety net del fork inicial del sprint |
+| `dev/jhondev`, `dev/alan` | — | — | idle, may want to re-fork from develop now if they need fresh data |
+| others | (production, staging, test/*, backup/*) | — | idle / historical |
 
 **`.env` backups**:
 - `/tmp/vio-env-develop-before-placements.bak` (12:50)
