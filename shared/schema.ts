@@ -1483,7 +1483,11 @@ export const offerBadgeConfigSchema = z.object({
 });
 
 export const offerBannerConfigSchema = z.object({
-  logoUrl: z.string().url(),
+  // logoUrl is OPTIONAL: when empty/absent the SDK auto-resolves
+  // the placement's sponsor logo (sponsor.logoUrl by the row's
+  // sponsorId). Operator only fills this in when they want to
+  // override the sponsor branding for this specific banner.
+  logoUrl: z.string().url().optional(),
   title: z.string(),
   subtitle: z.string().optional(),
   // backgroundImageUrl is the preferred way; backgroundColor is a fallback

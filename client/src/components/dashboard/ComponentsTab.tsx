@@ -1067,10 +1067,10 @@ export function CampaignComponentConfigForm({
           <>
             {/* Required Fields */}
             <ImageUploadWithPreview
-              label="Logo URL *"
+              label="Logo URL (optional — leave empty to use the sponsor logo)"
               value={config.logoUrl || ''}
-              onChange={(url) => setConfig({ ...config, logoUrl: url })}
-              placeholder="/objects/uploads/... or https://..."
+              onChange={(url) => setConfig({ ...config, logoUrl: url || undefined })}
+              placeholder="Leave empty to use sponsor.logoUrl, or paste a custom URL"
               testId="input-logoUrl"
             />
 
