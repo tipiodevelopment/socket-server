@@ -3473,17 +3473,29 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
     }
   });
 
-  // Update campaign component custom configuration.
+  // Update campaign component custom configuration (and optionally
+  // the placement's sponsor).
   //
-  // Atomic UPDATE + outbox enqueue (Phase 3 of the live-updates sprint).
-  // Emits `placement_config_updated` with a `productIdsChanged` hint so
-  // the SDK can decide whether to flash a skeleton (productIds changed →
-  // catalog reload needed) or swap in place (title/showSponsorLogo only).
+  // Atomic UPDATE + outbox enqueue (Phase 3 of the live-updates sprint,
+  // extended later to cover in-place sponsor swaps so the operator can
+  // edit an active row without first pausing it).
+  //
+  // Body: `{ customConfig, sponsorId? }`.
+  //   - `customConfig` is required (use `null` to clear / revert to
+  //     template defaults).
+  //   - `sponsorId` is optional. When present and different from the
+  //     row's current sponsor, validates against campaign_sponsors and
+  //     updates the row.
+  //
+  // Emits a single `placement_config_updated` event covering both the
+  // customConfig change and the sponsor swap so the SDK applies them
+  // atomically (SDK reads new sponsorId, ProductService picks the new
+  // sponsor's commerce key on the next load).
   app.patch('/api/campaigns/:id/components/:componentId/config', async (req, res) => {
     try {
       const campaignId = parseInt(req.params.id);
       const { componentId } = req.params;
-      const { customConfig } = req.body;
+      const { customConfig, sponsorId: rawSponsorId } = req.body;
 
       // Allow null/undefined to clear customConfig and revert to template defaults
       if (customConfig === undefined) {
@@ -3493,6 +3505,19 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       const rowId = parseInt(componentId);
       if (Number.isNaN(rowId)) {
         return res.status(400).json({ message: 'componentId must be a numeric campaign_components row id' });
+      }
+
+      const sponsorIdProvided = rawSponsorId !== undefined && rawSponsorId !== null;
+      const newSponsorId = sponsorIdProvided ? Number(rawSponsorId) : null;
+      if (sponsorIdProvided && (Number.isNaN(newSponsorId as number) || (newSponsorId as number) <= 0)) {
+        return res.status(400).json({ message: 'sponsorId must be a positive integer' });
+      }
+      if (sponsorIdProvided) {
+        // Ensure the new sponsor is allowed for this campaign (primary or secondary).
+        const allowed = await storage.isSponsorAllowedForCampaign(newSponsorId as number, campaignId);
+        if (!allowed) {
+          return res.status(400).json({ message: 'Sponsor is not associated with this campaign (must be primary or secondary)' });
+        }
       }
 
       // Helper: extract `productIds: string[]` from a customConfig blob.
@@ -3513,6 +3538,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
           id: campaignComponents.id,
           customConfig: campaignComponents.customConfig,
           appPlacementId: campaignComponents.appPlacementId,
+          sponsorId: campaignComponents.sponsorId,
           status: campaignComponents.status,
         })
           .from(campaignComponents)
@@ -3524,11 +3550,17 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
 
         if (!before) return undefined;
 
+        const sponsorChanged = sponsorIdProvided && before.sponsorId !== newSponsorId;
+        const updatePatch: Record<string, unknown> = {
+          customConfig,
+          updatedAt: new Date(),
+        };
+        if (sponsorChanged) {
+          updatePatch.sponsorId = newSponsorId;
+        }
+
         const [row] = await tx.update(campaignComponents)
-          .set({
-            customConfig,
-            updatedAt: new Date(),
-          })
+          .set(updatePatch)
           .where(and(
             eq(campaignComponents.campaignId, campaignId),
             eq(campaignComponents.id, rowId),
@@ -3558,6 +3590,8 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
               campaignComponentId: row.id,
               customConfig: customConfig ?? null,
               productIdsChanged,
+              sponsorId: row.sponsorId,
+              sponsorChanged,
             },
           });
         }

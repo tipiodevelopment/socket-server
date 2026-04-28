@@ -236,8 +236,23 @@ export function ComponentsTab({ campaignId }: ComponentsTabProps) {
   });
 
   const updateConfigMutation = useMutation({
-    mutationFn: async ({ componentId, customConfig }: { componentId: string; customConfig: any }) => {
-      return await apiRequest('PATCH', `/api/campaigns/${campaignId}/components/${componentId}/config`, { customConfig });
+    mutationFn: async ({
+      componentId,
+      customConfig,
+      sponsorId,
+    }: {
+      componentId: string;
+      customConfig: any;
+      sponsorId?: number;
+    }) => {
+      // Body is forwarded as-is; backend treats sponsorId as optional
+      // and only validates / updates when provided. Customize dialog
+      // sends it when the operator picks a different sponsor on an
+      // existing binding (in-place sponsor swap, no row recreation).
+      return await apiRequest('PATCH', `/api/campaigns/${campaignId}/components/${componentId}/config`, {
+        customConfig,
+        ...(sponsorId !== undefined ? { sponsorId } : {}),
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/campaigns', campaignId, 'components'] });
@@ -662,16 +677,18 @@ export function ComponentsTab({ campaignId }: ComponentsTabProps) {
           {editingConfigFor && (
             <CampaignComponentConfigForm
               campaignComponent={editingConfigFor}
-              onSubmit={(customConfig) =>
+              campaignSponsors={campaignSponsors}
+              onSubmit={(customConfig, sponsorId) =>
                 updateConfigMutation.mutate({
                   componentId: String(editingConfigFor.id),
-                  customConfig
+                  customConfig,
+                  sponsorId,
                 })
               }
               onRevertToDefault={() => {
                 updateConfigMutation.mutate({
                   componentId: String(editingConfigFor.id),
-                  customConfig: null
+                  customConfig: null,
                 });
               }}
               onCancel={() => setEditingConfigFor(null)}
@@ -686,25 +703,50 @@ export function ComponentsTab({ campaignId }: ComponentsTabProps) {
 
 export interface CampaignComponentConfigFormProps {
   campaignComponent: CampaignComponent & { component: Component };
-  onSubmit: (customConfig: any) => void;
+  /** Allowed sponsors for this campaign (primary + secondaries). The
+   *  customize dialog renders a select so the operator can swap the
+   *  binding's sponsor in place without first pausing the row. */
+  campaignSponsors: Array<{
+    sponsorId: number;
+    name: string;
+    role: string;
+    logoUrl: string | null;
+    primaryColor: string | null;
+  }>;
+  onSubmit: (customConfig: any, sponsorId?: number) => void;
   onRevertToDefault: () => void;
   onCancel: () => void;
   isLoading: boolean;
 }
 
-export function CampaignComponentConfigForm({ 
-  campaignComponent, 
-  onSubmit, 
+export function CampaignComponentConfigForm({
+  campaignComponent,
+  campaignSponsors,
+  onSubmit,
   onRevertToDefault,
-  onCancel, 
-  isLoading 
+  onCancel,
+  isLoading,
 }: CampaignComponentConfigFormProps) {
   const currentConfig = (campaignComponent.customConfig || campaignComponent.component.config) as any;
   const [config, setConfig] = useState(currentConfig || {});
 
+  // Sponsor swap state. Defaults to the row's current sponsor; when
+  // the operator picks a different one and saves, the dialog
+  // forwards it through onSubmit so the parent's PATCH includes
+  // `sponsorId` in the body. Backend validates against
+  // campaign_sponsors and emits placement_config_updated atomically.
+  const initialSponsorId = (campaignComponent as any).sponsorId
+    ? Number((campaignComponent as any).sponsorId)
+    : undefined;
+  const [selectedSponsorId, setSelectedSponsorId] = useState<string>(
+    initialSponsorId !== undefined ? String(initialSponsorId) : ''
+  );
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    onSubmit(config);
+    const parsedSponsor = selectedSponsorId ? parseInt(selectedSponsorId, 10) : undefined;
+    const sponsorChanged = parsedSponsor !== undefined && parsedSponsor !== initialSponsorId;
+    onSubmit(config, sponsorChanged ? parsedSponsor : undefined);
   };
 
   const renderConfigFields = () => {
@@ -1429,8 +1471,38 @@ export function CampaignComponentConfigForm({
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
+      {/* Sponsor swap. Operator picks a different sponsor → on save
+          the dialog includes sponsorId in the PATCH body. Backend
+          validates membership in campaign_sponsors and emits a single
+          placement_config_updated event covering both the customConfig
+          edit and the sponsor change so the SDK applies them atomically
+          (header logo + per-sponsor commerce key both update in one
+          render pass). */}
+      {campaignSponsors.length > 0 && (
+        <div className="space-y-2 pb-4 border-b">
+          <Label htmlFor="customize-sponsor">Sponsor</Label>
+          <Select value={selectedSponsorId} onValueChange={setSelectedSponsorId}>
+            <SelectTrigger data-testid="select-customize-sponsor">
+              <SelectValue placeholder="Select a sponsor" />
+            </SelectTrigger>
+            <SelectContent>
+              {campaignSponsors.map((s) => (
+                <SelectItem key={s.sponsorId} value={String(s.sponsorId)}>
+                  {s.name} {s.role !== 'primary' ? `· ${s.role}` : '· primary'}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <p className="text-xs text-muted-foreground">
+            Changing the sponsor updates the header logo + routes products to the new
+            sponsor's commerce catalog. Update productId/productIds below if the new
+            sponsor doesn't carry the same product.
+          </p>
+        </div>
+      )}
+
       {renderConfigFields()}
-      
+
       <div className="flex gap-2 justify-between pt-4">
         {campaignComponent.customConfig ? (
           <Button

@@ -76,9 +76,12 @@ export interface PlacementStatusChangedPayload {
 
 /**
  * Operator changed customConfig (productIds, title, layout, autoPlay,
- * interval, showSponsorLogo, etc.). The SDK applies the new config in
- * place. If `productIdsChanged=true`, the view shows a brief skeleton
- * while reloading the catalog; otherwise the swap is silent.
+ * interval, showSponsorLogo, etc.) and/or the placement's sponsor.
+ * The SDK applies the new config + sponsor in place. If
+ * `productIdsChanged=true`, the view shows a brief skeleton while
+ * reloading the catalog; otherwise the swap is silent. When
+ * `sponsorId` differs from the SDK's cached value, ProductService
+ * routes to the new sponsor's commerce key on the next product load.
  */
 export interface PlacementConfigUpdatedPayload {
   campaignId: number;
@@ -88,6 +91,15 @@ export interface PlacementConfigUpdatedPayload {
   customConfig: Record<string, unknown>;
   /** Hint for the SDK to decide whether to show a skeleton. */
   productIdsChanged: boolean;
+  /** Current sponsor of the row (after the update). The SDK uses
+   *  this to update Component.sponsorId so per-sponsor commerce key
+   *  routing stays consistent. Always emitted when the row has a
+   *  sponsor; null only for legacy rows pre-multi-sponsor migration. */
+  sponsorId: number | null;
+  /** True when the operator actually changed the sponsor (vs. just
+   *  edited customConfig). The SDK can use this to decide whether to
+   *  re-render the header sponsor logo. */
+  sponsorChanged: boolean;
 }
 
 /**
