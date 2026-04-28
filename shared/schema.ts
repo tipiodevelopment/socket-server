@@ -1532,14 +1532,23 @@ export const productBannerConfigSchema = z.object({
   
   // Alignment
   textAlignment: z.enum(["left", "center", "right"]).default("center").optional(),
-  contentVerticalAlignment: z.enum(["top", "center", "bottom"]).default("center").optional()
+  contentVerticalAlignment: z.enum(["top", "center", "bottom"]).default("center").optional(),
+
+  // Operator opt-in: stamp the placement's sponsor logo on the
+  // top-right corner of the banner (resolved by sponsorId →
+  // sponsor.logoUrl). SVG-capable on the SDK side. Default off.
+  showSponsorLogo: z.boolean().optional()
 });
 
 export const productStoreConfigSchema = z.object({
   mode: z.enum(["all", "filtered"]).default("all"),
   productIds: z.array(z.string()).optional(),
   displayType: z.enum(["grid", "list"]).default("grid"),
-  columns: z.number().default(2)
+  columns: z.number().default(2),
+  // Operator-controllable header band rendered above the grid —
+  // mirrors the carousel pattern. Both opt-in.
+  title: z.string().optional(),
+  showSponsorLogo: z.boolean().optional()
 });
 
 export const componentConfigSchema = z.union([

@@ -104,7 +104,9 @@ export function ComponentsTab({ campaignId }: ComponentsTabProps) {
       // single-product templates (spotlight) we pick the FIRST id and
       // drop the array semantics. Mismatched shapes silently break the
       // SDK decoder (Component renders empty), so guarding here.
-      const SINGLE_PRODUCT_TEMPLATES = new Set(['product_spotlight']);
+      // product_spotlight + product_banner both decode `productId: String`
+      // (singular). Carousel/store/slider take `productIds: string[]`.
+      const SINGLE_PRODUCT_TEMPLATES = new Set(['product_spotlight', 'product_banner']);
       const targetPlacement = appPlacements.find((p: any) => p.id === params.appPlacementId);
       const templateType = targetPlacement?.component?.type as string | undefined;
       const isSingleProductTemplate = templateType ? SINGLE_PRODUCT_TEMPLATES.has(templateType) : false;
@@ -711,7 +713,9 @@ export function CampaignComponentConfigForm({
   // shape the template expects so the SDK decoder doesn't break.
   const componentType = campaignComponent.component.type;
   const isProductTemplate = componentType.startsWith('product_');
-  const isSingleProduct = componentType === 'product_spotlight';
+  // product_spotlight + product_banner both decode `productId: String`
+  // (singular). Other product_* templates use `productIds: string[]`.
+  const isSingleProduct = componentType === 'product_spotlight' || componentType === 'product_banner';
   const initialProductIds: Set<string> = (() => {
     if (!isProductTemplate) return new Set();
     if (isSingleProduct) {
@@ -1297,18 +1301,23 @@ export function CampaignComponentConfigForm({
       case 'product_banner':
         return (
           <>
-            {/* Required Fields */}
-            <div className="space-y-2">
-              <Label htmlFor="productId">Product ID *</Label>
-              <Input
-                id="productId"
-                value={config.productId || ''}
-                onChange={(e) => setConfig({ ...config, productId: e.target.value })}
-                placeholder="408895"
-                data-testid="input-productId"
-              />
-              <p className="text-xs text-muted-foreground">ID del producto en Commerce. El título del banner es editorial (no se toma del producto).</p>
-            </div>
+            {/* Required Fields — product picker (single, scoped to
+                the form's selected sponsor). Title is editorial copy
+                rendered ON the banner image (not the placement
+                header), so it stays a free-text input below. */}
+            <SponsorProductPicker
+              sponsorId={selectedSponsorId}
+              sponsorName={sponsorName}
+              mode="single"
+              selectedIds={selectedProductIds}
+              onChange={setSelectedProductIds}
+              label={`Product ${sponsorName ? `from ${sponsorName}` : ''}`}
+              helperText={
+                selectedProductIds.size === 0
+                  ? "Pick the product the banner taps into."
+                  : `Selected: ${Array.from(selectedProductIds)[0]}`
+              }
+            />
 
             <ImageUploadWithPreview
               label="Background Image"
@@ -1327,7 +1336,24 @@ export function CampaignComponentConfigForm({
                 placeholder="Producto Destacado"
                 data-testid="input-title"
               />
-              <p className="text-xs text-muted-foreground">Leave empty to use product name</p>
+              <p className="text-xs text-muted-foreground">Editorial heading rendered on the banner image. Leave empty to use product name.</p>
+            </div>
+
+            {/* Sponsor logo overlay opt-in. Banner already has its
+                own visible title/subtitle, so the polish skips the
+                separate header strip pattern (Carousel/Spotlight)
+                and only stamps the placement's sponsor logo onto
+                the banner top-right corner. */}
+            <div className="space-y-2 flex items-center gap-2">
+              <input
+                type="checkbox"
+                id="banner-showSponsorLogo"
+                checked={config.showSponsorLogo === true}
+                onChange={(e) => setConfig({ ...config, showSponsorLogo: e.target.checked || undefined })}
+                data-testid="checkbox-banner-showSponsorLogo"
+                className="rounded"
+              />
+              <Label htmlFor="banner-showSponsorLogo">Stamp sponsor logo on banner (top-right)</Label>
             </div>
 
             <div className="space-y-2">
@@ -1470,6 +1496,104 @@ export function CampaignComponentConfigForm({
                 data-testid="input-bannerHeight"
               />
               <p className="text-xs text-muted-foreground">Height in pixels. Default: 200</p>
+            </div>
+          </>
+        );
+
+      case 'product_store':
+        return (
+          <>
+            {/* Mode + product picker. "all" loads the entire sponsor
+                channel; "filtered" uses the picker selection. The
+                picker is multi-select scoped to the form's selected
+                sponsor (same as Carousel). */}
+            <div className="space-y-2">
+              <Label htmlFor="store-mode">Mode</Label>
+              <Select
+                value={config.mode || 'all'}
+                onValueChange={(value) => setConfig({ ...config, mode: value })}
+              >
+                <SelectTrigger data-testid="select-store-mode">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All — load every product from the sponsor's channel</SelectItem>
+                  <SelectItem value="filtered">Filtered — only the products picked below</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {config.mode === 'filtered' && (
+              <SponsorProductPicker
+                sponsorId={selectedSponsorId}
+                sponsorName={sponsorName}
+                mode="multi"
+                selectedIds={selectedProductIds}
+                onChange={setSelectedProductIds}
+                helperText={
+                  selectedProductIds.size === 0
+                    ? "Filtered mode but no products picked — store will fall back to all products."
+                    : `${selectedProductIds.size} product${selectedProductIds.size > 1 ? 's' : ''} selected.`
+                }
+              />
+            )}
+
+            <div className="space-y-2">
+              <Label htmlFor="store-displayType">Display</Label>
+              <Select
+                value={config.displayType || 'grid'}
+                onValueChange={(value) => setConfig({ ...config, displayType: value })}
+              >
+                <SelectTrigger data-testid="select-store-displayType">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="grid">Grid</SelectItem>
+                  <SelectItem value="list">List</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {config.displayType === 'grid' && (
+              <div className="space-y-2">
+                <Label htmlFor="store-columns">Columns</Label>
+                <Input
+                  id="store-columns"
+                  type="number"
+                  min="1"
+                  max="4"
+                  value={config.columns || 2}
+                  onChange={(e) => setConfig({ ...config, columns: parseInt(e.target.value) || 2 })}
+                  data-testid="input-store-columns"
+                />
+              </div>
+            )}
+
+            {/* Header section opt-ins — same pattern as carousel. */}
+            <div className="pt-4 border-t">
+              <h4 className="text-sm font-semibold mb-3">Header (optional)</h4>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="store-title">Title</Label>
+              <Input
+                id="store-title"
+                value={config.title || ''}
+                onChange={(e) => setConfig({ ...config, title: e.target.value || undefined })}
+                placeholder="e.g. Tienda — leave empty to hide header"
+                data-testid="input-store-title"
+              />
+              <p className="text-xs text-muted-foreground">Renders above the grid. Empty → no header.</p>
+            </div>
+            <div className="space-y-2 flex items-center gap-2">
+              <input
+                type="checkbox"
+                id="store-showSponsorLogo"
+                checked={config.showSponsorLogo === true}
+                onChange={(e) => setConfig({ ...config, showSponsorLogo: e.target.checked || undefined })}
+                data-testid="checkbox-store-showSponsorLogo"
+                className="rounded"
+              />
+              <Label htmlFor="store-showSponsorLogo">Show sponsor logo in header</Label>
             </div>
           </>
         );
