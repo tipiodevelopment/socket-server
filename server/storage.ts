@@ -78,7 +78,7 @@ export interface IStorage {
   getComponentUsage(): Promise<Record<string, Array<{ campaignId: number; campaignName: string }>>>;
   
   // Campaign component methods
-  getCampaignComponents(campaignId: number): Promise<Array<CampaignComponent & { component: Component }>>;
+  getCampaignComponents(campaignId: number): Promise<Array<CampaignComponent & { component: Component } & { sponsor: Sponsor }>>;
   getComponentCountsForCampaigns(campaignIds: number[]): Promise<Map<number, number>>;
   addComponentToCampaign(campaignComponent: InsertCampaignComponent): Promise<CampaignComponent>;
   updateCampaignComponentStatus(campaignId: number, componentId: string, status: 'active' | 'inactive'): Promise<CampaignComponent | undefined>;
@@ -646,15 +646,17 @@ export class MemStorage implements IStorage {
   }
 
   // Campaign component methods (database-backed)
-  async getCampaignComponents(campaignId: number): Promise<Array<CampaignComponent & { component: Component }>> {
+  async getCampaignComponents(campaignId: number): Promise<Array<CampaignComponent & { component: Component } & { sponsor: Sponsor }>> {
     const results = await db.select()
       .from(campaignComponents)
       .leftJoin(components, eq(campaignComponents.componentId, components.id))
+      .leftJoin(sponsors, eq(campaignComponents.sponsorId, sponsors.id))
       .where(eq(campaignComponents.campaignId, campaignId));
     
     return results.map(row => ({
       ...row.campaign_components,
-      component: row.components!
+      component: row.components!,
+      sponsor: row.sponsors!,
     }));
   }
 
