@@ -1468,7 +1468,13 @@ export const productSpotlightConfigSchema = z.object({
   // customConfig — when absent, no header strip renders and the
   // existing legacy layout is preserved bit-for-bit.
   title: z.string().optional(),
-  showSponsorLogo: z.boolean().optional()
+  showSponsorLogo: z.boolean().optional(),
+  // Layout override — picks `VProductCard.Variant` on the SDK side.
+  //   "hero"    → big featured card (legacy default)
+  //   "list"    → horizontal compact (image left, info right)
+  //   "minimal" → smallest, suggestion style
+  //   "grid"    → vertical compact
+  layout: z.enum(["hero", "list", "minimal", "grid"]).optional()
 });
 
 export const offerBadgeConfigSchema = z.object({
