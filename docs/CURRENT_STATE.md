@@ -551,3 +551,145 @@ templates to those slots. Campaigns then bind to placements with sponsor
    curl -s https://api-local-angelo.vio.live/api/client-apps/18/placements         | jq length
    curl -s https://api-local-angelo.vio.live/v2/mobile/campaigns/36/components -H "X-API-Key: tv2_api_key_91b4fbf634af4bc5" | jq '.components | length'
    ```
+
+---
+
+## 18. Live updates via WebSocket — landed 2026-04-28 PM
+
+The placement system now reflects operator dashboard actions in the
+iOS SDK in <1s without polling and without an app restart. Built on
+top of the existing `/ws/:campaignId` connection, structured as
+module buckets so engagement / broadcast / cart-intent can plug in
+later without infra changes.
+
+### What landed
+
+**Outbox pattern (Phase 1)** — new `events_outbox` table; HTTP
+handlers INSERT events in the same Drizzle transaction as the data
+UPDATE; in-process worker polls every 500ms (`FOR UPDATE SKIP
+LOCKED`) and ships rows via `broadcastToCampaign`. Multi-node safe.
+Up to 5 retries before `dead`. Migration `0005_events_outbox.sql`
+applied to local Neon only.
+
+**Module subscribe protocol (Phase 2)** — server-side per-socket
+filter. SDK sends `{type:"subscribe", modules:["placements","cart_intent"]}`
+right after `identify`. Sockets that don't subscribe stay on the
+legacy firehose path (backward-compat). Forwarded through the
+Redis pub/sub envelope in the multi-node path.
+
+**Three placement events (Phase 3)** — emitted by the outbox worker:
+
+| Topic | When | Payload (post-2026-04-28) |
+|---|---|---|
+| `placement_status_changed` | Pause / resume from dashboard | `{campaignId, appPlacementId, campaignComponentId, status: 'active'\|'inactive'}` |
+| `placement_config_updated` | Customize dialog save (customConfig and/or sponsor) | `{…, customConfig, productIdsChanged: bool, sponsorId: int?, sponsorChanged: bool}` |
+| `placement_activation_swapped` | "Hacer activo" on a row when another is already active in the same slot | `{…, fromCampaignComponentId, toCampaignComponentId, fromSponsorId, toSponsorId, newComponent}` |
+
+**New control endpoints**:
+
+- `POST /api/campaigns/:id/components/:rowId/pause` (sugar for status='inactive')
+- `POST /api/campaigns/:id/components/:rowId/resume` (sugar for status='active' with active-conflict pre-check)
+- `POST /api/campaigns/:id/placements/:appPlacementId/activate` (atomic A→B swap inside one tx, single `placement_activation_swapped` event)
+- `PATCH /api/campaigns/:id/components/:rowId/config` extended to accept `sponsorId` for in-place sponsor swap (validates against `campaign_sponsors`).
+
+**iOS SDK (Phase 4)**:
+
+- `Sources/VioCore/Models/VioModule.swift` — enum {placements, engagement, broadcast, cartIntent}.
+- `VioConfiguration.enabledModules` (default `[.placements, .cartIntent]`) drives the subscribe payload.
+- `CampaignWebSocketManager.sendSubscribeIfNeeded()` runs after identify; switch decodes `placement_*` topics.
+- `CampaignManager.handlePlacement{Status|Config|ActivationSwapped}Changed` apply the events to `activeComponents` (matched by `campaignComponentId`, not template id — the latter collides across slots).
+- Sequencing via `lastPlacementEventTimestamps[campaignComponentId]` discards out-of-order outbox retries.
+- On WS reconnect (after a previous open), `fetchAndApplyCampaignComponentsIfPossible()` runs silently to reconcile any state drift while offline. Sequencing high-water-mark resets so the GET is the new ground truth.
+- New `Component.campaignComponentId: Int?` field threaded through the v2 GET decoder + WS event payloads + activation-swap path.
+
+**Dashboard (Phase 5)**:
+
+- "Pausar" / "Hacer activo" verbs replace the legacy toggle button.
+  When the inactive row's slot has another active row, the icon
+  switches to `RefreshCw` and the tooltip names the sponsor that
+  will be replaced — operator gets visual feedback that this is a
+  swap, not a plain activation.
+- Customize dialog adds a Sponsor select at the top of the form.
+  Changing it forwards `sponsorId` in the PATCH body; backend
+  validates and emits a single `placement_config_updated` covering
+  both the customConfig diff and the sponsor swap.
+- Per-template config sections (Carousel, Spotlight, Banner, Store)
+  use a shared `<SponsorProductPicker>` (single-select for
+  Spotlight + Banner; multi-select for Carousel + Store). Replaces
+  the legacy comma-separated text inputs — operator never types
+  Reachu IDs by hand.
+- Sprint 2026-04-28 PM also shipped the per-component first-phase
+  polish for the remaining placement views — see §19 below.
+
+**Resilience**: `pool.on('error', ...)` in `server/db.ts` swallows
+transient Neon `Connection terminated unexpectedly` so a stale WS
+transport doesn't crash the entire Node process (was killing the
+outbox worker + scheduler + WS clients with it).
+
+### Files of record
+
+- `migrations/0005_events_outbox.sql` — table + indexes
+- `server/events/{types,outbox,worker}.ts` — module-agnostic primitives
+- `server/routes.ts` — subscribe handler, broadcastToCampaign filter, placement endpoints
+- `Sources/VioCore/Models/VioModule.swift` — enum
+- `Sources/VioCore/Managers/CampaignWebSocketManager.swift` — onPlacement* callbacks + subscribe send
+- `Sources/VioCore/Managers/CampaignManager.swift` — handlers + reconnect refetch
+- `Sources/VioCore/Models/CampaignModels.swift` — Placement*Event structs + Component.campaignComponentId
+- `Sources/VioUI/Components/SponsorProductPicker.tsx` — wait, this is in the dashboard tree; see `client/src/components/dashboard/SponsorProductPicker.tsx`
+
+### How to validate from a fresh session
+
+```bash
+# 1. Backend up + outbox worker running
+tail -f /tmp/vio-backend.log | grep -E "Outbox|Message Send"
+# Expected on boot: "[outbox] worker started (poll=500ms, batch=50, maxAttempts=5)"
+
+# 2. iOS demo subscribed?
+# Xcode console expects: "🎯 [CampaignWebSocket] subscribe → enviado modules=[cart_intent,placements]"
+
+# 3. Pause via curl + observe SDK
+curl -X POST https://api-local-angelo.vio.live/api/campaigns/36/components/113/pause
+# Backend log: "Message Send! Campaign: 36 Message: {\"type\":\"placement_status_changed\",..."
+# iOS log: "✅ Decoded placement_status_changed event (cc=113, status=inactive) → Paused cc=113 (1 → 0 active components)"
+
+# 4. Sponsor swap via dashboard customize dialog (no curl equivalent — UI flow):
+# - Open /campaigns/36/components, click pencil on cc=114
+# - Change sponsor select → save
+# - iOS log: "Patched config for cc=114 (productIdsChanged=...) sponsorChanged 7→3"
+```
+
+---
+
+## 19. Banner / Store / Slider first-phase polish — landed 2026-04-28 PM
+
+Same evening as the live-updates sprint, the remaining 3 product
+placement views were brought to the same baseline as Carousel +
+Spotlight. Per-component customization (variant pickers, etc.) is a
+separate Phase 2 sprint that runs one component at a time.
+
+### What "first phase" means per component
+
+| Component | Mode | Pieces shipped |
+|---|---|---|
+| **VProductBanner** | campaign-driven | `locationId:` init param · `sponsorId` threaded into `ProductService.loadProduct` · `ProductBannerConfig.showSponsorLogo` opt-in renders the placement's sponsor logo on the banner top-right corner (24pt tall, max 80pt wide, SVG-capable via shared `VRemoteImage`). Banner already has its own visible title + subtitle, so the polish skips the separate header strip pattern. |
+| **VProductStore** | campaign-driven | Same `locationId` + `sponsorId` plumbing. `ProductStoreConfig` gains `title` + `showSponsorLogo`; new `placementHeader` view above the grid (same opt-in / render rules as Carousel + Spotlight). |
+| **VProductSlider** | manual (host-app) | New `sponsorLogoUrl: String?` init param renders the logo right-aligned next to the existing manual `title` (using shared `VRemoteImage`). Stays manual — does not become a placement template in this round. |
+
+### Backend + dashboard catch-up
+
+- `productBannerConfigSchema`: + `showSponsorLogo: z.boolean().optional()`.
+- `productStoreConfigSchema`: + `title: z.string().optional()` + `showSponsorLogo: z.boolean().optional()`.
+- Customize dialog for `product_banner`: legacy raw `productId` text input replaced with shared `<SponsorProductPicker mode="single">` + `Stamp sponsor logo on banner` checkbox.
+- Customize dialog gains a new `case 'product_store'` (was hitting the "not yet available" default fall-through): mode select, multi-select picker on filtered mode, displayType, columns, plus the Header section.
+- `SINGLE_PRODUCT_TEMPLATES` set updated to include `product_banner` so the form serializes back to `productId: <first>` (singular) instead of `productIds: [...]`.
+
+### Slider asymmetry, on purpose
+
+`product_slider` is **not a placement template**. The library's six
+canonical templates are `banner`, `countdown`, `carousel_*`,
+`offer_badge`, `offer_banner`, `product_carousel`, `product_banner`,
+`product_spotlight`, `product_store`. There is no `case .productSlider`
+in `ComponentConfig`. Slider stays a host-app convenience view and
+its sponsor-logo polish is a single init param. Promoting Slider to
+a placement template (config struct + canonical row + getActiveComponent
+lookup) is queued as **Phase 2 — Slider** in `TASK_PLACEMENTS.md`.

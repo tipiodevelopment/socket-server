@@ -216,27 +216,51 @@ the new event needs with the returned `deliveryMode + userConnected`.
 WS is a separate contract channel. No URL reshuffle — only the event payloads
 matter. Connection point stays `wss://api-dev.vio.live/ws/:campaignId`.
 
+Sprint 2026-04-28 PM split outbound events into **module buckets** so
+SDKs can subscribe selectively. Events flagged with a module are
+emitted via the **outbox pattern** (atomic with the data UPDATE that
+triggered them — see `ARCHITECTURE_OVERVIEW.md §5` for the diagram).
+
 ### Outbound (server → client)
 
-| Event | Consumed by | Payload root |
-|---|---|---|
-| `campaign_started` | mobile + TV | `campaignId, startDate, endDate, matchId?` |
-| `campaign_ended` | mobile + TV | `campaignId, endDate` |
-| `broadcast_status_changed` | mobile + TV | `broadcastId, status` |
-| `component_status_changed` | mobile | `campaignId, componentId, sponsorId, status, component:{id,type,name,config}` |
-| `poll_activated` / `poll_deactivated` | mobile | `pollId, broadcastId` |
-| `contest_activated` / `contest_deactivated` | mobile | `contestId, broadcastId` |
-| `lineup_show` | mobile | `broadcastId, videoTimestamp, ...` |
-| `shoppable_ad` | TV | `broadcastId, campaignId, sponsorId, activationId, product, sponsor` |
-| `cart_intent` | mobile | canonical envelope (see §8) |
-| `ping` | both | app-level keepalive |
+| Event | Module | Consumed by | Payload root |
+|---|---|---|---|
+| `campaign_started` | (firehose) | mobile + TV | `campaignId, startDate, endDate, matchId?` |
+| `campaign_ended` | (firehose) | mobile + TV | `campaignId, endDate` |
+| `broadcast_status_changed` | (firehose) | mobile + TV | `broadcastId, status` |
+| `placement_status_changed` | `placements` | mobile | `campaignId, appPlacementId, campaignComponentId, status: 'active'\|'inactive', module, serverTimestamp` |
+| `placement_config_updated` | `placements` | mobile | `…, customConfig, productIdsChanged: bool, sponsorId: int?, sponsorChanged: bool, module, serverTimestamp` |
+| `placement_activation_swapped` | `placements` | mobile | `…, fromCampaignComponentId, toCampaignComponentId, fromSponsorId, toSponsorId, newComponent:{id, componentTypeId?, sponsorId?, customConfig, status}, module, serverTimestamp` |
+| `poll_activated` / `poll_deactivated` | (firehose, future `engagement`) | mobile | `pollId, broadcastId` |
+| `contest_activated` / `contest_deactivated` | (firehose, future `engagement`) | mobile | `contestId, broadcastId` |
+| `lineup_show` | (firehose, future `broadcast`) | mobile | `broadcastId, videoTimestamp, ...` |
+| `shoppable_ad` | (firehose, future `broadcast`) | TV | `broadcastId, campaignId, sponsorId, activationId, product, sponsor` |
+| `cart_intent` | direct unicast (future `cart_intent`) | mobile | canonical envelope (see §8) |
+| `ping` | — | both | app-level keepalive |
+
+> The legacy `component_status_changed` / `component_config_updated` wire types pre-Sprint-2026-04-28 are no longer emitted. Their decoders remain on the SDK as inert source-compat shims.
 
 ### Inbound (client → server)
 
-| Event | Sent by | Payload |
-|---|---|---|
-| `identify` | both | `userId` |
-| `pong` | both | — |
+| Event | Sent by | Payload | When |
+|---|---|---|---|
+| `identify` | both | `userId` | first frame after handshake |
+| `subscribe` | both (v2026-04-28+ SDKs) | `modules: string[]` (subset of `["placements","engagement","broadcast","cart_intent"]`) | second frame; tells the server to filter every emit by this socket's module set. Sockets that skip this stay on the firehose for backward compat. |
+| `pong` | both | — | reply to `ping` |
+
+### Module subscribe semantics
+
+- Server-side state: `clientSubscriptions: WeakMap<WebSocket, Set<string>>`. GC'd automatically when the socket is collected.
+- `broadcastToCampaign(campaignId, message, module?)` filters per-socket: when `module` is provided, sockets whose subscription set lacks that module skip the send. When `module` is undefined (legacy emit sites), all local sockets receive the message (firehose).
+- Cross-node delivery: the Redis pub/sub envelope carries `module` so a different node's filter applies correctly. Legacy events from older nodes (no `module` field) are treated as firehose.
+- Whitelist enforced server-side against the canonical set (`'placements' | 'engagement' | 'broadcast' | 'cart_intent'`) — garbage names are dropped silently.
+
+### Sequencing
+
+Events with a module also carry `serverTimestamp` (the outbox row's
+INSERT time as ISO-8601 UTC). The SDK keeps a per-`campaignComponentId`
+high-water mark and discards events whose timestamp is older than the
+last applied — protects against out-of-order retries from the worker.
 
 ### Future WS surface split
 

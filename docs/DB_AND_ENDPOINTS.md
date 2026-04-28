@@ -301,9 +301,12 @@ Auth column: `apiKey` = `X-API-Key` header; `session` = dashboard cookie; `Beare
 | GET | `/api/campaigns/:id/components` | list placements joined with `app_placements` + canonical template |
 | GET | `/api/campaigns/:id/active-components` | list currently active |
 | POST | `/api/campaigns/:id/components` | **create placement** (post-migration 0004 body: `appPlacementId`, `sponsorId?` (defaults to campaign primary), `customConfig?`, `instanceName?`, `status?`, `broadcastId?`, `createdBy?`). Validates: placement matches campaign's clientApp + sponsor in campaign_sponsors. If `status='active'` is requested, returns HTTP 409 `PLACEMENT_ACTIVE_CONFLICT` if another row is already active for `(campaign, app_placement)`. |
-| PATCH | `/api/campaigns/:id/components/:componentId` | **`:componentId` is the campaign_components row PK** (not the template id, post-migration 0004). Toggle status. Fires WS `component_status_changed` with `appPlacementId + locationId + componentId(template)` payload. Pre-checks PLACEMENT_ACTIVE_CONFLICT. |
-| PATCH | `/api/campaigns/:id/components/:componentId/config` | override `customConfig` (productIds, title, showSponsorLogo, autoPlay, …). Fires WS `component_config_updated`. |
-| DELETE | `/api/campaigns/:id/components/:componentId` | remove placement (hard delete of the campaign binding; the underlying app_placement is untouched). |
+| PATCH | `/api/campaigns/:id/components/:rowId` | **`:rowId` is the campaign_components row PK** (not the template id, post-migration 0004). Toggle status. Atomic: emits `placement_status_changed` via outbox in the same tx as the UPDATE. Pre-checks `PLACEMENT_ACTIVE_CONFLICT` (HTTP 409). |
+| POST | `/api/campaigns/:id/components/:rowId/pause` | Sugar verb for `status='inactive'`. Same outbox contract as PATCH. |
+| POST | `/api/campaigns/:id/components/:rowId/resume` | Sugar verb for `status='active'`. Pre-checks active-conflict. Same outbox contract. |
+| POST | `/api/campaigns/:id/placements/:appPlacementId/activate` | Multi-sponsor rotation. Body: `{ campaignComponentId }`. Atomic A→B swap inside one tx (deactivate old, activate new). Emits a single `placement_activation_swapped` event with both ids + sponsorIds + the new component shape. Idempotent if target is already active and no other contender exists. |
+| PATCH | `/api/campaigns/:id/components/:rowId/config` | Override `customConfig` (productIds, title, showSponsorLogo, layout, autoPlay, …) **and optionally** `sponsorId` for in-place sponsor swap. Body: `{ customConfig, sponsorId? }`. When `sponsorId` differs from the row's current sponsor, validates against `campaign_sponsors` (must be primary or secondary) and updates in place. Emits a single `placement_config_updated` event covering both diffs (`sponsorId` + `sponsorChanged: bool` in payload so the SDK reroutes commerce). Only emits when the row is active. |
+| DELETE | `/api/campaigns/:id/components/:rowId` | remove placement (hard delete of the campaign binding; the underlying app_placement is untouched). |
 
 #### Scheduled placements (separate scheduling surface)
 | method | path | what |
@@ -398,30 +401,66 @@ These endpoints are still in use by the iOS SDK for unmigrated feature domains. 
 
 ## 4. WebSocket events
 
-All WS connections target `wss://<host>/ws/:campaignId`. The client identifies with `{ type: "identify", userId }` after handshake so the backend can route user-scoped events (cart_intent).
+All WS connections target `wss://<host>/ws/:campaignId`. The client identifies with `{ type: "identify", userId }` after handshake so the backend can route user-scoped events. v2026-04-28+ SDKs additionally send `{ type: "subscribe", modules:["placements","cart_intent",…] }` so the server filters every emit by the socket's module set.
 
 ### Outbound (server → client)
 
-| event | payload root | when |
-|---|---|---|
-| `campaign_started` | `campaignId, startDate, endDate, matchId?` | campaign starts |
-| `campaign_ended` | `campaignId, endDate` | campaign ends |
-| `broadcast_status_changed` | `broadcastId, status` | status transitions (upcoming → live → ended) |
-| `component_status_changed` | `campaignId, componentId (template uuid), status, component:{id,type,name,config}, matchId?` — **does NOT carry `locationId` nor `sponsorId` today** (latent multi-location dedupe gap on iOS — see `CURRENT_STATE.md §17` follow-ups) | placement active/inactive (manual toggle, scheduler) |
-| `component_config_updated` | `campaignId, componentId, component:{id,type,name,config}, matchId?` — same payload shape, fires when operator edits `customConfig` (e.g., productIds list) on an active placement | operator edits placement config |
-| `poll_activated` / `poll_deactivated` | `pollId, broadcastId` | engagement |
-| `contest_activated` / `contest_deactivated` | `contestId, broadcastId` | engagement |
-| `lineup_show` | `broadcastId, videoTimestamp, …` | lineup scheduling |
-| `shoppable_ad` | `broadcastId, campaignId, sponsorId, activationId, product, sponsor` | shoppable ad dispatch (TV SDK) |
-| `cart_intent` | `vio_notification_version, vio_event_type, vio_payload:{…, activation_id, sponsor_id}` | direct to identified user |
-| `ping` | — | app-level keepalive (client responds `{type:"pong"}`) |
+Sprint 2026-04-28 PM split outbound events into module buckets. The 3 `placement_*` events are emitted via the **outbox pattern** (atomic with the data UPDATE; see §1.5 below). Legacy events stay on the firehose for backward compat.
+
+| event | module | payload root | when |
+|---|---|---|---|
+| `campaign_started` | (firehose) | `campaignId, startDate, endDate, matchId?` | campaign starts |
+| `campaign_ended` | (firehose) | `campaignId, endDate` | campaign ends |
+| `broadcast_status_changed` | (firehose) | `broadcastId, status` | status transitions (upcoming → live → ended) |
+| `placement_status_changed` | `placements` | `campaignId, appPlacementId, campaignComponentId, status: 'active'\|'inactive', module, serverTimestamp` | pause / resume from dashboard or sugar verbs |
+| `placement_config_updated` | `placements` | `…, customConfig, productIdsChanged: bool, sponsorId: int?, sponsorChanged: bool, module, serverTimestamp` | customize dialog save (customConfig and/or sponsor swap) |
+| `placement_activation_swapped` | `placements` | `…, fromCampaignComponentId, toCampaignComponentId, fromSponsorId, toSponsorId, newComponent:{id,componentTypeId?,sponsorId?,customConfig,status}, module, serverTimestamp` | atomic A→B swap on `POST /placements/:appPlacementId/activate` |
+| `poll_activated` / `poll_deactivated` | (firehose, future `engagement`) | `pollId, broadcastId` | engagement |
+| `contest_activated` / `contest_deactivated` | (firehose, future `engagement`) | `contestId, broadcastId` | engagement |
+| `lineup_show` | (firehose, future `broadcast`) | `broadcastId, videoTimestamp, …` | lineup scheduling |
+| `shoppable_ad` | (firehose, future `broadcast`) | `broadcastId, campaignId, sponsorId, activationId, product, sponsor` | shoppable ad dispatch (TV SDK) |
+| `cart_intent` | direct unicast (future `cart_intent`) | `vio_notification_version, vio_event_type, vio_payload:{…, activation_id, sponsor_id}` | direct to identified user |
+| `ping` | — | — | app-level keepalive (client responds `{type:"pong"}`) |
+
+> Legacy `component_status_changed` / `component_config_updated` wire types pre-Sprint-2026-04-28 are no longer emitted by the backend. Their decoders remain on the SDK as inert source-compat shims.
 
 ### Inbound (client → server)
 
 | event | payload | when |
 |---|---|---|
 | `identify` | `userId` | first frame after handshake |
+| `subscribe` | `modules: string[]` (subset of `["placements","engagement","broadcast","cart_intent"]`) | second frame on v2026-04-28+ SDKs; tells the server to filter every emit by the socket's module set. Sockets that skip this stay on the firehose for backward compat. |
 | `pong` | — | in response to `ping` |
+
+### 1.5. `events_outbox` (the realtime backbone)
+
+Every realtime event the server emits is staged in `events_outbox` first.
+HTTP handlers INSERT into this table inside the same Drizzle transaction
+as the data change, guaranteeing atomicity (an event will be emitted
+iff the data change committed).
+
+| column | type | notes |
+|---|---|---|
+| `id` | uuid PK | `gen_random_uuid()` |
+| `topic` | text | wire `type` value, e.g. `'placement_status_changed'` |
+| `module` | text | bucket: `'placements'` \| `'engagement'` \| `'broadcast'` \| `'cart_intent'` |
+| `scope_type` | text | routing target: `'campaign'` \| `'broadcast'` \| `'user'` |
+| `scope_id` | bigint | numeric id of the routing target (`campaign.id`, `end_users.id`, …) |
+| `payload` | jsonb | per-topic shape (see types in `server/events/types.ts`) |
+| `server_timestamp` | timestamptz | INSERT time; the SDK uses this for sequencing |
+| `status` | text | `'pending'` → `'sent'` (success) \| `'failed'` (transient) \| `'dead'` (max attempts exceeded) |
+| `attempts` | integer | retry counter (max 5 before `dead`) |
+| `last_error` | text? | error message from the last failed attempt |
+| `created_at` | timestamptz | |
+| `processed_at` | timestamptz? | when the worker shipped (or marked dead) |
+
+Indexes:
+- `events_outbox_pending_idx` on `created_at` WHERE status='pending' (worker hot path)
+- `events_outbox_scope_idx` on `(scope_type, scope_id, server_timestamp DESC)` (audit / replay)
+
+Worker: `server/events/worker.ts` polls every 500ms with `FOR UPDATE SKIP LOCKED LIMIT 50` so multi-node deploys process disjoint row sets. Dispatch routes by `scope_type`: `'campaign'` → `broadcastToCampaign(scope_id, message, module)`. `'broadcast'` and `'user'` are reserved for future modules.
+
+Migration: `migrations/0005_events_outbox.sql`.
 
 ---
 

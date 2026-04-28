@@ -8,25 +8,54 @@
 
 ## Pending for next session (resume here)
 
-End-of-session 2026-04-28: planning complete for the **Live updates via
-WebSocket** sub-sprint. Implementation about to start. State on disk:
+End-of-session 2026-04-28: **Live updates sprint + Spotlight polish +
+Banner/Store/Slider first-phase polish all landed**. State on disk:
 
-- socket-server `feature/placements-app-placements-table` @ `2a83a15` (3 commits + 2 docs commits) — clean
-- VioSwiftSDK `feature/placements-named-instances` @ `95eafdb` (5 commits) — clean
-- DB: `local/angelo-20260423-1814` (Neon, unchanged from yesterday)
+- socket-server `feature/placements-app-placements-table` @ `361ff94` — clean, pushed
+- VioSwiftSDK `feature/placements-named-instances` @ `61253c9` — clean, pushed
+- DB: `local/angelo-20260423-1814` (Neon, schema 0005 events_outbox applied + cc=114 spotlight binding for smoke testing)
 
-The current sprint is **§ Sprint 2026-04-28 PM — Live updates via
-WebSocket** (full plan below). All 6 phases land on the existing branches
-above; one commit per phase; same DB. Once landed, the carry-over items
-below resume.
+Smoke E2E **passed** end-of-day: pause/resume/activate from dashboard
+reach the iOS SDK in <1s, sponsor swap in place updates the rendered
+component without recreating rows, in-place customConfig edits flow
+through `placement_config_updated`. See §17 + new §18 in
+`CURRENT_STATE.md` for the architecture summary.
 
-### Carried over (after live-updates sprint)
+### Carried over (Phase 2 customization per component)
 
-1. **Postman regen** — see checklist below for folder-specific changes needed.
-2. **Edit existing campaign_components in dashboard** — Customize/pencil dialog walk-through & polish.
-3. **Banner / Spotlight `locationId:` plumbing** — extend the `VProductCarousel(locationId:)` pattern to `VProductBanner`, `VProductSpotlight`, `VProductStore`, `VProductSlider`.
-4. **Scheduling fields** — `scheduled_time` + `end_time` already exist in DB; expose 2 datetime inputs in the campaign placement form for time-based rotations.
-5. **Schema consistency vs Apple TV SDK** — verify `sponsor.avatarUrl` additive change doesn't break the Apple TV consumption path in `InteractiveAds-vio`.
+The first-phase polish on Banner / Store / Slider (locationId +
+sponsorId + opt-in header / sponsor logo overlay) shipped together;
+their **per-component customization layer** is the next sprint and
+runs one component at a time:
+
+1. **VProductBanner — Phase 2**: variant selector (compact / standard /
+   large layouts), CTA button styling per variant, deeplink behavior
+   when sponsor changes. Today only `showSponsorLogo` overlay is
+   exposed; full visual variants + dashboard form work pending.
+2. **VProductStore — Phase 2**: tab/category support so the store can
+   group products by sponsor or category, infinite-scroll polish, list
+   variant typography. Today only mode/displayType/columns/title/
+   showSponsorLogo are exposed.
+3. **VProductSlider — Phase 2**: convert to campaign-driven mode (add
+   `ProductSliderConfig` + `case productSlider` to ComponentConfig +
+   `getActiveComponent` lookup) so it joins the placement system.
+   Today Slider stays manual (host passes products + sponsorLogoUrl
+   directly).
+
+### Other carry-over items (lower priority)
+
+4. **Postman regen** — collection still on the pre-Sprint-2026-04-28
+   route surface. Owners: same SDK developer who runs the next
+   smoke + integration round.
+5. **Scheduling fields** — `scheduled_time` + `end_time` columns exist
+   on `campaign_components`; dashboard form doesn't expose them yet.
+6. **Schema consistency vs Apple TV SDK** — verify `sponsor.avatarUrl`
+   additive change doesn't break the Apple TV consumption path in
+   `InteractiveAds-vio`.
+7. **Banner inline picker** — added in customize dialog today but the
+   "Add component" form for `product_banner` still uses the same
+   multi-select picker that single-product templates need. Audit
+   addComponentMutation single vs multi serialization on Add side.
 
 ---
 
@@ -186,7 +215,67 @@ Docs to update (rule #7 — accumulate, no new files):
 - ❌ Cart-intent migration to outbox — separate follow-up sprint.
 - ❌ Postgres `LISTEN/NOTIFY` for sub-100ms latency — premature optimization; revisit if 500ms feels slow in production.
 - ❌ Outbox cleanup cron — add when DB row count crosses ~100k; trivial to add later.
-- ❌ Banner / Spotlight / Store / Slider `locationId:` plumbing — carry-over item, separate sprint.
+- ❌ Banner / Spotlight / Store / Slider `locationId:` plumbing — landed afterward in the closure round below.
+
+### Sprint closure (landed 2026-04-28 PM)
+
+All 6 phases shipped + the carry-over pieces folded in same day. Final
+commit map:
+
+**socket-server `feature/placements-app-placements-table`**:
+
+| Commit | Phase | Summary |
+|---|---|---|
+| `4b99778` | plan | full sprint plan committed to TASK_PLACEMENTS |
+| `e2df66c` | 1 | outbox foundation (table + worker + helpers) |
+| `89f530a` | 2 | module subscribe protocol on WS handler |
+| `1bfb71d` | 3 | emit 3 placement events + pause/resume/activate endpoints |
+| `753abe0` | 5a | dashboard Pausar / Hacer activo verbs |
+| `b70fcf3` | follow-up | productConfig shape per template (single vs multi) |
+| `29de760` | follow-up | zod title + showSponsorLogo on carousel + spotlight |
+| `b26881b` | follow-up | spotlight layout enum on zod |
+| `6b0cfda` | 5b | dashboard spotlight form (title + showSponsorLogo + layout) |
+| `3022f75` | 5c | PATCH /config accepts sponsorId + customize sponsor swap UI |
+| `cac72cf` | 5d | shared SponsorProductPicker (reused in both Add + Customize) |
+| `aeafe3d` | infra | Neon pool error handler (anti-crash) |
+| `361ff94` | bonus | Banner + Store first-phase polish (zod + customize form) |
+
+**VioSwiftSDK `feature/placements-named-instances`**:
+
+| Commit | Summary |
+|---|---|
+| `f89eaa3` | subscribe protocol + 3 placement event handlers |
+| `07e5669` | match events by campaignComponentId, not template id |
+| `02be9d2` | spotlight polish (locationId + header + sponsorId + picker) |
+| `c14bea3` | wire home_spotlight slot for smoke |
+| `3f1ebf5` | move home_spotlight slot below Direkte rail |
+| `e2f3429` | spotlight layout config + sponsorId fix |
+| `f8c4954` | productCard list-layout Spacer fix (no vertical bleed) |
+| `e8a24ff` | in-place sponsor swap on placement_config_updated |
+| `4fa2391` | spotlight skeleton variant-aware |
+| `61253c9` | Banner / Store / Slider first-phase polish |
+
+**Smoke E2E final state** (manually verified):
+
+1. iOS demo cold-start → carousel + spotlight (cc=114) render in their
+   slots with correct sponsor logos + per-sponsor product catalogs.
+2. Pause cc=113 from dashboard → carousel disappears in <1s. Resume →
+   reappears.
+3. Pause cc=114 from dashboard → spotlight disappears. Activate →
+   re-renders with operator-set title + sponsor logo + chosen product.
+4. Customize sponsor swap (cc=114) — sponsor select changes from XXL
+   to Elkjøp → SDK updates header logo + reloads product from new
+   commerce key. Single `placement_config_updated` event carries both
+   the sponsorId change + customConfig diff.
+5. Customize layout swap (hero → list) → SDK re-renders compact card
+   without skeleton flash; carouselContent in `home_spotlight` slot
+   collapses to ~120pt height (was ~600pt before the variant-aware
+   skeleton fix).
+
+Pending for fresh tests after Banner/Store/Slider polish lands: bind
+Banner + Store placements via dashboard with operator-set
+showSponsorLogo + title and confirm SDK render. Slider stays manual,
+exercised by host code as before.
 
 ---
 

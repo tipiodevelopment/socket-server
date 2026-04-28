@@ -186,28 +186,105 @@ Full contract + expected responses + migration map from v1/mixed to v2:
 ## 5. WebSocket channel
 
 Every TV + iOS SDK connects to `wss://<host>/ws/:campaignId`. First frame
-after handshake is `{"type":"identify","userId":"<externalUserId>"}`.
+after handshake is `{"type":"identify","userId":"<externalUserId>"}`,
+followed by `{"type":"subscribe","modules":[…]}` from clients on
+v2026-04-28+ SDKs (see "Module subscribe protocol" below).
 
 ### Server → client events
 
-| Event | Root payload | Consumed by |
-|---|---|---|
-| `campaign_started` / `campaign_ended` | `campaignId, startDate?, endDate?` | mobile + TV |
-| `broadcast_status_changed` | `broadcastId, status` | mobile + TV |
-| `component_status_changed` | `campaignId, componentId, sponsorId, status, component:{...}` | mobile |
-| `poll_activated` / `poll_deactivated` | `pollId, broadcastId` | mobile |
-| `contest_activated` / `contest_deactivated` | `contestId, broadcastId` | mobile |
-| `lineup_show` | `broadcastId, videoTimestamp, …` | mobile |
-| `shoppable_ad` | `broadcastId, campaignId, sponsorId, activationId, product, sponsor` | TV |
-| `cart_intent` | canonical envelope with `activation_id, sponsor_id` | mobile |
-| `ping` | — | both (reply `{type:"pong"}`) |
+| Event | Module | Root payload | Consumed by |
+|---|---|---|---|
+| `campaign_started` / `campaign_ended` | (firehose) | `campaignId, startDate?, endDate?` | mobile + TV |
+| `broadcast_status_changed` | (firehose) | `broadcastId, status` | mobile + TV |
+| `placement_status_changed` | `placements` | `campaignId, appPlacementId, campaignComponentId, status: 'active'\|'inactive'` | mobile |
+| `placement_config_updated` | `placements` | `…, customConfig, productIdsChanged: bool, sponsorId: int?, sponsorChanged: bool` | mobile |
+| `placement_activation_swapped` | `placements` | `…, fromCampaignComponentId, toCampaignComponentId, fromSponsorId, toSponsorId, newComponent:{…}` | mobile |
+| `poll_activated` / `poll_deactivated` | (firehose, future `engagement`) | `pollId, broadcastId` | mobile |
+| `contest_activated` / `contest_deactivated` | (firehose, future `engagement`) | `contestId, broadcastId` | mobile |
+| `lineup_show` | (firehose, future `broadcast`) | `broadcastId, videoTimestamp, …` | mobile |
+| `shoppable_ad` | (firehose, future `broadcast`) | `broadcastId, campaignId, sponsorId, activationId, product, sponsor` | TV |
+| `cart_intent` | direct unicast (future module `cart_intent`) | canonical envelope with `activation_id, sponsor_id` | mobile |
+| `ping` | — | — | both (reply `{type:"pong"}`) |
+
+The 3 `placement_*` events are emitted via the **outbox pattern**
+(see "Outbox + module subscribe" below), not by the inline emit
+sites used for legacy events. Each carries a `module` field +
+`serverTimestamp` (used by the SDK to discard out-of-order retries).
+
+> The `component_status_changed` / `component_config_updated` legacy
+> wire types pre-Sprint-2026-04-28 are no longer emitted by the
+> backend; their decoders remain in the SDK as inert source-compat
+> shims for older deployments.
 
 ### Client → server
 
 | Frame | When |
 |---|---|
 | `{"type":"identify","userId":"…"}` | first frame, required for user-scoped routing |
+| `{"type":"subscribe","modules":["placements","cart_intent",…]}` | second frame on v2026-04-28+ SDKs; tells the server to filter every emit by this socket's module set |
 | `{"type":"pong"}` | reply to `ping` |
+
+### Outbox + module subscribe (Sprint 2026-04-28 PM)
+
+Realtime events for the placement system are emitted via an outbox
+pattern so dashboard actions reach the iOS SDK in <1s without
+polling and with atomic guarantees against partial state.
+
+```text
+HTTP handler (PATCH /api/campaigns/:id/components/:rowId/config)
+   └── db.transaction(async tx => {
+         tx.update(campaign_components) SET …
+         tx.insert(events_outbox) VALUES (topic, module, scope, payload, serverTimestamp)
+       })
+                ↓ commit
+                ↓
+   Worker (server/events/worker.ts, in-process, every 500ms)
+     └── SELECT … FROM events_outbox
+            WHERE status='pending' AND attempts < 5
+            ORDER BY created_at LIMIT 50
+            FOR UPDATE SKIP LOCKED       ← multi-node safe
+     └── for each row:
+            broadcastToCampaign(scopeId, JSON.stringify(envelope), module)
+            UPDATE events_outbox SET status='sent', processed_at=now()
+                ↓
+   broadcastToCampaign(campaignId, message, module?)
+     └── for each WS client in campaignClients[campaignId]:
+            const subs = clientSubscriptions.get(client)
+            if (module && subs && !subs.has(module)) continue   ← per-socket filter
+            client.send(message)
+                ↓ over the wire
+                ↓
+   iOS SDK CampaignWebSocketManager.handleMessage(text)
+     └── switch event.type {
+           case 'placement_status_changed': onPlacementStatusChanged?(decoded)
+           case 'placement_config_updated': onPlacementConfigUpdated?(decoded)
+           case 'placement_activation_swapped': onPlacementActivationSwapped?(decoded)
+         }
+                ↓
+   CampaignManager.handlePlacement{Status|Config|ActivationSwapped}Changed
+     └── lookup activeComponents by campaignComponentId
+     └── apply (toggle visibility / patch customConfig / swap row)
+     └── @Published triggers SwiftUI re-render
+```
+
+**Module buckets**: `placements` (live today), `engagement`,
+`broadcast`, `cart_intent` (future). The same `events_outbox` table
+backs every realtime event going forward — adding the next bucket
+is one `module` value + one switch case in the SDK.
+
+**Reconnect**: SDK silently re-fetches `GET /v2/mobile/campaigns/:id/components`
+when the WS reopens after a previous-connect, so any state drift while
+offline is reconciled without the user noticing.
+
+**Sequencing**: events carry `serverTimestamp` (the outbox row's
+INSERT time). The SDK keeps `lastPlacementEventTimestamps[campaignComponentId]`
+and discards events whose timestamp is older than the last applied
+one — protects against out-of-order retries from the worker.
+
+**Resilience**: `pool.on('error', …)` in `server/db.ts` swallows
+transient Neon `Connection terminated unexpectedly` errors so a
+stale WS transport doesn't crash the entire Node process (was
+killing the outbox worker + scheduler with it).
 
 Dedup rule (iOS): `cart_intent` events are deduped by `activationId` in
 `CampaignManager.publishCartIntentIfChanged`. TV-originated and
