@@ -1462,7 +1462,13 @@ export const carouselManualComponentConfigSchema = z.object({
 
 export const productSpotlightConfigSchema = z.object({
   productId: z.string(),
-  highlightText: z.string().optional()
+  highlightText: z.string().optional(),
+  // Operator-controllable header (Sprint 2026-04-28 PM polish parity
+  // with VProductCarousel). Both opt-in via the dashboard's
+  // customConfig — when absent, no header strip renders and the
+  // existing legacy layout is preserved bit-for-bit.
+  title: z.string().optional(),
+  showSponsorLogo: z.boolean().optional()
 });
 
 export const offerBadgeConfigSchema = z.object({
@@ -1485,7 +1491,12 @@ export const offerBannerConfigSchema = z.object({
 export const productCarouselConfigSchema = z.object({
   productIds: z.array(z.string()).optional(), // Optional: if empty/undefined, SDK fetches all channel products
   autoPlay: z.boolean().default(false),
-  interval: z.number().default(3000)
+  interval: z.number().default(3000),
+  // Layout override the SDK accepts: "full" | "compact" | "horizontal".
+  layout: z.string().optional(),
+  // Operator-controllable header — see productSpotlightConfigSchema.
+  title: z.string().optional(),
+  showSponsorLogo: z.boolean().optional()
 });
 
 export const productBannerConfigSchema = z.object({
