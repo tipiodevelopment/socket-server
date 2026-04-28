@@ -24,4 +24,36 @@ pool.on('error', (err) => {
   console.error('[db.pool] connection error (recoverable):', (err as Error)?.message ?? err);
 });
 
+// Belt-and-suspenders. neon-serverless emits some errors on internal
+// Client / WebSocket instances that the pool-level handler above
+// doesn't see (the trace ends in `EventEmitter at index.mjs:395
+// "Unhandled error"` because the listener chain hops past the pool
+// before throwing). Process-level handlers are the only way to keep
+// the Node process alive when the inner emitter has no listener.
+//
+// We log + swallow rather than exit. The pool auto-evicts dead
+// clients; the next query opens a fresh one. Worst case is a single
+// query fails and the caller retries.
+process.on('uncaughtException', (err) => {
+  const msg = (err as Error)?.message ?? String(err);
+  if (msg.includes('Connection terminated') || msg.includes('Unhandled error')) {
+    console.error('[db.process] swallowed neon-serverless connection drop (recoverable):', msg);
+    return;
+  }
+  // Re-throw anything that isn't a known recoverable Neon transport
+  // glitch — those still deserve to crash the process so we don't
+  // mask real bugs.
+  console.error('[db.process] uncaught (re-throwing):', err);
+  throw err;
+});
+
+process.on('unhandledRejection', (reason) => {
+  const msg = (reason as Error)?.message ?? String(reason);
+  if (msg.includes('Connection terminated') || msg.includes('Unhandled error')) {
+    console.error('[db.process] swallowed neon-serverless rejection (recoverable):', msg);
+    return;
+  }
+  console.error('[db.process] unhandled rejection:', reason);
+});
+
 export const db = drizzle({ client: pool, schema });
