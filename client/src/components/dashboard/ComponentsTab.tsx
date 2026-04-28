@@ -14,6 +14,7 @@ import { useState } from "react";
 import { Link } from "wouter";
 import { ImageUploadWithPreview } from "@/components/ImageUploadWithPreview";
 import { SponsorProductPicker } from "@/components/dashboard/SponsorProductPicker";
+import { OfferBannerPreview } from "@/components/dashboard/OfferBannerPreview";
 
 interface ComponentsTabProps {
   campaignId: number;
@@ -33,6 +34,13 @@ export function ComponentsTab({ campaignId }: ComponentsTabProps) {
   // customConfig.productIds so the SDK component reads them via existing
   // config plumbing.
   const [selectedProductIds, setSelectedProductIds] = useState<Set<string>>(new Set());
+  // Operator-typed customConfig fields filled in DURING the Add dialog
+  // (Sprint 2026-04-28 PM Phase 2 polish). Today wired for `offer_banner`
+  // — when the operator picks an offer_banner placement we surface the
+  // banner content fields inline so creation + first-edit are one
+  // step. Other templates can opt in by adding their own block in the
+  // Add dialog body that reads/writes this state.
+  const [addExtraConfig, setAddExtraConfig] = useState<Record<string, any>>({});
   const [editingConfigFor, setEditingConfigFor] = useState<(CampaignComponent & { component: Component }) | null>(null);
 
   const { data: campaign } = useQuery<Campaign>({
@@ -91,6 +99,11 @@ export function ComponentsTab({ campaignId }: ComponentsTabProps) {
       instanceName?: string;
       sponsorId: number;
       productIds?: string[];
+      /** Operator-typed customConfig keys from the Add dialog (e.g.
+       *  offer_banner title / countdown / CTA / deeplink). Merged
+       *  with the picker-derived productId/productIds so creation +
+       *  customization happen in a single dialog. */
+      extraCustomConfig?: Record<string, unknown>;
     }) => {
       // Customize config shape per template type.
       //
@@ -111,18 +124,23 @@ export function ComponentsTab({ campaignId }: ComponentsTabProps) {
       const templateType = targetPlacement?.component?.type as string | undefined;
       const isSingleProductTemplate = templateType ? SINGLE_PRODUCT_TEMPLATES.has(templateType) : false;
 
-      let customConfig: Record<string, unknown> | undefined;
+      // Start from operator-typed extras, then layer the product
+      // selection on top so picker changes always win.
+      const customConfig: Record<string, unknown> = { ...(params.extraCustomConfig ?? {}) };
       if (params.productIds && params.productIds.length > 0) {
-        customConfig = isSingleProductTemplate
-          ? { productId: params.productIds[0] }
-          : { productIds: params.productIds };
+        if (isSingleProductTemplate) {
+          customConfig.productId = params.productIds[0];
+        } else {
+          customConfig.productIds = params.productIds;
+        }
       }
+      const finalCustomConfig = Object.keys(customConfig).length > 0 ? customConfig : undefined;
 
       return await apiRequest('POST', `/api/campaigns/${campaignId}/components`, {
         appPlacementId: params.appPlacementId,
         instanceName: params.instanceName || undefined,
         sponsorId: params.sponsorId,
-        customConfig,
+        customConfig: finalCustomConfig,
         status: 'inactive',
       });
     },
@@ -135,6 +153,7 @@ export function ComponentsTab({ campaignId }: ComponentsTabProps) {
       setLocationId('');
       setSelectedSponsorId('');
       setSelectedProductIds(new Set());
+      setAddExtraConfig({});
       toast({
         title: 'Component Added',
         description: 'The component has been added to this campaign.',
@@ -429,13 +448,143 @@ export function ComponentsTab({ campaignId }: ComponentsTabProps) {
                         );
                       })()}
 
+                      {/* Inline content fields for offer_banner — operator
+                          fills the banner content during creation so they
+                          don't have to click pencil afterward to customize.
+                          Sprint 2026-04-28 PM Phase 2. Other templates
+                          stay on the Add → Customize flow until extracted
+                          into a shared component. */}
+                      {selectedSponsorId && selectedPlacement?.component?.type === 'offer_banner' && (
+                        <div className="space-y-4 pt-4 border-t">
+                          <h4 className="text-sm font-semibold">Banner content</h4>
+
+                          <div className="space-y-2">
+                            <Label htmlFor="add-ob-title">Title <span className="text-red-400">*</span></Label>
+                            <Input
+                              id="add-ob-title"
+                              placeholder="Ukens tilbud"
+                              value={addExtraConfig.title || ''}
+                              onChange={(e) => setAddExtraConfig({ ...addExtraConfig, title: e.target.value })}
+                              data-testid="input-add-ob-title"
+                            />
+                          </div>
+
+                          <div className="space-y-2">
+                            <Label htmlFor="add-ob-subtitle">Subtitle</Label>
+                            <Input
+                              id="add-ob-subtitle"
+                              placeholder="Se denne ukes beste tilbud"
+                              value={addExtraConfig.subtitle || ''}
+                              onChange={(e) => setAddExtraConfig({ ...addExtraConfig, subtitle: e.target.value || undefined })}
+                              data-testid="input-add-ob-subtitle"
+                            />
+                          </div>
+
+                          <ImageUploadWithPreview
+                            label="Background image"
+                            value={addExtraConfig.backgroundImageUrl || ''}
+                            onChange={(url) => setAddExtraConfig({ ...addExtraConfig, backgroundImageUrl: url || undefined })}
+                            placeholder="Soccer pitch / promo bg"
+                            testId="input-add-ob-bg"
+                          />
+
+                          <div className="space-y-2">
+                            <Label htmlFor="add-ob-countdown">Countdown end date <span className="text-red-400">*</span></Label>
+                            <Input
+                              id="add-ob-countdown"
+                              type="datetime-local"
+                              value={addExtraConfig.countdownEndDate ? (() => {
+                                const d = new Date(addExtraConfig.countdownEndDate);
+                                const offset = d.getTimezoneOffset();
+                                return new Date(d.getTime() - offset * 60 * 1000).toISOString().slice(0, 16);
+                              })() : ''}
+                              onChange={(e) => setAddExtraConfig({
+                                ...addExtraConfig,
+                                countdownEndDate: e.target.value ? new Date(e.target.value).toISOString() : undefined,
+                              })}
+                              data-testid="input-add-ob-countdown"
+                            />
+                          </div>
+
+                          <div className="space-y-2">
+                            <Label htmlFor="add-ob-badge">Discount badge text <span className="text-red-400">*</span></Label>
+                            <Input
+                              id="add-ob-badge"
+                              placeholder="Opp til 30%"
+                              value={addExtraConfig.discountBadgeText || ''}
+                              onChange={(e) => setAddExtraConfig({ ...addExtraConfig, discountBadgeText: e.target.value })}
+                              data-testid="input-add-ob-badge"
+                            />
+                          </div>
+
+                          <div className="space-y-2">
+                            <Label htmlFor="add-ob-cta">CTA text <span className="text-red-400">*</span></Label>
+                            <Input
+                              id="add-ob-cta"
+                              placeholder="Se alle tilbud →"
+                              value={addExtraConfig.ctaText || ''}
+                              onChange={(e) => setAddExtraConfig({ ...addExtraConfig, ctaText: e.target.value })}
+                              data-testid="input-add-ob-cta"
+                            />
+                          </div>
+
+                          <div className="space-y-2">
+                            <Label htmlFor="add-ob-deeplink">Deeplink URL (optional)</Label>
+                            <Input
+                              id="add-ob-deeplink"
+                              placeholder="tv2://offers/special — leave empty to use sponsor.logoUrl callback"
+                              value={addExtraConfig.deeplinkUrl || ''}
+                              onChange={(e) => setAddExtraConfig({ ...addExtraConfig, deeplinkUrl: e.target.value || undefined })}
+                              data-testid="input-add-ob-deeplink"
+                            />
+                            <p className="text-xs text-muted-foreground">
+                              Logo not shown — auto-resolved from the sponsor's <code>logoUrl</code> at runtime.
+                              Add a custom override later from the Customize dialog if needed.
+                            </p>
+                          </div>
+
+                          {/* Live preview — updates as the operator types
+                              so they see the banner before saving. Uses
+                              the selected sponsor's logoUrl as fallback
+                              when addExtraConfig.logoUrl is empty (mirrors
+                              VOfferBanner's resolvedLogoUrl logic on iOS). */}
+                          <OfferBannerPreview
+                            config={addExtraConfig}
+                            sponsorLogoUrl={
+                              campaignSponsors.find(s => String(s.sponsorId) === selectedSponsorId)?.logoUrl ?? null
+                            }
+                          />
+                        </div>
+                      )}
+
                       <Button
-                        onClick={() => selectedComponentId && selectedSponsorId && addComponentMutation.mutate({
-                          appPlacementId: parseInt(selectedComponentId, 10),
-                          instanceName: instanceName.trim() || undefined,
-                          sponsorId: parseInt(selectedSponsorId, 10),
-                          productIds: Array.from(selectedProductIds),
-                        })}
+                        onClick={() => {
+                          if (!selectedComponentId || !selectedSponsorId) return;
+                          // Offer-banner basic validation: required fields
+                          // must have something so the SDK doesn't render
+                          // an empty banner. Other templates skip this
+                          // until they get inline forms too.
+                          if (selectedPlacement?.component?.type === 'offer_banner') {
+                            const required = ['title', 'countdownEndDate', 'discountBadgeText', 'ctaText'];
+                            const missing = required.filter(k => !addExtraConfig[k]);
+                            if (missing.length > 0) {
+                              toast({
+                                title: 'Missing required banner fields',
+                                description: `Fill: ${missing.join(', ')}`,
+                                variant: 'destructive',
+                              });
+                              return;
+                            }
+                          }
+                          addComponentMutation.mutate({
+                            appPlacementId: parseInt(selectedComponentId, 10),
+                            instanceName: instanceName.trim() || undefined,
+                            sponsorId: parseInt(selectedSponsorId, 10),
+                            productIds: Array.from(selectedProductIds),
+                            extraCustomConfig:
+                              Object.keys(addExtraConfig).length > 0 ? addExtraConfig : undefined,
+                          });
+                        }}
                         disabled={!selectedComponentId || !selectedSponsorId || addComponentMutation.isPending}
                         className="w-full"
                         data-testid="button-confirm-add"
@@ -1694,6 +1843,18 @@ export function CampaignComponentConfigForm({
       )}
 
       {renderConfigFields()}
+
+      {/* Live preview — same component as the Add dialog. Renders only
+          for offer_banner today; other templates can opt in by checking
+          their `componentType` and reusing the same pattern. */}
+      {componentType === 'offer_banner' && (
+        <OfferBannerPreview
+          config={config}
+          sponsorLogoUrl={
+            campaignSponsors.find(s => String(s.sponsorId) === selectedSponsorId)?.logoUrl ?? null
+          }
+        />
+      )}
 
       <div className="flex gap-2 justify-between pt-4">
         {campaignComponent.customConfig ? (
