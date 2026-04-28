@@ -1533,6 +1533,10 @@ export const productBannerConfigSchema = z.object({
   ctaText: z.string().optional(),
   ctaLink: z.string().url().optional(),
   deeplink: z.string().optional(),
+  // Layout preset — adjusts banner height + font sizes in one pick.
+  // Granular fields (bannerHeight, titleFontSize, etc.) override
+  // the preset when explicitly set. Sprint 2026-04-28 PM Phase 2.
+  layout: z.enum(["compact", "standard", "large"]).optional(),
   
   // Visual Customization (all optional with defaults)
   // Colors

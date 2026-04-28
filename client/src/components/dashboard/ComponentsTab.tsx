@@ -1560,6 +1560,32 @@ export function CampaignComponentConfigForm({
       case 'product_banner':
         return (
           <>
+            {/* Layout preset — single-pick UX shortcut that adjusts
+                banner height + font sizes. Granular fields below
+                still win when the operator wants pixel-perfect
+                control. Sprint 2026-04-28 PM Phase 2. */}
+            <div className="space-y-2">
+              <Label htmlFor="banner-layout">Layout</Label>
+              <Select
+                value={config.layout || 'standard'}
+                onValueChange={(value) =>
+                  setConfig({ ...config, layout: value === 'standard' ? undefined : value })
+                }
+              >
+                <SelectTrigger data-testid="select-banner-layout">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="compact">Compact (120pt — small inline banner)</SelectItem>
+                  <SelectItem value="standard">Standard (200pt — default)</SelectItem>
+                  <SelectItem value="large">Large (280pt — hero-style)</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                Sets banner height + font sizes in one pick. Granular fields below override.
+              </p>
+            </div>
+
             {/* Required Fields — product picker (single, scoped to
                 the form's selected sponsor). Title is editorial copy
                 rendered ON the banner image (not the placement
