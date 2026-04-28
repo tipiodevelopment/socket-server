@@ -279,6 +279,127 @@ exercised by host code as before.
 
 ---
 
+## Sprint 2026-04-28 (PM evening) — Phase 2 polish per component
+
+Continuation of the Banner/Store/Slider first-phase sprint. Goal of
+Phase 2 is to take each campaign-driven component **end-to-end** so
+the operator can do create + customize + live edit from the dashboard
+without ever editing `customConfig` JSON by hand. Three components
+shipped in one evening + one cross-cutting fix + one infra fix.
+
+### Components polished
+
+- [x] **VOfferBanner** — campaign-driven mode (`VOfferBanner(locationId:)`)
+  with full content fields (title/subtitle/bg/countdown/badge/CTA/
+  deeplink) inline in the Add dialog + Customize. Brand-aware color
+  pickers for buttonColor + backgroundColor. Logo auto-resolves from
+  `sponsor.logoUrl` when override is empty. Live preview at create-time.
+  Wired in TV2 demo at `home_offer` slot below the legacy hardcoded
+  banner during the migration window.
+- [x] **VProductBanner** — layout preset enum (`compact` / `standard` /
+  `large`) drives height + font sizing; granular fields still override.
+  Brand color pickers replace hex Inputs in Customize. Inline content
+  fields in Add (title / subtitle / bg / CTA / deeplink + 2 brand
+  colors). Live preview component. Demo slot `home_product_banner`
+  registered + mounted in HomeView wrapped in NavigationLink.
+- [x] **VProductStore** — Phase 2 simplified per user direction
+  ("multi-sponsor, sin categoria, un modal a la vez"). Products array
+  changed from `[productId]` (single sponsor) to
+  `[{productId, sponsorId}, ...]` so each product routes through its
+  OWN sponsor's commerce key. Tap → `VProductDetailOverlay`, one at a
+  time via `@State`. New shared `MultiSponsorProductPicker` rendered
+  in **both** Add and Customize dialogs (creation parity with edit
+  parity). Demo slot `home_store` registered + mounted at the bottom
+  of HomeView.
+
+### Cross-cutting
+
+- [x] **Hide-on-failure** on Carousel + Spotlight + Store. `loadFailed:
+  Bool` flag on each viewModel; `shouldShow` returns false when failed
+  && empty. Single-shot — fail → hide. Next config / WS event triggers
+  fresh attempt. Telemetry-to-backend variant deferred (open design
+  Q1-Q4).
+
+### Infra
+
+- [x] **Process-level Neon guard** in `server/db.ts`. Pool error
+  listener wasn't enough; neon-serverless drops the WS transport
+  inside Client / WebSocket and the unhandled exception crashes the
+  process after the pool already reacted. Added `process.on(
+  'uncaughtException')` + `process.on('unhandledRejection')` that
+  swallow exactly "Connection terminated" / "Unhandled error" and
+  re-throw everything else. Symptom that triggered the fix: backend
+  died → /v2/mobile/config 502 → iOS fell back to stale Reachu
+  creds → GraphQL 401 cascade.
+
+### Files of record (sprint commits)
+
+socket-server `feature/placements-app-placements-table`:
+
+| Commit | Component | Summary |
+|---|---|---|
+| `998625e` | offerBanner | full offer_banner customize form (deeplink + buttonColor) |
+| `40139f9` | offerBanner | logoUrl optional in zod + dashboard hint |
+| `dd2cbbd` | offerBanner | inline offer_banner content + live preview at create-time |
+| `0266554` | offerBanner | brand-aware color picker for offer_banner |
+| `936365e` | productBanner | layout enum on zod + dashboard select |
+| `5a6f03a` | productBanner | brand color pickers replace hex Inputs in customize form |
+| `b06c78f` | productBanner | inline content fields in Add dialog |
+| `812f64b` | productBanner | live preview component + wire into Add + Customize |
+| `824cf69` | infra | process-level guard for neon-serverless connection drops |
+| `fe5487d` | productStore | MultiSponsorProductPicker + zod for Phase 2 |
+| `2328c5a` | productStore | MultiSponsorProductPicker in Add dialog |
+
+VioSwiftSDK `feature/placements-named-instances`:
+
+| Commit | Component | Summary |
+|---|---|---|
+| `00cdd08` | offerBanner | campaign-driven mode + home_offer slot wired in demo |
+| `007975d` | offerBanner | logoUrl optional → falls back to sponsor.logoUrl |
+| `a06668f` | offerBanner | button color falls back to sponsor.primaryColor |
+| `37ee62c` | offerBanner | white-on-dark text + dark badge to match hardcoded render |
+| `bccdc37` | offerBanner | black overlay + leading-aligned logo + DB countdown |
+| `7353401` | productBanner | layout preset (compact/standard/large) |
+| `5dd29af` | productBanner | register home_product_banner slot + mount in HomeView |
+| `194cc7c` | cross | hide-on-failure — no perpetual skeleton when load fails |
+| `5730975` | productStore | multi-sponsor products array (one detail modal at a time) |
+| `2855f58` | productStore | register home_store slot + mount VProductStore |
+
+### Pending E2E smoke (next session)
+
+1. Cold-restart TV2 demo → manifest uploads, dashboard `/apps/18` sees
+   `home_offer`, `home_product_banner`, `home_store` listed.
+2. Bind `home_offer` from Add with title/countdown/badge/CTA + buttonColor
+   → SDK render matches preview.
+3. Bind `home_product_banner` with `layout=compact` → swap to `large`
+   from Customize → SDK reflows live via `placement_config_updated`.
+4. Bind `home_store` from Add with 2-3 products from Elkjøp + 2-3 from
+   XXL → grid renders multi-sponsor; each tap opens detail overlay one
+   at a time. Reopen same row in Customize → entries round-trip exactly.
+5. Force a commerce 401 on one sponsor (toggle env or break the API
+   key) → Carousel/Spotlight/Store hide instead of showing skeleton.
+
+### Open follow-ups
+
+- **Cart routing per-product in multi-sponsor stores** — `Product` struct
+  has no `sponsorId` field; detail-overlay's "Add to cart" routes via
+  `CommerceSdkClientProvider.activeSponsorId` (not the tapped product's
+  sponsor). Add `Product.sponsorId` (or wrapper struct) so the overlay
+  knows which sponsor's key to use for checkout.
+- **Telemetry to backend on hide-on-failure** — sdk_events table + POST
+  endpoint + batching. 4 design questions open: Q1 schema columns
+  (event_type, error_code, sdk_version, broadcastId?, locationId?),
+  Q2 batching cadence (60s? on backgrounding?), Q3 PII in error message
+  (raw error string vs categorized code), Q4 retention (90d? 30d?).
+- **VProductSlider Phase 2** — campaign-driven mode (currently
+  manual-only host-app view). Promotion to placement template would
+  add `case .productSlider` in `ComponentConfig` + canonical row +
+  `getActiveComponent` lookup.
+- **Cleanup** — remove the legacy hardcoded `OfferBannerView()` from
+  TV2 demo HomeView once the dynamic version is signed off.
+
+---
+
 ## Sprint 2026-04-27 (PM) — Architecture pivot to dashboard-driven placements
 
 The morning's "self-service named placements" design (Phases A→C) had the

@@ -693,3 +693,116 @@ in `ComponentConfig`. Slider stays a host-app convenience view and
 its sponsor-logo polish is a single init param. Promoting Slider to
 a placement template (config struct + canonical row + getActiveComponent
 lookup) is queued as **Phase 2 — Slider** in `TASK_PLACEMENTS.md`.
+
+## 20. Phase 2 polish — OfferBanner + ProductBanner + ProductStore (landed 2026-04-28 evening)
+
+Same day as §19 first-phase, but a separate sub-sprint: take each
+campaign-driven component end-to-end so the operator can do
+**create + customize + live edit** from the dashboard without ever
+touching code or `customConfig` JSON. Spread across 3 components +
+1 cross-cutting fix.
+
+### Per-component end-state
+
+| Component | Operator can now do | Files of record |
+|---|---|---|
+| **VOfferBanner** | Pick template → fill title/subtitle/bg/countdown/badge/CTA/deeplink + brand-aware buttonColor / backgroundColor inline at create. Live preview at create-time. Logo auto-resolves from sponsor.logoUrl when not overridden. | `OfferBannerView.swift` (campaign-driven mode), `ComponentsTab.tsx` Add + Customize forms, `OfferBannerPreview.tsx`, schema `offerBannerConfigSchema` |
+| **VProductBanner** | Layout preset (compact / standard / large) drives height + font sizing; granular overrides still win. Brand-aware color pickers (button, bg, badge, badge text). Inline content fields at Add + live preview. | `VProductBanner.swift` cached styling table, `ComponentsTab.tsx` product_banner cases, `ProductBannerPreview.tsx`, schema `productBannerConfigSchema.layout` |
+| **VProductStore** | Multi-sponsor product list: each entry carries `{productId, sponsorId}` and routes through its OWN sponsor's commerce key. No categories / tabs (deliberately simple per user direction). Tap → `VProductDetailOverlay`, one modal at a time via `@State`. Picker available in both Add + Customize. | `VProductStore.swift` multi-sponsor branch + `productSponsorMap` side-map, `MultiSponsorProductPicker.tsx`, schema `productStoreEntrySchema` + `productStoreConfigSchema.products` |
+
+### Cross-cutting: hide-on-failure (Carousel + Spotlight + Store)
+
+When a product load fails (commerce 401, network drop, etc.) the SDK
+no longer renders a perpetual skeleton or a generic "error" CTA — the
+view returns `EmptyView()` so the host app sees nothing. Single-shot:
+fail → hide. Next config / placement_status / placement_config WS
+event triggers a fresh attempt. Implemented as a `loadFailed: Bool`
+flag on each viewModel, reset to `false` at the top of every load
+attempt and set `true` in the catch path (except market-unavailable,
+which keeps its own clean empty-state). Telemetry-to-backend variant
+deferred to next sprint (see §16 known issues — sdk_events table +
+POST endpoint + batching, design questions Q1-Q4).
+
+### Backend stability — process-level Neon guard
+
+Pool `error` listener wasn't enough: neon-serverless drops the
+underlying WebSocket transport from inside the Client / WebSocket
+class, surfacing as an unhandled `Connection terminated unexpectedly`
+or `Unhandled error: …` that crashes the process **after** the pool
+already swallowed its event. Added `process.on('uncaughtException')`
+and `process.on('unhandledRejection')` guards in `server/db.ts` that
+swallow only those two specific message patterns and re-throw
+everything else (so real bugs still crash, like before). Symptom
+that triggered it: backend died → /v2/mobile/config → 502 → iOS
+fell back to stale Reachu credentials → GraphQL 401 cascade. Fix
+commit: `824cf69`.
+
+### Dashboard reusable: MultiSponsorProductPicker
+
+New shared component `client/src/components/dashboard/MultiSponsorProductPicker.tsx`.
+Operator picks a sponsor from the campaign's sponsor list, the
+existing `useSponsorCatalog` hook drives the catalog list, "+ Add"
+appends `{productId, sponsorId}` to the curated array. Curated rows
+show a brand-color badge from `sponsor.primaryColor` + remove `×`.
+Used in **both** Add and Customize dialogs for `product_store` (so
+creation parity matches edit parity — no surprise when reopening
+to edit a row created in Add).
+
+### Demo wiring on TV2
+
+`TV2PlacementRegistration.swift` registers the new locations:
+`home_offer`, `home_product_banner`, `home_store`. `HomeView.swift`
+mounts the matching placement views (each wrapped in a
+`NavigationLink → ProductsGridView` for the Path A3 hybrid deeplink
+fallback when the operator hasn't set `customConfig.deeplinkUrl`).
+The legacy hardcoded `OfferBannerView()` stays during the migration
+window so the operator can A/B compare against the dynamic version;
+queued for removal once the dynamic flow is signed off.
+
+### Files touched (sprint 2026-04-28 evening)
+
+**socket-server `feature/placements-app-placements-table`** — commits since `a6d88a1`:
+- `998625e` feat(dashboard+schema): full offer_banner customize form (deeplink + buttonColor)
+- `40139f9` feat(offerBanner): logoUrl optional in zod + dashboard hint
+- `dd2cbbd` feat(dashboard): inline offer_banner content + live preview at create-time
+- `0266554` feat(dashboard): brand-aware color picker for offer_banner
+- `936365e` feat(productBanner): layout enum on zod + dashboard select
+- `5a6f03a` feat(productBanner): brand color pickers replace hex Inputs in customize form
+- `b06c78f` feat(productBanner): inline content fields in Add dialog
+- `812f64b` feat(productBanner): live preview component + wire into Add + Customize
+- `824cf69` fix(db): process-level guard for neon-serverless connection drops
+- `fe5487d` feat(productStore): MultiSponsorProductPicker + zod for Phase 2
+- `2328c5a` feat(productStore): MultiSponsorProductPicker in Add dialog
+
+**VioSwiftSDK `feature/placements-named-instances`** — commits since `61253c9`:
+- `00cdd08` feat(offerBanner): campaign-driven mode + home_offer slot wired in demo
+- `007975d` feat(offerBanner): logoUrl optional → falls back to sponsor.logoUrl
+- `a06668f` feat(offerBanner): button color falls back to sponsor.primaryColor
+- `37ee62c` fix(offerBanner): white-on-dark text + dark badge to match hardcoded render
+- `bccdc37` fix(offerBanner): black overlay + leading-aligned logo + DB countdown
+- `7353401` feat(productBanner): layout preset (compact/standard/large)
+- `5dd29af` chore(tv2demo): register home_product_banner slot + mount in HomeView
+- `194cc7c` fix(placements): hide-on-failure — no perpetual skeleton when load fails
+- `5730975` feat(productStore): multi-sponsor products array (one detail modal at a time)
+- `2855f58` chore(tv2demo): register home_store slot + mount VProductStore
+
+### Pending E2E smoke (next session)
+
+1. Cold-restart TV2 demo → manifest uploads, dashboard sees the 3 new locations.
+2. Bind a `home_offer` placement via Add with title/countdown/badge/CTA + buttonColor → confirm SDK render matches preview.
+3. Bind a `home_product_banner` with layout=`compact` → swap to `large` from Customize → SDK reflows live (placement_config_updated).
+4. Bind a `home_store` from Add with 2-3 products from Elkjøp + 2-3 from XXL → SDK renders multi-sponsor grid; each tap opens detail overlay one at a time.
+5. Reopen the same `home_store` in Customize → confirm entries round-trip exactly.
+6. Force a commerce 401 on one sponsor → confirm Carousel/Spotlight/Store hide instead of showing skeleton/error CTA.
+
+### Known limitations (logged for follow-up)
+
+- `Product` struct has no `sponsorId` field, so the multi-sponsor
+  store's "Add to cart" inside `VProductDetailOverlay` routes via
+  `CommerceSdkClientProvider.activeSponsorId` instead of the tapped
+  product's actual sponsor. Detail-overlay cart routing per-product
+  is queued — needs a `Product.sponsorId` (or wrapper struct) so the
+  overlay knows which sponsor's commerce key to use for checkout.
+- Telemetry-to-backend on hide-on-failure: deferred. 4 design
+  questions open (Q1 schema columns, Q2 batching strategy, Q3 PII
+  in error message, Q4 retention).
