@@ -6,25 +6,187 @@
 > **Scope**: backend + **iOS SDK** (VioSwiftSDK) + dashboard. Apple TV SDK
 > (`InteractiveAds-vio`) está fuera — no se re-abre aquí.
 
-## Pending for 2026-04-29 morning (resume here)
+## Pending for next session (resume here)
 
-End-of-day 2026-04-28: full E2E smoke working. Two feature branches in
-flight, awaiting review/merge:
+End-of-session 2026-04-28: planning complete for the **Live updates via
+WebSocket** sub-sprint. Implementation about to start. State on disk:
 
-- socket-server `feature/placements-app-placements-table` @ `74b39c7` (3 commits: schema, dashboard, today's polish)
-- VioSwiftSDK `feature/placements-named-instances` @ `95eafdb` (3 commits)
+- socket-server `feature/placements-app-placements-table` @ `2a83a15` (3 commits + 2 docs commits) — clean
+- VioSwiftSDK `feature/placements-named-instances` @ `95eafdb` (5 commits) — clean
+- DB: `local/angelo-20260423-1814` (Neon, unchanged from yesterday)
 
-Outstanding work:
+The current sprint is **§ Sprint 2026-04-28 PM — Live updates via
+WebSocket** (full plan below). All 6 phases land on the existing branches
+above; one commit per phase; same DB. Once landed, the carry-over items
+below resume.
+
+### Carried over (after live-updates sprint)
 
 1. **Postman regen** — see checklist below for folder-specific changes needed.
-2. **Edit existing campaign_components in dashboard** — Customize / pencil dialog already works for the new fields (title + showSponsorLogo) but lightly tested. Walk through and polish if anything looks off.
-3. **Banner / Spotlight `locationId:` plumbing** — only `VProductCarousel` accepts `locationId:` today. Spotlight/Banner/Store views need the same `getActiveComponent(type:locationId:)` lookup so the new model covers all template types. **Follow the carousel as the reference pattern.**
-4. **Scheduling fields** — `scheduled_time` + `end_time` exist in DB but the dashboard placement form doesn't expose them. Add 2 datetime inputs in the campaign placement form for time-based rotations.
-5. **Multi-sponsor rotation UX** — the dashboard should make "create another row with a different sponsor" obvious (today operator has to figure out the +Add flow). Maybe a "Rotate sponsor" button on existing placement cards.
-6. **Schema consistency vs Apple TV SDK** — sponsor block on backend now ships both `logoUrl` + `avatarUrl` (additive — Apple TV unaffected). Verify Apple TV SDK still builds + flows still work. No code changes expected on that side.
+2. **Edit existing campaign_components in dashboard** — Customize/pencil dialog walk-through & polish.
+3. **Banner / Spotlight `locationId:` plumbing** — extend the `VProductCarousel(locationId:)` pattern to `VProductBanner`, `VProductSpotlight`, `VProductStore`, `VProductSlider`.
+4. **Scheduling fields** — `scheduled_time` + `end_time` already exist in DB; expose 2 datetime inputs in the campaign placement form for time-based rotations.
+5. **Schema consistency vs Apple TV SDK** — verify `sponsor.avatarUrl` additive change doesn't break the Apple TV consumption path in `InteractiveAds-vio`.
 
-Open question for tomorrow:
-- The Apple TV SDK lives in `InteractiveAds-vio` and calls the same backend. Did any of today's backend changes break its consumption path? Smoke test it before merging the backend feature branch.
+---
+
+## Sprint 2026-04-28 PM — Live updates via WebSocket (outbox + module subs)
+
+> **Goal**: when an operator pauses, edits, or rotates a placement in the
+> dashboard, the iOS SDK reflects the change in <1s without polling and
+> without an app restart. Built on the existing `/ws/:campaignId`
+> connection, structured to scale to engagement + broadcast events later.
+>
+> **Repos & branches**: `feature/placements-app-placements-table`
+> (socket-server) + `feature/placements-named-instances` (VioSwiftSDK).
+> One commit per phase. DB stays on `local/angelo-20260423-1814`.
+
+### Design decisions (locked 2026-04-28)
+
+| # | Decision |
+|---|---|
+| 1 | **3 placement events** — `placement_status_changed` (paused↔active), `placement_config_updated` (customConfig diff), `placement_activation_swapped` (sponsor rotation A→B atomic) |
+| 2 | **Outbox pattern from day 1** — new `events_outbox` table; HTTP handler INSERTs event row in the **same tx** as the data UPDATE; in-process worker polls + emits via `broadcastToCampaign`; multi-node safe via `FOR UPDATE SKIP LOCKED` |
+| 3 | **Scope = `campaign:{id}`** — placements live above broadcasts; reuse the existing `/ws/:campaignId` rooms (no new room model) |
+| 4 | **Module-aware subscribe protocol** — client sends `{type:"subscribe", modules:[…]}` after connect; server tracks `clientSubscriptions: WeakMap<WS, Set<module>>`; emit filters by `event.module ∈ client.modules` (default `'*'` for backward-compat) |
+| 5 | **Reconnect = silent re-fetch** — on reconnect the SDK calls existing `GET /v2/mobile/campaigns/:id/components` and reconciles; user sees no flicker; "GET es la verdad" rule respected |
+| 6 | **UI semantics**: paused → hard cut; `config_updated` with `productIds` change → brief skeleton; `config_updated` (title/showSponsorLogo only) → in-place; `activation_swapped` → hard cut + reload (new sponsor's catalog) |
+| 7 | **Sequencing via `serverTimestamp`** — every event payload carries `serverTimestamp`; SDK ignores events older than the last applied for that target (out-of-order resilience) |
+| 8 | **No `placement_deprecated` event** — soft-delete (`deprecated_at`) is a code-level concern (operator must remove from code path); runtime control = pause/resume only |
+| 9 | **Naming `placement_*`** — rename SDK callbacks `onComponentStatusChanged` → `onPlacementStatusChanged`, `onComponentConfigUpdated` → `onPlacementConfigUpdated`; new `onPlacementActivationSwapped` |
+| 10 | **Multi-sponsor at campaign scope** — only one `campaign_components` row per `(campaignId, appPlacementId)` is `status='active'` (partial UNIQUE in DB already); rotation = atomic swap inside a single tx, single emit |
+
+### Scalability — table of supported modules
+
+The outbox + subscribe protocol is **module-agnostic**. Today only
+`placements` emits. Adding the others later is purely additive:
+
+| module | scope_type | status | wiring required when added |
+|---|---|---|---|
+| `placements` | `campaign` | **🚧 building this sprint** | full E2E |
+| `engagement` | `broadcast` | future | 1 INSERT in outbox per handler + 1 case in SDK switch |
+| `broadcast` | `broadcast` | future | idem |
+| `cart_intent` | `user` | migrate later | currently uses direct user routing; outbox migration is a separate follow-up |
+
+### Phase 1 — Outbox foundation (backend)
+
+**Branch**: `feature/placements-app-placements-table`. **One commit.**
+
+Files:
+
+- NEW `migrations/0005_events_outbox.sql`:
+  ```sql
+  CREATE TABLE events_outbox (
+    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    topic       TEXT NOT NULL,         -- 'placement_status_changed' | …
+    module      TEXT NOT NULL,         -- 'placements' | 'engagement' | …
+    scope_type  TEXT NOT NULL,         -- 'campaign' | 'broadcast' | 'user'
+    scope_id    BIGINT NOT NULL,
+    payload     JSONB NOT NULL,
+    server_timestamp TIMESTAMPTZ NOT NULL DEFAULT now(),
+    status      TEXT NOT NULL DEFAULT 'pending',  -- 'pending' | 'sent' | 'failed' | 'dead'
+    attempts    INT NOT NULL DEFAULT 0,
+    last_error  TEXT,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    processed_at TIMESTAMPTZ
+  );
+  CREATE INDEX events_outbox_pending_idx ON events_outbox (created_at) WHERE status='pending';
+  CREATE INDEX events_outbox_scope_idx ON events_outbox (scope_type, scope_id, server_timestamp DESC);
+  ```
+- MOD `shared/schema.ts` — Drizzle table definition for `eventsOutbox`.
+- NEW `server/events/types.ts` — TS interfaces for the 3 placement events + the generic outbox row.
+- NEW `server/events/outbox.ts` — `enqueueEvent(tx, args)` helper that takes the existing transaction handle.
+- NEW `server/events/worker.ts` — `processOutbox()` loop running every 500ms; uses `FOR UPDATE SKIP LOCKED LIMIT 50`; max 5 attempts then marks `dead`.
+- MOD `server/index.ts` — start the worker on app boot; clean shutdown on SIGTERM.
+- Apply migration to local Neon (`local/angelo-20260423-1814`).
+
+### Phase 2 — Module subscribe protocol (backend WS)
+
+**Branch**: same. **One commit.**
+
+Files:
+
+- MOD `server/routes.ts` (WS section ~line 485):
+  - `clientSubscriptions: WeakMap<WebSocket, Set<string>>` — module-level state.
+  - On message `{type:"subscribe", modules:[…]}`: store in WeakMap.
+  - Default if no subscribe arrives: treat as `'*'` (firehose, backward-compat for current cart-intent / poll / contest emit paths).
+- `broadcastToCampaign(campaignId, message)` — accept structured event `{module, type, payload, serverTimestamp}` and filter per-client by `clientSubscriptions`. Stays backward-compat for raw-string callers (legacy emit sites).
+- Multi-node Redis path: filter still happens at each node before sending to local clients (Redis Pub/Sub fanout unchanged).
+
+### Phase 3 — Emit the 3 placement events (backend handlers)
+
+**Branch**: same. **One commit.**
+
+Files:
+
+- MOD `server/routes.ts` — refactor existing handlers to use `enqueueEvent` inside the same tx as the data UPDATE:
+  - `PATCH /api/campaigns/:id/components/:rowId` → if `status` field changed → `placement_status_changed`; if `customConfig` changed → `placement_config_updated`.
+  - NEW `POST /api/campaigns/:id/components/:rowId/pause` and `…/resume` — explicit verbs that emit only `placement_status_changed`.
+  - NEW `POST /api/campaigns/:id/placements/:appPlacementId/activate` body `{campaignComponentId}` — atomic swap: sets old to inactive + new to active + enqueues `placement_activation_swapped` (single event).
+- MOD `server/storage.ts` — helpers accept tx handle so `enqueueEvent` shares it.
+- Payload shapes added to `API_V2_CONTRACT.md §WS` (also in Phase 6).
+
+### Phase 4 — iOS SDK: subscribe + handlers
+
+**Branch**: `feature/placements-named-instances`. **One commit.**
+
+Files:
+
+- NEW `Sources/VioCore/Models/VioModule.swift` — `enum VioModule: String { case placements, engagement, cartIntent, broadcast }`.
+- MOD `Sources/VioCore/VioConfiguration.swift` — `enabledModules: Set<VioModule>` (default lazy: `.cartIntent` for backward compat; populated by `VioPlacementRegistry` on first placement view mount).
+- MOD `Sources/VioCore/Managers/CampaignWebSocketManager.swift`:
+  - After `identify`, send `{type:"subscribe", modules:[…]}` based on `VioConfiguration.shared.enabledModules`.
+  - Rename `onComponentStatusChanged` → `onPlacementStatusChanged`, `onComponentConfigUpdated` → `onPlacementConfigUpdated`.
+  - Add `onPlacementActivationSwapped`.
+  - Update `handleMessage` switch for new wire names.
+- MOD `Sources/VioCore/Managers/CampaignManager.swift`:
+  - Rename binding methods accordingly.
+  - Implement `handlePlacementActivationSwapped(event)` — replace component for `appPlacementId`; SwiftUI auto-renders; ProductService reloads with new `sponsorId`.
+  - Add `lastEventTimestamp` per Component for sequencing — events with older timestamps ignored.
+  - On WS reconnect (`didOpenWithProtocol` after non-zero `reconnectAttempts`): call `fetchAndApplyCampaignComponentsIfPossible()` silently and reset `lastEventTimestamp` to `now`.
+- MOD `Sources/VioCore/Models/CampaignModels.swift` — add `PlacementActivationSwappedEvent` struct + rename existing `ComponentStatusChangedEvent` → `PlacementStatusChangedEvent` etc.
+
+### Phase 5 — Dashboard: pause + activate UI
+
+**Branch**: `feature/placements-app-placements-table`. **One commit.**
+
+Files:
+
+- MOD `client/src/components/dashboard/ComponentsTab.tsx`:
+  - Per-placement card: "Pausar" / "Reanudar" button → POST `…/pause` or `…/resume`.
+  - When `(campaignId, appPlacementId)` has >1 row, show "Sponsor activo" dropdown listing the candidate rows; selecting one calls POST `…/activate`.
+  - All mutations show toast on success ("Aplicado en vivo").
+
+### Phase 6 — Smoke test E2E + docs accumulation
+
+**Branches**: both. **One commit per repo.**
+
+Smoke scenarios (must all pass):
+
+1. iOS demo cold-start: carousel renders sponsor A.
+2. Dashboard: pause → carousel disappears in <1s.
+3. Dashboard: resume → carousel re-appears.
+4. Dashboard: change `title` → header updates, no skeleton.
+5. Dashboard: change `productIds` → brief skeleton + new products.
+6. Dashboard: add second binding (sponsor B), then "activate B" → hard cut to sponsor B with logo + title + new products.
+7. iOS: airplane mode 30s, dashboard pauses meanwhile, iOS reconnects → silent fetch → carousel disappears (eventual consistency, no flicker).
+
+Docs to update (rule #7 — accumulate, no new files):
+
+- `CURRENT_STATE.md §17` — add "Live updates" subsection with sequence diagram.
+- `ARCHITECTURE_OVERVIEW.md` — add `events_outbox` table + WS subscribe protocol section.
+- `DB_AND_ENDPOINTS.md` — `events_outbox` schema + new placement endpoints (`/pause`, `/resume`, `/activate`) + WS message types.
+- `API_V2_CONTRACT.md §WS` — full payload reference for the 3 placement events + subscribe message.
+- This file — append final outcomes + roll-forward "Pending" section.
+
+### Anti-goals (explicitly out of scope this sprint)
+
+- ❌ Engagement events (polls, contests, chat) — structure supports them; wiring later.
+- ❌ Broadcast events (lineup, score, stats) — same.
+- ❌ Cart-intent migration to outbox — separate follow-up sprint.
+- ❌ Postgres `LISTEN/NOTIFY` for sub-100ms latency — premature optimization; revisit if 500ms feels slow in production.
+- ❌ Outbox cleanup cron — add when DB row count crosses ~100k; trivial to add later.
+- ❌ Banner / Spotlight / Store / Slider `locationId:` plumbing — carry-over item, separate sprint.
 
 ---
 
