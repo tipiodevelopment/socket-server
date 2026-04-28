@@ -53,6 +53,8 @@ import { createRateLimiter, rateLimitPresets } from "./middleware/rate-limiter";
 import { validateBroadcastId } from "./middleware/broadcast-validator";
 import { setVoteBroadcastFunction } from "./services/vote-processor";
 import { sendAPNs } from "./services/ios-flow";
+import { enqueueEvent } from "./events/outbox";
+import { PLACEMENT_TOPICS } from "./events/types";
 import {
   clearUserPresence,
   isRedisEnabled,
@@ -3395,50 +3397,73 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
         }
       }
 
+      // Atomic UPDATE + outbox enqueue. Both rows commit together (the
+      // event is guaranteed to fire iff the data change persisted) or
+      // both roll back on error. The worker (server/events/worker.ts)
+      // ships the event to subscribed sockets within ~500ms.
       let updated: any;
-      if (status) {
-        updated = await storage.updateCampaignComponentStatus(campaignId, componentId, status);
-      }
-      if (locationId !== undefined) {
-        // No-op shim — location_id was dropped from campaign_components in
-        // migration 0004. Location is immutable; lives on app_placements.
-        updated = await storage.updateCampaignComponentLocationId(campaignId, componentId, locationId || null);
+      try {
+        updated = await db.transaction(async (tx) => {
+          let row: any;
+          if (status) {
+            const [r] = await tx.update(campaignComponents)
+              .set({
+                status,
+                ...(status === 'active' ? { activatedAt: new Date() } : {}),
+                updatedAt: new Date(),
+              })
+              .where(and(
+                eq(campaignComponents.campaignId, campaignId),
+                eq(campaignComponents.id, rowId),
+              ))
+              .returning();
+            row = r;
+            if (!row) return undefined;
+
+            // Enqueue placement_status_changed inside the same tx.
+            // Payload is minimal — status is a flag, the SDK already has
+            // the rest of the component cached locally.
+            await enqueueEvent(tx, {
+              topic: PLACEMENT_TOPICS.STATUS_CHANGED,
+              module: 'placements',
+              scopeType: 'campaign',
+              scopeId: campaignId,
+              payload: {
+                campaignId,
+                appPlacementId: row.appPlacementId,
+                campaignComponentId: row.id,
+                status: row.status,
+              },
+            });
+          }
+          if (locationId !== undefined && !row) {
+            // No-op shim — location_id is immutable post-migration 0004.
+            // Read the current row so the response stays consistent.
+            const [r] = await tx.select().from(campaignComponents)
+              .where(and(
+                eq(campaignComponents.campaignId, campaignId),
+                eq(campaignComponents.id, rowId),
+              ))
+              .limit(1);
+            row = r;
+          }
+          return row;
+        });
+      } catch (txErr: any) {
+        // Partial UNIQUE index trip (defense-in-depth — pre-check above
+        // catches the common case but a race between concurrent PATCHes
+        // can still hit this).
+        if (txErr?.code === '23505') {
+          return res.status(409).json({
+            code: 'PLACEMENT_ACTIVE_CONFLICT',
+            message: 'A row is already active for this (campaign, app_placement). Deactivate it first.',
+          });
+        }
+        throw txErr;
       }
 
       if (!updated) {
         return res.status(404).json({ message: 'Campaign component not found' });
-      }
-
-      // Broadcast WS `component_status_changed` so live SDK clients react in
-      // real time. Payload keeps the legacy `componentId` (template uuid) +
-      // `component.{id,type,name,config}` shape the iOS SDK expects, plus the
-      // new `appPlacementId` and `locationId` fields sourced from the linked
-      // app_placement (the SDK uses these to dedupe by `(id, locationId)`).
-      if (status) {
-        const campaign = await storage.getCampaign(campaignId);
-        if (campaign && isCampaignActive(campaign)) {
-          const placement = await storage.getAppPlacementById(updated.appPlacementId);
-          const event: any = {
-            type: 'component_status_changed',
-            campaignId,
-            componentId: placement?.componentId ?? null,
-            appPlacementId: updated.appPlacementId,
-            locationId: placement?.locationId ?? null,
-            status,
-            component: placement ? {
-              id: placement.componentId,
-              type: placement.component?.type,
-              name: placement.component?.name,
-              config: normalizeUrls(updated.customConfig || (placement.component as any)?.config, req.protocol, req.get('host')),
-            } : null,
-          };
-          if (updated.matchId) {
-            event.matchId = updated.matchId;
-          } else if (campaign.matchId) {
-            event.matchId = campaign.matchId;
-          }
-          broadcastToCampaignImpl(campaignId, JSON.stringify(event));
-        }
       }
 
       res.json(updated);
@@ -3448,7 +3473,12 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
     }
   });
 
-  // Update campaign component custom configuration
+  // Update campaign component custom configuration.
+  //
+  // Atomic UPDATE + outbox enqueue (Phase 3 of the live-updates sprint).
+  // Emits `placement_config_updated` with a `productIdsChanged` hint so
+  // the SDK can decide whether to flash a skeleton (productIds changed →
+  // catalog reload needed) or swap in place (title/showSponsorLogo only).
   app.patch('/api/campaigns/:id/components/:componentId/config', async (req, res) => {
     try {
       const campaignId = parseInt(req.params.id);
@@ -3460,39 +3490,83 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
         return res.status(400).json({ message: 'Missing required field: customConfig (use null to clear)' });
       }
 
-      const updated = await storage.updateCampaignComponentConfig(campaignId, componentId, customConfig);
+      const rowId = parseInt(componentId);
+      if (Number.isNaN(rowId)) {
+        return res.status(400).json({ message: 'componentId must be a numeric campaign_components row id' });
+      }
+
+      // Helper: extract `productIds: string[]` from a customConfig blob.
+      // Used to compute the `productIdsChanged` hint sent to the SDK.
+      // Returns [] if absent or malformed (treated as "no products
+      // configured" in the diff).
+      const extractProductIds = (cfg: unknown): string[] => {
+        if (!cfg || typeof cfg !== 'object') return [];
+        const ids = (cfg as Record<string, unknown>).productIds;
+        if (!Array.isArray(ids)) return [];
+        return ids.filter((x): x is string => typeof x === 'string');
+      };
+
+      // Atomic: read old config (for productIdsChanged diff), UPDATE,
+      // enqueueEvent — all in one tx.
+      const updated = await db.transaction(async (tx) => {
+        const [before] = await tx.select({
+          id: campaignComponents.id,
+          customConfig: campaignComponents.customConfig,
+          appPlacementId: campaignComponents.appPlacementId,
+          status: campaignComponents.status,
+        })
+          .from(campaignComponents)
+          .where(and(
+            eq(campaignComponents.campaignId, campaignId),
+            eq(campaignComponents.id, rowId),
+          ))
+          .limit(1);
+
+        if (!before) return undefined;
+
+        const [row] = await tx.update(campaignComponents)
+          .set({
+            customConfig,
+            updatedAt: new Date(),
+          })
+          .where(and(
+            eq(campaignComponents.campaignId, campaignId),
+            eq(campaignComponents.id, rowId),
+          ))
+          .returning();
+
+        // Compute productIdsChanged hint for the SDK. Strict array
+        // equality on the productIds field — order matters because the
+        // operator may have re-ordered the carousel.
+        const oldIds = extractProductIds(before.customConfig);
+        const newIds = extractProductIds(customConfig);
+        const productIdsChanged =
+          oldIds.length !== newIds.length ||
+          oldIds.some((id, i) => id !== newIds[i]);
+
+        // Only emit if the row is active — paused placements are invisible
+        // to the SDK, so a config change is just persisted for later.
+        if (row.status === 'active') {
+          await enqueueEvent(tx, {
+            topic: PLACEMENT_TOPICS.CONFIG_UPDATED,
+            module: 'placements',
+            scopeType: 'campaign',
+            scopeId: campaignId,
+            payload: {
+              campaignId,
+              appPlacementId: row.appPlacementId,
+              campaignComponentId: row.id,
+              customConfig: customConfig ?? null,
+              productIdsChanged,
+            },
+          });
+        }
+
+        return row;
+      });
 
       if (!updated) {
         return res.status(404).json({ message: 'Campaign component not found' });
-      }
-
-      // Check if campaign is active and component is active before broadcasting
-      const campaign = await storage.getCampaign(campaignId);
-      if (campaign && isCampaignActive(campaign) && updated.status === 'active') {
-        // Get full component details for broadcast
-        const fullComponent = await storage.getComponentById(componentId);
-
-        // Broadcast config update via WebSocket
-        const effectiveConfig = updated.customConfig || fullComponent?.config;
-
-        const event: any = {
-          type: 'component_config_updated',
-          campaignId,
-          componentId,
-          component: fullComponent ? {
-            id: fullComponent.id,
-            type: fullComponent.type,
-            name: fullComponent.name,
-            config: normalizeUrls(effectiveConfig, req.protocol, req.get('host'))
-          } : null
-        };
-        // Include matchId if component or campaign is associated with a match
-        if (updated.matchId) {
-          event.matchId = updated.matchId;
-        } else if (campaign.matchId) {
-          event.matchId = campaign.matchId;
-        }
-        broadcastToCampaignImpl(campaignId, JSON.stringify(event));
       }
 
       res.json(updated);
@@ -3513,6 +3587,293 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
     } catch (error) {
       console.error('Error removing component from campaign:', error);
       res.status(500).json({ message: 'Error removing component from campaign' });
+    }
+  });
+
+  // ========================================
+  // Live placement control (Phase 3 of live-updates sprint)
+  //
+  // Three operator-facing verbs that the dashboard wires to buttons:
+  //
+  //   POST /api/campaigns/:id/components/:componentId/pause
+  //   POST /api/campaigns/:id/components/:componentId/resume
+  //   POST /api/campaigns/:id/placements/:appPlacementId/activate
+  //
+  // All three flip campaign_components rows + enqueue an outbox event
+  // INSIDE the same transaction. The worker (server/events/worker.ts)
+  // ships the event to subscribed sockets within ~500ms; the SDK toggles
+  // visibility (pause/resume) or swaps the active row (activate)
+  // without a cold start.
+  //
+  // pause/resume are sugar around PATCH status — same atomicity, clearer
+  // verbs for the dashboard. activate is the multi-sponsor rotation:
+  // atomic A→B swap inside one tx, single placement_activation_swapped
+  // event emitted (see server/events/types.ts for the payload shape).
+  // ========================================
+
+  // Pause a campaign_components row — sets status='inactive', emits
+  // placement_status_changed. Always reversible via /resume.
+  app.post('/api/campaigns/:id/components/:componentId/pause', async (req, res) => {
+    try {
+      const campaignId = parseInt(req.params.id);
+      const rowId = parseInt(req.params.componentId);
+      if (Number.isNaN(rowId)) {
+        return res.status(400).json({ message: 'componentId must be a numeric campaign_components row id' });
+      }
+
+      const updated = await db.transaction(async (tx) => {
+        const [row] = await tx.update(campaignComponents)
+          .set({ status: 'inactive', updatedAt: new Date() })
+          .where(and(
+            eq(campaignComponents.campaignId, campaignId),
+            eq(campaignComponents.id, rowId),
+          ))
+          .returning();
+        if (!row) return undefined;
+
+        await enqueueEvent(tx, {
+          topic: PLACEMENT_TOPICS.STATUS_CHANGED,
+          module: 'placements',
+          scopeType: 'campaign',
+          scopeId: campaignId,
+          payload: {
+            campaignId,
+            appPlacementId: row.appPlacementId,
+            campaignComponentId: row.id,
+            status: 'inactive',
+          },
+        });
+        return row;
+      });
+
+      if (!updated) {
+        return res.status(404).json({ message: 'Campaign component not found' });
+      }
+      res.json(updated);
+    } catch (error) {
+      console.error('Error pausing placement:', error);
+      res.status(500).json({ message: 'Error pausing placement' });
+    }
+  });
+
+  // Resume a campaign_components row — sets status='active', emits
+  // placement_status_changed. Pre-checks the active-conflict (partial
+  // UNIQUE index) so the dashboard surfaces a clean 409 with the row id
+  // currently holding the slot.
+  app.post('/api/campaigns/:id/components/:componentId/resume', async (req, res) => {
+    try {
+      const campaignId = parseInt(req.params.id);
+      const rowId = parseInt(req.params.componentId);
+      if (Number.isNaN(rowId)) {
+        return res.status(400).json({ message: 'componentId must be a numeric campaign_components row id' });
+      }
+
+      // Read target row to get appPlacementId for the conflict check.
+      const [target] = await db.select()
+        .from(campaignComponents)
+        .where(and(
+          eq(campaignComponents.campaignId, campaignId),
+          eq(campaignComponents.id, rowId),
+        ))
+        .limit(1);
+      if (!target) {
+        return res.status(404).json({ message: 'Campaign component not found' });
+      }
+
+      const otherActive = await db.select({ id: campaignComponents.id, sponsorId: campaignComponents.sponsorId })
+        .from(campaignComponents)
+        .where(and(
+          eq(campaignComponents.campaignId, campaignId),
+          eq(campaignComponents.appPlacementId, target.appPlacementId),
+          eq(campaignComponents.status, 'active'),
+          ne(campaignComponents.id, rowId),
+        ))
+        .limit(1);
+      if (otherActive.length > 0) {
+        return res.status(409).json({
+          code: 'PLACEMENT_ACTIVE_CONFLICT',
+          message: `Another row is already active for this placement (sponsor ${otherActive[0].sponsorId}). Use /activate to swap, or pause it first.`,
+          activeCampaignComponentId: otherActive[0].id,
+        });
+      }
+
+      const updated = await db.transaction(async (tx) => {
+        const [row] = await tx.update(campaignComponents)
+          .set({ status: 'active', activatedAt: new Date(), updatedAt: new Date() })
+          .where(and(
+            eq(campaignComponents.campaignId, campaignId),
+            eq(campaignComponents.id, rowId),
+          ))
+          .returning();
+        if (!row) return undefined;
+
+        await enqueueEvent(tx, {
+          topic: PLACEMENT_TOPICS.STATUS_CHANGED,
+          module: 'placements',
+          scopeType: 'campaign',
+          scopeId: campaignId,
+          payload: {
+            campaignId,
+            appPlacementId: row.appPlacementId,
+            campaignComponentId: row.id,
+            status: 'active',
+          },
+        });
+        return row;
+      });
+
+      if (!updated) {
+        return res.status(404).json({ message: 'Campaign component not found' });
+      }
+      res.json(updated);
+    } catch (error: any) {
+      if (error?.code === '23505') {
+        return res.status(409).json({
+          code: 'PLACEMENT_ACTIVE_CONFLICT',
+          message: 'A row is already active for this placement (race condition). Pause it first.',
+        });
+      }
+      console.error('Error resuming placement:', error);
+      res.status(500).json({ message: 'Error resuming placement' });
+    }
+  });
+
+  // Activate a specific campaign_components row within a placement slot,
+  // atomically deactivating whichever row is currently active. This is
+  // the multi-sponsor rotation entry point.
+  //
+  // Body: `{ campaignComponentId: number }` — the row to make active.
+  //
+  // Three states possible:
+  //   1. Target is already active → no-op (idempotent), returns 200 with
+  //      the unchanged row.
+  //   2. No prior active row → simple activation, emits
+  //      `placement_status_changed`.
+  //   3. Active row exists and is different → atomic swap (deactivate A,
+  //      activate B in one tx), emits `placement_activation_swapped`
+  //      with both ids.
+  //
+  // The order matters: deactivate FIRST, then activate, so the partial
+  // UNIQUE index never sees two active rows simultaneously even within
+  // the tx.
+  app.post('/api/campaigns/:id/placements/:appPlacementId/activate', async (req, res) => {
+    try {
+      const campaignId = parseInt(req.params.id);
+      const appPlacementId = parseInt(req.params.appPlacementId);
+      const targetRowId = Number(req.body?.campaignComponentId);
+
+      if (Number.isNaN(campaignId) || Number.isNaN(appPlacementId) || !Number.isFinite(targetRowId)) {
+        return res.status(400).json({
+          message: 'campaign id, appPlacementId (path) and campaignComponentId (body) must be numeric',
+        });
+      }
+
+      // Validate target exists, belongs to (campaign, placement).
+      const [target] = await db.select()
+        .from(campaignComponents)
+        .where(and(
+          eq(campaignComponents.campaignId, campaignId),
+          eq(campaignComponents.id, targetRowId),
+          eq(campaignComponents.appPlacementId, appPlacementId),
+        ))
+        .limit(1);
+      if (!target) {
+        return res.status(404).json({
+          message: `Campaign component ${targetRowId} not found for placement ${appPlacementId} in campaign ${campaignId}`,
+        });
+      }
+
+      const result = await db.transaction(async (tx) => {
+        // Find the currently active row for this slot (if any). Excludes
+        // the target itself in case it is already active (idempotency).
+        const [currentActive] = await tx.select()
+          .from(campaignComponents)
+          .where(and(
+            eq(campaignComponents.campaignId, campaignId),
+            eq(campaignComponents.appPlacementId, appPlacementId),
+            eq(campaignComponents.status, 'active'),
+            ne(campaignComponents.id, targetRowId),
+          ))
+          .limit(1);
+
+        // Idempotency: target already active and no other contender → no-op.
+        if (target.status === 'active' && !currentActive) {
+          return { row: target, eventEmitted: false, swap: false };
+        }
+
+        // 1) Deactivate the current active row (if any).
+        if (currentActive) {
+          await tx.update(campaignComponents)
+            .set({ status: 'inactive', updatedAt: new Date() })
+            .where(eq(campaignComponents.id, currentActive.id));
+        }
+
+        // 2) Activate the target.
+        const [activated] = await tx.update(campaignComponents)
+          .set({ status: 'active', activatedAt: new Date(), updatedAt: new Date() })
+          .where(eq(campaignComponents.id, targetRowId))
+          .returning();
+
+        // 3) Enqueue the appropriate event. Swap → activation_swapped
+        //    (one event, both ids); plain activation → status_changed.
+        if (currentActive) {
+          await enqueueEvent(tx, {
+            topic: PLACEMENT_TOPICS.ACTIVATION_SWAPPED,
+            module: 'placements',
+            scopeType: 'campaign',
+            scopeId: campaignId,
+            payload: {
+              campaignId,
+              appPlacementId,
+              fromCampaignComponentId: currentActive.id,
+              toCampaignComponentId: activated.id,
+              fromSponsorId: currentActive.sponsorId,
+              toSponsorId: activated.sponsorId,
+              newComponent: {
+                id: activated.id,
+                componentTypeId: null, // SDK reads this from cached app_placement
+                sponsorId: activated.sponsorId,
+                customConfig: activated.customConfig ?? null,
+                status: activated.status,
+              },
+            },
+          });
+        } else {
+          await enqueueEvent(tx, {
+            topic: PLACEMENT_TOPICS.STATUS_CHANGED,
+            module: 'placements',
+            scopeType: 'campaign',
+            scopeId: campaignId,
+            payload: {
+              campaignId,
+              appPlacementId,
+              campaignComponentId: activated.id,
+              status: 'active',
+            },
+          });
+        }
+
+        return { row: activated, eventEmitted: true, swap: !!currentActive };
+      });
+
+      res.json({
+        ...result.row,
+        _meta: {
+          eventEmitted: result.eventEmitted,
+          swap: result.swap,
+        },
+      });
+    } catch (error: any) {
+      if (error?.code === '23505') {
+        // Should be unreachable given the deactivate-first ordering,
+        // but kept as a defense-in-depth signal.
+        return res.status(409).json({
+          code: 'PLACEMENT_ACTIVE_CONFLICT',
+          message: 'Concurrent write race detected. Retry the request.',
+        });
+      }
+      console.error('Error activating placement row:', error);
+      res.status(500).json({ message: 'Error activating placement row' });
     }
   });
 

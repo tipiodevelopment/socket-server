@@ -58,15 +58,20 @@ export type PlacementTopic =
 
 /**
  * Operator paused or resumed a placement binding. Hard cut on the SDK
- * side — no animation. `paused` makes the carousel disappear; `active`
+ * side — no animation. `inactive` makes the carousel disappear; `active`
  * brings it back (config + products are unchanged).
+ *
+ * Naming note: the dashboard exposes this as "Pause" / "Resume" verbs to
+ * the operator, but the underlying DB column is `campaign_components.status`
+ * which stores `'active' | 'inactive'`. The wire payload mirrors the DB
+ * vocabulary; the SDK is free to render "Paused" in UI copy.
  */
 export interface PlacementStatusChangedPayload {
   campaignId: number;
   appPlacementId: number;
   campaignComponentId: number;
   /** New value of campaign_components.status. */
-  status: "active" | "paused";
+  status: "active" | "inactive";
 }
 
 /**
@@ -105,7 +110,7 @@ export interface PlacementActivationSwappedPayload {
     componentTypeId: string;
     sponsorId: number | null;
     customConfig: Record<string, unknown> | null;
-    status: "active";
+    status: "active" | "inactive";
   };
 }
 
