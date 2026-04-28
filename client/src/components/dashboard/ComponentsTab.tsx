@@ -1161,8 +1161,67 @@ export function CampaignComponentConfigForm({
                 placeholder="e.g., Featured Product"
                 data-testid="input-highlightText"
               />
-              <p className="text-xs text-muted-foreground">Text to highlight the product</p>
+              <p className="text-xs text-muted-foreground">Capsule badge above the product card (hero variant only).</p>
             </div>
+
+            {/* Layout — operator picks visual variant. Default `hero`
+                (legacy big card). `list` is the compact horizontal
+                version (image left, info right). `minimal` is the
+                smallest. `grid` is vertical compact. Maps onto
+                VProductCard.Variant on the SDK side. */}
+            <div className="space-y-2">
+              <Label htmlFor="layout">Layout</Label>
+              <Select
+                value={config.layout || 'hero'}
+                onValueChange={(value) =>
+                  setConfig({ ...config, layout: value === 'hero' ? undefined : value })
+                }
+              >
+                <SelectTrigger data-testid="select-spotlight-layout">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="hero">Hero (large featured card — default)</SelectItem>
+                  <SelectItem value="list">List (horizontal compact)</SelectItem>
+                  <SelectItem value="minimal">Minimal (small)</SelectItem>
+                  <SelectItem value="grid">Grid (vertical compact)</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                Controls how the SDK renders the spotlight card.
+              </p>
+            </div>
+
+            {/* Header section opt-ins. Same opt-in pattern as the
+                carousel — both default off. When off, the spotlight
+                renders without a header band (legacy layout
+                preserved). Operator turns them on per-placement. */}
+            <div className="pt-4 border-t">
+              <h4 className="text-sm font-semibold mb-3">Header (optional)</h4>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="title">Title</Label>
+              <Input
+                id="title"
+                value={config.title || ''}
+                onChange={(e) => setConfig({ ...config, title: e.target.value || undefined })}
+                placeholder="e.g. Producto destacado — leave empty to hide header"
+                data-testid="input-spotlight-title"
+              />
+              <p className="text-xs text-muted-foreground">Renders above the product card. Empty → no header.</p>
+            </div>
+            <div className="space-y-2 flex items-center gap-2">
+              <input
+                type="checkbox"
+                id="spotlight-showSponsorLogo"
+                checked={config.showSponsorLogo === true}
+                onChange={(e) => setConfig({ ...config, showSponsorLogo: e.target.checked || undefined })}
+                data-testid="checkbox-spotlight-showSponsorLogo"
+                className="rounded"
+              />
+              <Label htmlFor="spotlight-showSponsorLogo">Show sponsor logo in header</Label>
+            </div>
+
             <div className="space-y-2">
               <Label htmlFor="durationSeconds">Display Duration (seconds)</Label>
               <Input
