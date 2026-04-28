@@ -602,6 +602,123 @@ export function ComponentsTab({ campaignId }: ComponentsTabProps) {
                         </div>
                       )}
 
+                      {/* Inline content fields for product_banner. Same
+                          pattern as the offer_banner block above —
+                          operator fills banner content + colors + layout
+                          during creation so they don't have to click
+                          pencil afterward. Required: title, ctaText.
+                          Optional: subtitle / image / ctaLink / deeplink
+                          / colors / layout. Sprint 2026-04-28 PM Phase 2
+                          step A.3. */}
+                      {selectedSponsorId && selectedPlacement?.component?.type === 'product_banner' && (
+                        <div className="space-y-4 pt-4 border-t">
+                          <h4 className="text-sm font-semibold">Banner content</h4>
+
+                          <div className="space-y-2">
+                            <Label htmlFor="add-pb-layout">Layout</Label>
+                            <Select
+                              value={addExtraConfig.layout || 'standard'}
+                              onValueChange={(value) =>
+                                setAddExtraConfig({ ...addExtraConfig, layout: value === 'standard' ? undefined : value })
+                              }
+                            >
+                              <SelectTrigger data-testid="select-add-pb-layout">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="compact">Compact (120pt — small inline)</SelectItem>
+                                <SelectItem value="standard">Standard (200pt — default)</SelectItem>
+                                <SelectItem value="large">Large (280pt — hero)</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+
+                          <div className="space-y-2">
+                            <Label htmlFor="add-pb-title">Title</Label>
+                            <Input
+                              id="add-pb-title"
+                              placeholder="Producto destacado"
+                              value={addExtraConfig.title || ''}
+                              onChange={(e) => setAddExtraConfig({ ...addExtraConfig, title: e.target.value || undefined })}
+                              data-testid="input-add-pb-title"
+                            />
+                            <p className="text-xs text-muted-foreground">Editorial heading on the banner image. Empty → product name fallback.</p>
+                          </div>
+
+                          <div className="space-y-2">
+                            <Label htmlFor="add-pb-subtitle">Subtitle (optional)</Label>
+                            <Input
+                              id="add-pb-subtitle"
+                              placeholder="40% OFF"
+                              value={addExtraConfig.subtitle || ''}
+                              onChange={(e) => setAddExtraConfig({ ...addExtraConfig, subtitle: e.target.value || undefined })}
+                              data-testid="input-add-pb-subtitle"
+                            />
+                          </div>
+
+                          <ImageUploadWithPreview
+                            label="Background image"
+                            value={addExtraConfig.backgroundImageUrl || ''}
+                            onChange={(url) => setAddExtraConfig({ ...addExtraConfig, backgroundImageUrl: url || undefined })}
+                            placeholder="/objects/uploads/... or https://..."
+                            testId="input-add-pb-bg"
+                          />
+
+                          <div className="space-y-2">
+                            <Label htmlFor="add-pb-cta">CTA button text <span className="text-red-400">*</span></Label>
+                            <Input
+                              id="add-pb-cta"
+                              placeholder="Ver producto"
+                              value={addExtraConfig.ctaText || ''}
+                              onChange={(e) => setAddExtraConfig({ ...addExtraConfig, ctaText: e.target.value })}
+                              data-testid="input-add-pb-cta"
+                            />
+                          </div>
+
+                          <div className="space-y-2">
+                            <Label htmlFor="add-pb-deeplink">Deeplink URL (optional)</Label>
+                            <Input
+                              id="add-pb-deeplink"
+                              placeholder="tv2://product/408895"
+                              value={addExtraConfig.deeplink || ''}
+                              onChange={(e) => setAddExtraConfig({ ...addExtraConfig, deeplink: e.target.value || undefined })}
+                              data-testid="input-add-pb-deeplink"
+                            />
+                            <p className="text-xs text-muted-foreground">In-app routing. Falls back to <code>ctaLink</code> if empty.</p>
+                          </div>
+
+                          {/* Brand color pickers — sponsor swatches */}
+                          {(() => {
+                            const sponsor = campaignSponsors.find(s => String(s.sponsorId) === selectedSponsorId);
+                            return (
+                              <>
+                                <BrandColorPicker
+                                  label="Title color"
+                                  value={addExtraConfig.titleColor}
+                                  onChange={(next) => setAddExtraConfig({ ...addExtraConfig, titleColor: next })}
+                                  sponsorPrimaryColor={sponsor?.primaryColor}
+                                  sponsorSecondaryColor={sponsor?.secondaryColor}
+                                  sponsorName={sponsor?.name}
+                                  emptyPlaceholder="#FFFFFF"
+                                  testId="picker-add-pb-titleColor"
+                                />
+                                <BrandColorPicker
+                                  label="Button background"
+                                  value={addExtraConfig.buttonBackgroundColor}
+                                  onChange={(next) => setAddExtraConfig({ ...addExtraConfig, buttonBackgroundColor: next })}
+                                  sponsorPrimaryColor={sponsor?.primaryColor}
+                                  sponsorSecondaryColor={sponsor?.secondaryColor}
+                                  sponsorName={sponsor?.name}
+                                  emptyPlaceholder="#007AFF"
+                                  helperText="Click a sponsor swatch to brand the CTA."
+                                  testId="picker-add-pb-buttonBgColor"
+                                />
+                              </>
+                            );
+                          })()}
+                        </div>
+                      )}
+
                       <Button
                         onClick={() => {
                           if (!selectedComponentId || !selectedSponsorId) return;
@@ -616,6 +733,20 @@ export function ComponentsTab({ campaignId }: ComponentsTabProps) {
                               toast({
                                 title: 'Missing required banner fields',
                                 description: `Fill: ${missing.join(', ')}`,
+                                variant: 'destructive',
+                              });
+                              return;
+                            }
+                          }
+                          // product_banner basic validation — must have
+                          // ctaText so the button renders. title is
+                          // optional (falls back to product name on SDK
+                          // side).
+                          if (selectedPlacement?.component?.type === 'product_banner') {
+                            if (!addExtraConfig.ctaText) {
+                              toast({
+                                title: 'Missing CTA button text',
+                                description: 'Fill `ctaText` so the banner button has a label.',
                                 variant: 'destructive',
                               });
                               return;
