@@ -15,6 +15,7 @@ import { Link } from "wouter";
 import { ImageUploadWithPreview } from "@/components/ImageUploadWithPreview";
 import { SponsorProductPicker } from "@/components/dashboard/SponsorProductPicker";
 import { OfferBannerPreview } from "@/components/dashboard/OfferBannerPreview";
+import { ProductBannerPreview } from "@/components/dashboard/ProductBannerPreview";
 import { BrandColorPicker } from "@/components/dashboard/BrandColorPicker";
 
 interface ComponentsTabProps {
@@ -714,6 +715,19 @@ export function ComponentsTab({ campaignId }: ComponentsTabProps) {
                                   testId="picker-add-pb-buttonBgColor"
                                 />
                               </>
+                            );
+                          })()}
+
+                          {/* Live preview — same component as the
+                              Customize dialog, mirrors VProductBanner. */}
+                          {(() => {
+                            const sponsor = campaignSponsors.find(s => String(s.sponsorId) === selectedSponsorId);
+                            return (
+                              <ProductBannerPreview
+                                config={addExtraConfig}
+                                sponsorLogoUrl={sponsor?.logoUrl ?? null}
+                                sponsorPrimaryColor={sponsor?.primaryColor ?? null}
+                              />
                             );
                           })()}
                         </div>
@@ -2081,9 +2095,10 @@ export function CampaignComponentConfigForm({
 
       {renderConfigFields()}
 
-      {/* Live preview — same component as the Add dialog. Renders only
-          for offer_banner today; other templates can opt in by checking
-          their `componentType` and reusing the same pattern. */}
+      {/* Live preview — per-template. Each template that has a
+          dedicated preview opts in by checking its `componentType`
+          here. Add new templates by adding a branch + dropping in
+          their preview component. */}
       {componentType === 'offer_banner' && (() => {
         const sponsor = campaignSponsors.find(s => String(s.sponsorId) === selectedSponsorId);
         return (
@@ -2092,6 +2107,16 @@ export function CampaignComponentConfigForm({
             sponsorLogoUrl={sponsor?.logoUrl ?? null}
             sponsorPrimaryColor={sponsor?.primaryColor ?? null}
             sponsorSecondaryColor={sponsor?.secondaryColor ?? null}
+          />
+        );
+      })()}
+      {componentType === 'product_banner' && (() => {
+        const sponsor = campaignSponsors.find(s => String(s.sponsorId) === selectedSponsorId);
+        return (
+          <ProductBannerPreview
+            config={config}
+            sponsorLogoUrl={sponsor?.logoUrl ?? null}
+            sponsorPrimaryColor={sponsor?.primaryColor ?? null}
           />
         );
       })()}
