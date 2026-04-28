@@ -95,14 +95,30 @@ export function ComponentsTab({ campaignId }: ComponentsTabProps) {
       sponsorId: number;
       productIds?: string[];
     }) => {
-      // customConfig.productIds is the convention the SDK product views
-      // read when rendering. Only set when the operator picked products
-      // explicitly (so the SDK can distinguish "operator left default"
-      // from "operator chose 0 products").
-      const customConfig =
-        params.productIds && params.productIds.length > 0
-          ? { productIds: params.productIds }
-          : undefined;
+      // Customize config shape per template type.
+      //
+      //   product_spotlight  → single `productId: string`     (1 hero product)
+      //   product_carousel,
+      //   product_banner,
+      //   product_store,
+      //   product_slider     → array `productIds: string[]`   (N products)
+      //
+      // The dashboard product picker is multi-select today, so for
+      // single-product templates (spotlight) we pick the FIRST id and
+      // drop the array semantics. Mismatched shapes silently break the
+      // SDK decoder (Component renders empty), so guarding here.
+      const SINGLE_PRODUCT_TEMPLATES = new Set(['product_spotlight']);
+      const targetPlacement = appPlacements.find((p: any) => p.id === params.appPlacementId);
+      const templateType = targetPlacement?.component?.type as string | undefined;
+      const isSingleProductTemplate = templateType ? SINGLE_PRODUCT_TEMPLATES.has(templateType) : false;
+
+      let customConfig: Record<string, unknown> | undefined;
+      if (params.productIds && params.productIds.length > 0) {
+        customConfig = isSingleProductTemplate
+          ? { productId: params.productIds[0] }
+          : { productIds: params.productIds };
+      }
+
       return await apiRequest('POST', `/api/campaigns/${campaignId}/components`, {
         appPlacementId: params.appPlacementId,
         instanceName: params.instanceName || undefined,
