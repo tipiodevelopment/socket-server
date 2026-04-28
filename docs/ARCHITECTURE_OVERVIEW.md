@@ -76,9 +76,10 @@ Platform
 | `broadcast_sponsor_slots` | Scheduled or manually-fired shoppable ads attached to a broadcast. |
 | `shoppable_ad_activations` | Dispatch log. Every shoppable_ad WS event creates one of these rows (with `activationId`). |
 | `cart_intents` | User-initiated intent to purchase. Carries `source_activation_id` to close the attribution chain. |
-| `app_components` | Which canonical component templates each clientApp implements. Populated by SDK manifest upload at app boot. |
-| `app_component_locations` | Which slot ids each clientApp exposes. Populated by SDK manifest upload. UNIQUE `(client_app_id, location_id)`. |
-| `campaign_components` | Product placement instances (component × location × sponsor × products) per campaign. |
+| `app_component_locations` | Slot ids each clientApp's UI exposes. Populated by SDK manifest at boot. UNIQUE `(client_app_id, location_id)` + `deprecated_at` for sync semantics. |
+| `app_placements` | **Named placement instances** the operator binds to (template × location × name) per app. Created via dashboard `/apps/:id` "Add from library" form (NOT by SDK). Dual UNIQUE: `(client_app_id, name)` + `(client_app_id, component_id, location_id)`. Soft-delete via `deprecated_at`. |
+| `campaign_components` | Campaign bindings: which `app_placement` runs in which campaign with which sponsor + customConfig. FK `app_placement_id` (post-migration 0004). Partial UNIQUE `(campaign_id, app_placement_id) WHERE status='active'` for multi-sponsor rotation. |
+| ~~`app_components`~~ | Dropped in migration 0004 (redundant with `app_placements`). Routes return HTTP 410 Gone. |
 | `end_users` | SDK viewer identity (opaque `externalUserId` per clientApp). |
 | `tv_sessions` | Active TV SDK session row (heartbeat-kept). |
 
@@ -142,11 +143,11 @@ POST /v2/tv/broadcasts/:broadcastId/shoppable-ad    SDK-originated + automation 
 ### /v2/mobile/*
 
 ```
-GET  /v2/mobile/config                                bootstrap: campaign + primary + secondaries + commerce blocks
+GET  /v2/mobile/config                                bootstrap: campaign + primary + secondaries + commerce blocks (sponsor block ships logoUrl + avatarUrl)
 GET  /v2/mobile/broadcasts/:broadcastId/capabilities  per-broadcast feature flags
-GET  /v2/mobile/broadcasts/:broadcastId/components    placements (broadcast-scoped only — legacy, may retire)
-GET  /v2/mobile/campaigns/:campaignId/components      campaign-scoped placements with templateConfig+customConfig merged (primary placement fetch)
-POST /v2/mobile/components/manifest                   SDK boot manifest upload (registers app_components + app_component_locations)
+GET  /v2/mobile/broadcasts/:broadcastId/components    placements (broadcast-scoped, JOINed via app_placements; filters deprecated)
+GET  /v2/mobile/campaigns/:campaignId/components      primary placement fetch — JOIN through app_placements; filters deprecated; templateConfig+customConfig merged
+POST /v2/mobile/components/manifest                   SDK boot — body { locations: [{id, displayName?}] } only. Sync semantics. Rejects legacy `placements[]`/`components[]`.
 POST /v2/mobile/campaigns/:campaignId/cart-intent     in-app "Add to cart"
 POST /v2/mobile/campaigns/:campaignId/register-device APNs/FCM token
 ```
@@ -325,17 +326,29 @@ Merged PRs:
 
 Pending user verification of Apple Pay checkout flow end-to-end (Apple TV tap → iOS overlay → per-sponsor Commerce → Apple Pay button → checkout completes).
 
-### ✅ Hito 6 — Product Placements (runtime landed 2026-04-27)
+### ✅ Hito 6 — Product Placements (dashboard-driven model, post-pivot 2026-04-28)
 
-Placements = always-on product UI (carousels, banners, spotlights, stores, sliders) that render at host-app-declared `locationId`s. **Self-service registry** model: dev declares components + locations once at app boot via manifest upload → operator drives content from the dashboard → SDK never recompiled.
+Placements = always-on product UI (carousels, banners, spotlights, stores, sliders) that render at host-app-declared `locationId`s. **Dashboard-driven** model after the 2026-04-27 PM pivot: SDK declares only the slot **locations** its UI exposes, the **operator** creates named placements in the dashboard binding library templates to those slots, campaigns then bind to placements with sponsor + products + customConfig.
 
-Four-layer data model: `components` (canonical templates, `is_template=true`) → `app_components` (which templates each app implements, populated by manifest) → `app_component_locations` (which slots each app exposes, populated by manifest) → `campaign_components` (instances bound to component × location × sponsor × products).
+Three-layer data model:
+1. **`components`** (canonical templates, `is_template=true`) — read-only library, 6 entries
+2. **`app_placements`** (named instances per app) — operator creates via dashboard `/apps/:id` "Add from library"
+3. **`campaign_components`** (campaign bindings) — operator creates via dashboard `/campaigns/:id` Components tab; FK to `app_placements`; partial UNIQUE for "one active per (campaign, placement)" multi-sponsor rotation
 
-Status: ✅ end-to-end. Smoke verde 2026-04-27 with TV2 campaign 36 (Elkjøp en `home_top` + XXL en `match_pre_kickoff`). See [`CURRENT_STATE.md §17`](./CURRENT_STATE.md#17-placement-self-service-registry-post-runtime-2026-04-27) for the full architecture diagram + file map. Merge commits:
-- socket-server `f97bebd` (PR #29 + #32)
-- VioSwiftSDK `0d3383d` (PR #8)
+Plus `app_component_locations` (the SDK-declared slot manifest, sync-semantic with `deprecated_at`).
 
-Pending non-blocker tasks: 4 of 5 product views (`VProductSpotlight`, `VProductStore`, `VProductBanner`, `VProductSlider`) still need the same `sponsorId` plumbing pattern as `VProductCarousel`. Scheduling fields (`scheduledTime` + `endTime`) deferred until first operator request. Tracked in [`TASK_PLACEMENTS.md`](./TASK_PLACEMENTS.md).
+Status: ✅ smoke E2E live-tested 2026-04-28 with TV2 campaign 36 ("tes1" placement = Product Carousel @ home_top + XXL sponsor + 2 products + dynamic header `title="Ukens tilbud"` + sponsor logo via SVG-capable WKWebView). See [`CURRENT_STATE.md` §17](./CURRENT_STATE.md) for the full architecture diagram + file map + new-session cheat sheet.
+
+In-flight feature branches (NOT merged yet):
+- socket-server `feature/placements-app-placements-table` @ `1777914`
+- VioSwiftSDK `feature/placements-named-instances` @ `95eafdb`
+
+Pending tasks (tracked in [`TASK_PLACEMENTS.md`](./TASK_PLACEMENTS.md) "Pending for 2026-04-29"):
+- Postman regen
+- `locationId:` plumbing for VProductSpotlight / VProductBanner / VProductStore / VProductSlider (only Carousel today)
+- Scheduling fields exposure (scheduled_time + end_time on the campaign placement form)
+- Multi-sponsor rotation UX polish
+- Apple TV SDK consumption smoke (additive sponsor.avatarUrl shouldn't break it)
 
 ### ⏳ Hito 7 — Kotlin SDKs
 

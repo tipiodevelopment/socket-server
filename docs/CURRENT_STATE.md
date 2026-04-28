@@ -537,7 +537,7 @@ templates to those slots. Campaigns then bind to placements with sponsor
 ### Resume in a fresh session — the 5-line cheat sheet
 
 1. Read this doc (especially §17). Then read `docs/TASK_PLACEMENTS.md` "Sprint 2026-04-27 (PM)" section for the locked decisions.
-2. Two feature branches in flight: `feature/placements-app-placements-table` (socket-server, tip `74b39c7`) and `feature/placements-named-instances` (VioSwiftSDK, tip `95eafdb`). Both work end-to-end on local Neon `local/angelo-…`. Awaiting review.
+2. Two feature branches in flight: `feature/placements-app-placements-table` (socket-server, tip updated daily — check with `git log -1`) and `feature/placements-named-instances` (VioSwiftSDK, tip `95eafdb`). Both work end-to-end on local Neon `local/angelo-…`. Awaiting review/merge to develop.
 3. Migration `0004_named_placements_consolidation.sql` applied to local Neon **only**. develop Neon still has pre-pivot schema. When merging, re-promote local → develop OR run migration on develop.
 4. Open features pending tomorrow: dashboard "edit existing campaign_components" UX polish, scheduling fields exposure (scheduled_time + end_time on the campaign placement form), maybe banner/countdown locationId support in their SDK views (today only carousel takes locationId).
 5. Commands to verify state:

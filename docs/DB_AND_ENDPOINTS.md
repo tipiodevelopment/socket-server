@@ -30,19 +30,29 @@ Cross-refs:
   │ owns
   ├─► client_apps   ────────── tvEnabled, webhookUrl, apiKey ──┐
   │   │                                                         │
-  │   │ registers                                               │ calls
-  │   ├─► app_components  ←── (admin-only) which components     │ backend
-  │   │                        from the catalog this app can   │ with
-  │   │                        use                             │ apiKey
+  │   │ SDK boot uploads slots                                  │ calls
+  │   ├─► app_component_locations  ← {locationId, displayName,  │ backend
+  │   │                              deprecated_at}             │ with
+  │   │                                                         │ apiKey
+  │   │ operator creates from dashboard (not SDK)               │
+  │   ├─► app_placements  ← named instances:                    │
+  │   │                     {component_id, location_id, name,   │
+  │   │                      deprecated_at}                     │
+  │   │   Dual UNIQUE (per-app):                                │
+  │   │     (name)  +  (component_id, location_id)              │
   │   │                                                         │
   │   └─► campaigns                                             │
   │       │   primarySponsorId (NOT NULL, immutable)            │
   │       │                                                     │
   │       ├─► campaign_sponsors (M:N secondary sponsors)        │
   │       │                                                     │
-  │       ├─► campaign_components  ← product placements         │
-  │       │     sponsorId + componentId + locationId +          │
-  │       │     status + scheduledTime + optional broadcastId   │
+  │       ├─► campaign_components  ← campaign bindings:         │
+  │       │     {app_placement_id, sponsor_id, status,          │
+  │       │      customConfig:{productIds, title?,              │
+  │       │                    showSponsorLogo?, …},            │
+  │       │      scheduledTime?, broadcastId?}                  │
+  │       │   Partial UNIQUE: only ONE active per               │
+  │       │     (campaign_id, app_placement_id) at a time       │
   │       │                                                     │
   │       ├─► broadcasts   (live events under the campaign)     │
   │       │     │                                               │
@@ -61,14 +71,16 @@ Cross-refs:
 - `client_apps` = a mobile/TV app instance (TV2, Viaplay, etc.) with its own `apiKey`.
 - `sponsors` = a brand with its own Commerce catalog.
 - `campaigns` = time-bounded marketing activation under an app with 1 primary + N secondary sponsors.
-- `components` = platform-wide template catalog (types: product_carousel, product_banner, etc.).
-- `app_components` = which templates an app can use.
-- `campaign_components` = actual placement: component + sponsor + location inside a campaign.
+- `components` = platform-wide read-only library of canonical templates (`is_template = true`): countdown, offer_banner, product_banner, product_carousel, product_spotlight, product_store. Vio admin edits via SQL only.
+- `app_component_locations` = slot ids the SDK declared at boot (sync-semantic).
+- `app_placements` = named instances bound by operator (template × location × name). Created via dashboard `/apps/:id` form.
+- `campaign_components` = which `app_placement` runs in which campaign with which sponsor + customConfig.
 - `broadcasts` = a live event under a campaign (a match, a show).
 - `end_users` = an SDK viewer identity (opaque externalUserId, per client_app).
 - `tv_sessions` = active TV SDK session (for heartbeat + cart-intent routing).
 - `shoppable_ad_activations` = one row per shoppable ad dispatch.
 - `cart_intents` = one row per "Add to cart" tap with full attribution.
+- ~~`app_components`~~ = **DROPPED in migration 0004** (redundant with `app_placements`). Endpoints return HTTP 410 Gone.
 
 ---
 
@@ -80,19 +92,21 @@ erDiagram
     users ||--o{ sponsors : owns
     users ||--o{ campaigns : owns
 
-    client_apps ||--o{ app_components : registers
+    client_apps ||--o{ app_component_locations : "declares slots"
+    client_apps ||--o{ app_placements : "operator binds"
     client_apps ||--o{ campaigns : hosts
     client_apps ||--o{ end_users : identifies
 
-    components ||--o{ app_components : "catalog of"
-    components ||--o{ campaign_components : "template for"
+    components ||--o{ app_placements : "template for"
 
     sponsors ||--o{ campaign_sponsors : "secondary role"
     sponsors ||--o{ campaigns : "primary sponsor"
-    sponsors ||--o{ campaign_components : "owns placement"
+    sponsors ||--o{ campaign_components : "owns binding"
+
+    app_placements ||--o{ campaign_components : "campaign uses"
 
     campaigns ||--o{ campaign_sponsors : "has N secondaries"
-    campaigns ||--o{ campaign_components : "has placements"
+    campaigns ||--o{ campaign_components : "binds placements"
     campaigns ||--o{ broadcasts : "has broadcasts"
     campaigns ||--o{ shoppable_ad_activations : "logs"
     campaigns ||--o{ cart_intents : "logs"
@@ -411,38 +425,49 @@ All WS connections target `wss://<host>/ws/:campaignId`. The client identifies w
 
 ---
 
-## 5. Placement lifecycle for SDK developers
+## 5. Placement lifecycle for SDK developers (post-pivot 2026-04-28)
 
 ```
-                ┌─── dashboard operator creates/edits placement ─────┐
-                │                                                    │
-                ▼                                                    ▼
-POST /api/campaigns/:id/components          PATCH /.../components/:componentId
-        │ (DB insert)                          │ (status toggle)
-        └──────────────┬───────────────────────┘
-                       ▼
-            fires WS `component_status_changed`
-                       │
-                       ▼
-       ┌───────────────────────────────┐
-       │ SDK runtime:                  │
-       │  1. initial fetch at bootstrap │
-       │  2. listen WS, upsert state    │
-       │  3. render by locationId       │
-       └───────────────────────────────┘
+   Dev                Operator (dashboard)             Operator (campaign)
+   │                  │                                │
+   ▼                  ▼                                ▼
+SDK boot          /apps/:id "Add from library"    /campaigns/:id "Add"
+manifest          (template + locationId + name)  (placement + sponsor + products)
+   │              │                                │
+   ▼              ▼                                ▼
+locations[]     app_placements row              campaign_components row
+                                                (status=inactive by default)
+                                                     │
+                                                     ▼
+                                          PATCH .../components/:rowId
+                                          { status: 'active' }
+                                                     │
+                                                     ▼
+                                       fires WS `component_status_changed`
+                                                     │
+                                                     ▼
+                                       ┌──────────────────────────────┐
+                                       │ SDK runtime:                 │
+                                       │ 1. initial fetch (bootstrap) │
+                                       │ 2. listen WS, upsert state   │
+                                       │ 3. render by locationId      │
+                                       └──────────────────────────────┘
 ```
 
-**0. Boot — manifest upload.** App init calls `VioPlacementRegistry.register(_:)` for each component type and `registerLocation(_:)` for each slot the layout exposes, then `VioPlacementManifestUploader` posts to `POST /v2/mobile/components/manifest` with `X-API-Key`. Backend upserts `app_components` + `app_component_locations`. Idempotent.
+**0. Boot — slot manifest upload.** App init calls `Vio.registerPlacementLocation(_:)` for each slot the layout exposes, then `VioPlacementManifestUploader` POSTs `/v2/mobile/components/manifest` with `{ locations: [...] }`. Backend upserts `app_component_locations`. Sync semantics: locations not in the new payload get `deprecated_at = now()`.
 
-**1. Initial fetch.** As part of `fetchAndApplySdkBootstrapNow`, the SDK calls `GET /v2/mobile/campaigns/:campaignId/components`. Backend merges `templateConfig + customConfig` server-side so the iOS `ComponentConfig` decoder sees a complete object. SDK upserts `activeComponents`, deduping by **`(id, locationId)`** composite key (so 2 instances of the same template in different slots coexist).
+**1. Initial fetch.** As part of `fetchAndApplySdkBootstrapNow`, the SDK calls `GET /v2/mobile/campaigns/:campaignId/components`. Backend JOINs `campaign_components → app_placements → components` and `→ sponsors`; filters out where `app_placements.deprecated_at IS NOT NULL`; merges `templateConfig + customConfig` overlay. Response includes `appPlacementId + appPlacementName + locationId` + sponsor block (logoUrl + avatarUrl) + merged config. SDK upserts `activeComponents`, deduping by `(id, locationId)` composite key.
 
-**2. WS updates.** The SDK connects to `wss://<host>/ws/:campaignId`, sends `{type:"identify", userId}`. It listens for `component_status_changed` (which carries `sponsorId` at root since 2026-04-23) and upserts its local placement map by `(id, locationId)` — same composite key.
+**2. WS updates.** SDK connects to `wss://<host>/ws/:campaignId`, sends `{type:"identify", userId}`. Listens for:
+- `component_status_changed` — placement activate/deactivate; payload carries `appPlacementId`, `locationId`, `componentId` (template uuid), `status`, `component:{id,type,name,config}`.
+- `component_config_updated` — operator changed `customConfig` (productIds, title, showSponsorLogo, …); SDK re-renders.
+- `app_placement_deprecated` — operator soft-deleted a placement; live SDKs drop any active components keyed off this placement.
 
-**3. Scheduler-driven.** `server/scheduler.ts` runs periodically; when a placement's `scheduledTime` is reached it flips `status → active` and emits the WS event. At `endTime` same pattern to `inactive`.
+**3. Scheduler-driven.** `server/scheduler.ts` runs periodically; when `campaign_components.scheduled_time` is reached it flips status → active and emits the WS event. At `end_time` flips to inactive.
 
-**4. Render.** Each UI slot (`VProductCarousel(locationId: "home_top")` in iOS, equivalent on Android) calls `getActiveComponent(type:locationId:)` against the local placement map. If found and `active`, render with `placement.sponsor.{avatarUrl, primaryColor}` + pass `sponsor.id` to `ProductService.loadProducts(sponsorId:)` so GraphQL routes through that sponsor's `commerceApiKey`.
+**4. Render.** Each UI slot (`VProductCarousel(locationId: "home_top")` etc.) calls `getActiveComponent(type:locationId:)` against the local placement map. If found and `active`, render. Carousel reads `customConfig.title` + `customConfig.showSponsorLogo` for an optional header (sponsor logo via `VioConfiguration.shared.sponsor(withId: comp.sponsorId).logoUrl` → SVG-capable `VRemoteImage`). Products load via `ProductService.loadProducts(sponsorId: comp.sponsorId)` routed through the per-sponsor commerce key.
 
-**5. Missing or offline.** If no placement for a `locationId`, render nothing (or a host-app fallback). If the WS drops, poll `/v2/mobile/campaigns/:campaignId/components` on reconnect to re-sync.
+**5. Missing or offline.** If no placement for a `locationId`, render nothing. If WS drops, poll `/v2/mobile/campaigns/:campaignId/components` on reconnect to re-sync.
 
 ---
 
@@ -482,19 +507,33 @@ Also supported: placement-originated cart intents carry `sourceComponentId` (the
 2. Dashboard → campaign detail → **Sponsors** tab → Add → pick sponsor + role (`shoppable` / `engagement` / `full`).
 3. Backend: `POST /api/campaigns/:id/sponsors { sponsorId, role }` → inserts `campaign_sponsors`.
 
-### Register a component to an app (self-service via SDK manifest — preferred)
-1. Template exists in `components` (admin creates via Component Library, `is_template = true`).
-2. Partner SDK at app boot: `Vio.registerPlacementComponent(MyCarousel.self)` + `Vio.registerPlacementLocation(VioPlacementLocation(id: "home_top", displayName: "Home — Top"))`.
-3. SDK posts `POST /v2/mobile/components/manifest` with `X-API-Key` and `{components, locations}` arrays. Backend resolves type → template, upserts `app_components` + `app_component_locations`. Idempotent.
+### Add a placement to an app (post-pivot 2026-04-28 flow)
 
-### Register a component to an app (admin manual fallback)
-Only for one-offs / data fixes. Prefer the SDK manifest path. Admin → app detail → Components → "Add Component" → `POST /api/client-apps/:id/components { componentId }`.
+**Dev side (one-time per slot the app's UI exposes):**
+1. Pick a stable `locationId` (e.g. `home_top`, `match_pre_kickoff`).
+2. Add `Vio.registerPlacementLocation(VioPlacementLocation(id: ..., displayName: ...))` to the boot helper.
+3. Render the placement view at that slot: `VProductCarousel(locationId: "home_top")`.
+4. Cold-start the app — SDK uploads the locations manifest. Done from dev side.
 
-### Create a placement on a campaign
-1. Campaign has ≥1 sponsor (previous recipe).
-2. App has ≥1 component registered (previous recipe).
-3. Dashboard → campaign → **Components** tab → Add → pick sponsor + component + location + (optional) schedule.
-4. Backend: `POST /api/campaigns/:id/components { componentId, sponsorId, locationId, ... }` → validates sponsor ∈ campaign sponsors → inserts `campaign_components` → if `status='active'`, broadcasts WS.
+**Operator side (one-time per placement, in dashboard):**
+5. `/apps/:id` → Placements section → "Add from library".
+6. Pick template (Product Carousel / Banner / etc.) + the locationId from the dev-declared list + a human name (e.g., "Carrusel home").
+7. Saved → row in `app_placements`. Available to all campaigns of this app.
+
+(Library is read-only for operators — only Vio admin edits via SQL.)
+
+### Bind a placement to a campaign
+1. Campaign has ≥1 sponsor (`campaign_sponsors`).
+2. App has ≥1 named placement (previous recipe).
+3. Dashboard → campaign → **Components** tab → "Add Component". Pick:
+   - Placement (one of the named app_placements)
+   - Sponsor (campaign primary or one of the secondaries)
+   - Products (only if placement type is `product_*`)
+   - Optional: instance label (overrides the placement name for this run)
+   - Optional: header config — `title` ("Ukens tilbud", etc.) + `showSponsorLogo` checkbox
+   - Optional: autoPlay / interval (carousel-specific)
+4. Backend: `POST /api/campaigns/:id/components { appPlacementId, sponsorId, customConfig: {productIds, title?, showSponsorLogo?, autoPlay?, interval?}, status?, instanceName? }` → validates placement.clientApp == campaign.clientApp + sponsor in campaign_sponsors + multi-sponsor "one active" — returns `PLACEMENT_ACTIVE_CONFLICT` (409) if another row is already active for `(campaign, app_placement)`.
+5. Default `status='inactive'`; toggle via the card's status icon → `PATCH /api/campaigns/:id/components/:rowId { status: 'active' }` → broadcasts WS `component_status_changed`.
 
 ### Dispatch a shoppable ad from the dashboard
 1. `POST /api/broadcasts/:id/trigger-shoppable-ad { productId, sponsorId }` (ad-hoc), or
@@ -515,9 +554,10 @@ Post Phase 1+2+3 schema migration, a working demo needs:
 3. At least 2 `sponsors` — at least one with `commerceApiKey` set.
 4. One `campaigns` with `primarySponsorId` pointing to one of those sponsors, `isPaused='false'`, `startDate <= now <= endDate`, `clientAppId` linking to the app.
 5. Optional: one `campaign_sponsors` row to add a secondary sponsor.
-6. At least 1 `components` template of type `product_*`.
-7. One `app_components` row linking the app to that component.
-8. One `campaign_components` row linking everything: campaign + component + sponsor + locationId. Status `active` or scheduled.
-9. One `broadcasts` row with `campaignId` set, status `live` or `upcoming`.
+6. At least 1 `components` template of type `product_*` (these are seeded library rows; in dev these come from migration 0000 + manual SQL).
+7. One `app_component_locations` row (the SDK's slot). In real apps this gets created by the SDK manifest at boot; for tests, you can insert directly.
+8. One `app_placements` row linking the app to a (template + locationId + name) tuple. Created via `POST /api/client-apps/:id/placements` from dashboard, or directly via SQL for fixtures.
+9. One `campaign_components` row binding everything: `app_placement_id + sponsor_id + customConfig`. Status `active` or scheduled.
+10. One `broadcasts` row with `campaignId` set, status `live` or `upcoming`.
 
-Validate by calling `GET /v2/mobile/config` with `X-API-Key: <key>` — you should get the campaign + primary + secondary sponsors + all commerce blocks. Then `GET /v2/mobile/campaigns/:id/components` should return the rendered placement list with merged `templateConfig + customConfig`.
+Validate by calling `GET /v2/mobile/config` with `X-API-Key: <key>` — you should get the campaign + primary + secondary sponsors + all commerce blocks (sponsor block ships both `logoUrl` + `avatarUrl`). Then `GET /v2/mobile/campaigns/:id/components` should return the rendered placement list with merged `templateConfig + customConfig` (filtered if placement deprecated).
