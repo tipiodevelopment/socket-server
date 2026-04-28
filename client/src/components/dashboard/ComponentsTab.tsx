@@ -13,7 +13,7 @@ import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useState } from "react";
 import { Link } from "wouter";
 import { ImageUploadWithPreview } from "@/components/ImageUploadWithPreview";
-import { useSponsorCatalog } from "@/hooks/use-sponsor-catalog";
+import { SponsorProductPicker } from "@/components/dashboard/SponsorProductPicker";
 
 interface ComponentsTabProps {
   campaignId: number;
@@ -77,14 +77,11 @@ export function ComponentsTab({ campaignId }: ComponentsTabProps) {
     },
   });
 
-  // Per-sponsor product catalog. Only relevant when a sponsor is selected
-  // AND the picked placement is bound to a `product_*` template.
+  // Per-sponsor product catalog. Now lives inside <SponsorProductPicker>
+  // — kept the helper variables here only because the JSX guards still
+  // need them for "should we show the picker?" decisions.
   const selectedPlacement = appPlacements.find((p: any) => String(p.id) === String(selectedComponentId));
   const isProductComponent = !!selectedPlacement?.component?.type && selectedPlacement.component.type.startsWith('product_');
-  const sponsorCatalog = useSponsorCatalog(
-    selectedSponsorId && isProductComponent ? selectedSponsorId : null,
-    { limit: 100 }
-  );
 
   const isPaused = campaign?.isPaused === 'true';
 
@@ -412,60 +409,23 @@ export function ComponentsTab({ campaignId }: ComponentsTabProps) {
                       </div>
 
                       {/* Product picker — only shown for product_* component types.
-                          Multi-select from the chosen sponsor's commerce catalog.
-                          Stored as customConfig.productIds. */}
-                      {isProductComponent && selectedSponsorId && (
-                        <div className="space-y-2">
-                          <Label>Products from {campaignSponsors.find(s => String(s.sponsorId) === selectedSponsorId)?.name}'s catalog</Label>
-                          {sponsorCatalog.isLoading ? (
-                            <p className="text-xs text-muted-foreground">Loading catalog…</p>
-                          ) : sponsorCatalog.isError ? (
-                            <p className="text-xs text-red-400">Failed to load catalog: {(sponsorCatalog.error as any)?.message}</p>
-                          ) : !sponsorCatalog.data?.products?.length ? (
-                            <p className="text-xs text-muted-foreground">No products in this sponsor's catalog yet.</p>
-                          ) : (
-                            <>
-                              <div className="max-h-48 overflow-y-auto space-y-1 rounded border border-white/10 p-2">
-                                {sponsorCatalog.data.products.map((p) => {
-                                  const idStr = String(p.id);
-                                  const checked = selectedProductIds.has(idStr);
-                                  return (
-                                    <label
-                                      key={idStr}
-                                      className="flex items-center gap-2 cursor-pointer hover:bg-white/5 px-1 py-0.5 rounded"
-                                    >
-                                      <input
-                                        type="checkbox"
-                                        checked={checked}
-                                        onChange={(e) => {
-                                          setSelectedProductIds((prev) => {
-                                            const next = new Set(prev);
-                                            if (e.target.checked) next.add(idStr); else next.delete(idStr);
-                                            return next;
-                                          });
-                                        }}
-                                        data-testid={`checkbox-product-${idStr}`}
-                                      />
-                                      {p.imageUrl && (
-                                        <img src={p.imageUrl} alt="" className="w-8 h-8 object-contain rounded bg-white/5" />
-                                      )}
-                                      <span className="text-sm flex-1 line-clamp-1">{p.name || `Product ${p.id}`}</span>
-                                      <span className="text-xs text-muted-foreground">
-                                        {p.price != null ? `${p.price} ${p.currency}` : '—'}
-                                      </span>
-                                    </label>
-                                  );
-                                })}
-                              </div>
-                              <p className="text-xs text-muted-foreground">
-                                {selectedProductIds.size === 0
-                                  ? 'No products selected — placement will use the component template default.'
-                                  : `${selectedProductIds.size} product${selectedProductIds.size > 1 ? 's' : ''} selected.`}
-                              </p>
-                            </>
-                          )}
-                        </div>
-                      )}
+                          Single-select for product_spotlight, multi-select for
+                          carousel/banner/store/slider. Stored as customConfig.productIds
+                          (or productId for spotlight, normalized in addComponentMutation). */}
+                      {isProductComponent && selectedSponsorId && (() => {
+                        const tmpl = selectedPlacement?.component?.type as string | undefined;
+                        const mode: "single" | "multi" = tmpl === "product_spotlight" ? "single" : "multi";
+                        const sponsorName = campaignSponsors.find(s => String(s.sponsorId) === selectedSponsorId)?.name;
+                        return (
+                          <SponsorProductPicker
+                            sponsorId={selectedSponsorId}
+                            sponsorName={sponsorName}
+                            mode={mode}
+                            selectedIds={selectedProductIds}
+                            onChange={setSelectedProductIds}
+                          />
+                        );
+                      })()}
 
                       <Button
                         onClick={() => selectedComponentId && selectedSponsorId && addComponentMutation.mutate({
@@ -742,11 +702,62 @@ export function CampaignComponentConfigForm({
     initialSponsorId !== undefined ? String(initialSponsorId) : ''
   );
 
+  // Product picker state for product_* templates. Mode (single vs multi)
+  // is derived from the template type:
+  //   product_spotlight                                    → single
+  //   product_carousel | product_banner | _store | _slider → multi
+  // Initialized from the current customConfig (productId for single,
+  // productIds[] for multi). On submit we serialize back to whichever
+  // shape the template expects so the SDK decoder doesn't break.
+  const componentType = campaignComponent.component.type;
+  const isProductTemplate = componentType.startsWith('product_');
+  const isSingleProduct = componentType === 'product_spotlight';
+  const initialProductIds: Set<string> = (() => {
+    if (!isProductTemplate) return new Set();
+    if (isSingleProduct) {
+      const pid = (currentConfig as any)?.productId;
+      return pid ? new Set([String(pid)]) : new Set();
+    }
+    const pids = (currentConfig as any)?.productIds;
+    return Array.isArray(pids) ? new Set(pids.map(String)) : new Set();
+  })();
+  const [selectedProductIds, setSelectedProductIds] = useState<Set<string>>(initialProductIds);
+
+  // When the operator swaps sponsor, clear the product picker so the
+  // catalog list reflects the new sponsor's products. Keeps the
+  // operator from accidentally writing a product id from sponsor A's
+  // catalog onto a row owned by sponsor B (where it wouldn't exist).
+  const handleSponsorChange = (next: string) => {
+    if (next !== selectedSponsorId) {
+      setSelectedProductIds(new Set());
+    }
+    setSelectedSponsorId(next);
+  };
+
+  const sponsorName = campaignSponsors.find(s => String(s.sponsorId) === selectedSponsorId)?.name;
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     const parsedSponsor = selectedSponsorId ? parseInt(selectedSponsorId, 10) : undefined;
     const sponsorChanged = parsedSponsor !== undefined && parsedSponsor !== initialSponsorId;
-    onSubmit(config, sponsorChanged ? parsedSponsor : undefined);
+
+    // Marry the picker's selection back into config under the field
+    // shape expected by the template. Empty selection clears the
+    // field so the SDK falls back to template defaults rather than
+    // sending an empty array (carousel SDK treats empty array as
+    // "load all channel products").
+    let outConfig: any = { ...config };
+    if (isProductTemplate) {
+      const ids = Array.from(selectedProductIds);
+      if (isSingleProduct) {
+        outConfig.productId = ids[0] || undefined;
+        delete outConfig.productIds;
+      } else {
+        outConfig.productIds = ids.length > 0 ? ids : undefined;
+        delete outConfig.productId;
+      }
+    }
+    onSubmit(outConfig, sponsorChanged ? parsedSponsor : undefined);
   };
 
   const renderConfigFields = () => {
@@ -963,27 +974,26 @@ export function CampaignComponentConfigForm({
       case 'product_carousel':
         return (
           <>
-            <div className="space-y-2">
-              <Label htmlFor="productIds">Product IDs (optional, comma-separated)</Label>
-              <Input
-                id="productIds"
-                value={config.productIds?.join(', ') || ''}
-                onChange={(e) => {
-                  const ids = e.target.value.split(',').map((id: string) => id.trim()).filter((id: string) => id);
-                  setConfig({
-                    ...config,
-                    productIds: ids.length > 0 ? ids : undefined
-                  });
-                }}
-                placeholder="Leave empty for all channel products, or: 408727, 408728"
-                data-testid="input-productIds"
-              />
-              <p className="text-xs text-muted-foreground">
-                {config.productIds && config.productIds.length > 0
-                  ? `Showing ${config.productIds.length} specific products`
-                  : "Will display all products from Reachu channel"}
-              </p>
-            </div>
+            {/* Product picker (multi-select) — replaces the legacy
+                comma-separated productIds text input. Catalog comes
+                from the currently-selected sponsor in the form. When
+                the operator swaps sponsor, the picker resets so the
+                operator picks fresh from the new sponsor's catalog. */}
+            <SponsorProductPicker
+              sponsorId={selectedSponsorId}
+              sponsorName={sponsorName}
+              mode="multi"
+              selectedIds={selectedProductIds}
+              onChange={setSelectedProductIds}
+              helperText={
+                selectedProductIds.size === 0
+                  ? "No products selected — carousel will show all products from the sponsor's channel."
+                  : `${selectedProductIds.size} product${selectedProductIds.size > 1 ? 's' : ''} selected.`
+              }
+            />
+            <p className="text-xs text-muted-foreground">
+              The carousel renders these in order. Leave empty to fetch all of the sponsor's channel.
+            </p>
 
             {/* Header section opt-ins. Both default off — when off, the
                 carousel renders without a header band (legacy behavior).
@@ -1183,17 +1193,22 @@ export function CampaignComponentConfigForm({
       case 'product_spotlight':
         return (
           <>
-            <div className="space-y-2">
-              <Label htmlFor="productId">Product ID *</Label>
-              <Input
-                id="productId"
-                value={config.productId || ''}
-                onChange={(e) => setConfig({ ...config, productId: e.target.value })}
-                placeholder="408841"
-                data-testid="input-productId"
-              />
-              <p className="text-xs text-muted-foreground">Reachu product ID. The SDK will fetch product details.</p>
-            </div>
+            {/* Product picker (single-select) — replaces the legacy
+                free-text productId input. Catalog scoped to the
+                currently-selected sponsor in the form. */}
+            <SponsorProductPicker
+              sponsorId={selectedSponsorId}
+              sponsorName={sponsorName}
+              mode="single"
+              selectedIds={selectedProductIds}
+              onChange={setSelectedProductIds}
+              label={`Featured product ${sponsorName ? `from ${sponsorName}` : ''}`}
+              helperText={
+                selectedProductIds.size === 0
+                  ? "Pick a product — the spotlight needs exactly one."
+                  : `Selected: ${Array.from(selectedProductIds)[0]}`
+              }
+            />
             <div className="space-y-2">
               <Label htmlFor="highlightText">Highlight Text (Optional)</Label>
               <Input
@@ -1481,7 +1496,7 @@ export function CampaignComponentConfigForm({
       {campaignSponsors.length > 0 && (
         <div className="space-y-2 pb-4 border-b">
           <Label htmlFor="customize-sponsor">Sponsor</Label>
-          <Select value={selectedSponsorId} onValueChange={setSelectedSponsorId}>
+          <Select value={selectedSponsorId} onValueChange={handleSponsorChange}>
             <SelectTrigger data-testid="select-customize-sponsor">
               <SelectValue placeholder="Select a sponsor" />
             </SelectTrigger>
