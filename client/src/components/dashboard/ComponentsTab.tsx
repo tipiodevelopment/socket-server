@@ -17,6 +17,7 @@ import { SponsorProductPicker } from "@/components/dashboard/SponsorProductPicke
 import { OfferBannerPreview } from "@/components/dashboard/OfferBannerPreview";
 import { ProductBannerPreview } from "@/components/dashboard/ProductBannerPreview";
 import { BrandColorPicker } from "@/components/dashboard/BrandColorPicker";
+import { MultiSponsorProductPicker, type ProductEntry } from "@/components/dashboard/MultiSponsorProductPicker";
 
 interface ComponentsTabProps {
   campaignId: number;
@@ -1956,40 +1957,31 @@ export function CampaignComponentConfigForm({
       case 'product_store':
         return (
           <>
-            {/* Mode + product picker. "all" loads the entire sponsor
-                channel; "filtered" uses the picker selection. The
-                picker is multi-select scoped to the form's selected
-                sponsor (same as Carousel). */}
-            <div className="space-y-2">
-              <Label htmlFor="store-mode">Mode</Label>
-              <Select
-                value={config.mode || 'all'}
-                onValueChange={(value) => setConfig({ ...config, mode: value })}
-              >
-                <SelectTrigger data-testid="select-store-mode">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All — load every product from the sponsor's channel</SelectItem>
-                  <SelectItem value="filtered">Filtered — only the products picked below</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            {config.mode === 'filtered' && (
-              <SponsorProductPicker
-                sponsorId={selectedSponsorId}
-                sponsorName={sponsorName}
-                mode="multi"
-                selectedIds={selectedProductIds}
-                onChange={setSelectedProductIds}
-                helperText={
-                  selectedProductIds.size === 0
-                    ? "Filtered mode but no products picked — store will fall back to all products."
-                    : `${selectedProductIds.size} product${selectedProductIds.size > 1 ? 's' : ''} selected.`
-                }
-              />
-            )}
+            {/* Multi-sponsor product picker — Sprint 2026-04-28 PM
+                Phase 2. Operator curates a list of products across
+                multiple sponsors; each entry remembers its sponsor
+                so the SDK loads through the right per-sponsor
+                commerce key. Replaces the legacy single-sponsor
+                grid scope.
+                The 'mode' field is kept for back-compat (rows
+                created before multi-sponsor used 'all' / 'filtered'
+                semantics). When the operator picks any products
+                here, mode is ignored on the SDK side. */}
+            {(() => {
+              const entries: ProductEntry[] = Array.isArray(config.products) ? config.products : [];
+              return (
+                <MultiSponsorProductPicker
+                  campaignSponsors={campaignSponsors}
+                  selectedEntries={entries}
+                  onChange={(next) => setConfig({ ...config, products: next.length > 0 ? next : undefined })}
+                  helperText={
+                    entries.length === 0
+                      ? "Pick a sponsor below + add products. Each product routes through its sponsor's commerce key."
+                      : undefined
+                  }
+                />
+              );
+            })()}
 
             <div className="space-y-2">
               <Label htmlFor="store-displayType">Display</Label>

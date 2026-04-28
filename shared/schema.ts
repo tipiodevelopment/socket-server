@@ -1563,9 +1563,27 @@ export const productBannerConfigSchema = z.object({
   showSponsorLogo: z.boolean().optional()
 });
 
+// One product entry inside a multi-sponsor store. Each entry pairs a
+// productId with its owning sponsor so the SDK loads it via that
+// sponsor's commerce key — letting one store surface SKUs from
+// XXL + Elkjøp + Torshov in the same grid.
+// Sprint 2026-04-28 PM Phase 2.
+export const productStoreEntrySchema = z.object({
+  productId: z.string(),
+  sponsorId: z.number(),
+});
+
 export const productStoreConfigSchema = z.object({
   mode: z.enum(["all", "filtered"]).default("all"),
+  // Legacy single-sponsor list — every productId fetched through the
+  // placement's sponsorId (campaign_components.sponsor_id). Kept for
+  // back-compat with rows authored before multi-sponsor shipped.
   productIds: z.array(z.string()).optional(),
+  // Multi-sponsor curated list. When present, takes priority over
+  // productIds and the SDK loads each product through its own
+  // sponsor's commerce credentials. Operator builds this via the
+  // dashboard's MultiSponsorProductPicker.
+  products: z.array(productStoreEntrySchema).optional(),
   displayType: z.enum(["grid", "list"]).default("grid"),
   columns: z.number().default(2),
   // Operator-controllable header band rendered above the grid —
