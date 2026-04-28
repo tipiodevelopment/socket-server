@@ -1696,49 +1696,61 @@ export function CampaignComponentConfigForm({
               <h4 className="text-sm font-semibold mb-3">Visual Customization (Optional)</h4>
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="titleColor">Title Color (hex)</Label>
-              <Input
-                id="titleColor"
-                value={config.titleColor || '#FFFFFF'}
-                onChange={(e) => setConfig({ ...config, titleColor: e.target.value })}
-                placeholder="#FFFFFF"
-                data-testid="input-titleColor"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="subtitleColor">Subtitle Color (hex)</Label>
-              <Input
-                id="subtitleColor"
-                value={config.subtitleColor || '#F0F0F0'}
-                onChange={(e) => setConfig({ ...config, subtitleColor: e.target.value })}
-                placeholder="#F0F0F0"
-                data-testid="input-subtitleColor"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="buttonBackgroundColor">Button Background Color (hex)</Label>
-              <Input
-                id="buttonBackgroundColor"
-                value={config.buttonBackgroundColor || '#007AFF'}
-                onChange={(e) => setConfig({ ...config, buttonBackgroundColor: e.target.value })}
-                placeholder="#007AFF"
-                data-testid="input-buttonBackgroundColor"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="buttonTextColor">Button Text Color (hex)</Label>
-              <Input
-                id="buttonTextColor"
-                value={config.buttonTextColor || '#FFFFFF'}
-                onChange={(e) => setConfig({ ...config, buttonTextColor: e.target.value })}
-                placeholder="#FFFFFF"
-                data-testid="input-buttonTextColor"
-              />
-            </div>
+            {/* Brand-aware color pickers — same component as the
+                offer_banner forms. Each surfaces the selected
+                sponsor's primary + secondary brand color as one-click
+                swatches so the operator can match the banner to the
+                sponsor's identity without typing hex. Empty = SDK
+                fallback. Sprint 2026-04-28 PM Phase 2 step A.2. */}
+            {(() => {
+              const sponsor = campaignSponsors.find(s => String(s.sponsorId) === selectedSponsorId);
+              return (
+                <>
+                  <BrandColorPicker
+                    label="Title color"
+                    value={config.titleColor}
+                    onChange={(next) => setConfig({ ...config, titleColor: next })}
+                    sponsorPrimaryColor={sponsor?.primaryColor}
+                    sponsorSecondaryColor={sponsor?.secondaryColor}
+                    sponsorName={sponsor?.name}
+                    emptyPlaceholder="#FFFFFF"
+                    helperText="Banner title text color. Empty → adaptive system text color."
+                    testId="picker-pb-titleColor"
+                  />
+                  <BrandColorPicker
+                    label="Subtitle color"
+                    value={config.subtitleColor}
+                    onChange={(next) => setConfig({ ...config, subtitleColor: next })}
+                    sponsorPrimaryColor={sponsor?.primaryColor}
+                    sponsorSecondaryColor={sponsor?.secondaryColor}
+                    sponsorName={sponsor?.name}
+                    emptyPlaceholder="#F0F0F0"
+                    testId="picker-pb-subtitleColor"
+                  />
+                  <BrandColorPicker
+                    label="Button background"
+                    value={config.buttonBackgroundColor}
+                    onChange={(next) => setConfig({ ...config, buttonBackgroundColor: next })}
+                    sponsorPrimaryColor={sponsor?.primaryColor}
+                    sponsorSecondaryColor={sponsor?.secondaryColor}
+                    sponsorName={sponsor?.name}
+                    emptyPlaceholder="#007AFF"
+                    helperText="CTA button background. Click a sponsor swatch to brand it."
+                    testId="picker-pb-buttonBgColor"
+                  />
+                  <BrandColorPicker
+                    label="Button text color"
+                    value={config.buttonTextColor}
+                    onChange={(next) => setConfig({ ...config, buttonTextColor: next })}
+                    sponsorPrimaryColor={sponsor?.primaryColor}
+                    sponsorSecondaryColor={sponsor?.secondaryColor}
+                    sponsorName={sponsor?.name}
+                    emptyPlaceholder="#FFFFFF"
+                    testId="picker-pb-buttonTextColor"
+                  />
+                </>
+              );
+            })()}
 
             <div className="space-y-2">
               <Label htmlFor="overlayOpacity">Overlay Opacity (0-1)</Label>
@@ -1758,17 +1770,28 @@ export function CampaignComponentConfigForm({
               <p className="text-xs text-muted-foreground">Dark overlay on background image. Default: 0.5</p>
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="backgroundColor">Background Color (rgba)</Label>
-              <Input
-                id="backgroundColor"
-                value={config.backgroundColor || 'rgba(0, 0, 0, 0.3)'}
-                onChange={(e) => setConfig({ ...config, backgroundColor: e.target.value })}
-                placeholder="rgba(0, 0, 0, 0.3)"
-                data-testid="input-backgroundColor"
-              />
-              <p className="text-xs text-muted-foreground">Content area background with transparency</p>
-            </div>
+            {/* Background color — picker too. Banner accepts both hex
+                and rgba(); the picker writes hex by default, operators
+                that need transparent backgrounds can override via the
+                advanced edit (or we extend BrandColorPicker with rgba
+                support in a follow-up). For now, picker = hex; SDK
+                still parses rgba() strings server-side. */}
+            {(() => {
+              const sponsor = campaignSponsors.find(s => String(s.sponsorId) === selectedSponsorId);
+              return (
+                <BrandColorPicker
+                  label="Background color (content overlay)"
+                  value={config.backgroundColor}
+                  onChange={(next) => setConfig({ ...config, backgroundColor: next })}
+                  sponsorPrimaryColor={sponsor?.primaryColor}
+                  sponsorSecondaryColor={sponsor?.secondaryColor}
+                  sponsorName={sponsor?.name}
+                  emptyPlaceholder="#000000"
+                  helperText="Solid color overlay on the content area. SDK also accepts rgba() strings if the operator pastes one (advanced)."
+                  testId="picker-pb-backgroundColor"
+                />
+              );
+            })()}
 
             <div className="space-y-2">
               <Label htmlFor="bannerHeight">Banner Height (px)</Label>
