@@ -1486,12 +1486,27 @@ export const offerBannerConfigSchema = z.object({
   logoUrl: z.string().url(),
   title: z.string(),
   subtitle: z.string().optional(),
-  backgroundImageUrl: z.string().url(),
+  // backgroundImageUrl is the preferred way; backgroundColor is a fallback
+  // for when the image fails or the operator wants a plain color.
+  backgroundImageUrl: z.string().url().optional(),
+  backgroundColor: z.string().optional(),
   countdownEndDate: z.string(), // ISO timestamp
   discountBadgeText: z.string(),
   ctaText: z.string(),
   ctaLink: z.string().url().optional(),
-  overlayOpacity: z.number().min(0).max(1).default(0.4).optional()
+  overlayOpacity: z.number().min(0).max(1).default(0.4).optional(),
+  // CTA button color (hex). When unset the SDK uses VioColors.primary.
+  buttonColor: z.string().optional(),
+  // Operator-controllable deeplink. The SDK's handleCTAAction priority
+  // is `onNavigateToStore (host callback) > customDeeplink (init param)
+  // > config.deeplinkUrl > ctaLink (external)`. So in-app hosts that
+  // pass a callback win over an operator-set URL — operator's URL is a
+  // fallback for hosts that don't intercept the tap.
+  deeplinkUrl: z.string().optional(),
+  // Semantic tag for the host-app callback to inspect (e.g.
+  // "navigate_to_offers"). Useful when the host wants to route to
+  // different in-app screens without parsing URL schemes.
+  deeplinkAction: z.string().optional()
 });
 
 export const productCarouselConfigSchema = z.object({

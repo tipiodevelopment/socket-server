@@ -1191,6 +1191,59 @@ export function CampaignComponentConfigForm({
               />
               <p className="text-xs text-muted-foreground">Fallback color if image fails to load</p>
             </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="buttonColor">Button Color (hex)</Label>
+              <Input
+                id="buttonColor"
+                value={config.buttonColor || ''}
+                onChange={(e) => setConfig({ ...config, buttonColor: e.target.value || undefined })}
+                placeholder="#FF6B6B (leave empty to use brand primary)"
+                data-testid="input-buttonColor"
+              />
+              <p className="text-xs text-muted-foreground">CTA button background. Empty → SDK falls back to brand primary.</p>
+            </div>
+
+            {/* Deeplink section — Path A3 hybrid resolution (host
+                callback > operator-set deeplinkUrl > ctaLink external). */}
+            <div className="pt-4 border-t">
+              <h4 className="text-sm font-semibold mb-3">Deeplink (optional, in-app navigation)</h4>
+              <p className="text-xs text-muted-foreground mb-3">
+                When the user taps the CTA, the SDK first asks the host app's
+                callback (if any). If the host doesn't intercept, the SDK opens
+                <code className="px-1">deeplinkUrl</code> via <code>UIApplication.shared.open</code>;
+                if that's also empty, it falls back to <code>ctaLink</code> as a regular URL.
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="deeplinkUrl">Deeplink URL</Label>
+              <Input
+                id="deeplinkUrl"
+                value={config.deeplinkUrl || ''}
+                onChange={(e) => setConfig({ ...config, deeplinkUrl: e.target.value || undefined })}
+                placeholder="tv2://offers/special  or  https://xxlsports.no/offers"
+                data-testid="input-deeplinkUrl"
+              />
+              <p className="text-xs text-muted-foreground">
+                Custom URL scheme for in-app routing or any URL the SDK should open externally.
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="deeplinkAction">Deeplink Action (semantic tag)</Label>
+              <Input
+                id="deeplinkAction"
+                value={config.deeplinkAction || ''}
+                onChange={(e) => setConfig({ ...config, deeplinkAction: e.target.value || undefined })}
+                placeholder="navigate_to_offers"
+                data-testid="input-deeplinkAction"
+              />
+              <p className="text-xs text-muted-foreground">
+                Free-form tag the host-app callback can switch on (e.g. <code>navigate_to_offers</code>).
+                Use when you want in-app routing without URL parsing.
+              </p>
+            </div>
           </>
         );
 
