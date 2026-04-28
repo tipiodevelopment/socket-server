@@ -6,7 +6,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, ToggleLeft, ToggleRight, Pencil, Trash2, ExternalLink, Activity } from "lucide-react";
+import { Plus, ToggleLeft, ToggleRight, Pencil, Trash2, ExternalLink, Activity, Pause, Play, RefreshCw } from "lucide-react";
 import { CampaignComponent, Component, Campaign } from "@shared/schema";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
@@ -144,10 +144,10 @@ export function ComponentsTab({ campaignId }: ComponentsTabProps) {
         title: 'Status Updated',
         description: 'The component status has been updated.',
       });
-      
+
       // Invalidate to trigger refetch (provides fallback if WebSocket fails)
       // In React Query v5, invalidateQueries automatically refetches active queries
-      await queryClient.invalidateQueries({ 
+      await queryClient.invalidateQueries({
         queryKey: ['/api/campaigns', campaignId, 'components'],
         refetchType: 'active'
       });
@@ -156,6 +156,64 @@ export function ComponentsTab({ campaignId }: ComponentsTabProps) {
       toast({
         title: 'Error',
         description: error.message || 'Failed to update component status.',
+        variant: 'destructive',
+      });
+    },
+  });
+
+  // Sprint 2026-04-28 PM (Phase 5): explicit pause / activate verbs that
+  // hit the new outbox-backed endpoints. The mutations replace the
+  // toggle-button UX so the operator sees the right verb per state and
+  // multi-sponsor swap is handled implicitly by /activate (the backend
+  // atomically deactivates whichever row currently holds the slot).
+  const pauseComponentMutation = useMutation({
+    mutationFn: async (componentId: string) => {
+      return await apiRequest('POST', `/api/campaigns/${campaignId}/components/${componentId}/pause`, {});
+    },
+    onSuccess: async () => {
+      toast({
+        title: 'Pausado en vivo',
+        description: 'El componente desaparece del SDK en <1s.',
+      });
+      await queryClient.invalidateQueries({
+        queryKey: ['/api/campaigns', campaignId, 'components'],
+        refetchType: 'active',
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: 'Error al pausar',
+        description: error?.message || 'No se pudo pausar el placement.',
+        variant: 'destructive',
+      });
+    },
+  });
+
+  const activateComponentMutation = useMutation({
+    mutationFn: async ({ appPlacementId, campaignComponentId }: { appPlacementId: number; campaignComponentId: number }) => {
+      return await apiRequest(
+        'POST',
+        `/api/campaigns/${campaignId}/placements/${appPlacementId}/activate`,
+        { campaignComponentId },
+      );
+    },
+    onSuccess: async (_data, variables) => {
+      const meta = (_data as any)?._meta;
+      toast({
+        title: meta?.swap ? 'Sponsor cambiado en vivo' : 'Activado en vivo',
+        description: meta?.swap
+          ? 'El SDK reemplaza el sponsor anterior y carga el nuevo catálogo.'
+          : 'El componente aparece en el SDK en <1s.',
+      });
+      await queryClient.invalidateQueries({
+        queryKey: ['/api/campaigns', campaignId, 'components'],
+        refetchType: 'active',
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: 'Error al activar',
+        description: error?.message || 'No se pudo activar el placement.',
         variant: 'destructive',
       });
     },
@@ -473,25 +531,78 @@ export function ComponentsTab({ campaignId }: ComponentsTabProps) {
                     >
                       <Pencil className="w-4 h-4" />
                     </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() =>
-                        toggleStatusMutation.mutate({
-                          componentId: String(cc.id),
-                          status: cc.status === 'active' ? 'inactive' : 'active',
-                        })
-                      }
-                      disabled={toggleStatusMutation.isPending || isPaused}
-                      title={isPaused ? 'Campaign is paused - resume to toggle components' : cc.status === 'active' ? 'Deactivate' : 'Activate'}
-                      data-testid={`button-toggle-${cc.id}`}
-                    >
-                      {cc.status === 'active' ? (
-                        <ToggleRight className="w-4 h-4" />
-                      ) : (
-                        <ToggleLeft className="w-4 h-4" />
-                      )}
-                    </Button>
+                    {/*
+                      Sprint 2026-04-28 PM (Phase 5): explicit Pausar /
+                      Hacer activo verbs replace the legacy toggle.
+
+                      - Active row → "Pausar" calls POST /pause →
+                        SDK hides the placement in <1s.
+                      - Inactive row → "Hacer activo" calls POST
+                        /placements/:appPlacementId/activate, which on
+                        the backend atomically deactivates whichever
+                        row currently holds the slot (multi-sponsor
+                        rotation) and emits a single
+                        placement_activation_swapped event so the SDK
+                        cleanly replaces the old sponsor with the new
+                        one (logo + title + catalog).
+                      - When >1 row exists for the same appPlacement,
+                        a small "→ reemplaza a Sponsor X" hint shows
+                        below the inactive row so the operator knows
+                        a swap is about to happen.
+                    */}
+                    {cc.status === 'active' ? (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => pauseComponentMutation.mutate(String(cc.id))}
+                        disabled={pauseComponentMutation.isPending || isPaused}
+                        title={isPaused ? 'Campaign is paused — resume to toggle components' : 'Pausar (desaparece del SDK en vivo)'}
+                        data-testid={`button-pause-${cc.id}`}
+                      >
+                        <Pause className="w-4 h-4" />
+                      </Button>
+                    ) : (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() =>
+                          activateComponentMutation.mutate({
+                            appPlacementId: Number((cc as any).appPlacementId),
+                            campaignComponentId: Number(cc.id),
+                          })
+                        }
+                        disabled={activateComponentMutation.isPending || isPaused}
+                        title={(() => {
+                          if (isPaused) return 'Campaign is paused — resume to toggle components';
+                          const otherActive = campaignComponents.find(
+                            (other: any) =>
+                              other.id !== cc.id &&
+                              other.appPlacementId === (cc as any).appPlacementId &&
+                              other.status === 'active',
+                          ) as any;
+                          if (otherActive) {
+                            const otherSponsorName =
+                              campaignSponsors.find(s => s.sponsorId === otherActive.sponsorId)?.name
+                              ?? `sponsor ${otherActive.sponsorId}`;
+                            return `Hacer activo (reemplaza a ${otherSponsorName} en vivo)`;
+                          }
+                          return 'Hacer activo (aparece en el SDK en vivo)';
+                        })()}
+                        data-testid={`button-activate-${cc.id}`}
+                      >
+                        {(() => {
+                          const otherActive = campaignComponents.find(
+                            (other: any) =>
+                              other.id !== cc.id &&
+                              other.appPlacementId === (cc as any).appPlacementId &&
+                              other.status === 'active',
+                          );
+                          return otherActive
+                            ? <RefreshCw className="w-4 h-4" />
+                            : <Play className="w-4 h-4" />;
+                        })()}
+                      </Button>
+                    )}
                     <Link href="/components">
                       <Button
                         variant="ghost"
