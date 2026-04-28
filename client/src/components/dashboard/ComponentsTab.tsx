@@ -37,6 +37,12 @@ export function ComponentsTab({ campaignId }: ComponentsTabProps) {
   // customConfig.productIds so the SDK component reads them via existing
   // config plumbing.
   const [selectedProductIds, setSelectedProductIds] = useState<Set<string>>(new Set());
+  // Multi-sponsor product entries during the Add dialog flow (Sprint
+  // 2026-04-28 PM Phase 2). Used by `product_store` placements so the
+  // operator can curate products across sponsors at creation time —
+  // single-sponsor templates keep using `selectedProductIds`. Reset
+  // on dialog close + onSuccess.
+  const [addMultiSponsorEntries, setAddMultiSponsorEntries] = useState<ProductEntry[]>([]);
   // Operator-typed customConfig fields filled in DURING the Add dialog
   // (Sprint 2026-04-28 PM Phase 2 polish). Today wired for `offer_banner`
   // — when the operator picks an offer_banner placement we surface the
@@ -159,6 +165,7 @@ export function ComponentsTab({ campaignId }: ComponentsTabProps) {
       setLocationId('');
       setSelectedSponsorId('');
       setSelectedProductIds(new Set());
+      setAddMultiSponsorEntries([]);
       setAddExtraConfig({});
       toast({
         title: 'Component Added',
@@ -437,10 +444,33 @@ export function ComponentsTab({ campaignId }: ComponentsTabProps) {
 
                       {/* Product picker — only shown for product_* component types.
                           Single-select for product_spotlight, multi-select for
-                          carousel/banner/store/slider. Stored as customConfig.productIds
-                          (or productId for spotlight, normalized in addComponentMutation). */}
+                          carousel/banner/slider. Stored as customConfig.productIds
+                          (or productId for spotlight, normalized in addComponentMutation).
+                          product_store is special: products span multiple sponsors,
+                          so it uses MultiSponsorProductPicker and writes to
+                          customConfig.products as `[{productId, sponsorId}, ...]`. */}
                       {isProductComponent && selectedSponsorId && (() => {
                         const tmpl = selectedPlacement?.component?.type as string | undefined;
+
+                        // product_store path — multi-sponsor entries.
+                        // Operator picks any sponsor in the campaign and
+                        // adds products from each. Skips the
+                        // single-sponsor SponsorProductPicker entirely.
+                        if (tmpl === 'product_store') {
+                          return (
+                            <MultiSponsorProductPicker
+                              campaignSponsors={campaignSponsors}
+                              selectedEntries={addMultiSponsorEntries}
+                              onChange={setAddMultiSponsorEntries}
+                              helperText={
+                                addMultiSponsorEntries.length === 0
+                                  ? "Pick a sponsor below + add products. Each product routes through its sponsor's commerce key."
+                                  : undefined
+                              }
+                            />
+                          );
+                        }
+
                         const mode: "single" | "multi" = tmpl === "product_spotlight" ? "single" : "multi";
                         const sponsorName = campaignSponsors.find(s => String(s.sponsorId) === selectedSponsorId)?.name;
                         return (
@@ -767,13 +797,25 @@ export function ComponentsTab({ campaignId }: ComponentsTabProps) {
                               return;
                             }
                           }
+
+                          // product_store: products live in
+                          // customConfig.products (multi-sponsor entries),
+                          // NOT in productIds. Don't pass productIds to
+                          // the mutation since the SDK reads `products`
+                          // and ignores `productIds` when both exist.
+                          const isStoreTemplate = selectedPlacement?.component?.type === 'product_store';
+                          const finalExtraConfig: Record<string, any> = { ...addExtraConfig };
+                          if (isStoreTemplate && addMultiSponsorEntries.length > 0) {
+                            finalExtraConfig.products = addMultiSponsorEntries;
+                          }
+
                           addComponentMutation.mutate({
                             appPlacementId: parseInt(selectedComponentId, 10),
                             instanceName: instanceName.trim() || undefined,
                             sponsorId: parseInt(selectedSponsorId, 10),
-                            productIds: Array.from(selectedProductIds),
+                            productIds: isStoreTemplate ? [] : Array.from(selectedProductIds),
                             extraCustomConfig:
-                              Object.keys(addExtraConfig).length > 0 ? addExtraConfig : undefined,
+                              Object.keys(finalExtraConfig).length > 0 ? finalExtraConfig : undefined,
                           });
                         }}
                         disabled={!selectedComponentId || !selectedSponsorId || addComponentMutation.isPending}
