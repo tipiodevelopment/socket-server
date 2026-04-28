@@ -8,6 +8,7 @@ import { detectAndCacheBaseUrl } from "./utils";
 import { startScheduler } from "./scheduler";
 import { initializeWorkers } from "./queue/workers";
 import { isQueueEnabled } from "./queue/queues";
+import { startOutboxWorker } from "./events/worker";
 
 declare module "http" {
   interface IncomingMessage {
@@ -88,6 +89,14 @@ export async function setupApp(
 
   startScheduler();
   console.log('✅ Scheduler started');
+
+  // Outbox worker: ships realtime events from events_outbox to WS clients.
+  // Must start AFTER registerRoutes() because it reads the (now-bound)
+  // broadcastToCampaign export. The worker tolerates an empty queue, so
+  // there's no harm if the table doesn't exist yet (e.g. fresh dev DB
+  // before migrations applied) — first poll just returns no rows.
+  startOutboxWorker();
+  console.log('✅ Outbox worker started');
 
   if (isQueueEnabled()) {
     initializeWorkers();

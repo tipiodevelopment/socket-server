@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { pgTable, serial, varchar, text, timestamp, json, integer, boolean, uniqueIndex, index } from "drizzle-orm/pg-core";
+import { pgTable, serial, varchar, text, timestamp, json, jsonb, integer, bigint, boolean, uniqueIndex, index, uuid } from "drizzle-orm/pg-core";
 import { relations, sql } from "drizzle-orm";
 import type { AnyPgColumn } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
@@ -549,6 +549,48 @@ export const sportmonksCache = pgTable("sportmonks_cache", {
 export const insertSportmonksCacheSchema = createInsertSchema(sportmonksCache).omit({ id: true });
 export type SportmonksCache = typeof sportmonksCache.$inferSelect;
 export type InsertSportmonksCache = z.infer<typeof insertSportmonksCacheSchema>;
+
+// Events outbox — backs every realtime event the server emits to WS clients.
+//
+// HTTP handlers INSERT into this table inside the SAME transaction as the
+// data change (atomicity: never lose an event after a successful commit,
+// never spuriously emit one if the data change rolled back). A worker
+// (server/events/worker.ts) polls pending rows every 500ms with
+// `FOR UPDATE SKIP LOCKED` and ships them via `broadcastToCampaign` etc.
+//
+// Module-agnostic + scope-agnostic by design: the same table backs
+// placements (today), engagement/broadcast (future), and cart-intent
+// (migration target). See migrations/0005_events_outbox.sql for the full
+// rationale and TASK_PLACEMENTS.md "Sprint 2026-04-28 PM" for the plan.
+export const eventsOutbox = pgTable("events_outbox", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  /** Wire event type, e.g. 'placement_status_changed'. */
+  topic: text("topic").notNull(),
+  /** Subscription bucket. 'placements' | 'engagement' | 'broadcast' | 'cart_intent'. */
+  module: text("module").notNull(),
+  /** Routing target type. 'campaign' | 'broadcast' | 'user'. */
+  scopeType: text("scope_type").notNull(),
+  /** Numeric id of the routing target (campaign.id, end_users.id, …). */
+  scopeId: bigint("scope_id", { mode: "number" }).notNull(),
+  /** Free-form payload; each topic owns its shape (see server/events/types.ts). */
+  payload: jsonb("payload").notNull(),
+  /** Authoritative timestamp at outbox INSERT (used by SDK for sequencing). */
+  serverTimestamp: timestamp("server_timestamp", { withTimezone: true }).defaultNow().notNull(),
+  /** Lifecycle. 'pending' → 'sent' (ok) | 'failed' (transient) | 'dead' (max attempts). */
+  status: text("status").notNull().default("pending"),
+  attempts: integer("attempts").notNull().default(0),
+  lastError: text("last_error"),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  processedAt: timestamp("processed_at", { withTimezone: true }),
+}, (table) => ({
+  // Worker hot-path: status='pending' ORDER BY created_at LIMIT N.
+  pendingIdx: index("events_outbox_pending_idx").on(table.createdAt),
+  // Audit / replay: "all events for campaign 36 in time order".
+  scopeIdx: index("events_outbox_scope_idx").on(table.scopeType, table.scopeId, table.serverTimestamp),
+}));
+
+export type EventsOutboxRow = typeof eventsOutbox.$inferSelect;
+export type InsertEventsOutboxRow = typeof eventsOutbox.$inferInsert;
 
 // Campaign Sponsors — many-to-many campaigns <-> sponsors with role
 export const campaignSponsors = pgTable("campaign_sponsors", {
