@@ -465,8 +465,18 @@ async function resolveCommerceFromCampaignSponsors(
   return { apiKey: null, channelId: null };
 }
 
-// Export broadcastToCampaign function (will be set during registerRoutes)
-export let broadcastToCampaign: (campaignId: number, message: string) => void = () => {
+// Export broadcastToCampaign function (will be set during registerRoutes).
+//
+// `module` is the subscription bucket the event belongs to ('placements',
+// 'engagement', 'broadcast', 'cart_intent'). When provided, only sockets
+// that have explicitly subscribed to that module receive the message.
+// When omitted, the emit is a firehose to all sockets in the campaign
+// room — kept that way for backward-compat with legacy callers (poll /
+// contest / product / cart_intent direct emit paths) that pre-date the
+// subscribe protocol.
+//
+// Sprint 2026-04-28 PM (Phase 2). See server/events/types.ts.
+export let broadcastToCampaign: (campaignId: number, message: string, module?: string) => void = () => {
   console.warn('[WebSocket] broadcastToCampaign called before initialization');
 };
 
@@ -509,18 +519,37 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   // here still resolve to that single instance.)
   // Map WebSocket → user connection binding for Redis-backed presence
   const clientUserBindings = new WeakMap<WebSocket, { userId: string; connectionId: string }>();
-  
-  // Function to broadcast to clients in a specific campaign (local node only)
-  const broadcastToCampaignLocal = (campaignId: number, message: string) => {
+
+  // Map WebSocket → Set of subscribed module names ('placements',
+  // 'engagement', etc.). Populated by the `subscribe` message handler;
+  // GC'd automatically when the socket is collected.
+  //
+  // Filtering rule applied by `broadcastToCampaignLocal`:
+  //   - Sockets that NEVER sent a `subscribe` message (legacy clients,
+  //     dashboard, Apple TV) are absent from this map → treated as
+  //     firehose ('*'), receive everything for backward compatibility.
+  //   - Sockets that DID subscribe receive only events whose `module`
+  //     field is in their set. Events emitted without a `module` arg
+  //     bypass the filter (legacy emit paths stay unaffected).
+  //
+  // Sprint 2026-04-28 PM (Phase 2). See server/events/types.ts.
+  const clientSubscriptions = new WeakMap<WebSocket, Set<string>>();
+
+  // Function to broadcast to clients in a specific campaign (local node only).
+  // When `module` is provided, filters per-socket by `clientSubscriptions`.
+  const broadcastToCampaignLocal = (campaignId: number, message: string, module?: string) => {
     const clients = campaignClients.get(campaignId);
-    if (clients) {
-      clients.forEach((client) => {
-        if (client.readyState === WebSocket.OPEN) {
-          console.log("Message Send!  Campaign:", campaignId, "Message:", message);
-          client.send(message);
-        }
-      });
-    }
+    if (!clients) return;
+    clients.forEach((client) => {
+      if (client.readyState !== WebSocket.OPEN) return;
+      if (module) {
+        const subs = clientSubscriptions.get(client);
+        // Absent → legacy firehose. Present → must include this module.
+        if (subs && !subs.has(module)) return;
+      }
+      console.log("Message Send!  Campaign:", campaignId, "Message:", message);
+      client.send(message);
+    });
   };
 
   // Subscribe to cross-node events via Redis Pub/Sub
@@ -535,8 +564,10 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
             console.log(`[WS] Forwarded cart_intent delivered locally to userId=${event.userId}`);
           }
         } else if (event.type === 'broadcast_campaign' && event.campaignId) {
-          // Deliver forwarded campaign broadcast to local node clients
-          broadcastToCampaignLocal(event.campaignId, event.message);
+          // Deliver forwarded campaign broadcast to local node clients.
+          // `module` may be undefined for legacy events from older nodes —
+          // broadcastToCampaignLocal treats undefined as firehose.
+          broadcastToCampaignLocal(event.campaignId, event.message, event.module);
         }
       } catch (err) {
         console.error('[WS] Error processing cross-node event:', err);
@@ -767,6 +798,17 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
         } else if (msg.type === 'identify' && msg.userId) {
           void bindUserToSocket(msg.userId);
           console.log(`[WS] identify recibido: userId=${String(msg.userId)} en campaign ${campaignId}`);
+        } else if (msg.type === 'subscribe' && Array.isArray(msg.modules)) {
+          // Module-aware subscribe: SDK declares which event buckets it
+          // wants to receive. Sockets that never send this remain on the
+          // legacy firehose path. Whitelist incoming module names against
+          // the canonical set so we don't store garbage.
+          const ALLOWED_MODULES = new Set(['placements', 'engagement', 'broadcast', 'cart_intent']);
+          const modules = new Set<string>(
+            msg.modules.filter((m: unknown): m is string => typeof m === 'string' && ALLOWED_MODULES.has(m))
+          );
+          clientSubscriptions.set(ws, modules);
+          console.log(`[WS] subscribe recibido: modules=[${Array.from(modules).join(',')}] en campaign ${campaignId}`);
         }
       } catch { /* ignorar mensajes no-JSON */ }
     });
@@ -843,18 +885,21 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
     });
   });
 
-  // Function to broadcast to clients in a specific campaign
-  const broadcastToCampaignImpl = (campaignId: number, message: string) => {
+  // Function to broadcast to clients in a specific campaign.
+  // `module` is forwarded through the Redis envelope so cross-node
+  // delivery preserves the per-socket subscription filter.
+  const broadcastToCampaignImpl = (campaignId: number, message: string, module?: string) => {
     if (isRedisEnabled()) {
       // Forward to all nodes via Redis (including this one)
       publishEvent("ws:events:forward", {
         type: 'broadcast_campaign',
         campaignId,
-        message
+        message,
+        module,
       });
     } else {
       // Redis disabled: broadcast locally only
-      broadcastToCampaignLocal(campaignId, message);
+      broadcastToCampaignLocal(campaignId, message, module);
     }
   };
 

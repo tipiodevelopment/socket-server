@@ -156,7 +156,10 @@ function dispatchOne(args: DispatchArgs): void {
 
   switch (args.scopeType) {
     case "campaign":
-      broadcastToCampaign(args.scopeId, message);
+      // Pass `module` so the WS layer applies per-socket subscription
+      // filtering. Sockets that never sent `subscribe` remain on the
+      // firehose path (backward-compat for dashboard / legacy SDKs).
+      broadcastToCampaign(args.scopeId, message, args.module);
       return;
     case "broadcast":
       // Future: broadcast-scoped emit. Throwing keeps the row in
