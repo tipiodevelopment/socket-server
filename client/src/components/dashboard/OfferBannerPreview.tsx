@@ -20,16 +20,36 @@ export interface OfferBannerPreviewProps {
    *  used as fallback when `config.logoUrl` is empty/missing. The
    *  dashboard form passes the selected sponsor's logoUrl here. */
   sponsorLogoUrl?: string | null;
+  /** Resolved sponsor primary color — used as fallback for the CTA
+   *  button when `config.buttonColor` is empty. Mirrors the SDK's
+   *  fallback chain (operator override > sponsor primary > brand
+   *  default) so the preview matches the live render. */
+  sponsorPrimaryColor?: string | null;
+  /** Sponsor secondary color — currently unused in the preview but
+   *  passed through for forward compat (e.g. future "use as
+   *  background overlay" features). */
+  sponsorSecondaryColor?: string | null;
 }
 
-export function OfferBannerPreview({ config, sponsorLogoUrl }: OfferBannerPreviewProps) {
+export function OfferBannerPreview({
+  config,
+  sponsorLogoUrl,
+  sponsorPrimaryColor,
+}: OfferBannerPreviewProps) {
   const title = (config.title ?? "").trim() || "Title goes here";
   const subtitle = (config.subtitle ?? "").trim();
   const badgeText = (config.discountBadgeText ?? "").trim() || "Badge";
   const ctaText = (config.ctaText ?? "").trim() || "CTA →";
   const backgroundImageUrl = (config.backgroundImageUrl ?? "").trim();
   const backgroundColor = (config.backgroundColor ?? "").trim() || "#1a1a1a";
-  const buttonColor = (config.buttonColor ?? "").trim() || "#FF6B6B";
+  // Button color fallback chain matches VOfferBanner's `buttonColor`
+  // computed property: operator override > sponsor primary > brand
+  // fallback. Lets the preview show what the SDK would actually
+  // render when the operator leaves buttonColor empty.
+  const buttonColor =
+    (config.buttonColor ?? "").trim() ||
+    (sponsorPrimaryColor ?? "").trim() ||
+    "#FF6B6B";
   const overlayOpacity = typeof config.overlayOpacity === "number" ? config.overlayOpacity : 0.4;
   const logoUrl = ((config.logoUrl ?? "").trim() || sponsorLogoUrl || "").trim();
 

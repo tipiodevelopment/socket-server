@@ -15,6 +15,7 @@ import { Link } from "wouter";
 import { ImageUploadWithPreview } from "@/components/ImageUploadWithPreview";
 import { SponsorProductPicker } from "@/components/dashboard/SponsorProductPicker";
 import { OfferBannerPreview } from "@/components/dashboard/OfferBannerPreview";
+import { BrandColorPicker } from "@/components/dashboard/BrandColorPicker";
 
 interface ComponentsTabProps {
   campaignId: number;
@@ -68,14 +69,17 @@ export function ComponentsTab({ campaignId }: ComponentsTabProps) {
   });
 
   // Campaign sponsors: primary + secondaries merged into one array. Returned
-  // shape: { sponsorId, name, role, logoUrl, primaryColor, ... } per sponsor.
-  // Mandatory picker — submit is blocked until the operator picks one.
+  // shape: { sponsorId, name, role, logoUrl, primaryColor, secondaryColor, ... }
+  // per sponsor. Mandatory picker — submit is blocked until the operator picks one.
+  // Both color fields are surfaced so the BrandColorPicker can offer them as
+  // quick-pick swatches when the operator is configuring banner colors.
   const { data: campaignSponsors = [] } = useQuery<Array<{
     sponsorId: number;
     name: string;
     role: string;
     logoUrl: string | null;
     primaryColor: string | null;
+    secondaryColor: string | null;
   }>>({
     queryKey: ['/api/campaigns', campaignId, 'sponsors'],
     queryFn: async () => {
@@ -543,17 +547,58 @@ export function ComponentsTab({ campaignId }: ComponentsTabProps) {
                             </p>
                           </div>
 
+                          {/* Brand-aware color pickers. Each surfaces
+                              the selected sponsor's primary +
+                              secondary color as one-click swatches so
+                              the operator can lock the banner to the
+                              sponsor's branding without hand-typing
+                              hex. Empty = SDK fallback. */}
+                          {(() => {
+                            const sponsor = campaignSponsors.find(s => String(s.sponsorId) === selectedSponsorId);
+                            return (
+                              <>
+                                <BrandColorPicker
+                                  label="Button color (CTA)"
+                                  value={addExtraConfig.buttonColor}
+                                  onChange={(next) => setAddExtraConfig({ ...addExtraConfig, buttonColor: next })}
+                                  sponsorPrimaryColor={sponsor?.primaryColor}
+                                  sponsorSecondaryColor={sponsor?.secondaryColor}
+                                  sponsorName={sponsor?.name}
+                                  emptyPlaceholder="#FF6B6B"
+                                  helperText="Click a sponsor swatch to brand the CTA, or leave unset for SDK default."
+                                  testId="picker-add-ob-buttonColor"
+                                />
+                                <BrandColorPicker
+                                  label="Background color (image fallback)"
+                                  value={addExtraConfig.backgroundColor}
+                                  onChange={(next) => setAddExtraConfig({ ...addExtraConfig, backgroundColor: next })}
+                                  sponsorPrimaryColor={sponsor?.primaryColor}
+                                  sponsorSecondaryColor={sponsor?.secondaryColor}
+                                  sponsorName={sponsor?.name}
+                                  emptyPlaceholder="#1a1a1a"
+                                  helperText="Used when there's no background image, or while it's loading."
+                                  testId="picker-add-ob-backgroundColor"
+                                />
+                              </>
+                            );
+                          })()}
+
                           {/* Live preview — updates as the operator types
                               so they see the banner before saving. Uses
                               the selected sponsor's logoUrl as fallback
                               when addExtraConfig.logoUrl is empty (mirrors
                               VOfferBanner's resolvedLogoUrl logic on iOS). */}
-                          <OfferBannerPreview
-                            config={addExtraConfig}
-                            sponsorLogoUrl={
-                              campaignSponsors.find(s => String(s.sponsorId) === selectedSponsorId)?.logoUrl ?? null
-                            }
-                          />
+                          {(() => {
+                            const sponsor = campaignSponsors.find(s => String(s.sponsorId) === selectedSponsorId);
+                            return (
+                              <OfferBannerPreview
+                                config={addExtraConfig}
+                                sponsorLogoUrl={sponsor?.logoUrl ?? null}
+                                sponsorPrimaryColor={sponsor?.primaryColor ?? null}
+                                sponsorSecondaryColor={sponsor?.secondaryColor ?? null}
+                              />
+                            );
+                          })()}
                         </div>
                       )}
 
@@ -823,6 +868,7 @@ export interface CampaignComponentConfigFormProps {
     role: string;
     logoUrl: string | null;
     primaryColor: string | null;
+    secondaryColor: string | null;
   }>;
   onSubmit: (customConfig: any, sponsorId?: number) => void;
   onRevertToDefault: () => void;
@@ -1329,29 +1375,40 @@ export function CampaignComponentConfigForm({
               <p className="text-xs text-muted-foreground">Dark overlay on background image. Default: 0.4</p>
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="backgroundColor">Background Color (hex)</Label>
-              <Input
-                id="backgroundColor"
-                value={config.backgroundColor || '#FF6F61'}
-                onChange={(e) => setConfig({ ...config, backgroundColor: e.target.value })}
-                placeholder="#FF6F61"
-                data-testid="input-backgroundColor"
-              />
-              <p className="text-xs text-muted-foreground">Fallback color if image fails to load</p>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="buttonColor">Button Color (hex)</Label>
-              <Input
-                id="buttonColor"
-                value={config.buttonColor || ''}
-                onChange={(e) => setConfig({ ...config, buttonColor: e.target.value || undefined })}
-                placeholder="#FF6B6B (leave empty to use brand primary)"
-                data-testid="input-buttonColor"
-              />
-              <p className="text-xs text-muted-foreground">CTA button background. Empty → SDK falls back to brand primary.</p>
-            </div>
+            {/* Color pickers — operator can either use the native
+                browser color picker, or one-click pick the selected
+                sponsor's primary/secondary brand color (sourced from
+                sponsors.primary_color / secondary_color). Empty
+                value = SDK fallback. Sprint 2026-04-28 PM Phase 2. */}
+            {(() => {
+              const sponsor = campaignSponsors.find(s => String(s.sponsorId) === selectedSponsorId);
+              return (
+                <>
+                  <BrandColorPicker
+                    label="Background color"
+                    value={config.backgroundColor}
+                    onChange={(next) => setConfig({ ...config, backgroundColor: next })}
+                    sponsorPrimaryColor={sponsor?.primaryColor}
+                    sponsorSecondaryColor={sponsor?.secondaryColor}
+                    sponsorName={sponsor?.name}
+                    emptyPlaceholder="#FF6F61"
+                    helperText="Fallback when the background image fails to load. Click a sponsor swatch to brand it."
+                    testId="picker-backgroundColor"
+                  />
+                  <BrandColorPicker
+                    label="Button color (CTA)"
+                    value={config.buttonColor}
+                    onChange={(next) => setConfig({ ...config, buttonColor: next })}
+                    sponsorPrimaryColor={sponsor?.primaryColor}
+                    sponsorSecondaryColor={sponsor?.secondaryColor}
+                    sponsorName={sponsor?.name}
+                    emptyPlaceholder="#FF6B6B"
+                    helperText="CTA button background. Leave unset → SDK uses the brand primary color."
+                    testId="picker-buttonColor"
+                  />
+                </>
+              );
+            })()}
 
             {/* Deeplink section — Path A3 hybrid resolution (host
                 callback > operator-set deeplinkUrl > ctaLink external). */}
@@ -1847,14 +1904,17 @@ export function CampaignComponentConfigForm({
       {/* Live preview — same component as the Add dialog. Renders only
           for offer_banner today; other templates can opt in by checking
           their `componentType` and reusing the same pattern. */}
-      {componentType === 'offer_banner' && (
-        <OfferBannerPreview
-          config={config}
-          sponsorLogoUrl={
-            campaignSponsors.find(s => String(s.sponsorId) === selectedSponsorId)?.logoUrl ?? null
-          }
-        />
-      )}
+      {componentType === 'offer_banner' && (() => {
+        const sponsor = campaignSponsors.find(s => String(s.sponsorId) === selectedSponsorId);
+        return (
+          <OfferBannerPreview
+            config={config}
+            sponsorLogoUrl={sponsor?.logoUrl ?? null}
+            sponsorPrimaryColor={sponsor?.primaryColor ?? null}
+            sponsorSecondaryColor={sponsor?.secondaryColor ?? null}
+          />
+        );
+      })()}
 
       <div className="flex gap-2 justify-between pt-4">
         {campaignComponent.customConfig ? (
