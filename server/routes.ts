@@ -437,26 +437,22 @@ async function routeUserEvent(params: {
 }
 
 /**
- * Commerce GraphQL credentials from sponsors only:
- * `campaign_sponsors` (first with `commerceApiKey`), else primary `campaign.sponsorId`.
- * Does not use `campaigns.reachu_api_key` (legacy).
+ * Commerce GraphQL credentials for a campaign — picks the first sponsor
+ * (primary first, then secondaries) that has `commerceApiKey` configured.
+ *
+ * Per the storage convention, `campaign_sponsors` (junction) holds **only
+ * secondaries**; the primary lives on `campaigns.primary_sponsor_id`. So we
+ * delegate to `storage.getAllCampaignSponsors(...)` which composes
+ * `[primary, ...secondaries]` in that order.
+ *
+ * Does not use `campaigns.reachu_api_key` (legacy column).
  */
 async function resolveCommerceFromCampaignSponsors(
-  campaign: { id: number; sponsorId: number | null } | null,
+  campaignId: number | null,
 ): Promise<{ apiKey: string | null; channelId: string | null }> {
-  if (!campaign) return { apiKey: null, channelId: null };
-  const campaignSponsors = await storage.getCampaignSponsors(campaign.id);
-  for (const cs of campaignSponsors) {
-    const sp = await storage.getSponsor(cs.sponsorId);
-    if (sp?.commerceApiKey) {
-      return {
-        apiKey: sp.commerceApiKey,
-        channelId: sp.commerceChannelId || null,
-      };
-    }
-  }
-  if (campaign.sponsorId != null) {
-    const sp = await storage.getSponsor(campaign.sponsorId);
+  if (campaignId == null) return { apiKey: null, channelId: null };
+  const allSponsors = await storage.getAllCampaignSponsors(campaignId);
+  for (const sp of allSponsors) {
     if (sp?.commerceApiKey) {
       return {
         apiKey: sp.commerceApiKey,
@@ -5656,14 +5652,14 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       // rather than authenticating against an unrelated channel.
       let commerceApiKey: string | null = null;
 
-      // Prefer sponsor-level key
+      // Prefer sponsor-level key. Falls back to all campaign sponsors
+      // (primary first, then secondaries) via `getAllCampaignSponsors`.
       if (sponsorId) {
         const sp = await storage.getSponsor(sponsorId);
         if (sp?.commerceApiKey) commerceApiKey = sp.commerceApiKey;
       } else if (campaignId) {
-        const campaignSponsorsForKey = await storage.getCampaignSponsors(campaignId);
-        for (const cs of campaignSponsorsForKey) {
-          const sp = await storage.getSponsor(cs.sponsorId);
+        const allSponsors = await storage.getAllCampaignSponsors(campaignId);
+        for (const sp of allSponsors) {
           if (sp?.commerceApiKey) { commerceApiKey = sp.commerceApiKey; break; }
         }
       }
@@ -5876,9 +5872,10 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
           if (sp?.commerceApiKey) resolvedCommerceKey = sp.commerceApiKey;
         }
         if (!resolvedCommerceKey) {
-          const campaignSponsorsForKey = await storage.getCampaignSponsors(campaign.id);
-          for (const cs of campaignSponsorsForKey) {
-            const csp = await storage.getSponsor(cs.sponsorId);
+          // Fallback: iterate `[primary, ...secondaries]` for the first
+          // sponsor with a commerce key. Primary first per storage convention.
+          const allSponsors = await storage.getAllCampaignSponsors(campaign.id);
+          for (const csp of allSponsors) {
             if (csp?.commerceApiKey) { resolvedCommerceKey = csp.commerceApiKey; break; }
           }
         }
@@ -6204,10 +6201,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       const {
         apiKey: sdkCommerceApiKey2,
         channelId: sdkCommerceChannelId2,
-      } = await resolveCommerceFromCampaignSponsors({
-        id: campaign.id,
-        sponsorId: campaign.primarySponsorId,
-      });
+      } = await resolveCommerceFromCampaignSponsors(campaign.id);
       config.integrations = {
         commerce: {
           enabled: !!(sdkCommerceApiKey2),
@@ -6857,9 +6851,10 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
         if (sp?.commerceApiKey) resolvedCommerceKey = sp.commerceApiKey;
       }
       if (!resolvedCommerceKey) {
-        const campaignSponsorsForKey = await storage.getCampaignSponsors(campaign.id);
-        for (const cs of campaignSponsorsForKey) {
-          const csp = await storage.getSponsor(cs.sponsorId);
+        // Fallback: iterate `[primary, ...secondaries]` for the first
+        // sponsor with a commerce key. Primary first per storage convention.
+        const allSponsors = await storage.getAllCampaignSponsors(campaign.id);
+        for (const csp of allSponsors) {
           if (csp?.commerceApiKey) { resolvedCommerceKey = csp.commerceApiKey; break; }
         }
       }

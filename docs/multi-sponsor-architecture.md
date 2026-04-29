@@ -121,6 +121,49 @@ A commerce-coupled component (e.g. `product_carousel`) is scheduled to appear in
 
 ## 3. Data Model Changes
 
+### 3.0 Storage convention — primary vs secondary sponsors (locked 2026-04-30)
+
+**Single source of truth per role.** A campaign's sponsors are split across
+two storage locations *intentionally*:
+
+| Location | Holds | Cardinality |
+|---|---|---|
+| `campaigns.primary_sponsor_id` | the **primary** sponsor | exactly 1 (or NULL pre-creation) |
+| `campaign_sponsors` (junction) | **only secondaries** | 0..N |
+
+**Rules enforced in code:**
+
+- `addSecondarySponsor(campaignId, sponsorId)` always inserts with
+  `role: 'secondary'`. Adding the primary into the junction is a bug — it
+  would duplicate the source of truth.
+- `listSecondarySponsors(campaignId)` returns rows from the junction only
+  (which by the previous rule means it returns secondaries only).
+- `getCampaignSponsors(campaignId)` is a low-level read of the junction
+  (joined to `sponsors`). Treat it as "secondaries with row metadata"; do
+  not assume it includes the primary.
+- `getAllCampaignSponsors(campaignId)` is the **convenience reader** that
+  composes `[primary, ...secondaries]` (primary first). Use this when you
+  need to iterate every sponsor of a campaign — e.g. commerce-key
+  resolution by campaign-only fallback. Never iterate the junction
+  directly for this purpose.
+
+**Why not put the primary in the junction too?** Two reasons:
+
+1. *Idempotency on primary changes.* Updating `campaigns.primary_sponsor_id`
+   is a single-row write. If the primary also lived in the junction we'd
+   need a multi-row transaction (delete old primary row, insert new) plus
+   a trigger to keep them in sync — extra surface for drift.
+2. *`canChangePrimarySponsor()` is cheap.* The rule "primary cannot change
+   once a broadcast or activation references this campaign" is a `WHERE`
+   on `campaigns.primary_sponsor_id`. With the column we keep that check
+   trivial; in a junction-only model we'd have to special-case which junction
+   row is "the primary".
+
+**What the drift script checks (invariant 2, post-2026-04-30):** that
+`campaigns.primary_sponsor_id` is not dangling — i.e. the FK pointer
+resolves to a real `sponsors` row. It does **not** require the primary to
+also appear in the junction; that's the convention, not a bug.
+
 ### 3.1 New tables
 
 ```sql

@@ -273,6 +273,14 @@ export interface IStorage {
   addSecondarySponsor(campaignId: number, sponsorId: number): Promise<void>;
   removeSecondarySponsor(campaignId: number, sponsorId: number): Promise<void>;
 
+  // Convenience: returns `[primary, ...secondaries]` for callers that need to
+  // iterate every sponsor of a campaign (e.g. commerce key resolution by
+  // campaign-only fallback). The primary comes first so consumers picking
+  // "first sponsor with X" naturally prefer the primary. If the campaign has
+  // no primary or the primary points at a missing sponsor, the result is just
+  // the secondaries — never throws.
+  getAllCampaignSponsors(campaignId: number): Promise<Sponsor[]>;
+
   // Validation: a sponsor must be the campaign's primary or in its secondary list
   isSponsorAllowedForCampaign(sponsorId: number, campaignId: number): Promise<boolean>;
 
@@ -2029,6 +2037,16 @@ export class MemStorage implements IStorage {
   async removeSecondarySponsor(campaignId: number, sponsorId: number): Promise<void> {
     await db.delete(campaignSponsors)
       .where(and(eq(campaignSponsors.campaignId, campaignId), eq(campaignSponsors.sponsorId, sponsorId)));
+  }
+
+  async getAllCampaignSponsors(campaignId: number): Promise<Sponsor[]> {
+    const [campaign] = await db.select({ primarySponsorId: campaigns.primarySponsorId })
+      .from(campaigns).where(eq(campaigns.id, campaignId)).limit(1);
+    const secondaries = await this.listSecondarySponsors(campaignId);
+    if (!campaign?.primarySponsorId) return secondaries;
+    const [primary] = await db.select().from(sponsors)
+      .where(eq(sponsors.id, campaign.primarySponsorId)).limit(1);
+    return primary ? [primary, ...secondaries] : secondaries;
   }
 
   async isSponsorAllowedForCampaign(sponsorId: number, campaignId: number): Promise<boolean> {
