@@ -10,6 +10,8 @@
 >
 > **Branch**: `feature/api-v2-urls` (VioSwiftSDK, off develop). Initial 3
 > renames landed in commit `88320c5`; the 9 remaining are tracked here.
+>
+> **Backend-side cleanup (2026-04-29, commit `374a3ae`)**: 24 of the 33 v1 routes that previously lived in `server/routes.ts` had zero callers across the 3 SDKs (verified by `grep -r "/v1/" Sources/`) and were deleted entirely (894 lines). The 9 routes called by iOS stay live until the per-PR migrations below land. This doc remains the single tracker for those 9.
 
 ## Already killed (2026-04-24, commit `748aeac` on `feature/api-v2-urls`)
 
@@ -71,19 +73,18 @@ with `Link: </v2/mobile/...>; rel="successor-version"` header.
 - `/v1/sdk/broadcast?contentId=` — PR D
 - `/v1/localization/:lang` — PR E
 
-**Already retirable** (iOS no longer calls, thanks to commit `748aeac`):
-- `/v1/sdk/campaigns` — superseded by `/v2/mobile/config`
-- `/v1/sdk/config` — superseded by `/v2/mobile/config`
-- `/v1/offers` — superseded by `/v2/mobile/broadcasts/:id/components`
-- `/api/campaigns/:id/active-components` — superseded by WS + `/v2/mobile/broadcasts/:id/components`
+**Retired entirely** (commit `374a3ae`, 2026-04-29) — empirical cleanup, all 24 routes had zero callers:
 
-These 4 still live on the backend but no SDK consumer calls them. They can
-respond `410 Gone` in the same PR cycle that merges the v2 direct cut
-(feature/api-v2-cut → develop).
-- `/v1/sdk/broadcasts/:id/{chat,score,stats}` (if iOS still calls — not
-  verified yet)
-- `/v1/sdk/livescores` (if iOS still calls — not verified yet)
-- `/v1/sdk/components` (if iOS still calls — not verified yet)
+- `/v1/sdk/campaigns` — superseded by `/v2/mobile/config`.
+- `/v1/sdk/config` — superseded by `/v2/mobile/config`.
+- `/v1/offers` — superseded by `/v2/mobile/broadcasts/:id/components` + WS events.
+- `/v1/sdk/components` — superseded by `/v2/mobile/campaigns/:id/components`.
+- `/v1/sdk/livescores` — confirmed no consumer.
+- `/v1/sdk/broadcasts/:id/{chat,score,stats}` — confirmed no consumer.
+- `/v1/broadcasts` (5 verbs), `/v1/campaigns/:id/broadcasts`, `/v1/broadcasts/:id/{polls,contests}` (4), `/v1/{polls,contests}/:id` (CRUD), `/v1/polls/:id/results`, `/v1/contests/:id/participations` — Bearer admin CRUD, never connected to any frontend.
+- `/api/campaigns/:id/active-components` — superseded by WS + `/v2/mobile/broadcasts/:id/components`.
+
+Verification: post-cleanup, requests to these paths hit Vite's SPA fallback (text/html), no Express handler, no DB hit. The 9 paths in §"Calls the iOS SDK still makes" above remain JSON 200.
 
 ## How this doc dies
 

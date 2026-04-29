@@ -25,6 +25,8 @@ import {
   shoppableAdActivations,
   campaignComponents,
   components,
+  appPlacements,
+  appComponentLocations,
   polls,
   contests,
   sponsors,
@@ -38,7 +40,7 @@ import {
   Broadcast
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, and, or, isNull, desc, sql } from "drizzle-orm";
+import { eq, and, or, isNull, desc, sql, ne } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import {
   ObjectStorageService,
@@ -51,6 +53,8 @@ import { createRateLimiter, rateLimitPresets } from "./middleware/rate-limiter";
 import { validateBroadcastId } from "./middleware/broadcast-validator";
 import { setVoteBroadcastFunction } from "./services/vote-processor";
 import { sendAPNs } from "./services/ios-flow";
+import { enqueueEvent } from "./events/outbox";
+import { PLACEMENT_TOPICS } from "./events/types";
 import {
   clearUserPresence,
   isRedisEnabled,
@@ -463,8 +467,18 @@ async function resolveCommerceFromCampaignSponsors(
   return { apiKey: null, channelId: null };
 }
 
-// Export broadcastToCampaign function (will be set during registerRoutes)
-export let broadcastToCampaign: (campaignId: number, message: string) => void = () => {
+// Export broadcastToCampaign function (will be set during registerRoutes).
+//
+// `module` is the subscription bucket the event belongs to ('placements',
+// 'engagement', 'broadcast', 'cart_intent'). When provided, only sockets
+// that have explicitly subscribed to that module receive the message.
+// When omitted, the emit is a firehose to all sockets in the campaign
+// room — kept that way for backward-compat with legacy callers (poll /
+// contest / product / cart_intent direct emit paths) that pre-date the
+// subscribe protocol.
+//
+// Sprint 2026-04-28 PM (Phase 2). See server/events/types.ts.
+export let broadcastToCampaign: (campaignId: number, message: string, module?: string) => void = () => {
   console.warn('[WebSocket] broadcastToCampaign called before initialization');
 };
 
@@ -507,18 +521,37 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   // here still resolve to that single instance.)
   // Map WebSocket → user connection binding for Redis-backed presence
   const clientUserBindings = new WeakMap<WebSocket, { userId: string; connectionId: string }>();
-  
-  // Function to broadcast to clients in a specific campaign (local node only)
-  const broadcastToCampaignLocal = (campaignId: number, message: string) => {
+
+  // Map WebSocket → Set of subscribed module names ('placements',
+  // 'engagement', etc.). Populated by the `subscribe` message handler;
+  // GC'd automatically when the socket is collected.
+  //
+  // Filtering rule applied by `broadcastToCampaignLocal`:
+  //   - Sockets that NEVER sent a `subscribe` message (legacy clients,
+  //     dashboard, Apple TV) are absent from this map → treated as
+  //     firehose ('*'), receive everything for backward compatibility.
+  //   - Sockets that DID subscribe receive only events whose `module`
+  //     field is in their set. Events emitted without a `module` arg
+  //     bypass the filter (legacy emit paths stay unaffected).
+  //
+  // Sprint 2026-04-28 PM (Phase 2). See server/events/types.ts.
+  const clientSubscriptions = new WeakMap<WebSocket, Set<string>>();
+
+  // Function to broadcast to clients in a specific campaign (local node only).
+  // When `module` is provided, filters per-socket by `clientSubscriptions`.
+  const broadcastToCampaignLocal = (campaignId: number, message: string, module?: string) => {
     const clients = campaignClients.get(campaignId);
-    if (clients) {
-      clients.forEach((client) => {
-        if (client.readyState === WebSocket.OPEN) {
-          console.log("Message Send!  Campaign:", campaignId, "Message:", message);
-          client.send(message);
-        }
-      });
-    }
+    if (!clients) return;
+    clients.forEach((client) => {
+      if (client.readyState !== WebSocket.OPEN) return;
+      if (module) {
+        const subs = clientSubscriptions.get(client);
+        // Absent → legacy firehose. Present → must include this module.
+        if (subs && !subs.has(module)) return;
+      }
+      console.log("Message Send!  Campaign:", campaignId, "Message:", message);
+      client.send(message);
+    });
   };
 
   // Subscribe to cross-node events via Redis Pub/Sub
@@ -533,8 +566,10 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
             console.log(`[WS] Forwarded cart_intent delivered locally to userId=${event.userId}`);
           }
         } else if (event.type === 'broadcast_campaign' && event.campaignId) {
-          // Deliver forwarded campaign broadcast to local node clients
-          broadcastToCampaignLocal(event.campaignId, event.message);
+          // Deliver forwarded campaign broadcast to local node clients.
+          // `module` may be undefined for legacy events from older nodes —
+          // broadcastToCampaignLocal treats undefined as firehose.
+          broadcastToCampaignLocal(event.campaignId, event.message, event.module);
         }
       } catch (err) {
         console.error('[WS] Error processing cross-node event:', err);
@@ -765,6 +800,17 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
         } else if (msg.type === 'identify' && msg.userId) {
           void bindUserToSocket(msg.userId);
           console.log(`[WS] identify recibido: userId=${String(msg.userId)} en campaign ${campaignId}`);
+        } else if (msg.type === 'subscribe' && Array.isArray(msg.modules)) {
+          // Module-aware subscribe: SDK declares which event buckets it
+          // wants to receive. Sockets that never send this remain on the
+          // legacy firehose path. Whitelist incoming module names against
+          // the canonical set so we don't store garbage.
+          const ALLOWED_MODULES = new Set(['placements', 'engagement', 'broadcast', 'cart_intent']);
+          const modules = new Set<string>(
+            msg.modules.filter((m: unknown): m is string => typeof m === 'string' && ALLOWED_MODULES.has(m))
+          );
+          clientSubscriptions.set(ws, modules);
+          console.log(`[WS] subscribe recibido: modules=[${Array.from(modules).join(',')}] en campaign ${campaignId}`);
         }
       } catch { /* ignorar mensajes no-JSON */ }
     });
@@ -841,18 +887,21 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
     });
   });
 
-  // Function to broadcast to clients in a specific campaign
-  const broadcastToCampaignImpl = (campaignId: number, message: string) => {
+  // Function to broadcast to clients in a specific campaign.
+  // `module` is forwarded through the Redis envelope so cross-node
+  // delivery preserves the per-socket subscription filter.
+  const broadcastToCampaignImpl = (campaignId: number, message: string, module?: string) => {
     if (isRedisEnabled()) {
       // Forward to all nodes via Redis (including this one)
       publishEvent("ws:events:forward", {
         type: 'broadcast_campaign',
         campaignId,
-        message
+        message,
+        module,
       });
     } else {
       // Redis disabled: broadcast locally only
-      broadcastToCampaignLocal(campaignId, message);
+      broadcastToCampaignLocal(campaignId, message, module);
     }
   };
 
@@ -1931,27 +1980,16 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
     }
   });
 
-  // Get components assigned to an app
-  app.get('/api/client-apps/:id/components', async (req, res) => {
-    try {
-      const appId = parseInt(req.params.id);
-      // Backwards-compatible: if the dashboard sends `?withLocations=true` the
-      // response is the union { components, locations } so the placement
-      // picker can show both in a single fetch. Without the flag, returns the
-      // legacy array shape that the existing operator dashboard already
-      // consumes — no breaking change for callers that haven't migrated.
-      const withLocations = req.query.withLocations === 'true' || req.query.withLocations === '1';
-      const appComps = await storage.getAppComponents(appId);
-      if (!withLocations) {
-        res.json(appComps);
-        return;
-      }
-      const locations = await storage.getAppComponentLocations(appId);
-      res.json({ components: appComps, locations });
-    } catch (error) {
-      console.error('Error fetching app components:', error);
-      res.status(500).json({ message: 'Error fetching app components' });
-    }
+  // GET /api/client-apps/:id/components — RETIRED (migration 0004).
+  // The legacy `app_components` table was dropped; the dashboard now reads
+  // `/api/client-apps/:id/placements` (named instances) and
+  // `/api/client-apps/:id/component-locations` (slot manifest). The route
+  // returns 410 Gone with a pointer so old dashboard builds fail loudly.
+  app.get('/api/client-apps/:id/components', async (_req, res) => {
+    res.status(410).json({
+      error: 'gone',
+      message: 'Legacy `app_components` retired. Use GET /api/client-apps/:id/placements + /api/client-apps/:id/component-locations.',
+    });
   });
 
   /**
@@ -1974,33 +2012,126 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
     }
   });
 
-  // Add component to app
-  app.post('/api/client-apps/:id/components', async (req, res) => {
+  /**
+   * Named app placements (post-2026-04-27 model: created by dashboard, not
+   * SDK manifest). Each row is a (template, location, name) tuple the
+   * operator declared via `/apps/:id` "Add from library" form.
+   *
+   * Returns rows joined with the canonical template so the picker can
+   * render `{name} (type, location)`.
+   *
+   * `?includeDeprecated=true` includes soft-deleted rows for admin views.
+   * Default omits them.
+   */
+  app.get('/api/client-apps/:id/placements', async (req, res) => {
     try {
-      const clientAppId = parseInt(req.params.id);
-      const { componentId, customConfig } = req.body;
-      if (!componentId) {
-        return res.status(400).json({ message: 'componentId is required' });
-      }
-      const appComp = await storage.addComponentToApp({ clientAppId, componentId, customConfig });
-      res.status(201).json(appComp);
+      const appId = parseInt(req.params.id);
+      const includeDeprecated = req.query.includeDeprecated === 'true' || req.query.includeDeprecated === '1';
+      const placements = await storage.getAppPlacements(appId, includeDeprecated);
+      res.json(placements);
     } catch (error) {
-      console.error('Error adding component to app:', error);
-      res.status(500).json({ message: 'Error adding component to app' });
+      console.error('Error fetching app placements:', error);
+      res.status(500).json({ message: 'Error fetching app placements' });
     }
   });
 
-  // Remove component from app
-  app.delete('/api/client-apps/:id/components/:componentId', async (req, res) => {
+  /**
+   * Create a named placement for an app. Operator-driven (dashboard form):
+   * pick template + name + locationId. Backend validates the chosen
+   * locationId is one the SDK declared (and not deprecated), and the
+   * template is canonical (`is_template = true`).
+   *
+   * Body: `{ componentId, locationId, name, customConfig?, createdBy? }`.
+   *
+   * Errors (HTTP 400 with `code` field for dashboard branching):
+   *   - PLACEMENT_LOCATION_INVALID — location not declared (or deprecated)
+   *   - PLACEMENT_TEMPLATE_INVALID — componentId not in canonical library
+   *   - PLACEMENT_NAME_COLLISION   — name already used (active row)
+   *   - PLACEMENT_SLOT_COLLISION   — (template, location) slot already claimed
+   */
+  app.post('/api/client-apps/:id/placements', async (req, res) => {
     try {
-      const clientAppId = parseInt(req.params.id);
-      const componentId = req.params.componentId;
-      await storage.removeComponentFromApp(clientAppId, componentId);
-      res.json({ message: 'Component removed from app' });
-    } catch (error) {
-      console.error('Error removing component from app:', error);
-      res.status(500).json({ message: 'Error removing component from app' });
+      const appId = parseInt(req.params.id);
+      const { componentId, locationId, name, customConfig, createdBy } = req.body ?? {};
+      if (!componentId || !locationId || !name) {
+        return res.status(400).json({ error: 'componentId, locationId, and name are required' });
+      }
+      const placement = await storage.createAppPlacement({
+        clientAppId: appId,
+        componentId: String(componentId),
+        locationId: String(locationId),
+        name: String(name).trim(),
+        customConfig: customConfig ?? null,
+        createdBy: createdBy ? Number(createdBy) : undefined,
+      });
+      res.status(201).json(placement);
+    } catch (error: any) {
+      if (error?.code?.startsWith('PLACEMENT_')) {
+        return res.status(400).json({ code: error.code, error: error.message });
+      }
+      console.error('Error creating app placement:', error);
+      res.status(500).json({ error: 'Failed to create app placement' });
     }
+  });
+
+  /**
+   * Soft-delete an app placement. Sets `deprecated_at = now()`. Existing
+   * `campaign_components` referencing this placement keep rendering — the
+   * dashboard surfaces the deprecated state with a warning so operators
+   * can clean up at their own pace.
+   *
+   * Emits WebSocket `app_placement_deprecated` (campaign-scoped fan-out for
+   * any campaign currently using this placement) so live SDK clients can
+   * react in real-time.
+   */
+  app.delete('/api/client-apps/:id/placements/:placementId', async (req, res) => {
+    try {
+      const placementId = parseInt(req.params.placementId);
+      if (Number.isNaN(placementId)) return res.status(400).json({ error: 'Invalid placementId' });
+      const row = await storage.deprecateAppPlacement(placementId);
+
+      // Find any active campaigns using this placement and broadcast the
+      // deprecation event so connected clients can update warnings live.
+      const campaignsAffected = await db
+        .selectDistinct({ campaignId: campaignComponents.campaignId })
+        .from(campaignComponents)
+        .where(eq(campaignComponents.appPlacementId, placementId));
+
+      for (const { campaignId } of campaignsAffected) {
+        broadcastToCampaign(campaignId, JSON.stringify({
+          type: 'app_placement_deprecated',
+          campaignId,
+          appPlacementId: placementId,
+          name: row.name,
+          deprecatedAt: row.deprecatedAt,
+        }));
+      }
+
+      res.json({ success: true, placement: row, campaignsAffected: campaignsAffected.length });
+    } catch (error: any) {
+      if (error?.code === 'PLACEMENT_NOT_FOUND') {
+        return res.status(404).json({ code: error.code, error: error.message });
+      }
+      console.error('Error deprecating app placement:', error);
+      res.status(500).json({ error: 'Failed to deprecate app placement' });
+    }
+  });
+
+  // POST /api/client-apps/:id/components — RETIRED (migration 0004).
+  // Use POST /api/client-apps/:id/placements (named instances).
+  app.post('/api/client-apps/:id/components', async (_req, res) => {
+    res.status(410).json({
+      error: 'gone',
+      message: 'Legacy app_components endpoint retired. Use POST /api/client-apps/:id/placements with { componentId, locationId, name }.',
+    });
+  });
+
+  // DELETE /api/client-apps/:id/components/:componentId — RETIRED.
+  app.delete('/api/client-apps/:id/components/:componentId', async (_req, res) => {
+    res.status(410).json({
+      error: 'gone',
+      message: 'Legacy app_components endpoint retired. Use DELETE /api/client-apps/:id/placements/:placementId (soft delete).',
+    });
   });
 
   // Get campaigns for a specific app (includes both clientAppId-linked and channel-linked)
@@ -3092,33 +3223,85 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
     }
   });
 
-  // Add component to campaign
+  // Add placement to campaign (post-2026-04-27 model: references an
+  // app_placement instead of (componentId, locationId) pair).
+  //
+  // Body: `{ appPlacementId, sponsorId, status?, instanceName?,
+  //          customConfig?, broadcastId?, createdBy? }`.
+  //
+  // Validates:
+  //   - app_placement exists, not deprecated, belongs to the same clientApp as the campaign
+  //   - sponsor is primary or in campaign_sponsors
+  //   - if status='active', no other active row for same (campaign, app_placement)
+  //     (defense-in-depth — DB partial UNIQUE index also enforces)
   app.post('/api/campaigns/:id/components', async (req, res) => {
     try {
       const campaignId = parseInt(req.params.id);
-      const { componentId, status, instanceName, locationId } = req.body;
+      const { appPlacementId, status, instanceName, sponsorId, broadcastId, customConfig, createdBy } = req.body ?? {};
 
-      if (!componentId) {
-        return res.status(400).json({ message: 'Missing required field: componentId' });
+      if (!appPlacementId) {
+        return res.status(400).json({ message: 'Missing required field: appPlacementId' });
       }
 
-      // Get component details
-      const component = await storage.getComponentById(componentId);
-      if (!component) {
-        return res.status(404).json({ message: 'Component not found' });
+      // 1. Validate app_placement exists, not deprecated, same clientApp.
+      const placement = await storage.getAppPlacementById(Number(appPlacementId));
+      if (!placement) {
+        return res.status(404).json({ message: `App placement ${appPlacementId} not found` });
+      }
+      if (placement.deprecatedAt) {
+        return res.status(400).json({ message: `App placement ${appPlacementId} is deprecated; cannot bind new instances` });
       }
 
-      // Generate default instanceName if not provided
+      // 2. Validate campaign + clientApp match.
+      const campaign = await storage.getCampaign(campaignId);
+      if (!campaign) {
+        return res.status(404).json({ message: 'Campaign not found' });
+      }
+      if (placement.clientAppId !== campaign.clientAppId) {
+        return res.status(400).json({
+          message: `App placement belongs to clientApp ${placement.clientAppId}, but campaign is for clientApp ${campaign.clientAppId}`,
+        });
+      }
+      if (!campaign.primarySponsorId) {
+        return res.status(400).json({ message: 'Campaign has no primary sponsor' });
+      }
+
+      // 3. Validate sponsor.
+      const requestedSponsorId: number = sponsorId ? Number(sponsorId) : campaign.primarySponsorId;
+      const sponsorAllowed = await storage.isSponsorAllowedForCampaign(requestedSponsorId, campaignId);
+      if (!sponsorAllowed) {
+        return res.status(400).json({ message: 'Sponsor is not associated with this campaign (must be primary or secondary)' });
+      }
+
+      // 4. Multi-sponsor "one active per (campaign, placement)" — partial
+      //    UNIQUE index on the DB enforces this; we pre-check for a clearer
+      //    400 error so the dashboard can surface the in-use sponsor.
+      if ((status || 'inactive') === 'active') {
+        const existing = await db.select({ id: campaignComponents.id, sponsorId: campaignComponents.sponsorId })
+          .from(campaignComponents)
+          .where(and(
+            eq(campaignComponents.campaignId, campaignId),
+            eq(campaignComponents.appPlacementId, Number(appPlacementId)),
+            eq(campaignComponents.status, 'active'),
+          ))
+          .limit(1);
+        if (existing.length > 0) {
+          return res.status(409).json({
+            code: 'PLACEMENT_ACTIVE_CONFLICT',
+            message: `Placement is already active in this campaign with sponsor ${existing[0].sponsorId}. Deactivate it first or schedule a rotation.`,
+            activeCampaignComponentId: existing[0].id,
+          });
+        }
+      }
+
+      // 5. Generate sequential instanceName if not provided.
       let finalInstanceName = instanceName;
       if (!finalInstanceName) {
         const existingComponents = await storage.getCampaignComponents(campaignId);
-        const sameTemplateInstances = existingComponents.filter(cc => cc.componentId === componentId);
-        const sdkName = componentSDKNames[component.type as keyof typeof componentSDKNames] || component.name;
-
-        // Find highest number in existing instance names
+        const sameTemplateInstances = existingComponents.filter(cc => cc.appPlacementId === Number(appPlacementId));
+        const sdkName = componentSDKNames[placement.component.type as keyof typeof componentSDKNames] || placement.name;
         const instancePattern = new RegExp(`^${sdkName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} (\\d+)$`);
         let maxNumber = 0;
-
         for (const instance of sameTemplateInstances) {
           if (!instance.instanceName) continue;
           const match = instance.instanceName.match(instancePattern);
@@ -3127,60 +3310,44 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
             if (num > maxNumber) maxNumber = num;
           }
         }
-
-        // Generate next sequential name
         finalInstanceName = `${sdkName} ${maxNumber + 1}`;
       }
 
-      // Validate component availability if status is active
-      if (status === 'active') {
-        const availability = await storage.validateComponentAvailability(componentId, component.isTemplate === 'true', campaignId);
-        if (!availability.available) {
-          return res.status(409).json({
-            message: 'Component is already active in another campaign',
-            activeCampaignId: availability.activeCampaignId
-          });
-        }
-      }
-
-      // Resolve sponsor for this placement: explicit or default to campaign primary.
-      const campaignForSponsor = await storage.getCampaign(campaignId);
-      if (!campaignForSponsor || !campaignForSponsor.primarySponsorId) {
-        return res.status(400).json({ message: 'Campaign has no primary sponsor' });
-      }
-      const requestedSponsorId: number = req.body.sponsorId ? Number(req.body.sponsorId) : campaignForSponsor.primarySponsorId;
-      const sponsorAllowed = await storage.isSponsorAllowedForCampaign(requestedSponsorId, campaignId);
-      if (!sponsorAllowed) {
-        return res.status(400).json({ message: 'Sponsor is not associated with this campaign (must be primary or secondary)' });
-      }
-      const broadcastScope: string | null = req.body.broadcastId ? String(req.body.broadcastId) : null;
-
-      // Operator-supplied placement config. The most common shape is
-      // `{ productIds: [...] }` for `product_*` types, written by the
-      // dashboard's product picker (multi-select per sponsor catalog). The
-      // SDK reads it through the existing `customConfig` plumbing, falling
-      // back to the component template's baseline config when null.
-      const customConfig = req.body.customConfig ?? null;
+      const broadcastScope: string | null = broadcastId ? String(broadcastId) : null;
 
       const campaignComponent = await storage.addComponentToCampaign({
         campaignId,
-        componentId,
+        appPlacementId: Number(appPlacementId),
         sponsorId: requestedSponsorId,
         broadcastId: broadcastScope,
         instanceName: finalInstanceName,
         status: status || 'inactive',
-        locationId: locationId || null,
-        customConfig,
-      });
+        customConfig: customConfig ?? null,
+        createdBy: createdBy ? Number(createdBy) : null,
+      } as any);
 
       res.status(201).json(campaignComponent);
-    } catch (error) {
-      console.error('Error adding component to campaign:', error);
-      res.status(500).json({ message: 'Error adding component to campaign' });
+    } catch (error: any) {
+      // DB partial UNIQUE index trips here if dashboard validation missed.
+      if (error?.code === '23505' && /one_active/i.test(error?.message ?? '')) {
+        return res.status(409).json({
+          code: 'PLACEMENT_ACTIVE_CONFLICT',
+          message: 'A row is already active for this (campaign, app_placement). Deactivate it first.',
+        });
+      }
+      console.error('Error adding placement to campaign:', error);
+      res.status(500).json({ message: 'Error adding placement to campaign' });
     }
   });
 
   // Update campaign component status (toggle ON/OFF)
+  // PATCH /api/campaigns/:id/components/:componentId — toggle status / locationId.
+  //
+  // `:componentId` is the **campaign_components row PK** (a numeric id passed as
+  // string from the URL). Pre-migration 0004 it was the FK to `components.id`
+  // (template uuid); the column is gone and the routes now consistently
+  // reference the row PK. The locationId update is a no-op shim — location is
+  // immutable post-migration (lives on app_placements).
   app.patch('/api/campaigns/:id/components/:componentId', async (req, res) => {
     try {
       const campaignId = parseInt(req.params.id);
@@ -3194,62 +3361,110 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
         return res.status(400).json({ message: 'Invalid status. Must be "active" or "inactive"' });
       }
 
-      // Get component details to check type
-      const component = await storage.getComponentById(componentId);
-      if (!component) {
-        return res.status(404).json({ message: 'Component not found' });
+      const rowId = parseInt(componentId);
+      if (Number.isNaN(rowId)) {
+        return res.status(400).json({ message: 'componentId must be a numeric campaign_components row id' });
       }
 
-      // Validate component availability if activating
+      // Multi-sponsor "one active per (campaign, app_placement)" — the partial
+      // UNIQUE index on the DB enforces this; pre-check to surface a friendlier
+      // 409 with the active row's id so the dashboard can prompt to deactivate.
       if (status === 'active') {
-        const availability = await storage.validateComponentAvailability(componentId, component.isTemplate === 'true', campaignId);
-        if (!availability.available) {
+        const target = await db.select().from(campaignComponents)
+          .where(eq(campaignComponents.id, rowId))
+          .limit(1);
+        if (target.length === 0) {
+          return res.status(404).json({ message: 'Campaign component not found' });
+        }
+        const targetRow = target[0];
+        if (targetRow.campaignId !== campaignId) {
+          return res.status(404).json({ message: 'Campaign component not found in this campaign' });
+        }
+        const otherActive = await db.select({ id: campaignComponents.id, sponsorId: campaignComponents.sponsorId })
+          .from(campaignComponents)
+          .where(and(
+            eq(campaignComponents.campaignId, campaignId),
+            eq(campaignComponents.appPlacementId, targetRow.appPlacementId),
+            eq(campaignComponents.status, 'active'),
+            ne(campaignComponents.id, rowId),
+          ))
+          .limit(1);
+        if (otherActive.length > 0) {
           return res.status(409).json({
-            message: 'Component is already active in another campaign',
-            activeCampaignId: availability.activeCampaignId
+            code: 'PLACEMENT_ACTIVE_CONFLICT',
+            message: `Another row is already active for this placement (sponsor ${otherActive[0].sponsorId}). Deactivate it first.`,
+            activeCampaignComponentId: otherActive[0].id,
           });
         }
       }
 
+      // Atomic UPDATE + outbox enqueue. Both rows commit together (the
+      // event is guaranteed to fire iff the data change persisted) or
+      // both roll back on error. The worker (server/events/worker.ts)
+      // ships the event to subscribed sockets within ~500ms.
       let updated: any;
-      if (status) {
-        updated = await storage.updateCampaignComponentStatus(campaignId, componentId, status);
-      } else {
-        updated = await storage.getComponentById(componentId);
-      }
+      try {
+        updated = await db.transaction(async (tx) => {
+          let row: any;
+          if (status) {
+            const [r] = await tx.update(campaignComponents)
+              .set({
+                status,
+                ...(status === 'active' ? { activatedAt: new Date() } : {}),
+                updatedAt: new Date(),
+              })
+              .where(and(
+                eq(campaignComponents.campaignId, campaignId),
+                eq(campaignComponents.id, rowId),
+              ))
+              .returning();
+            row = r;
+            if (!row) return undefined;
 
-      if (locationId !== undefined) {
-        updated = await storage.updateCampaignComponentLocationId(campaignId, componentId, locationId || null);
+            // Enqueue placement_status_changed inside the same tx.
+            // Payload is minimal — status is a flag, the SDK already has
+            // the rest of the component cached locally.
+            await enqueueEvent(tx, {
+              topic: PLACEMENT_TOPICS.STATUS_CHANGED,
+              module: 'placements',
+              scopeType: 'campaign',
+              scopeId: campaignId,
+              payload: {
+                campaignId,
+                appPlacementId: row.appPlacementId,
+                campaignComponentId: row.id,
+                status: row.status,
+              },
+            });
+          }
+          if (locationId !== undefined && !row) {
+            // No-op shim — location_id is immutable post-migration 0004.
+            // Read the current row so the response stays consistent.
+            const [r] = await tx.select().from(campaignComponents)
+              .where(and(
+                eq(campaignComponents.campaignId, campaignId),
+                eq(campaignComponents.id, rowId),
+              ))
+              .limit(1);
+            row = r;
+          }
+          return row;
+        });
+      } catch (txErr: any) {
+        // Partial UNIQUE index trip (defense-in-depth — pre-check above
+        // catches the common case but a race between concurrent PATCHes
+        // can still hit this).
+        if (txErr?.code === '23505') {
+          return res.status(409).json({
+            code: 'PLACEMENT_ACTIVE_CONFLICT',
+            message: 'A row is already active for this (campaign, app_placement). Deactivate it first.',
+          });
+        }
+        throw txErr;
       }
 
       if (!updated) {
         return res.status(404).json({ message: 'Campaign component not found' });
-      }
-
-      // Only broadcast WS event when status changes (not for locationId-only updates)
-      if (status) {
-        const campaign = await storage.getCampaign(campaignId);
-        if (campaign && isCampaignActive(campaign)) {
-          const fullComponent = await storage.getComponentById(componentId);
-          const event: any = {
-            type: 'component_status_changed',
-            campaignId,
-            componentId,
-            status,
-            component: fullComponent ? {
-              id: fullComponent.id,
-              type: fullComponent.type,
-              name: fullComponent.name,
-              config: normalizeUrls(updated.customConfig || fullComponent.config, req.protocol, req.get('host'))
-            } : null
-          };
-          if (updated.matchId) {
-            event.matchId = updated.matchId;
-          } else if (campaign.matchId) {
-            event.matchId = campaign.matchId;
-          }
-          broadcastToCampaignImpl(campaignId, JSON.stringify(event));
-        }
       }
 
       res.json(updated);
@@ -3259,51 +3474,134 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
     }
   });
 
-  // Update campaign component custom configuration
+  // Update campaign component custom configuration (and optionally
+  // the placement's sponsor).
+  //
+  // Atomic UPDATE + outbox enqueue (Phase 3 of the live-updates sprint,
+  // extended later to cover in-place sponsor swaps so the operator can
+  // edit an active row without first pausing it).
+  //
+  // Body: `{ customConfig, sponsorId? }`.
+  //   - `customConfig` is required (use `null` to clear / revert to
+  //     template defaults).
+  //   - `sponsorId` is optional. When present and different from the
+  //     row's current sponsor, validates against campaign_sponsors and
+  //     updates the row.
+  //
+  // Emits a single `placement_config_updated` event covering both the
+  // customConfig change and the sponsor swap so the SDK applies them
+  // atomically (SDK reads new sponsorId, ProductService picks the new
+  // sponsor's commerce key on the next load).
   app.patch('/api/campaigns/:id/components/:componentId/config', async (req, res) => {
     try {
       const campaignId = parseInt(req.params.id);
       const { componentId } = req.params;
-      const { customConfig } = req.body;
+      const { customConfig, sponsorId: rawSponsorId } = req.body;
 
       // Allow null/undefined to clear customConfig and revert to template defaults
       if (customConfig === undefined) {
         return res.status(400).json({ message: 'Missing required field: customConfig (use null to clear)' });
       }
 
-      const updated = await storage.updateCampaignComponentConfig(campaignId, componentId, customConfig);
+      const rowId = parseInt(componentId);
+      if (Number.isNaN(rowId)) {
+        return res.status(400).json({ message: 'componentId must be a numeric campaign_components row id' });
+      }
+
+      const sponsorIdProvided = rawSponsorId !== undefined && rawSponsorId !== null;
+      const newSponsorId = sponsorIdProvided ? Number(rawSponsorId) : null;
+      if (sponsorIdProvided && (Number.isNaN(newSponsorId as number) || (newSponsorId as number) <= 0)) {
+        return res.status(400).json({ message: 'sponsorId must be a positive integer' });
+      }
+      if (sponsorIdProvided) {
+        // Ensure the new sponsor is allowed for this campaign (primary or secondary).
+        const allowed = await storage.isSponsorAllowedForCampaign(newSponsorId as number, campaignId);
+        if (!allowed) {
+          return res.status(400).json({ message: 'Sponsor is not associated with this campaign (must be primary or secondary)' });
+        }
+      }
+
+      // Helper: extract `productIds: string[]` from a customConfig blob.
+      // Used to compute the `productIdsChanged` hint sent to the SDK.
+      // Returns [] if absent or malformed (treated as "no products
+      // configured" in the diff).
+      const extractProductIds = (cfg: unknown): string[] => {
+        if (!cfg || typeof cfg !== 'object') return [];
+        const ids = (cfg as Record<string, unknown>).productIds;
+        if (!Array.isArray(ids)) return [];
+        return ids.filter((x): x is string => typeof x === 'string');
+      };
+
+      // Atomic: read old config (for productIdsChanged diff), UPDATE,
+      // enqueueEvent — all in one tx.
+      const updated = await db.transaction(async (tx) => {
+        const [before] = await tx.select({
+          id: campaignComponents.id,
+          customConfig: campaignComponents.customConfig,
+          appPlacementId: campaignComponents.appPlacementId,
+          sponsorId: campaignComponents.sponsorId,
+          status: campaignComponents.status,
+        })
+          .from(campaignComponents)
+          .where(and(
+            eq(campaignComponents.campaignId, campaignId),
+            eq(campaignComponents.id, rowId),
+          ))
+          .limit(1);
+
+        if (!before) return undefined;
+
+        const sponsorChanged = sponsorIdProvided && before.sponsorId !== newSponsorId;
+        const updatePatch: Record<string, unknown> = {
+          customConfig,
+          updatedAt: new Date(),
+        };
+        if (sponsorChanged) {
+          updatePatch.sponsorId = newSponsorId;
+        }
+
+        const [row] = await tx.update(campaignComponents)
+          .set(updatePatch)
+          .where(and(
+            eq(campaignComponents.campaignId, campaignId),
+            eq(campaignComponents.id, rowId),
+          ))
+          .returning();
+
+        // Compute productIdsChanged hint for the SDK. Strict array
+        // equality on the productIds field — order matters because the
+        // operator may have re-ordered the carousel.
+        const oldIds = extractProductIds(before.customConfig);
+        const newIds = extractProductIds(customConfig);
+        const productIdsChanged =
+          oldIds.length !== newIds.length ||
+          oldIds.some((id, i) => id !== newIds[i]);
+
+        // Only emit if the row is active — paused placements are invisible
+        // to the SDK, so a config change is just persisted for later.
+        if (row.status === 'active') {
+          await enqueueEvent(tx, {
+            topic: PLACEMENT_TOPICS.CONFIG_UPDATED,
+            module: 'placements',
+            scopeType: 'campaign',
+            scopeId: campaignId,
+            payload: {
+              campaignId,
+              appPlacementId: row.appPlacementId,
+              campaignComponentId: row.id,
+              customConfig: customConfig ?? null,
+              productIdsChanged,
+              sponsorId: row.sponsorId,
+              sponsorChanged,
+            },
+          });
+        }
+
+        return row;
+      });
 
       if (!updated) {
         return res.status(404).json({ message: 'Campaign component not found' });
-      }
-
-      // Check if campaign is active and component is active before broadcasting
-      const campaign = await storage.getCampaign(campaignId);
-      if (campaign && isCampaignActive(campaign) && updated.status === 'active') {
-        // Get full component details for broadcast
-        const fullComponent = await storage.getComponentById(componentId);
-
-        // Broadcast config update via WebSocket
-        const effectiveConfig = updated.customConfig || fullComponent?.config;
-
-        const event: any = {
-          type: 'component_config_updated',
-          campaignId,
-          componentId,
-          component: fullComponent ? {
-            id: fullComponent.id,
-            type: fullComponent.type,
-            name: fullComponent.name,
-            config: normalizeUrls(effectiveConfig, req.protocol, req.get('host'))
-          } : null
-        };
-        // Include matchId if component or campaign is associated with a match
-        if (updated.matchId) {
-          event.matchId = updated.matchId;
-        } else if (campaign.matchId) {
-          event.matchId = campaign.matchId;
-        }
-        broadcastToCampaignImpl(campaignId, JSON.stringify(event));
       }
 
       res.json(updated);
@@ -3327,6 +3625,293 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
     }
   });
 
+  // ========================================
+  // Live placement control (Phase 3 of live-updates sprint)
+  //
+  // Three operator-facing verbs that the dashboard wires to buttons:
+  //
+  //   POST /api/campaigns/:id/components/:componentId/pause
+  //   POST /api/campaigns/:id/components/:componentId/resume
+  //   POST /api/campaigns/:id/placements/:appPlacementId/activate
+  //
+  // All three flip campaign_components rows + enqueue an outbox event
+  // INSIDE the same transaction. The worker (server/events/worker.ts)
+  // ships the event to subscribed sockets within ~500ms; the SDK toggles
+  // visibility (pause/resume) or swaps the active row (activate)
+  // without a cold start.
+  //
+  // pause/resume are sugar around PATCH status — same atomicity, clearer
+  // verbs for the dashboard. activate is the multi-sponsor rotation:
+  // atomic A→B swap inside one tx, single placement_activation_swapped
+  // event emitted (see server/events/types.ts for the payload shape).
+  // ========================================
+
+  // Pause a campaign_components row — sets status='inactive', emits
+  // placement_status_changed. Always reversible via /resume.
+  app.post('/api/campaigns/:id/components/:componentId/pause', async (req, res) => {
+    try {
+      const campaignId = parseInt(req.params.id);
+      const rowId = parseInt(req.params.componentId);
+      if (Number.isNaN(rowId)) {
+        return res.status(400).json({ message: 'componentId must be a numeric campaign_components row id' });
+      }
+
+      const updated = await db.transaction(async (tx) => {
+        const [row] = await tx.update(campaignComponents)
+          .set({ status: 'inactive', updatedAt: new Date() })
+          .where(and(
+            eq(campaignComponents.campaignId, campaignId),
+            eq(campaignComponents.id, rowId),
+          ))
+          .returning();
+        if (!row) return undefined;
+
+        await enqueueEvent(tx, {
+          topic: PLACEMENT_TOPICS.STATUS_CHANGED,
+          module: 'placements',
+          scopeType: 'campaign',
+          scopeId: campaignId,
+          payload: {
+            campaignId,
+            appPlacementId: row.appPlacementId,
+            campaignComponentId: row.id,
+            status: 'inactive',
+          },
+        });
+        return row;
+      });
+
+      if (!updated) {
+        return res.status(404).json({ message: 'Campaign component not found' });
+      }
+      res.json(updated);
+    } catch (error) {
+      console.error('Error pausing placement:', error);
+      res.status(500).json({ message: 'Error pausing placement' });
+    }
+  });
+
+  // Resume a campaign_components row — sets status='active', emits
+  // placement_status_changed. Pre-checks the active-conflict (partial
+  // UNIQUE index) so the dashboard surfaces a clean 409 with the row id
+  // currently holding the slot.
+  app.post('/api/campaigns/:id/components/:componentId/resume', async (req, res) => {
+    try {
+      const campaignId = parseInt(req.params.id);
+      const rowId = parseInt(req.params.componentId);
+      if (Number.isNaN(rowId)) {
+        return res.status(400).json({ message: 'componentId must be a numeric campaign_components row id' });
+      }
+
+      // Read target row to get appPlacementId for the conflict check.
+      const [target] = await db.select()
+        .from(campaignComponents)
+        .where(and(
+          eq(campaignComponents.campaignId, campaignId),
+          eq(campaignComponents.id, rowId),
+        ))
+        .limit(1);
+      if (!target) {
+        return res.status(404).json({ message: 'Campaign component not found' });
+      }
+
+      const otherActive = await db.select({ id: campaignComponents.id, sponsorId: campaignComponents.sponsorId })
+        .from(campaignComponents)
+        .where(and(
+          eq(campaignComponents.campaignId, campaignId),
+          eq(campaignComponents.appPlacementId, target.appPlacementId),
+          eq(campaignComponents.status, 'active'),
+          ne(campaignComponents.id, rowId),
+        ))
+        .limit(1);
+      if (otherActive.length > 0) {
+        return res.status(409).json({
+          code: 'PLACEMENT_ACTIVE_CONFLICT',
+          message: `Another row is already active for this placement (sponsor ${otherActive[0].sponsorId}). Use /activate to swap, or pause it first.`,
+          activeCampaignComponentId: otherActive[0].id,
+        });
+      }
+
+      const updated = await db.transaction(async (tx) => {
+        const [row] = await tx.update(campaignComponents)
+          .set({ status: 'active', activatedAt: new Date(), updatedAt: new Date() })
+          .where(and(
+            eq(campaignComponents.campaignId, campaignId),
+            eq(campaignComponents.id, rowId),
+          ))
+          .returning();
+        if (!row) return undefined;
+
+        await enqueueEvent(tx, {
+          topic: PLACEMENT_TOPICS.STATUS_CHANGED,
+          module: 'placements',
+          scopeType: 'campaign',
+          scopeId: campaignId,
+          payload: {
+            campaignId,
+            appPlacementId: row.appPlacementId,
+            campaignComponentId: row.id,
+            status: 'active',
+          },
+        });
+        return row;
+      });
+
+      if (!updated) {
+        return res.status(404).json({ message: 'Campaign component not found' });
+      }
+      res.json(updated);
+    } catch (error: any) {
+      if (error?.code === '23505') {
+        return res.status(409).json({
+          code: 'PLACEMENT_ACTIVE_CONFLICT',
+          message: 'A row is already active for this placement (race condition). Pause it first.',
+        });
+      }
+      console.error('Error resuming placement:', error);
+      res.status(500).json({ message: 'Error resuming placement' });
+    }
+  });
+
+  // Activate a specific campaign_components row within a placement slot,
+  // atomically deactivating whichever row is currently active. This is
+  // the multi-sponsor rotation entry point.
+  //
+  // Body: `{ campaignComponentId: number }` — the row to make active.
+  //
+  // Three states possible:
+  //   1. Target is already active → no-op (idempotent), returns 200 with
+  //      the unchanged row.
+  //   2. No prior active row → simple activation, emits
+  //      `placement_status_changed`.
+  //   3. Active row exists and is different → atomic swap (deactivate A,
+  //      activate B in one tx), emits `placement_activation_swapped`
+  //      with both ids.
+  //
+  // The order matters: deactivate FIRST, then activate, so the partial
+  // UNIQUE index never sees two active rows simultaneously even within
+  // the tx.
+  app.post('/api/campaigns/:id/placements/:appPlacementId/activate', async (req, res) => {
+    try {
+      const campaignId = parseInt(req.params.id);
+      const appPlacementId = parseInt(req.params.appPlacementId);
+      const targetRowId = Number(req.body?.campaignComponentId);
+
+      if (Number.isNaN(campaignId) || Number.isNaN(appPlacementId) || !Number.isFinite(targetRowId)) {
+        return res.status(400).json({
+          message: 'campaign id, appPlacementId (path) and campaignComponentId (body) must be numeric',
+        });
+      }
+
+      // Validate target exists, belongs to (campaign, placement).
+      const [target] = await db.select()
+        .from(campaignComponents)
+        .where(and(
+          eq(campaignComponents.campaignId, campaignId),
+          eq(campaignComponents.id, targetRowId),
+          eq(campaignComponents.appPlacementId, appPlacementId),
+        ))
+        .limit(1);
+      if (!target) {
+        return res.status(404).json({
+          message: `Campaign component ${targetRowId} not found for placement ${appPlacementId} in campaign ${campaignId}`,
+        });
+      }
+
+      const result = await db.transaction(async (tx) => {
+        // Find the currently active row for this slot (if any). Excludes
+        // the target itself in case it is already active (idempotency).
+        const [currentActive] = await tx.select()
+          .from(campaignComponents)
+          .where(and(
+            eq(campaignComponents.campaignId, campaignId),
+            eq(campaignComponents.appPlacementId, appPlacementId),
+            eq(campaignComponents.status, 'active'),
+            ne(campaignComponents.id, targetRowId),
+          ))
+          .limit(1);
+
+        // Idempotency: target already active and no other contender → no-op.
+        if (target.status === 'active' && !currentActive) {
+          return { row: target, eventEmitted: false, swap: false };
+        }
+
+        // 1) Deactivate the current active row (if any).
+        if (currentActive) {
+          await tx.update(campaignComponents)
+            .set({ status: 'inactive', updatedAt: new Date() })
+            .where(eq(campaignComponents.id, currentActive.id));
+        }
+
+        // 2) Activate the target.
+        const [activated] = await tx.update(campaignComponents)
+          .set({ status: 'active', activatedAt: new Date(), updatedAt: new Date() })
+          .where(eq(campaignComponents.id, targetRowId))
+          .returning();
+
+        // 3) Enqueue the appropriate event. Swap → activation_swapped
+        //    (one event, both ids); plain activation → status_changed.
+        if (currentActive) {
+          await enqueueEvent(tx, {
+            topic: PLACEMENT_TOPICS.ACTIVATION_SWAPPED,
+            module: 'placements',
+            scopeType: 'campaign',
+            scopeId: campaignId,
+            payload: {
+              campaignId,
+              appPlacementId,
+              fromCampaignComponentId: currentActive.id,
+              toCampaignComponentId: activated.id,
+              fromSponsorId: currentActive.sponsorId,
+              toSponsorId: activated.sponsorId,
+              newComponent: {
+                id: activated.id,
+                componentTypeId: null, // SDK reads this from cached app_placement
+                sponsorId: activated.sponsorId,
+                customConfig: activated.customConfig ?? null,
+                status: activated.status,
+              },
+            },
+          });
+        } else {
+          await enqueueEvent(tx, {
+            topic: PLACEMENT_TOPICS.STATUS_CHANGED,
+            module: 'placements',
+            scopeType: 'campaign',
+            scopeId: campaignId,
+            payload: {
+              campaignId,
+              appPlacementId,
+              campaignComponentId: activated.id,
+              status: 'active',
+            },
+          });
+        }
+
+        return { row: activated, eventEmitted: true, swap: !!currentActive };
+      });
+
+      res.json({
+        ...result.row,
+        _meta: {
+          eventEmitted: result.eventEmitted,
+          swap: result.swap,
+        },
+      });
+    } catch (error: any) {
+      if (error?.code === '23505') {
+        // Should be unreachable given the deactivate-first ordering,
+        // but kept as a defense-in-depth signal.
+        return res.status(409).json({
+          code: 'PLACEMENT_ACTIVE_CONFLICT',
+          message: 'Concurrent write race detected. Retry the request.',
+        });
+      }
+      console.error('Error activating placement row:', error);
+      res.status(500).json({ message: 'Error activating placement row' });
+    }
+  });
+
   // Validate component availability
   app.get('/api/components/:id/availability', async (req, res) => {
     try {
@@ -3344,404 +3929,6 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
     } catch (error) {
       console.error('Error validating component availability:', error);
       res.status(500).json({ message: 'Error validating component availability' });
-    }
-  });
-
-  // ========================================
-  // Broadcast Management API (v1) - Bearer Auth
-  // ========================================
-
-  // Create broadcast
-  app.post('/v1/broadcasts', requireBearerAuth, async (req, res) => {
-    try {
-      const authUser = (req as any).authUser;
-      const { broadcastName, externalId, campaignId, channelId, startTime, endTime, metadata } = req.body;
-
-      if (!broadcastName) {
-        return res.status(400).json({ message: 'broadcastName is required' });
-      }
-
-      const dateStr = startTime ? new Date(startTime).toISOString().split('T')[0] : undefined;
-      let broadcastId = generateBroadcastId(broadcastName, dateStr);
-
-      const existing = await storage.getBroadcast(broadcastId);
-      if (existing) {
-        broadcastId = `${broadcastId}-${Date.now()}`;
-      }
-
-      if (campaignId) {
-        const campaign = await storage.getCampaign(campaignId);
-        if (!campaign) {
-          return res.status(404).json({ message: 'Campaign not found' });
-        }
-      }
-
-      const broadcast = await storage.createBroadcast({
-        broadcastId,
-        broadcastName,
-        externalId: externalId || null,
-        campaignId: campaignId || null,
-        channelId: channelId || null,
-        startTime: startTime ? new Date(startTime) : null,
-        endTime: endTime ? new Date(endTime) : null,
-        status: 'upcoming',
-        metadata: metadata || null,
-        createdBy: authUser.userId
-      });
-
-      res.status(201).json(broadcast);
-    } catch (error) {
-      console.error('Error creating broadcast:', error);
-      res.status(500).json({ message: 'Error creating broadcast' });
-    }
-  });
-
-  // List broadcasts with optional filters
-  app.get('/v1/broadcasts', requireBearerAuth, async (req, res) => {
-    try {
-      const { status, campaignId } = req.query;
-      const filters: { status?: string; campaignId?: number } = {};
-      if (status) filters.status = status as string;
-      if (campaignId) filters.campaignId = parseInt(campaignId as string);
-
-      const broadcastsList = await storage.getAllBroadcasts(filters);
-      res.json(broadcastsList);
-    } catch (error) {
-      console.error('Error listing broadcasts:', error);
-      res.status(500).json({ message: 'Error listing broadcasts' });
-    }
-  });
-
-  // Get single broadcast
-  app.get('/v1/broadcasts/:broadcastId', requireBearerAuth, async (req, res) => {
-    try {
-      const broadcast = await storage.getBroadcast(req.params.broadcastId);
-      if (!broadcast) {
-        return res.status(404).json({ message: 'Broadcast not found' });
-      }
-      res.json(broadcast);
-    } catch (error) {
-      console.error('Error getting broadcast:', error);
-      res.status(500).json({ message: 'Error getting broadcast' });
-    }
-  });
-
-  // Update broadcast
-  app.put('/v1/broadcasts/:broadcastId', requireBearerAuth, async (req, res) => {
-    try {
-      const { broadcastName, externalId, campaignId, channelId, startTime, endTime, status, metadata } = req.body;
-      const existing = await storage.getBroadcast(req.params.broadcastId);
-      if (!existing) return res.status(404).json({ message: 'Broadcast not found' });
-
-      const updateData: any = {};
-      if (broadcastName !== undefined) updateData.broadcastName = broadcastName;
-      if (externalId !== undefined) updateData.externalId = externalId || null;
-      if (campaignId !== undefined) updateData.campaignId = campaignId;
-      if (channelId !== undefined) updateData.channelId = channelId;
-      if (startTime !== undefined) updateData.startTime = startTime ? new Date(startTime) : null;
-      if (endTime !== undefined) updateData.endTime = endTime ? new Date(endTime) : null;
-      if (status !== undefined) updateData.status = status;
-      if (metadata !== undefined) updateData.metadata = metadata;
-
-      const updated = await storage.updateBroadcast(req.params.broadcastId, updateData);
-      if (!updated) return res.status(404).json({ message: 'Broadcast not found' });
-
-      if (status !== undefined && status !== existing.status && updated.campaignId) {
-        if (status === 'live') {
-          broadcastToCampaign(updated.campaignId, JSON.stringify({
-            type: 'broadcast_started',
-            broadcastId: updated.broadcastId,
-            broadcastName: updated.broadcastName,
-            campaignId: updated.campaignId,
-            timestamp: new Date().toISOString()
-          }));
-        } else if (status === 'ended') {
-          broadcastToCampaign(updated.campaignId, JSON.stringify({
-            type: 'broadcast_ended',
-            broadcastId: updated.broadcastId,
-            broadcastName: updated.broadcastName,
-            campaignId: updated.campaignId,
-            timestamp: new Date().toISOString()
-          }));
-        }
-      }
-
-      res.json(updated);
-    } catch (error) {
-      console.error('Error updating broadcast:', error);
-      res.status(500).json({ message: 'Error updating broadcast' });
-    }
-  });
-
-  // Delete broadcast
-  app.delete('/v1/broadcasts/:broadcastId', requireBearerAuth, async (req, res) => {
-    try {
-      const broadcast = await storage.getBroadcast(req.params.broadcastId);
-      if (!broadcast) {
-        return res.status(404).json({ message: 'Broadcast not found' });
-      }
-      await storage.deleteBroadcast(req.params.broadcastId);
-      res.status(204).send();
-    } catch (error) {
-      console.error('Error deleting broadcast:', error);
-      res.status(500).json({ message: 'Error deleting broadcast' });
-    }
-  });
-
-  // Get broadcasts for a campaign
-  app.get('/v1/campaigns/:campaignId/broadcasts', requireBearerAuth, async (req, res) => {
-    try {
-      const campaignId = parseInt(req.params.campaignId);
-      const broadcastsList = await storage.getCampaignBroadcasts(campaignId);
-      res.json(broadcastsList);
-    } catch (error) {
-      console.error('Error getting campaign broadcasts:', error);
-      res.status(500).json({ message: 'Error getting campaign broadcasts' });
-    }
-  });
-
-  // ========================================
-  // Engagement API (v1) - Admin endpoints (Bearer Auth)
-  // ========================================
-
-  app.post('/v1/broadcasts/:broadcastId/polls', requireBearerAuth, async (req, res) => {
-    try {
-      const { broadcastId } = req.params;
-      const broadcast = await storage.getBroadcast(broadcastId);
-      if (!broadcast) {
-        return res.status(404).json({ message: 'Broadcast not found' });
-      }
-
-      const parsed = createPollInputSchema.safeParse(req.body);
-      if (!parsed.success) {
-        return res.status(400).json({ message: parsed.error.errors.map(e => e.message).join(', ') });
-      }
-      const { question, options, duration, startTime, endTime, isActive, videoStartTime, videoEndTime, broadcastStartTime } = parsed.data;
-
-      const pollData: any = {
-        broadcastId,
-        question,
-        duration: duration ?? null,
-        startTime: startTime ? new Date(startTime) : null,
-        endTime: endTime ? new Date(endTime) : null,
-        isActive: isActive !== undefined ? isActive : true
-      };
-
-      if (videoStartTime !== undefined) pollData.videoStartTime = videoStartTime;
-      if (videoEndTime !== undefined) pollData.videoEndTime = videoEndTime;
-
-      if (videoStartTime !== undefined && videoEndTime !== undefined && broadcastStartTime) {
-        const validation = validateScheduling({ broadcastStartTime, videoStartTime, videoEndTime });
-        if (!validation.valid) {
-          return res.status(400).json({ message: validation.error });
-        }
-        const scheduled = calculateScheduledTimes({ broadcastStartTime, videoStartTime, videoEndTime });
-        pollData.broadcastStartTime = new Date(broadcastStartTime);
-        pollData.scheduledStartTime = scheduled.scheduledStart;
-        pollData.scheduledEndTime = scheduled.scheduledEnd;
-      }
-
-      const poll = await storage.createPoll(pollData);
-
-      const createdOptions = [];
-      for (let i = 0; i < options.length; i++) {
-        const opt = options[i];
-        const optionText = typeof opt === 'string' ? opt : opt.text;
-        const option = await storage.createPollOption({
-          pollId: poll.id,
-          text: optionText,
-          displayOrder: i
-        });
-        createdOptions.push(option);
-      }
-
-      res.status(201).json({ ...poll, options: createdOptions });
-    } catch (error) {
-      console.error('Error creating poll:', error);
-      res.status(500).json({ message: 'Error creating poll' });
-    }
-  });
-
-  // Get polls for a broadcast
-  app.get('/v1/broadcasts/:broadcastId/polls', requireBearerAuth, async (req, res) => {
-    try {
-      const { broadcastId } = req.params;
-      const pollsList = await storage.getBroadcastPolls(broadcastId);
-      res.json(pollsList);
-    } catch (error) {
-      console.error('Error getting polls:', error);
-      res.status(500).json({ message: 'Error getting polls' });
-    }
-  });
-
-  // Update poll
-  app.put('/v1/polls/:pollId', requireBearerAuth, async (req, res) => {
-    try {
-      const pollId = parseInt(req.params.pollId);
-      const { question, isActive, startTime, endTime } = req.body;
-      const updateData: any = {};
-      if (question !== undefined) updateData.question = question;
-      if (isActive !== undefined) updateData.isActive = isActive;
-      if (startTime !== undefined) updateData.startTime = startTime ? new Date(startTime) : null;
-      if (endTime !== undefined) updateData.endTime = endTime ? new Date(endTime) : null;
-
-      const updated = await storage.updatePoll(pollId, updateData);
-      if (!updated) {
-        return res.status(404).json({ message: 'Poll not found' });
-      }
-      res.json(updated);
-    } catch (error) {
-      console.error('Error updating poll:', error);
-      res.status(500).json({ message: 'Error updating poll' });
-    }
-  });
-
-  // Delete poll
-  app.delete('/v1/polls/:pollId', requireBearerAuth, async (req, res) => {
-    try {
-      const pollId = parseInt(req.params.pollId);
-      const poll = await storage.getPoll(pollId);
-      if (!poll) {
-        return res.status(404).json({ message: 'Poll not found' });
-      }
-      await storage.deletePoll(pollId);
-      res.status(204).send();
-    } catch (error) {
-      console.error('Error deleting poll:', error);
-      res.status(500).json({ message: 'Error deleting poll' });
-    }
-  });
-
-  // Get poll results
-  app.get('/v1/polls/:pollId/results', requireBearerAuth, async (req, res) => {
-    try {
-      const pollId = parseInt(req.params.pollId);
-      const results = await storage.getPollResults(pollId);
-      if (!results) {
-        return res.status(404).json({ message: 'Poll not found' });
-      }
-      const totalVotes = results.poll.totalVotes;
-      const optionsWithPercentages = results.options.map(opt => ({
-        ...opt,
-        percentage: totalVotes > 0 ? Math.round((opt.voteCount / totalVotes) * 10000) / 100 : 0
-      }));
-      res.json({ ...results.poll, options: optionsWithPercentages });
-    } catch (error) {
-      console.error('Error getting poll results:', error);
-      res.status(500).json({ message: 'Error getting poll results' });
-    }
-  });
-
-  app.post('/v1/broadcasts/:broadcastId/contests', requireBearerAuth, async (req, res) => {
-    try {
-      const { broadcastId } = req.params;
-      const broadcast = await storage.getBroadcast(broadcastId);
-      if (!broadcast) {
-        return res.status(404).json({ message: 'Broadcast not found' });
-      }
-
-      const parsed = createContestInputSchema.safeParse(req.body);
-      if (!parsed.success) {
-        return res.status(400).json({ message: parsed.error.errors.map(e => e.message).join(', ') });
-      }
-      const { title, description, prize, contestType, startTime, endTime, isActive, videoStartTime, videoEndTime, broadcastStartTime } = parsed.data;
-
-      const contestData: any = {
-        broadcastId,
-        title,
-        description: description || null,
-        prize: prize || null,
-        contestType,
-        startTime: startTime ? new Date(startTime) : null,
-        endTime: endTime ? new Date(endTime) : null,
-        isActive: isActive !== undefined ? isActive : true
-      };
-
-      if (videoStartTime !== undefined) contestData.videoStartTime = videoStartTime;
-      if (videoEndTime !== undefined) contestData.videoEndTime = videoEndTime;
-
-      if (videoStartTime !== undefined && videoEndTime !== undefined && broadcastStartTime) {
-        const validation = validateScheduling({ broadcastStartTime, videoStartTime, videoEndTime });
-        if (!validation.valid) {
-          return res.status(400).json({ message: validation.error });
-        }
-        const scheduled = calculateScheduledTimes({ broadcastStartTime, videoStartTime, videoEndTime });
-        contestData.broadcastStartTime = new Date(broadcastStartTime);
-        contestData.scheduledStartTime = scheduled.scheduledStart;
-        contestData.scheduledEndTime = scheduled.scheduledEnd;
-      }
-
-      const contest = await storage.createContest(contestData);
-
-      res.status(201).json(contest);
-    } catch (error) {
-      console.error('Error creating contest:', error);
-      res.status(500).json({ message: 'Error creating contest' });
-    }
-  });
-
-  // Get contests for a broadcast
-  app.get('/v1/broadcasts/:broadcastId/contests', requireBearerAuth, async (req, res) => {
-    try {
-      const { broadcastId } = req.params;
-      const contestsList = await storage.getBroadcastContests(broadcastId);
-      res.json(contestsList);
-    } catch (error) {
-      console.error('Error getting contests:', error);
-      res.status(500).json({ message: 'Error getting contests' });
-    }
-  });
-
-  // Update contest
-  app.put('/v1/contests/:contestId', requireBearerAuth, async (req, res) => {
-    try {
-      const contestId = parseInt(req.params.contestId);
-      const { title, description, prize, contestType, isActive, startTime, endTime } = req.body;
-      const updateData: any = {};
-      if (title !== undefined) updateData.title = title;
-      if (description !== undefined) updateData.description = description;
-      if (prize !== undefined) updateData.prize = prize;
-      if (contestType !== undefined) updateData.contestType = contestType;
-      if (isActive !== undefined) updateData.isActive = isActive;
-      if (startTime !== undefined) updateData.startTime = startTime ? new Date(startTime) : null;
-      if (endTime !== undefined) updateData.endTime = endTime ? new Date(endTime) : null;
-
-      const updated = await storage.updateContest(contestId, updateData);
-      if (!updated) {
-        return res.status(404).json({ message: 'Contest not found' });
-      }
-      res.json(updated);
-    } catch (error) {
-      console.error('Error updating contest:', error);
-      res.status(500).json({ message: 'Error updating contest' });
-    }
-  });
-
-  // Delete contest
-  app.delete('/v1/contests/:contestId', requireBearerAuth, async (req, res) => {
-    try {
-      const contestId = parseInt(req.params.contestId);
-      const contest = await storage.getContest(contestId);
-      if (!contest) {
-        return res.status(404).json({ message: 'Contest not found' });
-      }
-      await storage.deleteContest(contestId);
-      res.status(204).send();
-    } catch (error) {
-      console.error('Error deleting contest:', error);
-      res.status(500).json({ message: 'Error deleting contest' });
-    }
-  });
-
-  // Get contest participations
-  app.get('/v1/contests/:contestId/participations', requireBearerAuth, async (req, res) => {
-    try {
-      const contestId = parseInt(req.params.contestId);
-      const participations = await storage.getContestParticipations(contestId);
-      res.json(participations);
-    } catch (error) {
-      console.error('Error getting contest participations:', error);
-      res.status(500).json({ message: 'Error getting contest participations' });
     }
   });
 
@@ -5732,112 +5919,14 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
     }
   });
 
-  // GET /v1/sdk/campaigns - Auto-Discovery endpoint
-  // Discovers all active campaigns using API key or Bundle ID
-  app.get('/v1/sdk/campaigns', async (req, res) => {
-    try {
-      // Auth: API key only (bundle ID reserved for future use)
-      const apiKey = req.query.apiKey as string || req.headers['x-api-key'] as string;
-
-      if (!apiKey) {
-        return res.status(401).json({ message: 'API key required' });
-      }
-
-      const clientApp = await storage.getClientAppByApiKey(apiKey);
-      if (!clientApp) {
-        return res.status(401).json({ message: 'Invalid API key' });
-      }
-
-      const matchIdFilter = req.query.matchId as string | undefined;
-      const now = new Date();
-
-      // Get all campaigns for this client app directly (channel is now campaign-level metadata)
-      const clientAppCampaigns = await storage.getClientAppCampaigns(clientApp.id);
-      const allCampaigns: any[] = [];
-
-      for (const campaign of clientAppCampaigns) {
-        // Filter by matchId if provided
-        if (matchIdFilter && campaign.matchId !== matchIdFilter) {
-          continue;
-        }
-
-        // Compute isActive — do NOT skip expired/paused campaigns.
-        // Returning [] when end_date passes breaks SDK initialization silently.
-        // SDKs use isActive to decide rendering; they should receive data always.
-        const isPaused = campaign.isPaused === 'true';
-        const startDate = campaign.startDate ? new Date(campaign.startDate) : null;
-        const endDate = campaign.endDate ? new Date(campaign.endDate) : null;
-
-        const isWithinDates = (!startDate || startDate <= now) && (!endDate || endDate >= now);
-        const isActive = !isPaused && isWithinDates;
-
-        // Get active components for this campaign (only when active to avoid unnecessary DB calls)
-        const components = isActive ? await storage.getCampaignComponents(campaign.id) : [];
-        const activeComponents = components
-          .filter(c => c.status === 'active')
-          .map(cc => {
-            let component: any = {
-              id: cc.componentId,
-              type: cc.component.type,
-              name: cc.instanceName || cc.component.name,
-              config: normalizeUrls(cc.customConfig || cc.component.config, req.protocol, req.get('host')),
-              status: cc.status,
-              locationId: cc.locationId || null,
-              sponsor: cc.sponsor
-            };
-
-            // Include matchContext if component has matchId
-            if (cc.matchId) {
-              component.matchContext = {
-                matchId: cc.matchId
-              };
-            }
-
-            return component;
-          });
-
-        const campaignData: any = {
-          campaignId: campaign.id,
-          campaignName: campaign.name,
-          campaignLogo: campaign.logo ? toAbsoluteUrl(campaign.logo, req) : null,
-          isActive,
-          startDate: campaign.startDate,
-          endDate: campaign.endDate,
-          isPaused: isPaused,
-          components: activeComponents,
-          paymentMethods: campaign.paymentMethods ?? [],
-        };
-
-        // Include matchContext if campaign has matchId
-        if (campaign.matchId) {
-          campaignData.matchContext = {
-            matchId: campaign.matchId,
-            matchName: campaign.matchName || null,
-            startTime: campaign.matchStartTime ? campaign.matchStartTime.toISOString() : null,
-            channelId: campaign.channelId
-          };
-        }
-
-        allCampaigns.push(campaignData);
-      }
-
-      // Sort by startDate (most recent first)
-      allCampaigns.sort((a, b) => {
-        if (!a.startDate && !b.startDate) return 0;
-        if (!a.startDate) return 1;
-        if (!b.startDate) return -1;
-        return new Date(b.startDate).getTime() - new Date(a.startDate).getTime();
-      });
-
-      res.json({ campaigns: allCampaigns });
-    } catch (error) {
-      console.error('Error fetching SDK campaigns:', error);
-      res.status(500).json({ message: 'Error fetching SDK campaigns' });
-    }
-  });
-
   // GET /v1/sdk/broadcast - Validate contentId and get broadcast engagement data
   // SDK calls this when a user opens a specific stream/content
+  // (NOTE: /v1/sdk/campaigns retired in commit 374a3ae after grep confirmed
+  // 0 callers across iOS / Apple TV / dashboard. Alan's commits c49ebca +
+  // acaa3e8 added a `sponsor: cc.sponsor` field to that endpoint's
+  // response — those refactors live now in `storage.getCampaignComponents`
+  // via the formatSponsor helper, available to any future v2 endpoint
+  // that wants the same shape.)
   app.get('/v1/sdk/broadcast', async (req, res) => {
     try {
       // Auth: API key only (bundle ID reserved for future use)
@@ -5952,82 +6041,6 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
     } catch (error) {
       console.error('Error fetching SDK broadcast:', error);
       res.status(500).json({ message: 'Error fetching SDK broadcast' });
-    }
-  });
-
-  // GET /v1/sdk/config — Zero-config bootstrap for SDK. Only needs apiKey.
-  app.get('/v1/sdk/config', validateApiKey, async (req, res) => {
-    try {
-      const clientApp = (req as any).clientApp;
-
-      // Auto-detect active campaign for this clientApp
-      const appCampaigns = await storage.getClientAppCampaigns(clientApp.id);
-      const now = new Date();
-      const activeCampaign = appCampaigns.find(c =>
-        c.status === 'active' &&
-        (!c.startDate || new Date(c.startDate) <= now) &&
-        (!c.endDate || new Date(c.endDate) >= now)
-      ) || appCampaigns[0] || null;
-
-      const { apiKey: commerceApiKey } = await resolveCommerceFromCampaignSponsors(
-        activeCampaign
-          ? {
-              id: activeCampaign.id,
-              sponsorId: activeCampaign.primarySponsorId,
-            }
-          : null,
-      );
-
-      // Trust X-Forwarded-Proto when behind TLS-terminating proxy (Cloudflare, AKS ingress)
-      const forwardedProto = (req.headers['x-forwarded-proto'] as string)?.split(',')[0]?.trim();
-      const effectiveProtocol = forwardedProto || req.protocol;
-      const baseUrl = `${effectiveProtocol}://${req.get('host')}`;
-      const wsProtocol = effectiveProtocol === 'https' ? 'wss' : 'ws';
-      const wsBase = `${wsProtocol}://${req.get('host')}`;
-      const COMMERCE_GRAPHQL = process.env.COMMERCE_GRAPHQL_PUBLIC_URL || 'https://graph-ql-dev.vio.live';
-
-      return res.json({
-        sdkVersion: "0.2.0",
-        clientApp: {
-          id: clientApp.id,
-          name: clientApp.name,
-          apiKey: clientApp.apiKey,
-        },
-        endpoints: {
-          restBase: baseUrl,
-          webSocketBase: wsBase,
-          commerceGraphQL: COMMERCE_GRAPHQL,
-        },
-        features: {
-          engagement: true,
-          adPlacements: true,
-          commerce: !!(commerceApiKey),
-          lineup: true,
-        },
-        commerce: commerceApiKey ? {
-          apiKey: commerceApiKey,
-          endpoint: COMMERCE_GRAPHQL,
-        } : null,
-        theme: {
-          primaryColor: (activeCampaign as any)?.primaryColor || null,
-          accentColor: (activeCampaign as any)?.accentColor || null,
-        },
-        markets: [],
-        campaign: activeCampaign ? {
-          id: activeCampaign.id,
-          campaignId: activeCampaign.id,
-          campaignName: (activeCampaign as any).name || null,
-          campaignLogo: (activeCampaign as any).logoUrl || null,
-          isActive: activeCampaign.status === 'active',
-          isPaused: (activeCampaign as any).isPaused ?? false,
-          startDate: (activeCampaign as any).startDate || null,
-          endDate: (activeCampaign as any).endDate || null,
-          paymentMethods: (activeCampaign as any).paymentMethods || [],
-        } : null,
-      });
-    } catch (error) {
-      console.error('Error fetching SDK config:', error);
-      res.status(500).json({ message: 'Error fetching SDK config' });
     }
   });
 
@@ -6315,322 +6328,6 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
     }
   });
 
-  // GET /v1/offers - Get offers/products for a placement
-  app.get('/v1/offers', validateApiKey, async (req, res) => {
-    try {
-      const clientApp = (req as any).clientApp;
-      const placement = req.query.placement as string;
-      const campaignIdParam = req.query.campaignId as string | undefined;
-      const userId = req.query.userId as string | undefined;
-      const userCountry = req.query.userCountry as string | undefined;
-
-      // campaignId is optional — if not provided, resolve from the clientApp's active campaign
-      let requestedCampaignId: number;
-      if (campaignIdParam) {
-        const parsed = parseInt(campaignIdParam);
-        if (isNaN(parsed)) {
-          return res.status(400).json({ message: 'Invalid campaignId parameter' });
-        }
-        requestedCampaignId = parsed;
-      } else {
-        const now = new Date();
-        const appCampaigns = await storage.getClientAppCampaigns(clientApp.id);
-        const activeCampaign = appCampaigns.find(c =>
-          c.isPaused !== 'true' &&
-          (!c.startDate || new Date(c.startDate) <= now) &&
-          (!c.endDate || new Date(c.endDate) >= now)
-        ) || appCampaigns[0] || null;
-        if (!activeCampaign) {
-          return res.status(404).json({ message: 'No active campaign found for this API key' });
-        }
-        requestedCampaignId = activeCampaign.id;
-      }
-
-      // Get the campaign
-      const campaign = await storage.getCampaign(requestedCampaignId);
-
-      if (!campaign) {
-        return res.status(404).json({ message: 'Campaign not found' });
-      }
-
-      // Verify campaign belongs to this client app — direct match or via channel (legacy)
-      const directMatch = campaign.clientAppId === clientApp.id;
-      let channelMatch = false;
-      let channel = null;
-      if (campaign.channelId) {
-        channel = await storage.getChannel(campaign.channelId);
-        channelMatch = !!(channel && channel.clientAppId === clientApp.id);
-      }
-      if (!directMatch && !channelMatch) {
-        return res.status(403).json({ message: 'Campaign does not belong to this API key' });
-      }
-
-      // Check segmentation eligibility
-      if (!isUserEligibleForCampaign(
-        userId,
-        userCountry,
-        campaign.id,
-        campaign.isSegmented,
-        campaign.targetCountries,
-        campaign.targetPercentage
-      )) {
-        // User is not eligible - return empty offers
-        return res.json({
-          campaignId: campaign.id,
-          campaignName: campaign.name,
-          campaignLogo: campaign.logo ? toAbsoluteUrl(campaign.logo, req) : null,
-          channelId: channel?.id || null,
-          channelName: channel?.name || null,
-          offers: []
-        });
-      }
-
-      // Check if campaign is active
-      if (!isCampaignActive(campaign)) {
-        return res.json({
-          campaignId: campaign.id,
-          campaignName: campaign.name,
-          campaignLogo: campaign.logo ? toAbsoluteUrl(campaign.logo, req) : null,
-          channelId: channel?.id || null,
-          channelName: channel?.name || null,
-          offers: []
-        });
-      }
-
-      // Get active components for this campaign
-      const components = await storage.getCampaignComponents(campaign.id);
-      const activeComponents = components.filter(c => c.status === 'active');
-
-      // Transform components to offers format with optional matchContext
-      const offers = activeComponents.map(cc => {
-        const offer: any = {
-          id: cc.componentId,
-          type: cc.component.type,
-          name: cc.instanceName || cc.component.name,
-          config: normalizeUrls(cc.customConfig || cc.component.config, req.protocol, req.get('host')),
-          placement: placement || 'default'
-        };
-
-        // Include matchContext if component is associated with a specific match
-        if (cc.matchId) {
-          offer.matchContext = {
-            matchId: cc.matchId,
-            matchName: campaign.matchName || null,
-            startTime: campaign.matchStartTime ? campaign.matchStartTime.toISOString() : null,
-            channelId: campaign.channelId
-          };
-        }
-
-        return offer;
-      });
-
-      const response: any = {
-        campaignId: campaign.id,
-        campaignName: campaign.name,
-        campaignLogo: campaign.logo ? toAbsoluteUrl(campaign.logo, req) : null,
-        channelId: channel?.id || null,
-        channelName: channel?.name || null,
-        offers
-      };
-
-      // Include campaign-level matchContext if available
-      if (campaign.matchId) {
-        response.matchContext = {
-          matchId: campaign.matchId,
-          matchName: campaign.matchName || null,
-          startTime: campaign.matchStartTime ? campaign.matchStartTime.toISOString() : null,
-          channelId: campaign.channelId,
-          metadata: {}
-        };
-      }
-
-      res.json(response);
-    } catch (error) {
-      console.error('Error fetching offers:', error);
-      res.status(500).json({ message: 'Error fetching offers' });
-    }
-  });
-
-  // ========================================
-  // T1 — SDK Chat History
-  // GET /v1/sdk/broadcasts/:broadcastId/chat
-  // ========================================
-  app.get('/v1/sdk/broadcasts/:broadcastId/chat', validateApiKey, async (req, res) => {
-    try {
-      const clientApp = (req as any).clientApp;
-      const { broadcastId } = req.params;
-      const limit = req.query.limit ? parseInt(req.query.limit as string) : 50;
-      const broadcast = await storage.getBroadcast(broadcastId);
-      if (!broadcast) return res.status(404).json({ message: 'Broadcast not found' });
-
-      // Validate broadcast's campaign belongs to this API key's clientApp
-      if (broadcast.campaignId) {
-        const campaign = await storage.getCampaign(broadcast.campaignId);
-        if (campaign && campaign.clientAppId !== clientApp.id) {
-          return res.status(403).json({ error: 'Broadcast does not belong to this API key' });
-        }
-      }
-      const messages = await storage.getChatMessages(broadcastId, limit);
-      res.json({ broadcastId, messages, count: messages.length });
-    } catch (error) {
-      res.status(500).json({ message: 'Error fetching chat history' });
-    }
-  });
-
-  // ========================================
-  // T3 — SDK Score Endpoint
-  // GET /v1/sdk/broadcasts/:broadcastId/score
-  // ========================================
-  app.get('/v1/sdk/broadcasts/:broadcastId/score', validateApiKey, async (req, res) => {
-    try {
-      const clientApp = (req as any).clientApp;
-      const { broadcastId } = req.params;
-      const broadcast = await storage.getBroadcast(broadcastId);
-      if (!broadcast) return res.status(404).json({ message: 'Broadcast not found' });
-
-      // Validate broadcast's campaign belongs to this API key's clientApp
-      if (broadcast.campaignId) {
-        const campaign = await storage.getCampaign(broadcast.campaignId);
-        if (campaign && campaign.clientAppId !== clientApp.id) {
-          return res.status(403).json({ error: 'Broadcast does not belong to this API key' });
-        }
-      }
-      const meta = (broadcast.metadata as any) || {};
-      const matchData = meta.matchData || null;
-      if (!matchData) return res.json({ broadcastId, hasScore: false });
-      res.set('Cache-Control', 'public, max-age=10');
-      res.json({
-        broadcastId,
-        hasScore: true,
-        homeTeam: matchData.homeTeam || null,
-        awayTeam: matchData.awayTeam || null,
-        minute: matchData.minute ?? null,
-        matchStatus: matchData.matchStatus || 'NS',
-      });
-    } catch (error) {
-      res.status(500).json({ message: 'Error fetching score' });
-    }
-  });
-
-  // ========================================
-  // T3 — SDK Stats Endpoint
-  // GET /v1/sdk/broadcasts/:broadcastId/stats
-  // ========================================
-  app.get('/v1/sdk/broadcasts/:broadcastId/stats', validateApiKey, async (req, res) => {
-    try {
-      const clientApp = (req as any).clientApp;
-      const { broadcastId } = req.params;
-      const broadcast = await storage.getBroadcast(broadcastId);
-      if (!broadcast) return res.status(404).json({ message: 'Broadcast not found' });
-
-      // Validate broadcast's campaign belongs to this API key's clientApp
-      if (broadcast.campaignId) {
-        const campaign = await storage.getCampaign(broadcast.campaignId);
-        if (campaign && campaign.clientAppId !== clientApp.id) {
-          return res.status(403).json({ error: 'Broadcast does not belong to this API key' });
-        }
-      }
-      const meta = (broadcast.metadata as any) || {};
-      const matchData = meta.matchData || null;
-      if (!matchData?.stats) return res.json({ broadcastId, hasStats: false });
-      res.set('Cache-Control', 'public, max-age=30');
-      res.json({ broadcastId, hasStats: true, stats: matchData.stats });
-    } catch (error) {
-      res.status(500).json({ message: 'Error fetching stats' });
-    }
-  });
-
-  // ========================================
-  // T3 — SDK Livescores
-  // GET /v1/sdk/livescores
-  // ========================================
-  app.get('/v1/sdk/livescores', validateApiKey, async (req, res) => {
-    try {
-      const clientApp = (req as any).clientApp;
-      const campaigns = await storage.getClientAppCampaigns(clientApp.id);
-      const livescores: any[] = [];
-      for (const campaign of campaigns) {
-        const broadcastList = await storage.getCampaignBroadcasts(campaign.id);
-        for (const b of broadcastList) {
-          if (b.status !== 'live') continue;
-          const meta = (b.metadata as any) || {};
-          if (!meta.matchData) continue;
-          const md = meta.matchData;
-          livescores.push({
-            broadcastId: b.broadcastId,
-            broadcastName: b.broadcastName,
-            campaignId: campaign.id,
-            externalId: b.externalId || null,
-            homeTeam: md.homeTeam || null,
-            awayTeam: md.awayTeam || null,
-            minute: md.minute ?? null,
-            matchStatus: md.matchStatus || 'NS',
-          });
-        }
-      }
-      res.set('Cache-Control', 'public, max-age=15');
-      res.json({ livescores, count: livescores.length });
-    } catch (error) {
-      res.status(500).json({ message: 'Error fetching livescores' });
-    }
-  });
-
-  // ========================================
-  // T4 — SDK Components by locationId
-  // GET /v1/sdk/components?locationId=&campaignId=
-  // ========================================
-  app.get('/v1/sdk/components', validateApiKey, async (req, res) => {
-    try {
-      const clientApp = (req as any).clientApp;
-      const locationId = req.query.locationId as string | undefined;
-      const campaignIdParam = req.query.campaignId as string | undefined;
-
-      let targetCampaignIds: number[] = [];
-      if (campaignIdParam) {
-        const cid = parseInt(campaignIdParam);
-        if (!isNaN(cid)) targetCampaignIds = [cid];
-      } else {
-        // Only include active campaigns to avoid returning stale data from old campaigns
-        const now = new Date();
-        const appCampaigns = await storage.getClientAppCampaigns(clientApp.id);
-        const activeCampaigns = appCampaigns.filter(c =>
-          c.isPaused !== 'true' &&
-          (!c.startDate || new Date(c.startDate) <= now) &&
-          (!c.endDate || new Date(c.endDate) >= now)
-        );
-        // Fall back to most recent campaign if none are strictly active
-        targetCampaignIds = activeCampaigns.length > 0
-          ? activeCampaigns.map(c => c.id)
-          : appCampaigns.slice(0, 1).map(c => c.id);
-      }
-
-      const result: any[] = [];
-      for (const campaignId of targetCampaignIds) {
-        const comps = await storage.getCampaignComponents(campaignId);
-        const filtered = comps.filter(cc => {
-          if (cc.status !== 'active') return false;
-          if (locationId && cc.locationId !== locationId) return false;
-          return true;
-        });
-        for (const cc of filtered) {
-          result.push({
-            instanceId: cc.id,
-            campaignId,
-            componentId: cc.componentId,
-            locationId: cc.locationId || null,
-            instanceName: cc.instanceName || null,
-            type: cc.component?.type || null,
-            config: normalizeUrls(cc.customConfig || cc.component?.config || null, req.protocol, req.get('host')),
-          });
-        }
-      }
-
-      res.set('Cache-Control', 'public, max-age=30');
-      res.json({ components: result, count: result.length });
-    } catch (error) {
-      res.status(500).json({ message: 'Error fetching components' });
-    }
-  });
 
   // ==================================================================
   // v2 SDK endpoints — multi-sponsor redesign (see docs/multi-sponsor-architecture.md)
@@ -6726,108 +6423,89 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   });
 
   // ============================================================
-  // POST /v2/mobile/components/manifest — SDK manifest upload
+  // POST /v2/mobile/components/manifest — SDK location declaration
   // ============================================================
-  // Self-service registry: the partner's SDK uploads at app boot which
-  // placement component types it implements + which placement locations
-  // ("slots") its layout exposes. The dashboard's "Add placement" picker
-  // reads from this registry — operators can only bind a campaign_components
-  // instance to a (component, location) pair the dev's code actually
-  // declared, eliminating the desync where an operator picks a slot the app
-  // never renders to.
+  // The partner SDK uploads at app boot **only the slot locations** its
+  // layout exposes (e.g. "home_top", "match_pre_kickoff"). The dashboard's
+  // "Add from library" form reads from these so an operator can never bind
+  // an `app_placement` to a slot the dev's code doesn't actually render to.
   //
-  // The endpoint is **idempotent**: SDK can re-upload on every cold start.
-  // - components[] → upserts `app_components` rows by (client_app_id,
-  //   component_id), where component_id is resolved from `type` against the
-  //   global `components` table (rows with `is_template = true`). Unknown
-  //   types accumulate in `warnings[]` and are skipped, so a typo in the
-  //   dev's `Vio.registerPlacementComponent(...)` is loud but doesn't 400
-  //   the entire manifest.
-  // - locations[] → upserts `app_component_locations` rows by
-  //   (client_app_id, location_id). `display_name` is refreshed on each
-  //   upload so the dev can rename slots without admin intervention.
+  // Decision (sprint 2026-04-27 PM):
+  //   - **Sync semantics**: locations not in the new payload get
+  //     `deprecated_at = now()`. Re-uploading clears the deprecated flag.
+  //   - Manifest does NOT create `app_placements` (those are created via
+  //     dashboard `/apps/:id` "Add from library" form). The SDK only owns
+  //     the slot manifest.
+  //   - **No legacy support**: `placements[]` and `components[]` arrays are
+  //     rejected with HTTP 400. Callers must update to v2 manifest.
   //
   // Auth: `validateApiKey` resolves the `client_app_id` from the SDK's
-  // `X-API-Key`. The endpoint can only ever write to that app's rows —
-  // multi-tenant isolation by construction.
+  // `X-API-Key` header. Multi-tenant isolation by construction.
   app.post('/v2/mobile/components/manifest', validateApiKey, async (req, res) => {
     try {
       const clientApp = (req as any).clientApp;
-      const { components: declaredComponents, locations: declaredLocations } = req.body ?? {};
-      if (!Array.isArray(declaredComponents) && !Array.isArray(declaredLocations)) {
-        return res.status(400).json({ error: 'Body must include `components` and/or `locations` arrays' });
+      const body = req.body ?? {};
+
+      // Reject legacy v1/v2 fields explicitly so partners hit a hard error
+      // instead of silent no-op while the contract is still in flux.
+      if ('components' in body || 'placements' in body) {
+        return res.status(400).json({
+          error: 'Manifest only accepts `locations[]`. The legacy `components[]` and `placements[]` arrays were retired in the dashboard-driven placement model — placements are now created via the dashboard `/apps/:id` "Add from library" form. See docs/TASK_PLACEMENTS.md.',
+        });
       }
 
-      const persistedComponents: any[] = [];
+      const declaredLocations = body.locations;
+      if (!Array.isArray(declaredLocations)) {
+        return res.status(400).json({ error: 'Body must include `locations` array' });
+      }
+
       const persistedLocations: any[] = [];
       const warnings: { kind: string; detail: string }[] = [];
+      const seenLocationIds: string[] = [];
 
-      // Process components: resolve canonical template by type, then ensure link.
-      if (Array.isArray(declaredComponents)) {
-        for (const entry of declaredComponents) {
-          if (!entry || typeof entry !== 'object') {
-            warnings.push({ kind: 'invalid_component_entry', detail: 'Entry must be an object with `type`' });
-            continue;
-          }
-          const type = typeof entry.type === 'string' ? entry.type.trim() : '';
-          if (!type) {
-            warnings.push({ kind: 'missing_component_type', detail: 'Component entry missing `type` string' });
-            continue;
-          }
-          const template = await storage.getCanonicalComponentByType(type);
-          if (!template) {
-            warnings.push({
-              kind: 'unknown_component_type',
-              detail: `No canonical template registered globally for type='${type}'. Either Vio admin needs to seed a templates row, or the SDK is using a typo.`,
-            });
-            continue;
-          }
-          const link = await storage.ensureAppComponentLink(clientApp.id, template.id);
-          persistedComponents.push({
-            type,
-            componentId: template.id,
-            templateName: template.name,
-            appComponentId: link.id,
-          });
+      for (const entry of declaredLocations) {
+        if (!entry || typeof entry !== 'object') {
+          warnings.push({ kind: 'invalid_location_entry', detail: 'Entry must be an object with `id`' });
+          continue;
         }
+        const id = typeof entry.id === 'string' ? entry.id.trim() : '';
+        if (!id) {
+          warnings.push({ kind: 'missing_location_id', detail: 'Location entry missing `id` string' });
+          continue;
+        }
+        if (id.length > 100) {
+          warnings.push({ kind: 'location_id_too_long', detail: `Location id '${id}' exceeds 100 chars; ignored.` });
+          continue;
+        }
+        if (seenLocationIds.includes(id)) {
+          warnings.push({ kind: 'duplicate_location_in_manifest', detail: `Location '${id}' declared more than once in this manifest; keeping first.` });
+          continue;
+        }
+        const displayName = typeof entry.displayName === 'string' && entry.displayName.trim() !== ''
+          ? entry.displayName.trim().slice(0, 255)
+          : null;
+        const row = await storage.upsertAppComponentLocation(clientApp.id, id, displayName);
+        seenLocationIds.push(id);
+        persistedLocations.push({
+          id: row.id,
+          locationId: row.locationId,
+          displayName: row.displayName,
+        });
       }
 
-      // Process locations: idempotent upsert.
-      if (Array.isArray(declaredLocations)) {
-        for (const entry of declaredLocations) {
-          if (!entry || typeof entry !== 'object') {
-            warnings.push({ kind: 'invalid_location_entry', detail: 'Entry must be an object with `id`' });
-            continue;
-          }
-          const id = typeof entry.id === 'string' ? entry.id.trim() : '';
-          if (!id) {
-            warnings.push({ kind: 'missing_location_id', detail: 'Location entry missing `id` string' });
-            continue;
-          }
-          if (id.length > 100) {
-            warnings.push({ kind: 'location_id_too_long', detail: `Location id '${id}' exceeds 100 chars; ignored.` });
-            continue;
-          }
-          const displayName = typeof entry.displayName === 'string' && entry.displayName.trim() !== ''
-            ? entry.displayName.trim().slice(0, 255)
-            : null;
-          const row = await storage.upsertAppComponentLocation(clientApp.id, id, displayName);
-          persistedLocations.push({
-            id: row.id,
-            locationId: row.locationId,
-            displayName: row.displayName,
-          });
-        }
-      }
+      // Sync semantics: locations not in this payload get deprecated.
+      // Idempotent — already-deprecated rows stay deprecated; re-uploaded
+      // ones get their `deprecated_at` cleared by the upsert above.
+      const deprecatedCount = await storage.deprecateAppComponentLocationsNotIn(clientApp.id, seenLocationIds);
 
       console.log(
-        `[ManifestRegistry] clientApp=${clientApp.id} components=${persistedComponents.length} locations=${persistedLocations.length} warnings=${warnings.length}`
+        `[ManifestRegistry] clientApp=${clientApp.id} locations=${persistedLocations.length} deprecated=${deprecatedCount} warnings=${warnings.length}`
       );
 
       res.json({
         clientAppId: clientApp.id,
-        components: persistedComponents,
         locations: persistedLocations,
+        deprecatedCount,
         warnings,
       });
     } catch (error) {
@@ -6888,34 +6566,38 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       const campaign = await storage.getCampaign(campaignId);
       if (!campaign) return res.status(404).json({ error: 'Campaign not found' });
 
+      // Post-migration 0004: campaign_components → app_placements → components.
+      // Filter rules:
+      //   - status = 'active'
+      //   - broadcast_id IS NULL (campaign-wide, not broadcast-scoped)
+      //   - app_placements.deprecated_at IS NULL — operator soft-deleted
+      //     placements stop rendering; existing campaign_components keep
+      //     existing in DB but the SDK is shielded from them.
       const rows = await db.select({
         cc: campaignComponents,
+        ap: appPlacements,
         comp: components,
         sp: sponsors,
       })
         .from(campaignComponents)
-        .innerJoin(components, eq(campaignComponents.componentId, components.id))
+        .innerJoin(appPlacements, eq(campaignComponents.appPlacementId, appPlacements.id))
+        .innerJoin(components, eq(appPlacements.componentId, components.id))
         .innerJoin(sponsors, eq(campaignComponents.sponsorId, sponsors.id))
         .where(and(
           eq(campaignComponents.campaignId, campaignId),
           eq(campaignComponents.status, 'active'),
           isNull(campaignComponents.broadcastId),
+          isNull(appPlacements.deprecatedAt),
         ));
 
-      // Shape matches the Swift `Component` model on iOS (CampaignModels.swift):
-      // - `id` = the component TEMPLATE id (components.id), so the SDK's existing
-      //   getActiveComponent(componentId:) keeps working with the same uuid the
-      //   demo previously hardcoded.
-      // - `campaignComponentId` = the per-instance id (campaign_components.id),
-      //   exposed for analytics/observability so the SDK can echo it back on
-      //   any instance-scoped event.
-      // - `config` is the template's baseline merged with the operator's
-      //   customConfig overlay. Critical: the iOS ComponentConfig decoder
-      //   discriminates between cases by which keys are present (autoPlay+
-      //   interval → product_carousel; only productIds → carousel_manual),
-      //   so we MERGE rather than replace — operator-supplied productIds
-      //   coexist with the template's autoPlay/interval defaults.
-      const items = rows.map(({ cc, comp, sp }) => {
+      // Response shape kept stable for iOS — `id` = template uuid (so the
+      // SDK's getActiveComponent(componentId:) keeps working with the
+      // template id), `locationId` sourced from app_placements (no longer
+      // on campaign_components post-migration). The new `appPlacementId`
+      // field exposes the FK so future SDK features can echo it back.
+      // Config: template baseline merged with operator's customConfig
+      // overlay (productIds, etc.).
+      const items = rows.map(({ cc, ap, comp, sp }) => {
         const templateConfig = (comp as any).config ?? {};
         const overlayConfig = cc.customConfig ?? {};
         const mergedConfig =
@@ -6923,17 +6605,24 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
             ? { ...templateConfig, ...overlayConfig }
             : (overlayConfig || templateConfig);
         return {
-          id: comp.id,                                  // template id (string uuid)
+          id: comp.id,                                  // template id (uuid string)
           campaignComponentId: cc.id,                   // instance id (numeric)
+          appPlacementId: ap.id,                        // FK to app_placements
+          appPlacementName: ap.name,                    // human-friendly label ("Carrusel home")
           type: comp.type,
-          name: cc.instanceName ?? comp.name,
+          name: cc.instanceName ?? ap.name,
           status: cc.status,
-          locationId: cc.locationId ?? null,
+          locationId: ap.locationId,                    // sourced from app_placements
           sponsorId: sp.id,
           sponsor: {
             id: sp.id,
             name: sp.name,
+            // logoUrl is the wide / vector brand asset (often SVG which
+            // SwiftUI's AsyncImage can't decode). Pair it with the
+            // raster avatarUrl so SDK clients prefer the raster for
+            // inline UI rendering.
             logoUrl: sp.logoUrl ?? null,
+            avatarUrl: sp.avatarUrl ?? null,
             primaryColor: sp.primaryColor ?? null,
           },
           commerce: sp.commerceApiKey ? {
@@ -6951,6 +6640,10 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
     }
   });
 
+  // Broadcast-scoped placements (campaign-wide + broadcast-overridden,
+  // merged). Same JOIN-through-app_placements path as the campaign-scoped
+  // endpoint. Filters out deprecated placements so the SDK never sees
+  // stale slots after operator soft-delete.
   app.get('/v2/mobile/broadcasts/:broadcastId/components', validateApiKey, async (req, res) => {
     try {
       const { broadcastId } = req.params;
@@ -6959,28 +6652,34 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
 
       const rows = await db.select({
         cc: campaignComponents,
+        ap: appPlacements,
         comp: components,
         sp: sponsors,
       })
         .from(campaignComponents)
-        .innerJoin(components, eq(campaignComponents.componentId, components.id))
+        .innerJoin(appPlacements, eq(campaignComponents.appPlacementId, appPlacements.id))
+        .innerJoin(components, eq(appPlacements.componentId, components.id))
         .innerJoin(sponsors, eq(campaignComponents.sponsorId, sponsors.id))
         .where(and(
           eq(campaignComponents.campaignId, broadcast.campaignId),
           eq(campaignComponents.status, 'active'),
+          isNull(appPlacements.deprecatedAt),
           or(isNull(campaignComponents.broadcastId), eq(campaignComponents.broadcastId, broadcastId)),
         ));
 
-      const items = rows.map(({ cc, comp, sp }) => ({
+      const items = rows.map(({ cc, ap, comp, sp }) => ({
         id: cc.id,
         campaignComponentId: cc.id,
+        appPlacementId: ap.id,
+        appPlacementName: ap.name,
         type: comp.type,
-        locationId: cc.locationId ?? null,
+        locationId: ap.locationId,
         instanceName: cc.instanceName ?? null,
         sponsor: {
           id: sp.id,
           name: sp.name,
           logoUrl: sp.logoUrl ?? null,
+          avatarUrl: sp.avatarUrl ?? null,
           primaryColor: sp.primaryColor ?? null,
         },
         commerce: sp.commerceApiKey ? {

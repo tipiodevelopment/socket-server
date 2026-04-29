@@ -788,7 +788,7 @@ function DynamicComponentsTab({
                       );
                     })()}
                     <div className="text-xs sm:text-sm text-gray-400 font-mono">
-                      ID: {cc.componentId}
+                      ID: {(cc as any).componentId}
                     </div>
                   </div>
                 </div>
@@ -808,7 +808,7 @@ function DynamicComponentsTab({
                     size="sm"
                     onClick={() =>
                       toggleStatusMutation.mutate({
-                        componentId: cc.componentId,
+                        componentId: String(cc.id),
                         status: cc.status === 'active' ? 'inactive' : 'active',
                       })
                     }
@@ -842,7 +842,7 @@ function DynamicComponentsTab({
                     size="sm"
                     onClick={() => {
                       if (confirm('Are you sure you want to remove this component from the campaign?')) {
-                        removeComponentMutation.mutate(cc.componentId);
+                        removeComponentMutation.mutate(String(cc.id));
                       }
                     }}
                     disabled={removeComponentMutation.isPending}
@@ -874,15 +874,15 @@ function DynamicComponentsTab({
             <CampaignComponentConfigForm
               campaignComponent={editingConfigFor}
               onSubmit={(customConfig) =>
-                updateConfigMutation.mutate({ 
-                  componentId: editingConfigFor.componentId, 
-                  customConfig 
+                updateConfigMutation.mutate({
+                  componentId: String(editingConfigFor.id),
+                  customConfig
                 })
               }
               onRevertToDefault={() => {
-                updateConfigMutation.mutate({ 
-                  componentId: editingConfigFor.componentId, 
-                  customConfig: null 
+                updateConfigMutation.mutate({
+                  componentId: String(editingConfigFor.id),
+                  customConfig: null
                 });
               }}
               onCancel={() => setEditingConfigFor(null)}

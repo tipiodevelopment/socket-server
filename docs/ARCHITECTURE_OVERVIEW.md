@@ -76,9 +76,10 @@ Platform
 | `broadcast_sponsor_slots` | Scheduled or manually-fired shoppable ads attached to a broadcast. |
 | `shoppable_ad_activations` | Dispatch log. Every shoppable_ad WS event creates one of these rows (with `activationId`). |
 | `cart_intents` | User-initiated intent to purchase. Carries `source_activation_id` to close the attribution chain. |
-| `app_components` | Which canonical component templates each clientApp implements. Populated by SDK manifest upload at app boot. |
-| `app_component_locations` | Which slot ids each clientApp exposes. Populated by SDK manifest upload. UNIQUE `(client_app_id, location_id)`. |
-| `campaign_components` | Product placement instances (component × location × sponsor × products) per campaign. |
+| `app_component_locations` | Slot ids each clientApp's UI exposes. Populated by SDK manifest at boot. UNIQUE `(client_app_id, location_id)` + `deprecated_at` for sync semantics. |
+| `app_placements` | **Named placement instances** the operator binds to (template × location × name) per app. Created via dashboard `/apps/:id` "Add from library" form (NOT by SDK). Dual UNIQUE: `(client_app_id, name)` + `(client_app_id, component_id, location_id)`. Soft-delete via `deprecated_at`. |
+| `campaign_components` | Campaign bindings: which `app_placement` runs in which campaign with which sponsor + customConfig. FK `app_placement_id` (post-migration 0004). Partial UNIQUE `(campaign_id, app_placement_id) WHERE status='active'` for multi-sponsor rotation. |
+| ~~`app_components`~~ | Dropped in migration 0004 (redundant with `app_placements`). Routes return HTTP 410 Gone. |
 | `end_users` | SDK viewer identity (opaque `externalUserId` per clientApp). |
 | `tv_sessions` | Active TV SDK session row (heartbeat-kept). |
 
@@ -115,7 +116,7 @@ own Commerce credentials. Key properties:
 
 ---
 
-## 4. API v2 surface (live as of 2026-04-24)
+## 4. API v2 surface (live, last refreshed 2026-04-29)
 
 The API is organized by **audience**, not by version:
 
@@ -142,11 +143,11 @@ POST /v2/tv/broadcasts/:broadcastId/shoppable-ad    SDK-originated + automation 
 ### /v2/mobile/*
 
 ```
-GET  /v2/mobile/config                                bootstrap: campaign + primary + secondaries + commerce blocks
+GET  /v2/mobile/config                                bootstrap: campaign + primary + secondaries + commerce blocks (sponsor block ships logoUrl + avatarUrl)
 GET  /v2/mobile/broadcasts/:broadcastId/capabilities  per-broadcast feature flags
-GET  /v2/mobile/broadcasts/:broadcastId/components    placements (broadcast-scoped only — legacy, may retire)
-GET  /v2/mobile/campaigns/:campaignId/components      campaign-scoped placements with templateConfig+customConfig merged (primary placement fetch)
-POST /v2/mobile/components/manifest                   SDK boot manifest upload (registers app_components + app_component_locations)
+GET  /v2/mobile/broadcasts/:broadcastId/components    placements (broadcast-scoped, JOINed via app_placements; filters deprecated)
+GET  /v2/mobile/campaigns/:campaignId/components      primary placement fetch — JOIN through app_placements; filters deprecated; templateConfig+customConfig merged
+POST /v2/mobile/components/manifest                   SDK boot — body { locations: [{id, displayName?}] } only. Sync semantics. Rejects legacy `placements[]`/`components[]`.
 POST /v2/mobile/campaigns/:campaignId/cart-intent     in-app "Add to cart"
 POST /v2/mobile/campaigns/:campaignId/register-device APNs/FCM token
 ```
@@ -185,28 +186,105 @@ Full contract + expected responses + migration map from v1/mixed to v2:
 ## 5. WebSocket channel
 
 Every TV + iOS SDK connects to `wss://<host>/ws/:campaignId`. First frame
-after handshake is `{"type":"identify","userId":"<externalUserId>"}`.
+after handshake is `{"type":"identify","userId":"<externalUserId>"}`,
+followed by `{"type":"subscribe","modules":[…]}` from clients on
+v2026-04-28+ SDKs (see "Module subscribe protocol" below).
 
 ### Server → client events
 
-| Event | Root payload | Consumed by |
-|---|---|---|
-| `campaign_started` / `campaign_ended` | `campaignId, startDate?, endDate?` | mobile + TV |
-| `broadcast_status_changed` | `broadcastId, status` | mobile + TV |
-| `component_status_changed` | `campaignId, componentId, sponsorId, status, component:{...}` | mobile |
-| `poll_activated` / `poll_deactivated` | `pollId, broadcastId` | mobile |
-| `contest_activated` / `contest_deactivated` | `contestId, broadcastId` | mobile |
-| `lineup_show` | `broadcastId, videoTimestamp, …` | mobile |
-| `shoppable_ad` | `broadcastId, campaignId, sponsorId, activationId, product, sponsor` | TV |
-| `cart_intent` | canonical envelope with `activation_id, sponsor_id` | mobile |
-| `ping` | — | both (reply `{type:"pong"}`) |
+| Event | Module | Root payload | Consumed by |
+|---|---|---|---|
+| `campaign_started` / `campaign_ended` | (firehose) | `campaignId, startDate?, endDate?` | mobile + TV |
+| `broadcast_status_changed` | (firehose) | `broadcastId, status` | mobile + TV |
+| `placement_status_changed` | `placements` | `campaignId, appPlacementId, campaignComponentId, status: 'active'\|'inactive'` | mobile |
+| `placement_config_updated` | `placements` | `…, customConfig, productIdsChanged: bool, sponsorId: int?, sponsorChanged: bool` | mobile |
+| `placement_activation_swapped` | `placements` | `…, fromCampaignComponentId, toCampaignComponentId, fromSponsorId, toSponsorId, newComponent:{…}` | mobile |
+| `poll_activated` / `poll_deactivated` | (firehose, future `engagement`) | `pollId, broadcastId` | mobile |
+| `contest_activated` / `contest_deactivated` | (firehose, future `engagement`) | `contestId, broadcastId` | mobile |
+| `lineup_show` | (firehose, future `broadcast`) | `broadcastId, videoTimestamp, …` | mobile |
+| `shoppable_ad` | (firehose, future `broadcast`) | `broadcastId, campaignId, sponsorId, activationId, product, sponsor` | TV |
+| `cart_intent` | direct unicast (future module `cart_intent`) | canonical envelope with `activation_id, sponsor_id` | mobile |
+| `ping` | — | — | both (reply `{type:"pong"}`) |
+
+The 3 `placement_*` events are emitted via the **outbox pattern**
+(see "Outbox + module subscribe" below), not by the inline emit
+sites used for legacy events. Each carries a `module` field +
+`serverTimestamp` (used by the SDK to discard out-of-order retries).
+
+> The `component_status_changed` / `component_config_updated` legacy
+> wire types pre-Sprint-2026-04-28 are no longer emitted by the
+> backend; their decoders remain in the SDK as inert source-compat
+> shims for older deployments.
 
 ### Client → server
 
 | Frame | When |
 |---|---|
 | `{"type":"identify","userId":"…"}` | first frame, required for user-scoped routing |
+| `{"type":"subscribe","modules":["placements","cart_intent",…]}` | second frame on v2026-04-28+ SDKs; tells the server to filter every emit by this socket's module set |
 | `{"type":"pong"}` | reply to `ping` |
+
+### Outbox + module subscribe (Sprint 2026-04-28 PM)
+
+Realtime events for the placement system are emitted via an outbox
+pattern so dashboard actions reach the iOS SDK in <1s without
+polling and with atomic guarantees against partial state.
+
+```text
+HTTP handler (PATCH /api/campaigns/:id/components/:rowId/config)
+   └── db.transaction(async tx => {
+         tx.update(campaign_components) SET …
+         tx.insert(events_outbox) VALUES (topic, module, scope, payload, serverTimestamp)
+       })
+                ↓ commit
+                ↓
+   Worker (server/events/worker.ts, in-process, every 500ms)
+     └── SELECT … FROM events_outbox
+            WHERE status='pending' AND attempts < 5
+            ORDER BY created_at LIMIT 50
+            FOR UPDATE SKIP LOCKED       ← multi-node safe
+     └── for each row:
+            broadcastToCampaign(scopeId, JSON.stringify(envelope), module)
+            UPDATE events_outbox SET status='sent', processed_at=now()
+                ↓
+   broadcastToCampaign(campaignId, message, module?)
+     └── for each WS client in campaignClients[campaignId]:
+            const subs = clientSubscriptions.get(client)
+            if (module && subs && !subs.has(module)) continue   ← per-socket filter
+            client.send(message)
+                ↓ over the wire
+                ↓
+   iOS SDK CampaignWebSocketManager.handleMessage(text)
+     └── switch event.type {
+           case 'placement_status_changed': onPlacementStatusChanged?(decoded)
+           case 'placement_config_updated': onPlacementConfigUpdated?(decoded)
+           case 'placement_activation_swapped': onPlacementActivationSwapped?(decoded)
+         }
+                ↓
+   CampaignManager.handlePlacement{Status|Config|ActivationSwapped}Changed
+     └── lookup activeComponents by campaignComponentId
+     └── apply (toggle visibility / patch customConfig / swap row)
+     └── @Published triggers SwiftUI re-render
+```
+
+**Module buckets**: `placements` (live today), `engagement`,
+`broadcast`, `cart_intent` (future). The same `events_outbox` table
+backs every realtime event going forward — adding the next bucket
+is one `module` value + one switch case in the SDK.
+
+**Reconnect**: SDK silently re-fetches `GET /v2/mobile/campaigns/:id/components`
+when the WS reopens after a previous-connect, so any state drift while
+offline is reconciled without the user noticing.
+
+**Sequencing**: events carry `serverTimestamp` (the outbox row's
+INSERT time). The SDK keeps `lastPlacementEventTimestamps[campaignComponentId]`
+and discards events whose timestamp is older than the last applied
+one — protects against out-of-order retries from the worker.
+
+**Resilience**: `pool.on('error', …)` in `server/db.ts` swallows
+transient Neon `Connection terminated unexpectedly` errors so a
+stale WS transport doesn't crash the entire Node process (was
+killing the outbox worker + scheduler with it).
 
 Dedup rule (iOS): `cart_intent` events are deduped by `activationId` in
 `CampaignManager.publishCartIntentIfChanged`. TV-originated and
@@ -325,17 +403,51 @@ Merged PRs:
 
 Pending user verification of Apple Pay checkout flow end-to-end (Apple TV tap → iOS overlay → per-sponsor Commerce → Apple Pay button → checkout completes).
 
-### ✅ Hito 6 — Product Placements (runtime landed 2026-04-27)
+### ✅ Hito 6 — Product Placements (dashboard-driven model, landed 2026-04-28)
 
-Placements = always-on product UI (carousels, banners, spotlights, stores, sliders) that render at host-app-declared `locationId`s. **Self-service registry** model: dev declares components + locations once at app boot via manifest upload → operator drives content from the dashboard → SDK never recompiled.
+Placements = always-on product UI (carousels, banners, spotlights, stores, offer banners) that render at host-app-declared `locationId`s. **Dashboard-driven** model after the 2026-04-27 PM pivot: SDK declares only the slot **locations** its UI exposes; the **operator** creates named placements in the dashboard binding library templates to those slots; campaigns then bind to placements with sponsor + products + customConfig.
 
-Four-layer data model: `components` (canonical templates, `is_template=true`) → `app_components` (which templates each app implements, populated by manifest) → `app_component_locations` (which slots each app exposes, populated by manifest) → `campaign_components` (instances bound to component × location × sponsor × products).
+Three-layer data model:
+1. **`components`** (canonical templates, `is_template=true`) — read-only library, 6 entries.
+2. **`app_placements`** (named instances per app) — operator creates via dashboard `/apps/:id` "Add from library".
+3. **`campaign_components`** (campaign bindings) — operator creates via dashboard `/campaigns/:id` Components tab; FK to `app_placements`; partial UNIQUE for "one active per (campaign, placement)" multi-sponsor rotation.
 
-Status: ✅ end-to-end. Smoke verde 2026-04-27 with TV2 campaign 36 (Elkjøp en `home_top` + XXL en `match_pre_kickoff`). See [`CURRENT_STATE.md §17`](./CURRENT_STATE.md#17-placement-self-service-registry-post-runtime-2026-04-27) for the full architecture diagram + file map. Merge commits:
-- socket-server `f97bebd` (PR #29 + #32)
-- VioSwiftSDK `0d3383d` (PR #8)
+Plus `app_component_locations` (the SDK-declared slot manifest, sync-semantic with `deprecated_at`).
 
-Pending non-blocker tasks: 4 of 5 product views (`VProductSpotlight`, `VProductStore`, `VProductBanner`, `VProductSlider`) still need the same `sponsorId` plumbing pattern as `VProductCarousel`. Scheduling fields (`scheduledTime` + `endTime`) deferred until first operator request. Tracked in [`TASK_PLACEMENTS.md`](./TASK_PLACEMENTS.md).
+Status: ✅ smoke E2E live-tested 2026-04-28. TV2 campaign 36 has 4 placements bound (`home_top` carousel · `home_spotlight` · `home_offer` banner · `home_store`) running against 2 sponsors (Torshov Sport + XXL). See [`CURRENT_STATE.md` §17](./CURRENT_STATE.md) for the full architecture diagram + file map + new-session cheat sheet.
+
+Active branches:
+- socket-server `feature/placements-app-placements-table` @ `374a3ae`
+- VioSwiftSDK `feature/placements-named-instances` @ `0f1a2c1`
+
+Original Hito 6 follow-ups (all landed 2026-04-28):
+- ✅ Postman regen → 19 v2 requests in 9 folders.
+- ✅ `locationId:` plumbing for VProductSpotlight / VProductBanner / VProductStore / VOfferBanner.
+- ✅ Multi-sponsor rotation UX (atomic `placement_activation_swapped` event).
+- ✅ Apple TV SDK consumption smoke — sponsor.avatarUrl additive, no regressions.
+
+### ✅ Hito 6.5 — Live updates via outbox + module subscribe (landed 2026-04-28 PM)
+
+3 placement events emitted via the **outbox pattern** (atomic with the campaign_components UPDATE that triggered them) + a per-socket module subscribe protocol so SDKs filter the firehose. Sub-second pause/resume/edit/sponsor-swap from the dashboard. See [`CURRENT_STATE.md` §18](./CURRENT_STATE.md) and [`TASK_PLACEMENTS.md` "Sprint closure (landed 2026-04-28 PM)"](./TASK_PLACEMENTS.md).
+
+- Backend: `events_outbox` table + worker, 3 emit sites (status / config / activation_swapped), 6/6 phases shipped (commits `e2df66c` → `753abe0`).
+- iOS: subscribe protocol + 3 event handlers + dashboard `Pausar / Hacer activo` verbs (commits `f89eaa3` → `4fa2391`).
+
+### ✅ Hito 6.6 — Phase 2 polish per component (landed 2026-04-28 PM evening + 2026-04-29 cleanup)
+
+Take each campaign-driven placement end-to-end so the operator does create + customize + live edit from the dashboard without ever editing `customConfig` JSON by hand.
+
+- **VOfferBanner** — campaign-driven mode + brand-aware color pickers + live preview at create-time. Hardcoded `OfferBannerView()` and legacy `componentManager.activeBanner` retired 2026-04-29 (commit `0f1a2c1`).
+- **VProductBanner** — layout preset (compact/standard/large) + brand color pickers + inline content fields in Add + live preview.
+- **VProductStore** — multi-sponsor products array (`{productId, sponsorId}[]`), each routes through its own sponsor's commerce key. New shared `MultiSponsorProductPicker` component used in both Add and Customize dialogs. One detail modal at a time via `@State`.
+- **Cross-cutting: hide-on-failure** on Carousel + Spotlight + Store. `loadFailed: Bool` flag → view returns `EmptyView()` when load fails. Single-shot — fail → hide; next config / WS event triggers fresh attempt.
+- **Infra** — process-level `uncaughtException` + `unhandledRejection` guards in `server/db.ts` to swallow neon-serverless transport drops without crashing the process (commit `824cf69`).
+
+See [`CURRENT_STATE.md` §20](./CURRENT_STATE.md).
+
+### ✅ Hito 6.7 — v1 cleanup (2026-04-29)
+
+Empirical retirement: 24 of 33 v1 routes had zero callers across iOS/AppleTV/dashboard/scripts. Handlers deleted entirely (commit `374a3ae`, 894 lines). The remaining 9 v1 routes still serve iOS — tracked in `IOS_V2_MIGRATION_GAP.md`, retire as features migrate.
 
 ### ⏳ Hito 7 — Kotlin SDKs
 

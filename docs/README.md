@@ -15,21 +15,22 @@ developer's machine that has all three repos cloned alongside this one.
 - **Need the map** (schema + endpoints + WS events + recipes) → [`DB_AND_ENDPOINTS.md`](./DB_AND_ENDPOINTS.md).
 - **Authoritative data-model spec** → [`multi-sponsor-architecture.md`](./multi-sponsor-architecture.md) (deeper than ARCHITECTURE_OVERVIEW; the design → implementation spec).
 - **Planning next steps?** → [`ROLLOUT_ROADMAP.md`](./ROLLOUT_ROADMAP.md).
-- **Placements plan tracker** → [`TASK_PLACEMENTS.md`](./TASK_PLACEMENTS.md) (paused at Step 4 pending v2 merge).
-- **iOS legacy calls still in code** → [`IOS_V2_MIGRATION_GAP.md`](./IOS_V2_MIGRATION_GAP.md).
+- **Placement system tracker** → [`TASK_PLACEMENTS.md`](./TASK_PLACEMENTS.md). Original 12-step plan landed; current sprint = "Phase 2 polish per component" + doc consolidation. Latest sprint section at the top.
+- **Latest landed sprint** → `CURRENT_STATE.md` §20 (Phase 2 polish — OfferBanner + ProductBanner + ProductStore + hide-on-failure + Neon guard, 2026-04-28 PM evening).
+- **iOS legacy calls still in code** → [`IOS_V2_MIGRATION_GAP.md`](./IOS_V2_MIGRATION_GAP.md). 9 remaining (post 2026-04-29 cleanup that retired 24 dead v1 routes).
 - **Onboarding the Kotlin dev?** → [`KOTLIN_TV_SDK_SPEC.md`](./KOTLIN_TV_SDK_SPEC.md)
   and [`KOTLIN_MOBILE_SDK_SPEC.md`](./KOTLIN_MOBILE_SDK_SPEC.md).
+- **About to push a PR to `develop`?** → [`CURRENT_STATE.md` §22](./CURRENT_STATE.md). Mandatory checklist (contract + openapi + Postman + CURRENT_STATE refresh) and the `npm run check:docs-drift` gate.
 
 ## By role
 
 ### Backend / dashboard developer
 
 1. [`multi-sponsor-architecture.md`](./multi-sponsor-architecture.md) — schema + endpoints + WS events.
-2. [`multi-sponsor-implementation-plan.md`](./multi-sponsor-implementation-plan.md) — phased plan + risk log.
-3. [`SHOPPABLE_AD_AUTHORING.md`](./SHOPPABLE_AD_AUTHORING.md) — dashboard flow (slot authoring, sponsor scoping, trigger types, validation gates).
-4. [`PHASE_3_ENFORCEMENT.md`](./PHASE_3_ENFORCEMENT.md) — playbook for applying NOT NULL on the 5 sponsor FKs in any env (orphan audit, resolve, ALTER, rollback).
-5. [`openapi.yaml`](../openapi.yaml) — authoritative endpoint schemas.
-6. [`postman/vio-sdk.postman_collection.json`](../postman/vio-sdk.postman_collection.json) — drop in, set `apiKey`, run the flows.
+2. [`SHOPPABLE_AD_AUTHORING.md`](./SHOPPABLE_AD_AUTHORING.md) — dashboard flow (slot authoring, sponsor scoping, trigger types, validation gates).
+3. [`openapi.yaml`](../openapi.yaml) — authoritative endpoint schemas.
+4. [`postman/vio-sdk.postman_collection.json`](../postman/vio-sdk.postman_collection.json) — drop in, set `apiKey`, run the flows.
+5. Archived references in [`docs/archive/`](./archive/) — original multi-sponsor implementation plan + Phase 3 NOT NULL enforcement playbook (kept for historical context; both phases landed on develop).
 
 ### Apple TV SDK developer
 
@@ -57,7 +58,6 @@ Repo: `VioSwiftSDK` (`feature/tv-cart-intent-attribution` → merged to `develop
 ### QA / Operator
 
 - [`SHOPPABLE_AD_AUTHORING.md`](./SHOPPABLE_AD_AUTHORING.md) — how to configure a slot and fire it.
-- [`PHASE_3_ENFORCEMENT.md`](./PHASE_3_ENFORCEMENT.md) — what to check before applying the migration on a new environment.
 - [`ROLLOUT_ROADMAP.md`](./ROLLOUT_ROADMAP.md) §4.2 — partner onboarding sequence.
 
 ## By topic
@@ -72,7 +72,7 @@ Repo: `VioSwiftSDK` (`feature/tv-cart-intent-attribution` → merged to `develop
 | Commerce catalog picker (sponsor-scoped) | `SHOPPABLE_AD_AUTHORING.md`, endpoint `GET /api/commerce/sponsors/:id/catalog` |
 | Phase 1 SQL (additive schema) | `scripts/phase1-sql.sql` |
 | Phase 2 backfill | `scripts/backfill-multi-sponsor-phase2.ts` |
-| Phase 3 NOT NULL enforcement | `scripts/phase3-enforce-sponsor-fks.sql` + `PHASE_3_ENFORCEMENT.md` |
+| Phase 3 NOT NULL enforcement | `scripts/phase3-enforce-sponsor-fks.sql` + [`docs/archive/PHASE_3_ENFORCEMENT.md`](./archive/PHASE_3_ENFORCEMENT.md) |
 
 ## Conventions
 

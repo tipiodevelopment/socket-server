@@ -1,22 +1,25 @@
 # Multi-Sponsor + Cart-Intent Attribution — Rollout Roadmap
 
-Tracks everything from **today (2026-04-23, develop post Phase 3)** to
+Tracks everything from **2026-04-23 (post Phase 3 multi-sponsor schema)** to
 **production-ready across all platforms + partners**.
 
 This is a living doc. Tick items as they land. Status legend:
 ✅ done · 🟡 in progress · ⏳ queued · 🔴 blocked
 
-## Where we are today
+Last refresh: 2026-04-29 (post v1 cleanup + Phase 2 component polish).
 
-### ✅ Landed on `develop`
+## Where we are today (2026-04-29)
 
-| Area | Highlights |
+### ✅ Landed on `feature/placements-app-placements-table` + `feature/placements-named-instances` (since 2026-04-23 entry)
+
+| Sprint | Highlights |
 |---|---|
-| **Backend** | Multi-sponsor schema (Phase 1+2+3 applied on Neon `develop`), `/api/sdk/tv/broadcast/subscribe`, `/api/sdk/tv/cart-intent` v2 minimal body, `/api/sdk/tv/session/*`, `/api/commerce/sponsors/:id/catalog`, `persistAndBroadcastShoppableAd` unified helper with avatar validation (422 `SPONSOR_MISSING_AVATAR`), shoppable_ad WS event with `sponsorId` + `activationId` + full sponsor block with `avatarUrl`, Commerce `images` 500 fallback. |
-| **Apple TV SDK** | `VioTV.connect(broadcastId:)` subscribe flow, WS ping/pong, avatar overlay, demo picker (registered vs soft-miss), back button, `broadcastId` rename. |
-| **iOS SDK** | v2 SDK config consumer (primary + secondaries + commerce keys), `CartIntentEvent.activationId + sponsorId` decode, `publishCartIntentIfChanged` dedup, `CommerceSdkClientProvider.client(forSponsorId:)` per-sponsor routing, `ProductService.loadProduct(sponsorId:)`. |
-| **Dashboard** | `SponsorCatalogPicker` (sponsor-scoped Commerce browse), edit slot UI, inline "link sponsor to campaign", userId-aware sponsor listing. |
-| **Docs** | `multi-sponsor-architecture.md` (§7.4 TV + §6.7 cart-intent), `SHOPPABLE_AD_AUTHORING.md`, `PHASE_3_ENFORCEMENT.md`, `VioSwiftSDK/CART_INTENT_FLOW.md`, `InteractiveAds-vio/SDK_ARCHITECTURE.md`, openapi.yaml + Postman. |
+| **Multi-sponsor (2026-04-23)** | Phase 1+2+3 schema, TV SDK runtime, iOS SDK consumption, dashboard sponsor catalog picker. **Status quo as of 2026-04-23 entry below.** |
+| **API v2 direct cut (2026-04-24)** | All SDK-facing routes migrated to `/v2/{tv,mobile,commerce,admin}/*`. iOS commits `748aeac` + `88320c5`. VioTVSDK migrated on `main` (`6a23bdf`). 4 v1 routes already retired by iOS at this point. |
+| **Placement system pivot (2026-04-27 PM)** | Dashboard-driven model: SDK declares `locations[]` only; operator creates `app_placements` + `campaign_components` via dashboard. Three-layer schema (`components` → `app_placements` → `campaign_components` + `app_component_locations`). 6 canonical templates locked. Smoke E2E live-tested. |
+| **Live updates outbox (2026-04-28 PM)** | `events_outbox` table + worker, 3 placement events emitted atomically with the row UPDATE. Per-socket module subscribe protocol. iOS sub-second pause/resume/sponsor-swap. Sprint closure committed `e2df66c` → `4fa2391`. |
+| **Phase 2 component polish (2026-04-28 PM evening)** | OfferBanner / ProductBanner / ProductStore end-to-end (Add + Customize + live preview + brand color pickers + multi-sponsor picker). Hide-on-failure cross-cutting. Process-level Neon guard. See `CURRENT_STATE.md §20`. |
+| **Cleanup + doc consolidation (2026-04-29)** | Hardcoded `OfferBannerView()` + legacy `componentManager.activeBanner` retired (commit `0f1a2c1`). 24 dead v1 routes deleted from backend (commit `374a3ae`, 894 lines). 9 v1 routes still live for iOS (tracked in `IOS_V2_MIGRATION_GAP.md`). API_V2_CONTRACT + ARCHITECTURE_OVERVIEW + README refreshed to match code state. |
 
 ### 🟡 In transit (verified on test but not proven with real partner traffic)
 

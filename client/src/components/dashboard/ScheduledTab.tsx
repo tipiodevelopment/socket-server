@@ -192,7 +192,7 @@ export function ScheduledTab({ campaignId }: ScheduledTabProps) {
                         <Button
                           variant="default"
                           size="sm"
-                          onClick={() => triggerNowMutation.mutate(cc.componentId)}
+                          onClick={() => triggerNowMutation.mutate(String(cc.id))}
                           disabled={triggerNowMutation.isPending}
                           data-testid={`button-trigger-now-${cc.id}`}
                         >
@@ -213,7 +213,7 @@ export function ScheduledTab({ campaignId }: ScheduledTabProps) {
                         size="sm"
                         onClick={() => {
                           if (confirm('Are you sure you want to delete this scheduled component?')) {
-                            deleteComponentMutation.mutate(cc.componentId);
+                            deleteComponentMutation.mutate(String(cc.id));
                           }
                         }}
                         disabled={deleteComponentMutation.isPending}
@@ -241,9 +241,9 @@ export function ScheduledTab({ campaignId }: ScheduledTabProps) {
           {editingComponent && (
             <EditScheduleForm
               component={editingComponent}
-              onSubmit={(data) => updateScheduleMutation.mutate({ 
-                componentId: editingComponent.componentId, 
-                ...data 
+              onSubmit={(data) => updateScheduleMutation.mutate({
+                componentId: String(editingComponent.id),
+                ...data
               })}
               onCancel={() => setEditingComponent(null)}
               isLoading={updateScheduleMutation.isPending}

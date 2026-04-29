@@ -1,8 +1,8 @@
 {
   "info": {
-    "name": "Vio Backend API (v2 — SDK surfaces 100% clean)",
+    "name": "Vio Backend API (v2 surfaces + control plane, refreshed 2026-04-29)",
     "_postman_id": "vio-backend-api-v2-clean-2026-04-24",
-    "description": "Every HTTP request in the Apple TV → iOS cart-intent v2 flow. SDK-facing folders (1 Apple TV, 2 iOS) contain **only** `/v2/*` endpoints — zero legacy.\n\nIf the iOS code is still calling legacy `/v1/*` endpoints at runtime, that gap is technical debt tracked in `docs/IOS_V2_MIGRATION_GAP.md`, not polluting this collection.\n\n**Surfaces**:\n- 1. Apple TV SDK `/v2/tv/*` (8 req)\n- 2. iOS Mobile SDK `/v2/mobile/*` + `/v2/commerce/*` + direct GraphQL (8 req)\n- 3. Commerce proxy (shortcut) (2 req)\n- 4. Admin API `/v2/admin/*` (1 req)\n- 5. Dashboard operator `/api/*` (session cookie) (6 req)\n- 6. Partner outbound (mock) (2 req)\n- 7. WebSocket reference (informational)",
+    "description": "v2 SDK runtime + commerce + admin + dashboard control plane (placement system) + WS event reference. Last refresh after the 2026-04-29 doc consolidation: 24 dead v1 routes removed, manifest + campaigns/components added to mobile folder, new control plane folder, WS events folder filled with reference docs.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "item": [
@@ -400,6 +400,44 @@
           }
         },
         {
+          "name": "2.A2 POST /v2/mobile/components/manifest (cold-start manifest)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"locations\": [\n    {\n      \"id\": \"home_top\",\n      \"displayName\": \"Home — Top\"\n    },\n    {\n      \"id\": \"home_spotlight\",\n      \"displayName\": \"Home — Featured product\"\n    },\n    {\n      \"id\": \"home_offer\",\n      \"displayName\": \"Home — Offer banner\"\n    },\n    {\n      \"id\": \"home_product_banner\",\n      \"displayName\": \"Home — Product banner\"\n    },\n    {\n      \"id\": \"home_store\",\n      \"displayName\": \"Home — Multi-sponsor store\"\n    },\n    {\n      \"id\": \"match_pre_kickoff\",\n      \"displayName\": \"Match — Pre-kickoff\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v2/mobile/components/manifest",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v2",
+                "mobile",
+                "components",
+                "manifest"
+              ]
+            },
+            "description": "Sync semantics: locations not in payload get deprecated_at = now(). Rejects body with `placements[]` or `components[]` (HTTP 400 — those legacy arrays were retired post-migration 0004)."
+          }
+        },
+        {
           "name": "2.B1 (WS) wss://<host>/ws/{{campaignId}} — open + identify",
           "request": {
             "auth": {
@@ -484,6 +522,32 @@
               ]
             },
             "description": "**Purpose**: Active campaign_components + broadcast-scoped overrides. Each entry carries sponsor.id + commerce block for per-sponsor routing.\n\n**Called by**: 5 product views: VProductCarousel, VProductSpotlight, VProductStore, VProductBanner, VProductSlider.\n\n**Expected**: 200 `{broadcastId, components:[{id, type, locationId, sponsor:{id,name,commerce:{apiKey}}, config:{productIds}}]}`"
+          }
+        },
+        {
+          "name": "2.B4 GET /v2/mobile/campaigns/:id/components (campaign-scoped placements)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v2/mobile/campaigns/{{campaignId}}/components",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v2",
+                "mobile",
+                "campaigns",
+                "{{campaignId}}",
+                "components"
+              ]
+            },
+            "description": "Primary placement fetch. Returns active campaign_components JOINed through app_placements (filters deprecated). Each row carries `appPlacementId + appPlacementName + locationId` + `sponsor` block (logoUrl + avatarUrl + primaryColor) + template config merged with customConfig."
           }
         },
         {
@@ -979,6 +1043,213 @@
       ]
     },
     {
+      "name": "5b. Placement control plane (operator dashboard)",
+      "description": "Session-cookie auth — set via POST /api/auth/login. Operator-facing CRUD for the placement system: declare placements from the library, bind campaigns + sponsors + products, pause/activate, sponsor-swap. Drives the WS events `placement_status_changed` / `placement_config_updated` / `placement_activation_swapped` consumed by the SDK.",
+      "item": [
+        {
+          "name": "5b.1 POST /api/client-apps/:id/placements (Add placement from library)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"componentId\": \"product-carousel-template\",\n  \"locationId\": \"home_top\",\n  \"name\": \"Carrusel home\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/client-apps/{{clientAppId}}/placements",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "client-apps",
+                "{{clientAppId}}",
+                "placements"
+              ]
+            },
+            "description": "Operator picks a canonical template + locationId from the dev-declared manifest + assigns a name. Creates an `app_placements` row."
+          }
+        },
+        {
+          "name": "5b.2 DELETE /api/client-apps/:id/placements/:apId (soft-delete)",
+          "request": {
+            "method": "DELETE",
+            "url": {
+              "raw": "{{baseUrl}}/api/client-apps/{{clientAppId}}/placements/{{appPlacementId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "client-apps",
+                "{{clientAppId}}",
+                "placements",
+                "{{appPlacementId}}"
+              ]
+            },
+            "description": "Sets `deprecated_at = now()`. Existing campaign_components keep rendering with a dashboard warning."
+          }
+        },
+        {
+          "name": "5b.3 POST /api/campaigns/:id/components (bind campaign → placement)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"appPlacementId\": 19,\n  \"sponsorId\": 7,\n  \"customConfig\": {\n    \"productIds\": [\n      \"408898\"\n    ],\n    \"title\": \"Ukens tilbud\",\n    \"showSponsorLogo\": true\n  },\n  \"status\": \"inactive\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/campaigns/{{campaignId}}/components",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "campaigns",
+                "{{campaignId}}",
+                "components"
+              ]
+            },
+            "description": "Operator picks placement + sponsor + products + customConfig. Creates a `campaign_components` row. `status` defaults to `inactive` so the operator activates explicitly."
+          }
+        },
+        {
+          "name": "5b.4 PATCH /api/campaigns/:id/components/:id (edit config + sponsor swap)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sponsorId\": 4,\n  \"customConfig\": {\n    \"productIds\": [\n      \"408895\",\n      \"408896\"\n    ],\n    \"title\": \"Black Friday\",\n    \"showSponsorLogo\": true\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/campaigns/{{campaignId}}/components/{{campaignComponentId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "campaigns",
+                "{{campaignId}}",
+                "components",
+                "{{campaignComponentId}}"
+              ]
+            },
+            "description": "Backend computes the diff. Emits `placement_config_updated` (sponsor swap = `sponsorChanged: true` flag in payload)."
+          }
+        },
+        {
+          "name": "5b.5 POST /api/campaigns/:id/components/:id/pause",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{baseUrl}}/api/campaigns/{{campaignId}}/components/{{campaignComponentId}}/pause",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "campaigns",
+                "{{campaignId}}",
+                "components",
+                "{{campaignComponentId}}",
+                "pause"
+              ]
+            },
+            "description": "Sets `status = inactive`. Emits `placement_status_changed`. SDK hides the placement in <1s."
+          }
+        },
+        {
+          "name": "5b.6 POST /api/campaigns/:id/components/:id/activate",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{baseUrl}}/api/campaigns/{{campaignId}}/components/{{campaignComponentId}}/activate",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "campaigns",
+                "{{campaignId}}",
+                "components",
+                "{{campaignComponentId}}",
+                "activate"
+              ]
+            },
+            "description": "Sets `status = active`. Emits `placement_status_changed`. If another component held the slot, atomic swap → `placement_activation_swapped`."
+          }
+        },
+        {
+          "name": "5b.7 POST /api/campaigns/:id/placements/:apId/activate (activate by placement)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"campaignComponentId\": 113\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/campaigns/{{campaignId}}/placements/{{appPlacementId}}/activate",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "campaigns",
+                "{{campaignId}}",
+                "placements",
+                "{{appPlacementId}}",
+                "activate"
+              ]
+            },
+            "description": "Alternate verb: operator picks the placement first, then which campaign_component to activate. Same swap semantics as 5b.6."
+          }
+        }
+      ]
+    },
+    {
       "name": "6. Partner outbound (mock server)",
       "description": "Endpoints the **partner** hosts; Vio calls outbound. Today via `{{mockUrl}}` Azure mock. HMAC signing in `docs/API_V2_CONTRACT.md §8` (deferred).",
       "item": [
@@ -1063,8 +1334,59 @@
     },
     {
       "name": "7. WebSocket events (reference)",
-      "description": "WS at `wss://<host>/ws/:campaignId`. Both SDKs connect here. Not runnable in Postman.\n\n**Server → client events**:\n- `shoppable_ad` (activationId, sponsorId, product, sponsor)\n- `cart_intent` (canonical envelope)\n- `component_status_changed` (sponsorId at root)\n- `poll_activated` / `poll_deactivated` / `poll_results_updated`\n- `contest_activated` / `contest_deactivated`\n- `lineup_show`\n- `campaign_started` / `campaign_ended`\n- `broadcast_status_changed`\n- `ping` (client replies `{\"type\":\"pong\"}`)\n\n**Client → server**:\n- `{\"type\":\"identify\",\"userId\":\"<externalUserId>\"}` (first frame, required)\n- `{\"type\":\"pong\"}`\n\nDedup: iOS dedups cart_intent by activationId in `CampaignManager.publishCartIntentIfChanged`.",
-      "item": []
+      "description": "Reference-only — Postman cannot drive raw WS, but these document the events the SDK must handle. Connect via `wss://api-local-angelo.vio.live/ws/:campaignId?userId=:uid`. After handshake send `{type:identify,userId}`. Then optionally send `{type:subscribe,modules:[\"placements\",\"engagement\",\"broadcast\",\"cart_intent\"]}` to filter the firehose. See API_V2_CONTRACT §9 + ARCHITECTURE_OVERVIEW §5.",
+      "item": [
+        {
+          "name": "7.1 [docs] placement_status_changed",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "https://github.com/tipiodevelopment/socket-server/blob/feature/placements-app-placements-table/docs/API_V2_CONTRACT.md#9-websocket-events"
+            },
+            "description": "Module: placements. Payload: `{ campaignId, appPlacementId, campaignComponentId, status: \"active\"|\"inactive\", module, serverTimestamp }`."
+          }
+        },
+        {
+          "name": "7.2 [docs] placement_config_updated",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "https://github.com/tipiodevelopment/socket-server/blob/feature/placements-app-placements-table/docs/API_V2_CONTRACT.md#9-websocket-events"
+            },
+            "description": "Module: placements. Payload: `{ ..., customConfig, productIdsChanged, sponsorId?, sponsorChanged, module, serverTimestamp }`."
+          }
+        },
+        {
+          "name": "7.3 [docs] placement_activation_swapped",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "https://github.com/tipiodevelopment/socket-server/blob/feature/placements-app-placements-table/docs/API_V2_CONTRACT.md#9-websocket-events"
+            },
+            "description": "Module: placements. Atomic multi-sponsor swap. Payload: `{ ..., fromCampaignComponentId, toCampaignComponentId, fromSponsorId, toSponsorId, newComponent, module, serverTimestamp }`."
+          }
+        },
+        {
+          "name": "7.4 [docs] cart_intent (TV → mobile direct unicast)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "https://github.com/tipiodevelopment/socket-server/blob/feature/placements-app-placements-table/docs/API_V2_CONTRACT.md#partner-outbound-contract"
+            },
+            "description": "Direct unicast to a specific user. Payload = canonical envelope (vio_event_type=cart_intent, vio_payload, metadata)."
+          }
+        },
+        {
+          "name": "7.5 [docs] shoppable_ad (TV broadcast)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "https://github.com/tipiodevelopment/socket-server/blob/feature/placements-app-placements-table/docs/API_V2_CONTRACT.md#9-websocket-events"
+            },
+            "description": "Firehose. Payload: `{ broadcastId, campaignId, sponsorId, activationId, product, sponsor }`."
+          }
+        }
+      ]
     },
     {
       "name": "8. Multi-sponsor smoke test (campaign 36 — 3 sponsors × 3 products)",
