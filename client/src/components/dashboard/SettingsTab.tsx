@@ -419,6 +419,7 @@ export function SettingsTab({ campaignId, campaign }: SettingsTabProps) {
         <div className="border border-white/10 rounded-lg p-6 space-y-4">
           {[
             { id: 'apple_pay', label: 'Apple Pay' },
+            { id: 'google_pay', label: 'Google Pay' },
             { id: 'klarna', label: 'Klarna' },
             { id: 'vipps', label: 'Vipps' },
             { id: 'stripe_link', label: 'Stripe Link' },

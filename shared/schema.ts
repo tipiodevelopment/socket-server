@@ -1,18 +1,36 @@
 import { z } from "zod";
-import { pgTable, serial, varchar, text, timestamp, json, integer, boolean, uniqueIndex, index } from "drizzle-orm/pg-core";
+import { pgTable, serial, varchar, text, timestamp, json, jsonb, integer, bigint, boolean, uniqueIndex, index, uuid } from "drizzle-orm/pg-core";
 import { relations, sql } from "drizzle-orm";
 import type { AnyPgColumn } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 
 // Database Tables
+
+// Operators (dashboard users). Distinct from end_users (viewers of broadcasts).
+// Legacy reachu_user_id kept nullable during Phase 2 transition; dropped in Phase 4.
 export const users = pgTable("users", {
   id: serial("id").primaryKey(),
-  reachuUserId: varchar("reachu_user_id", { length: 255 }).notNull().unique(),
+  reachuUserId: varchar("reachu_user_id", { length: 255 }).unique(),
   email: text("email"),
   name: text("name"),
   firebaseToken: text("firebase_token"),
   createdAt: timestamp("created_at").defaultNow().notNull()
 });
+
+// End-users (SDK viewers) — identified by the opaque id the partner (Viaplay, TV2)
+// passes at SDK init. Unique per (client_app, external_user_id). Replaces the
+// legacy reachu_user_id varchar pattern used across poll_votes, contest_participations, device_tokens.
+export const endUsers = pgTable("end_users", {
+  id: serial("id").primaryKey(),
+  clientAppId: integer("client_app_id").notNull().references(() => clientApps.id, { onDelete: 'cascade' }),
+  externalUserId: varchar("external_user_id", { length: 255 }).notNull(),
+  firstSeenAt: timestamp("first_seen_at").defaultNow().notNull(),
+  lastSeenAt: timestamp("last_seen_at").defaultNow().notNull(),
+  metadata: json("metadata"),
+}, (t) => [
+  uniqueIndex("uniq_end_users_app_external").on(t.clientAppId, t.externalUserId),
+  index("idx_end_users_last_seen").on(t.clientAppId, t.lastSeenAt),
+]);
 
 export const clientApps = pgTable("client_apps", {
   id: serial("id").primaryKey(),
@@ -28,6 +46,10 @@ export const clientApps = pgTable("client_apps", {
   webhookUrl: varchar("webhook_url", { length: 512 }),
   /** Partner URL for POST { userId, deviceToken, platform } — filled when Vio forwards after SDK register-device */
   partnerDeviceRegisterUrl: varchar("partner_device_register_url", { length: 512 }),
+  /** TV enablement — this app has one or more TV variants (Apple TV, Android TV) */
+  tvEnabled: boolean("tv_enabled").notNull().default(false),
+  /** Array of TV platforms supported: ['apple-tv', 'android-tv', 'fire-tv', ...] */
+  tvPlatforms: text("tv_platforms").array().default(sql`'{}'`).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull()
 });
 
@@ -51,6 +73,10 @@ export const sponsors = pgTable("sponsors", {
   secondaryColor: varchar("secondary_color", { length: 20 }),
   commerceApiKey: text("commerce_api_key"),
   commerceChannelId: text("commerce_channel_id"),
+  /** Payment methods supported by this sponsor's Commerce tenant.
+   *  Initial value set manually; later updates arrive via Commerce → Vio webhook.
+   *  Examples: ['card', 'klarna', 'vipps', 'apple_pay', 'google_pay']. */
+  paymentMethods: json("payment_methods").$type<string[]>().default([]).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull()
 });
 
@@ -59,15 +85,17 @@ export const campaigns = pgTable("campaigns", {
   userId: integer("user_id").notNull().references(() => users.id, { onDelete: 'cascade' }),
   clientAppId: integer("client_app_id").references(() => clientApps.id, { onDelete: 'cascade' }),
   channelId: integer("channel_id").references(() => channels.id, { onDelete: 'cascade' }),
-  sponsorId: integer("sponsor_id").references(() => sponsors.id, { onDelete: 'set null' }),
+  /** The single primary sponsor of the campaign. Set at creation, immutable after
+   *  any child row (broadcast, poll, activation, cart_intent) exists. Phase 3 enforced. */
+  primarySponsorId: integer("primary_sponsor_id").notNull().references(() => sponsors.id, { onDelete: 'restrict' }),
   name: varchar("name", { length: 255 }).notNull(),
   logo: text("logo"),
   description: text("description"),
   startDate: timestamp("start_date"),
   endDate: timestamp("end_date"),
   isPaused: varchar("is_paused", { length: 10 }).notNull().default('false'),
-  reachuChannelId: varchar("reachu_channel_id", { length: 255 }),
-  reachuApiKey: text("reachu_api_key"),
+  reachuChannelId: varchar("reachu_channel_id", { length: 255 }),  // DEPRECATED — dropped in Phase 4
+  reachuApiKey: text("reachu_api_key"),                             // DEPRECATED — dropped in Phase 4
   tipioLivestreamData: json("tipio_livestream_data"),
   isSegmented: varchar("is_segmented", { length: 10 }).notNull().default('false'),
   targetCountries: text("target_countries").array(),
@@ -79,6 +107,7 @@ export const campaigns = pgTable("campaigns", {
   brandIconAsset: varchar("brand_icon_asset", { length: 255 }),
   brandIconUrl: text("brand_icon_url"),
   brandLogoUrl: text("brand_logo_url"),
+  /** DEPRECATED — moved to sponsors.paymentMethods. Dropped in Phase 4. */
   paymentMethods: json("payment_methods").$type<string[]>(),
   webhookUrl: varchar("webhook_url", { length: 512 }),
   createdAt: timestamp("created_at").defaultNow().notNull()
@@ -157,6 +186,9 @@ export const campaignFormState = pgTable("campaign_form_state", {
 export const scheduledComponents = pgTable("scheduled_components", {
   id: serial("id").primaryKey(),
   campaignId: integer("campaign_id").notNull().references(() => campaigns.id, { onDelete: 'cascade' }),
+  /** Sponsor of this scheduled component. Must be the campaign's primary sponsor
+   *  or one of its secondary sponsors. Validated at endpoint layer. Phase 3 enforced. */
+  sponsorId: integer("sponsor_id").notNull().references(() => sponsors.id, { onDelete: 'restrict' }),
   type: varchar("type", { length: 50 }).notNull(), // carousel, store_view, product_spotlight, liveshow_trigger
   scheduledTime: timestamp("scheduled_time").notNull(),
   endTime: timestamp("end_time"), // Optional end time for component display
@@ -175,36 +207,128 @@ export const components = pgTable("components", {
   createdAt: timestamp("created_at").defaultNow().notNull()
 });
 
-// Campaign Components - Links components to campaigns with status and custom config
-// Can be manual toggle OR scheduled OR both
-// Supports multiple instances of the same component template with different instanceNames
+// Campaign Components — instances of a named placement bound to a campaign,
+// with sponsor + product overrides + scheduling. Each row references an
+// `app_placements` entry directly (the named instance the operator picked
+// from the dashboard) — the underlying component template + locationId
+// live there, not duplicated here.
+//
+// Multi-sponsor rotation: operator can create multiple rows for the same
+// (campaign, app_placement) with different sponsors / scheduled times,
+// but only ONE may be `status='active'` at a time. Enforced by partial
+// UNIQUE index `idx_campaign_components_one_active`.
 export const campaignComponents = pgTable("campaign_components", {
   id: serial("id").primaryKey(),
   campaignId: integer("campaign_id").notNull().references(() => campaigns.id, { onDelete: 'cascade' }),
-  componentId: varchar("component_id", { length: 50 }).notNull().references(() => components.id, { onDelete: 'cascade' }),
-  instanceName: varchar("instance_name", { length: 255 }), // Optional: Name for this instance (e.g., "Vitamins Carousel", "Omega-3 Banner")
+  /** FK to the named app_placement the operator picked. Source of truth for
+   *  the underlying template + locationId; this row only adds sponsor +
+   *  product overrides + scheduling. */
+  appPlacementId: integer("app_placement_id").notNull().references(() => appPlacements.id, { onDelete: 'restrict' }),
+  /** Sponsor that owns this placement (branding + commerce key source).
+   *  Must be the campaign's primary sponsor or one of its secondary
+   *  sponsors. Phase 3 enforced. */
+  sponsorId: integer("sponsor_id").notNull().references(() => sponsors.id, { onDelete: 'restrict' }),
+  /** Optional broadcast scope. NULL = placement active for the whole
+   *  campaign. Set = placement only active during that specific broadcast. */
+  broadcastId: varchar("broadcast_id", { length: 255 }).references((): AnyPgColumn => broadcasts.broadcastId, { onDelete: 'cascade' }),
+  instanceName: varchar("instance_name", { length: 255 }), // Optional UX label distinct from app_placement.name (e.g. "Carrusel home — XXL drop")
   status: varchar("status", { length: 20 }).notNull().default('inactive'), // active, inactive
-  customConfig: json("custom_config"), // Campaign-specific config override (optional)
-  scheduledTime: timestamp("scheduled_time"), // Optional: auto-activate at this time (null = manual toggle only)
-  endTime: timestamp("end_time"), // Optional: auto-deactivate at this time (null = no end)
+  customConfig: json("custom_config"), // Campaign-specific overlay (e.g. productIds list)
+  scheduledTime: timestamp("scheduled_time"), // Auto-activate at this time
+  endTime: timestamp("end_time"), // Auto-deactivate at this time
   activatedAt: timestamp("activated_at"),
   matchId: varchar("match_id", { length: 255 }),
-  locationId: varchar("location_id", { length: 100 }), // SDK slot identifier e.g. "top-banner", "sidebar-carousel"
   videoStartTime: integer("video_start_time"),
   videoEndTime: integer("video_end_time"),
   scheduledStartTime: timestamp("scheduled_start_time"),
   scheduledEndTime: timestamp("scheduled_end_time"),
+  /** User who created this campaign placement (operator audit trail). */
+  createdBy: integer("created_by").references(() => users.id, { onDelete: 'set null' }),
   updatedAt: timestamp("updated_at").defaultNow().notNull()
 });
 
-// App Components - Links components to apps (components are shared across all app campaigns)
-export const appComponents = pgTable("app_components", {
+// NOTE: `app_components` table dropped in migration 0004 — fully redundant
+// with `app_placements` (a placement implies the app supports the underlying
+// template). Schema definition removed; storage helpers + endpoints have
+// been migrated to read from `app_placements` instead.
+
+// App Component Locations - Slots declared by the partner SDK (via manifest upload)
+// where placements may render. Operator picks from these in the dashboard when
+// adding a campaign_components instance. The dev declares them once at app boot
+// via `Vio.registerPlacementLocation(...)` and the manifest endpoint upserts
+// them; subsequent runs of the same dev's app are idempotent.
+//
+// `locationId` is a free-form short identifier the dev's SwiftUI/Compose layout
+// uses (e.g. "home_top", "match_sidebar"). It mirrors the same string written
+// to `campaign_components.location_id` when the operator binds a placement to
+// this slot.
+//
+// Scoped per `client_app_id` because two partner apps may legitimately reuse
+// the same `home_top` label without colliding.
+export const appComponentLocations = pgTable("app_component_locations", {
   id: serial("id").primaryKey(),
   clientAppId: integer("client_app_id").notNull().references(() => clientApps.id, { onDelete: 'cascade' }),
-  componentId: varchar("component_id", { length: 50 }).notNull().references(() => components.id, { onDelete: 'cascade' }),
+  locationId: varchar("location_id", { length: 100 }).notNull(),
+  displayName: varchar("display_name", { length: 255 }),
+  /** Soft-delete: SDK manifest is sync-semantic — locations not in the new
+   *  payload get `deprecated_at = now()` instead of being deleted. The
+   *  dashboard hides deprecated locations from the "Add from library"
+   *  picker; existing app_placements pointing at them keep working with
+   *  a warning. */
+  deprecatedAt: timestamp("deprecated_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull()
+}, (table) => ({
+  // Idempotency: one row per (app, locationId). Manifest upserts hit this.
+  uniqAppLocation: uniqueIndex("idx_app_component_locations_unique")
+    .on(table.clientAppId, table.locationId),
+}));
+
+// Named app-instances of placements — the explicit declaration of which
+// (template, location, name) tuples the partner app implements.
+//
+// Created by **operator/admin via the dashboard `/apps/:id` "Add from
+// library" form** — NOT by the SDK manifest. The dashboard combines:
+//   - a template id (from the read-only library)
+//   - a locationId (from `app_component_locations`, the SDK's slot manifest)
+//   - a name (human-readable, e.g. "Carrusel home")
+//
+// The campaign placement picker (`/campaigns/:id`) reads exclusively from
+// this table and offers `(name)` to the operator; the operator then adds
+// `sponsor + products` to create a `campaign_components` instance.
+//
+// Two UNIQUE indexes:
+//   - (client_app_id, name) — name is human-facing id, unique per app so
+//     picker labels are unambiguous.
+//   - (client_app_id, component_id, location_id) — only one placement per
+//     (type, slot) per app. For A/B variants, declare distinct locations
+//     (`home_top_a`, `home_top_b`).
+//
+// Soft-delete: operator removal sets `deprecated_at = now()` (ON DELETE
+// from a deprecated location cascade-deprecates these too). Existing
+// `campaign_components` referring to a deprecated placement keep
+// rendering with a dashboard warning until the operator unbinds them.
+export const appPlacements = pgTable("app_placements", {
+  id: serial("id").primaryKey(),
+  clientAppId: integer("client_app_id").notNull().references(() => clientApps.id, { onDelete: 'cascade' }),
+  componentId: varchar("component_id").notNull().references(() => components.id, { onDelete: 'restrict' }),
+  locationId: varchar("location_id", { length: 100 }).notNull(),
+  name: varchar("name", { length: 255 }).notNull(),
   customConfig: json("custom_config"),
-  createdAt: timestamp("created_at").defaultNow().notNull()
-});
+  /** Soft-delete (operator removal or location cascade). Existing
+   *  campaign_components keep rendering with a dashboard warning. */
+  deprecatedAt: timestamp("deprecated_at"),
+  /** Audit: operator user who created this placement. */
+  createdBy: integer("created_by").references(() => users.id, { onDelete: 'set null' }),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull()
+}, (table) => ({
+  uniqByName: uniqueIndex("idx_app_placements_unique_name")
+    .on(table.clientAppId, table.name),
+  uniqBySlot: uniqueIndex("idx_app_placements_unique_slot")
+    .on(table.clientAppId, table.componentId, table.locationId),
+  byClientApp: index("idx_app_placements_client_app").on(table.clientAppId),
+}));
 
 // Broadcasts - represents live events/matches that campaigns are associated with
 export const broadcasts = pgTable("broadcasts", {
@@ -232,6 +356,10 @@ export const broadcasts = pgTable("broadcasts", {
   leagueName: varchar("league_name", { length: 255 }),
   showLineup: boolean("show_lineup").notNull().default(false),
   startedAt: timestamp("started_at"),
+  /** Opt-in flag for the engagement system on this broadcast. Default false —
+   *  operator enables per broadcast. Controls whether polls/contests are
+   *  offered to clients and whether the SDK opens the engagement WebSocket. */
+  engagementEnabled: boolean("engagement_enabled").notNull().default(false),
 }, (table) => ({
   externalIdCampaignIdx: index("idx_broadcasts_external_id_campaign").on(table.externalId, table.campaignId),
 }));
@@ -240,6 +368,9 @@ export const broadcasts = pgTable("broadcasts", {
 export const polls = pgTable("polls", {
   id: serial("id").primaryKey(),
   broadcastId: varchar("broadcast_id", { length: 255 }).notNull().references(() => broadcasts.broadcastId, { onDelete: 'cascade' }),
+  /** Sponsor that brands this poll. Defaults to the campaign's primary sponsor
+   *  but can be overridden to any secondary. Phase 3 enforced. */
+  sponsorId: integer("sponsor_id").notNull().references(() => sponsors.id, { onDelete: 'restrict' }),
   question: text("question").notNull(),
   startTime: timestamp("start_time"),
   endTime: timestamp("end_time"),
@@ -276,19 +407,26 @@ export const pollVotes = pgTable("poll_votes", {
   id: serial("id").primaryKey(),
   pollId: integer("poll_id").notNull().references(() => polls.id, { onDelete: 'cascade' }),
   optionId: integer("option_id").notNull().references(() => pollOptions.id, { onDelete: 'cascade' }),
+  /** DEPRECATED — the old varchar identity (reachu_user_id string). Kept for
+   *  legacy reads during Phase 2 transition, then dropped in Phase 4. */
   userId: varchar("user_id", { length: 255 }).notNull(),
+  /** New FK to end_users (SDK viewers). Nullable in Phase 2; enforced in Phase 3. */
+  endUserId: integer("end_user_id").references(() => endUsers.id, { onDelete: 'cascade' }),
   broadcastId: varchar("broadcast_id", { length: 255 }).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull()
 }, (table) => [
   uniqueIndex("unique_user_poll").on(table.pollId, table.userId),
   index("idx_poll_votes_poll_id").on(table.pollId),
   index("idx_poll_votes_broadcast_id").on(table.broadcastId),
+  index("idx_poll_votes_end_user").on(table.endUserId),
 ]);
 
 // Contests - engagement contests associated with broadcasts
 export const contests = pgTable("contests", {
   id: serial("id").primaryKey(),
   broadcastId: varchar("broadcast_id", { length: 255 }).notNull().references(() => broadcasts.broadcastId, { onDelete: 'cascade' }),
+  /** Sponsor that brands this contest. Same semantics as polls.sponsorId. Phase 3 enforced. */
+  sponsorId: integer("sponsor_id").notNull().references(() => sponsors.id, { onDelete: 'restrict' }),
   title: varchar("title", { length: 500 }).notNull(),
   description: text("description"),
   prize: varchar("prize", { length: 500 }),
@@ -314,7 +452,10 @@ export const contests = pgTable("contests", {
 export const contestParticipations = pgTable("contest_participations", {
   id: serial("id").primaryKey(),
   contestId: integer("contest_id").notNull().references(() => contests.id, { onDelete: 'cascade' }),
+  /** DEPRECATED — legacy varchar identity. Kept during Phase 2 transition. */
   userId: varchar("user_id", { length: 255 }).notNull(),
+  /** New FK to end_users. Nullable in Phase 2; enforced in Phase 3. */
+  endUserId: integer("end_user_id").references(() => endUsers.id, { onDelete: 'cascade' }),
   broadcastId: varchar("broadcast_id", { length: 255 }).notNull(),
   answers: json("answers"),
   createdAt: timestamp("created_at").defaultNow().notNull()
@@ -322,6 +463,7 @@ export const contestParticipations = pgTable("contest_participations", {
   uniqueIndex("unique_user_contest").on(table.contestId, table.userId),
   index("idx_contest_participations_contest_id").on(table.contestId),
   index("idx_contest_participations_broadcast_id").on(table.broadcastId),
+  index("idx_contest_participations_end_user").on(table.endUserId),
 ]);
 
 // Broadcast Ads — scheduled/active ads linked to a broadcast
@@ -376,7 +518,10 @@ export const chatMessages = pgTable("chat_messages", {
 export const deviceTokens = pgTable("device_tokens", {
   id: serial("id").primaryKey(),
   campaignId: integer("campaign_id").notNull().references(() => campaigns.id, { onDelete: 'cascade' }),
+  /** DEPRECATED — legacy varchar identity. */
   userId: varchar("user_id", { length: 255 }).notNull(),
+  /** New FK to end_users. Nullable in Phase 2; enforced in Phase 3. */
+  endUserId: integer("end_user_id").references(() => endUsers.id, { onDelete: 'cascade' }),
   deviceId: varchar("device_id", { length: 255 }).notNull(),
   deviceToken: varchar("device_token", { length: 512 }).notNull(),
   platform: varchar("platform", { length: 20 }).notNull().default('ios'),
@@ -384,6 +529,7 @@ export const deviceTokens = pgTable("device_tokens", {
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 }, (table) => [
   uniqueIndex("idx_device_tokens_campaign_user").on(table.campaignId, table.userId),
+  index("idx_device_tokens_end_user").on(table.endUserId),
 ]);
 
 export type DeviceToken = typeof deviceTokens.$inferSelect;
@@ -403,6 +549,48 @@ export const sportmonksCache = pgTable("sportmonks_cache", {
 export const insertSportmonksCacheSchema = createInsertSchema(sportmonksCache).omit({ id: true });
 export type SportmonksCache = typeof sportmonksCache.$inferSelect;
 export type InsertSportmonksCache = z.infer<typeof insertSportmonksCacheSchema>;
+
+// Events outbox — backs every realtime event the server emits to WS clients.
+//
+// HTTP handlers INSERT into this table inside the SAME transaction as the
+// data change (atomicity: never lose an event after a successful commit,
+// never spuriously emit one if the data change rolled back). A worker
+// (server/events/worker.ts) polls pending rows every 500ms with
+// `FOR UPDATE SKIP LOCKED` and ships them via `broadcastToCampaign` etc.
+//
+// Module-agnostic + scope-agnostic by design: the same table backs
+// placements (today), engagement/broadcast (future), and cart-intent
+// (migration target). See migrations/0005_events_outbox.sql for the full
+// rationale and TASK_PLACEMENTS.md "Sprint 2026-04-28 PM" for the plan.
+export const eventsOutbox = pgTable("events_outbox", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  /** Wire event type, e.g. 'placement_status_changed'. */
+  topic: text("topic").notNull(),
+  /** Subscription bucket. 'placements' | 'engagement' | 'broadcast' | 'cart_intent'. */
+  module: text("module").notNull(),
+  /** Routing target type. 'campaign' | 'broadcast' | 'user'. */
+  scopeType: text("scope_type").notNull(),
+  /** Numeric id of the routing target (campaign.id, end_users.id, …). */
+  scopeId: bigint("scope_id", { mode: "number" }).notNull(),
+  /** Free-form payload; each topic owns its shape (see server/events/types.ts). */
+  payload: jsonb("payload").notNull(),
+  /** Authoritative timestamp at outbox INSERT (used by SDK for sequencing). */
+  serverTimestamp: timestamp("server_timestamp", { withTimezone: true }).defaultNow().notNull(),
+  /** Lifecycle. 'pending' → 'sent' (ok) | 'failed' (transient) | 'dead' (max attempts). */
+  status: text("status").notNull().default("pending"),
+  attempts: integer("attempts").notNull().default(0),
+  lastError: text("last_error"),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  processedAt: timestamp("processed_at", { withTimezone: true }),
+}, (table) => ({
+  // Worker hot-path: status='pending' ORDER BY created_at LIMIT N.
+  pendingIdx: index("events_outbox_pending_idx").on(table.createdAt),
+  // Audit / replay: "all events for campaign 36 in time order".
+  scopeIdx: index("events_outbox_scope_idx").on(table.scopeType, table.scopeId, table.serverTimestamp),
+}));
+
+export type EventsOutboxRow = typeof eventsOutbox.$inferSelect;
+export type InsertEventsOutboxRow = typeof eventsOutbox.$inferInsert;
 
 // Campaign Sponsors — many-to-many campaigns <-> sponsors with role
 export const campaignSponsors = pgTable("campaign_sponsors", {
@@ -444,6 +632,77 @@ export const broadcastSponsorSlots = pgTable("broadcast_sponsor_slots", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
+// Shoppable Ad Activations — one row per shoppable_ad dispatch (manual, scheduled, or SDK-triggered)
+// Separate from generic events table because this is a high-volume, queryable engagement signal
+// that needs proper FKs (sponsor, slot, client_app) for analytics and attribution.
+export const shoppableAdActivations = pgTable("shoppable_ad_activations", {
+  id: serial("id").primaryKey(),
+  broadcastId: varchar("broadcast_id", { length: 255 }).notNull()
+    .references((): AnyPgColumn => broadcasts.broadcastId, { onDelete: 'cascade' }),
+  campaignId: integer("campaign_id").notNull()
+    .references(() => campaigns.id, { onDelete: 'cascade' }),
+  sponsorId: integer("sponsor_id").references(() => sponsors.id, { onDelete: 'set null' }),
+  slotId: integer("slot_id").references(() => broadcastSponsorSlots.id, { onDelete: 'set null' }),
+  clientAppId: integer("client_app_id").references(() => clientApps.id, { onDelete: 'set null' }),
+  productId: varchar("product_id", { length: 255 }).notNull(), // external Commerce id, not a local FK
+  productSnapshot: json("product_snapshot").notNull(), // { id, name, price, currency, imageUrl } captured at dispatch time
+  sponsorSnapshot: json("sponsor_snapshot"), // { name, logoUrl, primaryColor } captured at dispatch time
+  source: varchar("source", { length: 30 }).notNull(), // 'admin-api' | 'dashboard' | 'tv-sdk' | 'slot-scheduler'
+  wsEventSent: boolean("ws_event_sent").notNull().default(true),
+  metadata: json("metadata"), // future-proof payload (userId, deviceId, experiment tags, etc.)
+  triggeredAt: timestamp("triggered_at").defaultNow().notNull(),
+}, (table) => [
+  index("idx_shoppable_activations_broadcast_time").on(table.broadcastId, table.triggeredAt),
+  index("idx_shoppable_activations_campaign_time").on(table.campaignId, table.triggeredAt),
+  index("idx_shoppable_activations_sponsor").on(table.sponsorId),
+  index("idx_shoppable_activations_slot").on(table.slotId),
+  index("idx_shoppable_activations_source_time").on(table.source, table.triggeredAt),
+]);
+
+// TV sessions — state of an active Vio TV SDK instance for an end-user.
+// UPSERTed at SDK init (POST /api/sdk/tv/session/start). Not per-connection.
+// One row per (client_app, user, platform). Closed by inactivity or explicit end.
+export const tvSessions = pgTable("tv_sessions", {
+  id: serial("id").primaryKey(),
+  clientAppId: integer("client_app_id").notNull().references(() => clientApps.id, { onDelete: 'cascade' }),
+  endUserId: integer("end_user_id").notNull().references(() => endUsers.id, { onDelete: 'cascade' }),
+  /** SDK-generated persistent device identifier (IDFV / ANDROID_ID / UUID). Optional for debug. */
+  tvDeviceId: varchar("tv_device_id", { length: 255 }),
+  platform: varchar("platform", { length: 20 }).notNull(),  // 'apple-tv' | 'android-tv' | ...
+  startedAt: timestamp("started_at").defaultNow().notNull(),
+  lastSeenAt: timestamp("last_seen_at").defaultNow().notNull(),
+  endedAt: timestamp("ended_at"),
+}, (t) => [
+  uniqueIndex("uniq_tv_sessions_app_user_platform").on(t.clientAppId, t.endUserId, t.platform),
+  index("idx_tv_sessions_last_seen").on(t.endUserId, t.lastSeenAt),
+]);
+
+// Cart intents — user indicated intent to buy after seeing a shoppable_ad or placement.
+// Replaces the fire-and-forget behaviour of /api/campaigns/:id/cart-intent with full persistence.
+// Carries the attribution chain: source_activation_id (from shoppable_ad) or source_component_id (from a placement).
+export const cartIntents = pgTable("cart_intents", {
+  id: serial("id").primaryKey(),
+  endUserId: integer("end_user_id").notNull().references(() => endUsers.id, { onDelete: 'cascade' }),
+  campaignId: integer("campaign_id").notNull().references(() => campaigns.id, { onDelete: 'cascade' }),
+  clientAppId: integer("client_app_id").notNull().references(() => clientApps.id, { onDelete: 'cascade' }),
+  tvSessionId: integer("tv_session_id").references(() => tvSessions.id, { onDelete: 'set null' }),
+  sponsorId: integer("sponsor_id").references(() => sponsors.id, { onDelete: 'set null' }),
+  productId: varchar("product_id", { length: 255 }).notNull(),  // external Commerce id
+  sourceActivationId: integer("source_activation_id").references(() => shoppableAdActivations.id, { onDelete: 'set null' }),
+  sourceComponentId: integer("source_component_id").references(() => campaignComponents.id, { onDelete: 'set null' }),
+  deliveryMode: varchar("delivery_mode", { length: 20 }).notNull(),  // 'websocket' | 'dual' | 'webhook' | 'apns' | 'dropped'
+  userConnected: boolean("user_connected").notNull(),
+  envelope: json("envelope").notNull(),  // v1 canonical envelope shipped to the client / partner
+  metadata: json("metadata"),
+  triggeredAt: timestamp("triggered_at").defaultNow().notNull(),
+}, (t) => [
+  index("idx_cart_intents_campaign_time").on(t.campaignId, t.triggeredAt),
+  index("idx_cart_intents_end_user_time").on(t.endUserId, t.triggeredAt),
+  index("idx_cart_intents_source_activation").on(t.sourceActivationId),
+  index("idx_cart_intents_sponsor").on(t.sponsorId),
+  index("idx_cart_intents_delivery_mode_time").on(t.deliveryMode, t.triggeredAt),
+]);
+
 export const insertCampaignSponsorSchema = createInsertSchema(campaignSponsors).omit({ id: true, createdAt: true });
 export const insertBroadcastCampaignSchema = createInsertSchema(broadcastCampaigns).omit({ id: true, createdAt: true });
 export const insertBroadcastSponsorSlotSchema = createInsertSchema(broadcastSponsorSlots).omit({ id: true, createdAt: true }).extend({
@@ -451,6 +710,15 @@ export const insertBroadcastSponsorSlotSchema = createInsertSchema(broadcastSpon
   type: z.enum(['product', 'lead', 'poll_cta', 'contest_cta', 'link']).default('product'),
   config: z.record(z.any()).optional(),
 });
+export const shoppableAdSourceEnum = z.enum(['admin-api', 'dashboard', 'tv-sdk', 'slot-scheduler']);
+export const insertShoppableAdActivationSchema = createInsertSchema(shoppableAdActivations)
+  .omit({ id: true, triggeredAt: true })
+  .extend({
+    source: shoppableAdSourceEnum,
+    productSnapshot: z.record(z.any()),
+    sponsorSnapshot: z.record(z.any()).optional().nullable(),
+    metadata: z.record(z.any()).optional().nullable(),
+  });
 
 export type CampaignSponsor = typeof campaignSponsors.$inferSelect;
 export type InsertCampaignSponsor = z.infer<typeof insertCampaignSponsorSchema>;
@@ -458,6 +726,33 @@ export type BroadcastCampaign = typeof broadcastCampaigns.$inferSelect;
 export type InsertBroadcastCampaign = z.infer<typeof insertBroadcastCampaignSchema>;
 export type BroadcastSponsorSlot = typeof broadcastSponsorSlots.$inferSelect;
 export type InsertBroadcastSponsorSlot = z.infer<typeof insertBroadcastSponsorSlotSchema>;
+export type ShoppableAdActivation = typeof shoppableAdActivations.$inferSelect;
+export type InsertShoppableAdActivation = z.infer<typeof insertShoppableAdActivationSchema>;
+export type ShoppableAdSource = z.infer<typeof shoppableAdSourceEnum>;
+
+// --- Multi-sponsor redesign: new entities ---
+
+export const tvPlatformEnum = z.enum(['apple-tv', 'android-tv', 'fire-tv', 'roku']);
+export const cartIntentDeliveryModeEnum = z.enum(['websocket', 'dual', 'webhook', 'apns', 'dropped']);
+
+export const insertEndUserSchema = createInsertSchema(endUsers).omit({ id: true, firstSeenAt: true, lastSeenAt: true });
+export const insertTvSessionSchema = createInsertSchema(tvSessions).omit({ id: true, startedAt: true, lastSeenAt: true, endedAt: true })
+  .extend({ platform: tvPlatformEnum });
+export const insertCartIntentSchema = createInsertSchema(cartIntents).omit({ id: true, triggeredAt: true })
+  .extend({
+    deliveryMode: cartIntentDeliveryModeEnum,
+    envelope: z.record(z.any()),
+    metadata: z.record(z.any()).optional().nullable(),
+  });
+
+export type EndUser = typeof endUsers.$inferSelect;
+export type InsertEndUser = z.infer<typeof insertEndUserSchema>;
+export type TvSession = typeof tvSessions.$inferSelect;
+export type InsertTvSession = z.infer<typeof insertTvSessionSchema>;
+export type CartIntent = typeof cartIntents.$inferSelect;
+export type InsertCartIntent = z.infer<typeof insertCartIntentSchema>;
+export type TvPlatform = z.infer<typeof tvPlatformEnum>;
+export type CartIntentDeliveryMode = z.infer<typeof cartIntentDeliveryModeEnum>;
 
 // Relations
 export const usersRelations = relations(users, ({ many }) => ({
@@ -483,7 +778,26 @@ export const clientAppsRelations = relations(clientApps, ({ one, many }) => ({
   }),
   channels: many(channels),
   campaigns: many(campaigns),
-  appComponents: many(appComponents)
+  appComponentLocations: many(appComponentLocations),
+  appPlacements: many(appPlacements)
+}));
+
+export const appComponentLocationsRelations = relations(appComponentLocations, ({ one }) => ({
+  clientApp: one(clientApps, {
+    fields: [appComponentLocations.clientAppId],
+    references: [clientApps.id]
+  })
+}));
+
+export const appPlacementsRelations = relations(appPlacements, ({ one }) => ({
+  clientApp: one(clientApps, {
+    fields: [appPlacements.clientAppId],
+    references: [clientApps.id]
+  }),
+  component: one(components, {
+    fields: [appPlacements.componentId],
+    references: [components.id]
+  })
 }));
 
 export const channelsRelations = relations(channels, ({ one, many }) => ({
@@ -507,8 +821,8 @@ export const campaignsRelations = relations(campaigns, ({ one, many }) => ({
     fields: [campaigns.channelId],
     references: [channels.id]
   }),
-  sponsor: one(sponsors, {
-    fields: [campaigns.sponsorId],
+  primarySponsor: one(sponsors, {
+    fields: [campaigns.primarySponsorId],
     references: [sponsors.id]
   }),
   events: many(events),
@@ -581,19 +895,7 @@ export const scheduledComponentsRelations = relations(scheduledComponents, ({ on
 }));
 
 export const componentsRelations = relations(components, ({ many }) => ({
-  campaignComponents: many(campaignComponents),
-  appComponents: many(appComponents)
-}));
-
-export const appComponentsRelations = relations(appComponents, ({ one }) => ({
-  clientApp: one(clientApps, {
-    fields: [appComponents.clientAppId],
-    references: [clientApps.id]
-  }),
-  component: one(components, {
-    fields: [appComponents.componentId],
-    references: [components.id]
-  })
+  appPlacements: many(appPlacements),
 }));
 
 export const campaignComponentsRelations = relations(campaignComponents, ({ one }) => ({
@@ -601,9 +903,13 @@ export const campaignComponentsRelations = relations(campaignComponents, ({ one 
     fields: [campaignComponents.campaignId],
     references: [campaigns.id]
   }),
-  component: one(components, {
-    fields: [campaignComponents.componentId],
-    references: [components.id]
+  appPlacement: one(appPlacements, {
+    fields: [campaignComponents.appPlacementId],
+    references: [appPlacements.id]
+  }),
+  sponsor: one(sponsors, {
+    fields: [campaignComponents.sponsorId],
+    references: [sponsors.id]
   })
 }));
 
@@ -617,10 +923,19 @@ export const broadcastCampaignsRelations = relations(broadcastCampaigns, ({ one 
   campaign: one(campaigns, { fields: [broadcastCampaigns.campaignId], references: [campaigns.id] }),
 }));
 
-export const broadcastSponsorSlotsRelations = relations(broadcastSponsorSlots, ({ one }) => ({
+export const broadcastSponsorSlotsRelations = relations(broadcastSponsorSlots, ({ one, many }) => ({
   broadcast: one(broadcasts, { fields: [broadcastSponsorSlots.broadcastId], references: [broadcasts.broadcastId] }),
   sponsor: one(sponsors, { fields: [broadcastSponsorSlots.sponsorId], references: [sponsors.id] }),
   campaign: one(campaigns, { fields: [broadcastSponsorSlots.campaignId], references: [campaigns.id] }),
+  activations: many(shoppableAdActivations),
+}));
+
+export const shoppableAdActivationsRelations = relations(shoppableAdActivations, ({ one }) => ({
+  broadcast: one(broadcasts, { fields: [shoppableAdActivations.broadcastId], references: [broadcasts.broadcastId] }),
+  campaign: one(campaigns, { fields: [shoppableAdActivations.campaignId], references: [campaigns.id] }),
+  sponsor: one(sponsors, { fields: [shoppableAdActivations.sponsorId], references: [sponsors.id] }),
+  slot: one(broadcastSponsorSlots, { fields: [shoppableAdActivations.slotId], references: [broadcastSponsorSlots.id] }),
+  clientApp: one(clientApps, { fields: [shoppableAdActivations.clientAppId], references: [clientApps.id] }),
 }));
 
 export const broadcastsRelations = relations(broadcasts, ({ one, many }) => ({
@@ -705,7 +1020,37 @@ export const contestParticipationsRelations = relations(contestParticipations, (
   contest: one(contests, {
     fields: [contestParticipations.contestId],
     references: [contests.id]
+  }),
+  endUser: one(endUsers, {
+    fields: [contestParticipations.endUserId],
+    references: [endUsers.id]
   })
+}));
+
+// --- Multi-sponsor redesign: new relations ---
+export const endUsersRelations = relations(endUsers, ({ one, many }) => ({
+  clientApp: one(clientApps, { fields: [endUsers.clientAppId], references: [clientApps.id] }),
+  tvSessions: many(tvSessions),
+  cartIntents: many(cartIntents),
+  pollVotes: many(pollVotes),
+  contestParticipations: many(contestParticipations),
+  deviceTokens: many(deviceTokens),
+}));
+
+export const tvSessionsRelations = relations(tvSessions, ({ one, many }) => ({
+  clientApp: one(clientApps, { fields: [tvSessions.clientAppId], references: [clientApps.id] }),
+  endUser: one(endUsers, { fields: [tvSessions.endUserId], references: [endUsers.id] }),
+  cartIntents: many(cartIntents),
+}));
+
+export const cartIntentsRelations = relations(cartIntents, ({ one }) => ({
+  endUser: one(endUsers, { fields: [cartIntents.endUserId], references: [endUsers.id] }),
+  campaign: one(campaigns, { fields: [cartIntents.campaignId], references: [campaigns.id] }),
+  clientApp: one(clientApps, { fields: [cartIntents.clientAppId], references: [clientApps.id] }),
+  tvSession: one(tvSessions, { fields: [cartIntents.tvSessionId], references: [tvSessions.id] }),
+  sponsor: one(sponsors, { fields: [cartIntents.sponsorId], references: [sponsors.id] }),
+  sourceActivation: one(shoppableAdActivations, { fields: [cartIntents.sourceActivationId], references: [shoppableAdActivations.id] }),
+  sourceComponent: one(campaignComponents, { fields: [cartIntents.sourceComponentId], references: [campaignComponents.id] }),
 }));
 
 // Insert Schemas
@@ -771,9 +1116,16 @@ export const insertCampaignComponentSchema = createInsertSchema(campaignComponen
   updatedAt: true 
 });
 
-export const insertAppComponentSchema = createInsertSchema(appComponents).omit({ 
+export const insertAppComponentLocationSchema = createInsertSchema(appComponentLocations).omit({
   id: true,
-  createdAt: true 
+  createdAt: true,
+  updatedAt: true
+});
+
+export const insertAppPlacementSchema = createInsertSchema(appPlacements).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true
 });
 
 export const insertCampaignTranslationSchema = createInsertSchema(campaignTranslations).omit({ 
@@ -910,8 +1262,10 @@ export type Component = typeof components.$inferSelect;
 export type InsertComponent = z.infer<typeof insertComponentSchema>;
 export type CampaignComponent = typeof campaignComponents.$inferSelect;
 export type InsertCampaignComponent = z.infer<typeof insertCampaignComponentSchema>;
-export type AppComponent = typeof appComponents.$inferSelect;
-export type InsertAppComponent = z.infer<typeof insertAppComponentSchema>;
+export type AppComponentLocation = typeof appComponentLocations.$inferSelect;
+export type InsertAppComponentLocation = z.infer<typeof insertAppComponentLocationSchema>;
+export type AppPlacement = typeof appPlacements.$inferSelect;
+export type InsertAppPlacement = z.infer<typeof insertAppPlacementSchema>;
 export type CampaignTranslation = typeof campaignTranslations.$inferSelect;
 export type InsertCampaignTranslation = z.infer<typeof insertCampaignTranslationSchema>;
 export type CampaignEngagementConfig = typeof campaignEngagementConfig.$inferSelect;
@@ -1108,7 +1462,19 @@ export const carouselManualComponentConfigSchema = z.object({
 
 export const productSpotlightConfigSchema = z.object({
   productId: z.string(),
-  highlightText: z.string().optional()
+  highlightText: z.string().optional(),
+  // Operator-controllable header (Sprint 2026-04-28 PM polish parity
+  // with VProductCarousel). Both opt-in via the dashboard's
+  // customConfig — when absent, no header strip renders and the
+  // existing legacy layout is preserved bit-for-bit.
+  title: z.string().optional(),
+  showSponsorLogo: z.boolean().optional(),
+  // Layout override — picks `VProductCard.Variant` on the SDK side.
+  //   "hero"    → big featured card (legacy default)
+  //   "list"    → horizontal compact (image left, info right)
+  //   "minimal" → smallest, suggestion style
+  //   "grid"    → vertical compact
+  layout: z.enum(["hero", "list", "minimal", "grid"]).optional()
 });
 
 export const offerBadgeConfigSchema = z.object({
@@ -1117,21 +1483,45 @@ export const offerBadgeConfigSchema = z.object({
 });
 
 export const offerBannerConfigSchema = z.object({
-  logoUrl: z.string().url(),
+  // logoUrl is OPTIONAL: when empty/absent the SDK auto-resolves
+  // the placement's sponsor logo (sponsor.logoUrl by the row's
+  // sponsorId). Operator only fills this in when they want to
+  // override the sponsor branding for this specific banner.
+  logoUrl: z.string().url().optional(),
   title: z.string(),
   subtitle: z.string().optional(),
-  backgroundImageUrl: z.string().url(),
+  // backgroundImageUrl is the preferred way; backgroundColor is a fallback
+  // for when the image fails or the operator wants a plain color.
+  backgroundImageUrl: z.string().url().optional(),
+  backgroundColor: z.string().optional(),
   countdownEndDate: z.string(), // ISO timestamp
   discountBadgeText: z.string(),
   ctaText: z.string(),
   ctaLink: z.string().url().optional(),
-  overlayOpacity: z.number().min(0).max(1).default(0.4).optional()
+  overlayOpacity: z.number().min(0).max(1).default(0.4).optional(),
+  // CTA button color (hex). When unset the SDK uses VioColors.primary.
+  buttonColor: z.string().optional(),
+  // Operator-controllable deeplink. The SDK's handleCTAAction priority
+  // is `onNavigateToStore (host callback) > customDeeplink (init param)
+  // > config.deeplinkUrl > ctaLink (external)`. So in-app hosts that
+  // pass a callback win over an operator-set URL — operator's URL is a
+  // fallback for hosts that don't intercept the tap.
+  deeplinkUrl: z.string().optional(),
+  // Semantic tag for the host-app callback to inspect (e.g.
+  // "navigate_to_offers"). Useful when the host wants to route to
+  // different in-app screens without parsing URL schemes.
+  deeplinkAction: z.string().optional()
 });
 
 export const productCarouselConfigSchema = z.object({
   productIds: z.array(z.string()).optional(), // Optional: if empty/undefined, SDK fetches all channel products
   autoPlay: z.boolean().default(false),
-  interval: z.number().default(3000)
+  interval: z.number().default(3000),
+  // Layout override the SDK accepts: "full" | "compact" | "horizontal".
+  layout: z.string().optional(),
+  // Operator-controllable header — see productSpotlightConfigSchema.
+  title: z.string().optional(),
+  showSponsorLogo: z.boolean().optional()
 });
 
 export const productBannerConfigSchema = z.object({
@@ -1143,6 +1533,10 @@ export const productBannerConfigSchema = z.object({
   ctaText: z.string().optional(),
   ctaLink: z.string().url().optional(),
   deeplink: z.string().optional(),
+  // Layout preset — adjusts banner height + font sizes in one pick.
+  // Granular fields (bannerHeight, titleFontSize, etc.) override
+  // the preset when explicitly set. Sprint 2026-04-28 PM Phase 2.
+  layout: z.enum(["compact", "standard", "large"]).optional(),
   
   // Visual Customization (all optional with defaults)
   // Colors
@@ -1161,14 +1555,41 @@ export const productBannerConfigSchema = z.object({
   
   // Alignment
   textAlignment: z.enum(["left", "center", "right"]).default("center").optional(),
-  contentVerticalAlignment: z.enum(["top", "center", "bottom"]).default("center").optional()
+  contentVerticalAlignment: z.enum(["top", "center", "bottom"]).default("center").optional(),
+
+  // Operator opt-in: stamp the placement's sponsor logo on the
+  // top-right corner of the banner (resolved by sponsorId →
+  // sponsor.logoUrl). SVG-capable on the SDK side. Default off.
+  showSponsorLogo: z.boolean().optional()
+});
+
+// One product entry inside a multi-sponsor store. Each entry pairs a
+// productId with its owning sponsor so the SDK loads it via that
+// sponsor's commerce key — letting one store surface SKUs from
+// XXL + Elkjøp + Torshov in the same grid.
+// Sprint 2026-04-28 PM Phase 2.
+export const productStoreEntrySchema = z.object({
+  productId: z.string(),
+  sponsorId: z.number(),
 });
 
 export const productStoreConfigSchema = z.object({
   mode: z.enum(["all", "filtered"]).default("all"),
+  // Legacy single-sponsor list — every productId fetched through the
+  // placement's sponsorId (campaign_components.sponsor_id). Kept for
+  // back-compat with rows authored before multi-sponsor shipped.
   productIds: z.array(z.string()).optional(),
+  // Multi-sponsor curated list. When present, takes priority over
+  // productIds and the SDK loads each product through its own
+  // sponsor's commerce credentials. Operator builds this via the
+  // dashboard's MultiSponsorProductPicker.
+  products: z.array(productStoreEntrySchema).optional(),
   displayType: z.enum(["grid", "list"]).default("grid"),
-  columns: z.number().default(2)
+  columns: z.number().default(2),
+  // Operator-controllable header band rendered above the grid —
+  // mirrors the carousel pattern. Both opt-in.
+  title: z.string().optional(),
+  showSponsorLogo: z.boolean().optional()
 });
 
 export const componentConfigSchema = z.union([

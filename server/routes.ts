@@ -22,9 +22,25 @@ import {
   participateInputSchema,
   insertCampaignSponsorSchema,
   insertBroadcastSponsorSlotSchema,
+  shoppableAdActivations,
+  campaignComponents,
+  components,
+  appPlacements,
+  appComponentLocations,
+  polls,
+  contests,
+  sponsors,
+  campaignSponsors,
+  endUsers,
+  tvSessions,
+  cartIntents,
   type WebSocketEvent,
-  type InsertScheduledComponent
+  type InsertScheduledComponent,
+  Campaign,
+  Broadcast
 } from "@shared/schema";
+import { db } from "./db";
+import { eq, and, or, isNull, desc, sql, ne } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import {
   ObjectStorageService,
@@ -37,6 +53,8 @@ import { createRateLimiter, rateLimitPresets } from "./middleware/rate-limiter";
 import { validateBroadcastId } from "./middleware/broadcast-validator";
 import { setVoteBroadcastFunction } from "./services/vote-processor";
 import { sendAPNs } from "./services/ios-flow";
+import { enqueueEvent } from "./events/outbox";
+import { PLACEMENT_TOPICS } from "./events/types";
 import {
   clearUserPresence,
   isRedisEnabled,
@@ -67,7 +85,7 @@ const requireBearerAuth = (req: Request, res: any, next: any) => {
       return res.status(401).json({ message: 'Bearer token required' });
     }
     const token = authHeader.split(' ')[1];
-    const decoded = jwt.verify(token, JWT_SECRET) as { userId: number; reachuUserId: string };
+    const decoded = jwt.verify(token, JWT_SECRET) as { clientAppId?: number; userId?: number };
     (req as any).authUser = decoded;
     next();
   } catch (error: any) {
@@ -145,49 +163,118 @@ function isUserEligibleForCampaign(
   return true;
 }
 
+// ============================================================
+// User-targeted event delivery (TV → individual user mobile)
+// ------------------------------------------------------------
+// Generic envelope + routing layer shared by all "TV-originated, user-scoped"
+// events. Today only `cart_intent` rides this path; future events
+// (`poll_result`, `score_update`, etc.) plug in by:
+//   1. Building a `VioEnvelope` with their `vio_event_type` + `vio_payload`
+//   2. Calling `routeUserEvent(...)` with the envelope + a `wsEvent` wrapper
+//   3. Persisting whatever per-event row they need with the returned
+//      `deliveryMode + userConnected`
+//
+// Three layers:
+//   - `buildCartIntentEnvelope`  → cart_intent-specific envelope shape
+//   - `notifyUserEventViaPartner` → delivery-only (webhook or APNs)
+//   - `routeUserEvent`            → triple-rama (local WS / Redis cluster /
+//                                   partner fallback) + dual-delivery glue
+//
+// `sendAPNs` is still cart_intent-shaped; when a new event type lands we'll
+// either generalize `sendAPNs(envelope)` or branch by `envelope.vio_event_type`.
+// ============================================================
+
+// Map userId → WebSocket for direct user-targeted notifications. Promoted to
+// module level (was inside registerRoutes) so the user-event delivery helpers
+// below can route without taking it as a parameter. Populated/cleaned by the
+// WS upgrade handlers inside registerRoutes — same lifecycle as before.
+const wsUserMap = new Map<string, WebSocket>();
+
+interface VioEnvelope {
+  vio_notification_version: number;
+  vio_user_id: string;
+  vio_event_type: string;
+  vio_payload: Record<string, any>;
+}
+
+type UserEventDeliveryMode = "websocket" | "dual" | "webhook" | "apns" | "dropped";
+
 /**
- * When the user is offline (no WS) or dual-delivery is enabled: POST partner webhook
- * or, if no webhook, Vio direct APNs via stored device tokens.
+ * Builds the canonical cart_intent envelope. Single source of truth for the
+ * shape consumed by both WS push (mobile) and partner webhook / APNs fallback.
+ *
+ * `activationId` and `sponsorId` are optional — only TV-originated cart_intents
+ * carry them (so iOS can route to the right per-sponsor commerce key).
  */
-async function notifyCartIntentPartnerFallback(params: {
-  clientApp: { webhookUrl?: string | null; name: string };
-  campaignId: number;
+function buildCartIntentEnvelope(args: {
   userId: string;
-  productId: unknown;
-  resolvedName: string;
+  campaignId: number | string;
+  productId: string | number;
+  productName: string;
+  clientAppName: string;
+  activationId?: number | null;
+  sponsorId?: number | null;
+}): VioEnvelope {
+  const normalizedAppName = args.clientAppName.toLowerCase().replace(/\s+/g, "_");
+  const source = `apptv_${normalizedAppName}`;
+  const deeplink = `product/${args.productId}?campaignId=${args.campaignId}`;
+
+  const payload: Record<string, any> = {
+    product_id: String(args.productId),
+    campaign_id: String(args.campaignId),
+    product_name: args.productName,
+    notification_title: args.productName,
+    notification_body: `${args.productName} – klikk for å kjøpe.`,
+    source,
+    deeplink,
+  };
+
+  if (args.activationId != null) payload.activation_id = Number(args.activationId);
+  if (args.sponsorId != null) payload.sponsor_id = Number(args.sponsorId);
+
+  return {
+    vio_notification_version: 1,
+    vio_user_id: String(args.userId),
+    vio_event_type: "cart_intent",
+    vio_payload: payload,
+  };
+}
+
+/**
+ * Generic delivery helper for any user-targeted envelope.
+ * - If clientApp.webhookUrl is set → POST envelope as-is to the partner.
+ * - Otherwise, if iOS device tokens are registered → send APNs (currently
+ *   only cart_intent payloads supported; other event types are skipped with
+ *   a warning until per-type APNs builders exist).
+ *
+ * Replaces `notifyCartIntentPartnerFallback`. Construction of the envelope
+ * is now the caller's responsibility — this function only delivers.
+ */
+async function notifyUserEventViaPartner(params: {
+  clientApp: { webhookUrl?: string | null; name: string };
+  envelope: VioEnvelope;
   context: "offline" | "dual";
+  // Used only in the APNs fallback branch when there's no webhookUrl. The
+  // current `sendAPNs` is cart_intent-shaped and needs the campaign id to
+  // look up device tokens; passing it explicitly avoids re-parsing payload.
+  campaignIdForDeviceLookup?: number;
 }): Promise<void> {
-  const { clientApp, campaignId, userId, productId, resolvedName, context } = params;
+  const { clientApp, envelope, context, campaignIdForDeviceLookup } = params;
+  const userId = envelope.vio_user_id;
+  const eventType = envelope.vio_event_type;
+  const tag = `[UserEvent:${eventType}]`;
+
   const webhookUrl = clientApp?.webhookUrl?.trim();
   if (webhookUrl) {
-    // Normalize clientApp name for source field (e.g., "TV2" -> "tv2")
-    const normalizedAppName = clientApp.name.toLowerCase().replace(/\s+/g, '_');
-    const source = `apptv_${normalizedAppName}`;
-    const deeplink = `product/${productId}?campaignId=${campaignId}`;
-
-    const webhookBody = {
-      vio_notification_version: 1,
-      vio_user_id: String(userId),
-      vio_event_type: "cart_intent",
-      vio_payload: {
-        product_id: String(productId),
-        campaign_id: String(campaignId),
-        product_name: resolvedName,
-        notification_title: resolvedName,
-        notification_body: `${resolvedName} – klikk for å kjøpe.`,
-        source,
-        deeplink,
-      },
-    };
-    console.log('[CartIntent] Webhook body BEFORE POST to mock:', JSON.stringify(webhookBody, null, 2));
-    console.log('[CartIntent] userId parameter received:', userId);
+    console.log(`${tag} Webhook body BEFORE POST to mock:`, JSON.stringify(envelope, null, 2));
+    console.log(`${tag} userId=${userId}`);
     try {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 10000);
       const webhookRes = await fetch(webhookUrl, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(webhookBody),
+        body: JSON.stringify(envelope),
         signal: controller.signal,
       });
       clearTimeout(timeoutId);
@@ -195,42 +282,158 @@ async function notifyCartIntentPartnerFallback(params: {
         context === "dual"
           ? "Dual delivery: partner webhook"
           : "Partner webhook called (offline user)";
-      console.log(`[CartIntent] ${label}: ${webhookUrl} → ${webhookRes.status}`);
+      console.log(`${tag} ${label}: ${webhookUrl} → ${webhookRes.status}`);
     } catch (webhookErr: any) {
       if (webhookErr.name === "AbortError") {
-        console.warn("[CartIntent] Webhook timeout (>10s)");
+        console.warn(`${tag} Webhook timeout (>10s)`);
       } else {
-        console.error("[CartIntent] Webhook error:", webhookErr);
+        console.error(`${tag} Webhook error:`, webhookErr);
       }
     }
     return;
   }
 
-  const devices = await storage.getDeviceTokens(campaignId, String(userId));
+  // No webhook → try direct APNs. Today only cart_intent has an APNs builder;
+  // when other event types ship, generalize sendAPNs(envelope) or branch here.
+  if (eventType !== "cart_intent") {
+    console.warn(
+      `${tag} APNs fallback skipped — no APNs builder for vio_event_type='${eventType}'. Configure clientApp.webhookUrl.`,
+    );
+    return;
+  }
+
+  const campaignIdForDevices =
+    campaignIdForDeviceLookup ?? Number(envelope.vio_payload.campaign_id);
+  if (!Number.isFinite(campaignIdForDevices)) {
+    console.warn(`${tag} APNs fallback skipped — invalid campaignId for device lookup`);
+    return;
+  }
+
+  const devices = await storage.getDeviceTokens(campaignIdForDevices, String(userId));
   const iosDevices = devices.filter((d) => d.platform === "ios");
   if (iosDevices.length > 0) {
+    const rawProductId = envelope.vio_payload.product_id;
     const pid =
-      typeof productId === "number" ? productId : parseInt(String(productId), 10);
+      typeof rawProductId === "number" ? rawProductId : parseInt(String(rawProductId), 10);
     await sendAPNs(iosDevices, {
-      campaignId,
+      campaignId: campaignIdForDevices,
       productId: Number.isFinite(pid) ? pid : 0,
-      resolvedName,
+      resolvedName: String(envelope.vio_payload.product_name ?? ""),
       userId: String(userId),
     });
     if (context === "dual") {
-      console.log("[CartIntent] Dual delivery: invoked direct APNs (no webhook on client app)");
+      console.log(`${tag} Dual delivery: invoked direct APNs (no webhook on client app)`);
     }
   } else {
     if (context === "dual") {
-      console.log(
-        "[CartIntent] Dual delivery: skipped — no webhookUrl and no iOS device registered",
-      );
+      console.log(`${tag} Dual delivery: skipped — no webhookUrl and no iOS device registered`);
     } else {
-      console.log(
-        "[CartIntent] User offline/remote and no webhookUrl or iOS device registered",
-      );
+      console.log(`${tag} User offline/remote and no webhookUrl or iOS device registered`);
     }
   }
+}
+
+/**
+ * Routes a user-targeted event through the canonical 3-branch decision tree:
+ *   1. User WS connected to THIS node → send WS direct + (if dual) partner
+ *   2. User WS connected on ANOTHER node → forward via Redis Pub/Sub + (if dual) partner
+ *   3. User offline/unknown → partner webhook (or APNs fallback)
+ *
+ * Returns the delivery outcome so the caller can persist it in their per-event
+ * row (cart_intents.delivery_mode, future analogous columns). Caller decides
+ * what to persist, where, and what response to send.
+ */
+async function routeUserEvent(params: {
+  userId: string;
+  clientApp: { id: number; webhookUrl?: string | null; name: string };
+  envelope: VioEnvelope;
+  /** The WS message wrapping the envelope (typically `{ type, ...envelope, timestamp }`). */
+  wsEvent: any;
+  /** Override for `CART_INTENT_DUAL_DELIVERY` env var. Default: read from env. */
+  dualDelivery?: boolean;
+  /** Campaign id used by APNs fallback to look up device tokens (only matters
+   *  when there's no `webhookUrl`). */
+  campaignIdForDeviceLookup?: number;
+}): Promise<{ deliveryMode: UserEventDeliveryMode; userConnected: boolean }> {
+  const {
+    userId,
+    clientApp,
+    envelope,
+    wsEvent,
+    campaignIdForDeviceLookup,
+  } = params;
+  const dualDelivery =
+    params.dualDelivery ?? process.env.CART_INTENT_DUAL_DELIVERY !== "false";
+
+  const eventType = envelope.vio_event_type;
+  const tag = `[UserEvent:${eventType}]`;
+  const normalizedUserId = String(userId).trim();
+  const directWs = wsUserMap.get(normalizedUserId);
+  const isConnectedLocal = Boolean(directWs && directWs.readyState === WebSocket.OPEN);
+
+  // Cluster check with timeout to avoid hanging if Redis is down.
+  let isConnectedCluster = false;
+  if (isRedisEnabled()) {
+    try {
+      isConnectedCluster = await Promise.race([
+        isUserConnectedAcrossCluster(normalizedUserId),
+        new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 1000)),
+      ]);
+    } catch (err) {
+      console.warn(`${tag} isUserConnectedAcrossCluster error:`, err);
+    }
+  }
+  const userConnected = isConnectedLocal || isConnectedCluster;
+
+  let deliveryMode: UserEventDeliveryMode;
+
+  if (isConnectedLocal && directWs) {
+    directWs.send(JSON.stringify(wsEvent));
+    console.log(`${tag} WS local → userId=${normalizedUserId}`);
+    if (dualDelivery) {
+      console.log(`${tag} Dual delivery: also invoking partner fallback`);
+      await notifyUserEventViaPartner({
+        clientApp, envelope, context: "dual", campaignIdForDeviceLookup,
+      });
+      deliveryMode = "dual";
+    } else {
+      deliveryMode = "websocket";
+    }
+  } else if (isConnectedCluster) {
+    await publishEvent("ws:events:forward", wsEvent);
+    console.log(`${tag} Redis Pub/Sub → cluster for userId=${normalizedUserId}`);
+    if (dualDelivery) {
+      console.log(`${tag} Dual delivery: also invoking partner fallback`);
+      await notifyUserEventViaPartner({
+        clientApp, envelope, context: "dual", campaignIdForDeviceLookup,
+      });
+      deliveryMode = "dual";
+    } else {
+      deliveryMode = "websocket";
+    }
+  } else {
+    // Offline — partner webhook or direct APNs fallback.
+    await notifyUserEventViaPartner({
+      clientApp, envelope, context: "offline", campaignIdForDeviceLookup,
+    });
+    // Best-effort guess at which fallback actually ran (mirrors v2/tv legacy logic).
+    const webhookConfigured = !!clientApp.webhookUrl?.trim();
+    if (webhookConfigured) {
+      deliveryMode = "webhook";
+    } else if (campaignIdForDeviceLookup != null) {
+      const devices = await storage.getDeviceTokens(
+        campaignIdForDeviceLookup,
+        normalizedUserId,
+      );
+      deliveryMode = devices.filter((d) => d.platform === "ios").length > 0
+        ? "apns"
+        : "dropped";
+    } else {
+      deliveryMode = "dropped";
+    }
+  }
+
+  return { deliveryMode, userConnected };
 }
 
 /**
@@ -264,8 +467,18 @@ async function resolveCommerceFromCampaignSponsors(
   return { apiKey: null, channelId: null };
 }
 
-// Export broadcastToCampaign function (will be set during registerRoutes)
-export let broadcastToCampaign: (campaignId: number, message: string) => void = () => {
+// Export broadcastToCampaign function (will be set during registerRoutes).
+//
+// `module` is the subscription bucket the event belongs to ('placements',
+// 'engagement', 'broadcast', 'cart_intent'). When provided, only sockets
+// that have explicitly subscribed to that module receive the message.
+// When omitted, the emit is a firehose to all sockets in the campaign
+// room — kept that way for backward-compat with legacy callers (poll /
+// contest / product / cart_intent direct emit paths) that pre-date the
+// subscribe protocol.
+//
+// Sprint 2026-04-28 PM (Phase 2). See server/events/types.ts.
+export let broadcastToCampaign: (campaignId: number, message: string, module?: string) => void = () => {
   console.warn('[WebSocket] broadcastToCampaign called before initialization');
 };
 
@@ -304,11 +517,43 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   // Flag: true when the server intentionally terminated the socket (zombie)
   const clientTerminatedByServer = new WeakMap<WebSocket, boolean>();
 
-  // Map userId → WebSocket for direct user notifications (cart-intent, etc.)
-  const wsUserMap = new Map<string, WebSocket>();
+  // (wsUserMap promoted to module-level — see top of file. Local references
+  // here still resolve to that single instance.)
   // Map WebSocket → user connection binding for Redis-backed presence
   const clientUserBindings = new WeakMap<WebSocket, { userId: string; connectionId: string }>();
-  
+
+  // Map WebSocket → Set of subscribed module names ('placements',
+  // 'engagement', etc.). Populated by the `subscribe` message handler;
+  // GC'd automatically when the socket is collected.
+  //
+  // Filtering rule applied by `broadcastToCampaignLocal`:
+  //   - Sockets that NEVER sent a `subscribe` message (legacy clients,
+  //     dashboard, Apple TV) are absent from this map → treated as
+  //     firehose ('*'), receive everything for backward compatibility.
+  //   - Sockets that DID subscribe receive only events whose `module`
+  //     field is in their set. Events emitted without a `module` arg
+  //     bypass the filter (legacy emit paths stay unaffected).
+  //
+  // Sprint 2026-04-28 PM (Phase 2). See server/events/types.ts.
+  const clientSubscriptions = new WeakMap<WebSocket, Set<string>>();
+
+  // Function to broadcast to clients in a specific campaign (local node only).
+  // When `module` is provided, filters per-socket by `clientSubscriptions`.
+  const broadcastToCampaignLocal = (campaignId: number, message: string, module?: string) => {
+    const clients = campaignClients.get(campaignId);
+    if (!clients) return;
+    clients.forEach((client) => {
+      if (client.readyState !== WebSocket.OPEN) return;
+      if (module) {
+        const subs = clientSubscriptions.get(client);
+        // Absent → legacy firehose. Present → must include this module.
+        if (subs && !subs.has(module)) return;
+      }
+      console.log("Message Send!  Campaign:", campaignId, "Message:", message);
+      client.send(message);
+    });
+  };
+
   // Subscribe to cross-node events via Redis Pub/Sub
   if (isRedisEnabled()) {
     subscribeToEvents("ws:events:forward", (messageStr) => {
@@ -320,6 +565,11 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
             targetWs.send(JSON.stringify(event));
             console.log(`[WS] Forwarded cart_intent delivered locally to userId=${event.userId}`);
           }
+        } else if (event.type === 'broadcast_campaign' && event.campaignId) {
+          // Deliver forwarded campaign broadcast to local node clients.
+          // `module` may be undefined for legacy events from older nodes —
+          // broadcastToCampaignLocal treats undefined as firehose.
+          broadcastToCampaignLocal(event.campaignId, event.message, event.module);
         }
       } catch (err) {
         console.error('[WS] Error processing cross-node event:', err);
@@ -550,6 +800,17 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
         } else if (msg.type === 'identify' && msg.userId) {
           void bindUserToSocket(msg.userId);
           console.log(`[WS] identify recibido: userId=${String(msg.userId)} en campaign ${campaignId}`);
+        } else if (msg.type === 'subscribe' && Array.isArray(msg.modules)) {
+          // Module-aware subscribe: SDK declares which event buckets it
+          // wants to receive. Sockets that never send this remain on the
+          // legacy firehose path. Whitelist incoming module names against
+          // the canonical set so we don't store garbage.
+          const ALLOWED_MODULES = new Set(['placements', 'engagement', 'broadcast', 'cart_intent']);
+          const modules = new Set<string>(
+            msg.modules.filter((m: unknown): m is string => typeof m === 'string' && ALLOWED_MODULES.has(m))
+          );
+          clientSubscriptions.set(ws, modules);
+          console.log(`[WS] subscribe recibido: modules=[${Array.from(modules).join(',')}] en campaign ${campaignId}`);
         }
       } catch { /* ignorar mensajes no-JSON */ }
     });
@@ -626,16 +887,21 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
     });
   });
 
-  // Function to broadcast to clients in a specific campaign
-  const broadcastToCampaignImpl = (campaignId: number, message: string) => {
-    const clients = campaignClients.get(campaignId);
-    if (clients) {
-      clients.forEach((client) => {
-        if (client.readyState === WebSocket.OPEN) {
-          console.log("Message Send!  Campaign:", campaignId, "Message:", message);
-          client.send(message);
-        }
+  // Function to broadcast to clients in a specific campaign.
+  // `module` is forwarded through the Redis envelope so cross-node
+  // delivery preserves the per-socket subscription filter.
+  const broadcastToCampaignImpl = (campaignId: number, message: string, module?: string) => {
+    if (isRedisEnabled()) {
+      // Forward to all nodes via Redis (including this one)
+      publishEvent("ws:events:forward", {
+        type: 'broadcast_campaign',
+        campaignId,
+        message,
+        module,
       });
+    } else {
+      // Redis disabled: broadcast locally only
+      broadcastToCampaignLocal(campaignId, message, module);
     }
   };
 
@@ -717,7 +983,97 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   setInterval(checkAndNotifyEndedCampaigns, 30000);
   setInterval(checkAndNotifyStartedCampaigns, 30000);
 
+  const delay = (ms: number) => new Promise(res => setTimeout(res, ms));
+  async function fetchGraphQL(
+    query: string,
+    commerceApiKey: string,
+    retries = 3,
+    variables?: Record<string, unknown>,
+  ): Promise<any> {
+    console.log('[GraphQL] Fetching data...');
+    try {
+      const res = await fetch(process.env.COMMERCE_GRAPHQL_URL || 'http://graph-ql', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': commerceApiKey,
+        },
+        body: JSON.stringify(variables ? { query, variables } : { query }),
+      });
+
+      if (!res.ok) {
+        console.error(`[GraphQL] HTTP error ${res.status}:`, await res.text());
+        throw new Error(`HTTP ${res.status}`);
+      }
+
+      const data = await res.json();
+
+      if (data.errors) {
+        throw new Error(`GraphQL error`);
+      }
+
+      return data;
+
+    } catch (err: any) {
+      console.log(`[GraphQL] Error fetching data (retries left: ${retries - 1}):`, err.message);
+      const code = err?.cause?.code || err?.code;
+      const isRetryable =
+        code === 'ECONNRESET' ||
+        code === 'ETIMEDOUT' ||
+        err.message?.includes('fetch failed');
+
+      if (retries > 0 && isRetryable) {
+        await delay(200 * (4 - retries));
+        return fetchGraphQL(query, commerceApiKey, retries - 1);
+      }
+
+      console.error('[GraphQL error]', {
+        message: err.message,
+        code,
+      });
+    }
+  }
+
   // HTTP API endpoints
+  // Post update payment methods by apykey
+  app.post('/api/campaign/payments/apikey/:apiKey', async (req, res) => {
+    const response = {
+      message: "",
+      status: "success",
+      code: 200
+    }
+    try {
+      const _apiKey = req.params.apiKey;
+      const { paymentMethods } = req.body;
+
+      const campaigns = await storage.getCampaignsByApiKey(_apiKey);
+      if (!campaigns || campaigns.length === 0) {
+        throw new Error('Campaigns not found for provided API key');
+      }
+      if(paymentMethods && !Array.isArray(paymentMethods)) {
+        throw new Error('paymentMethods should be an array');
+      }
+
+      const processCampaign = async (campaign: Campaign) => {
+        try {
+          await storage.updateCampaignPaymentMethods(campaign.id, paymentMethods);          
+        } catch (error) {
+          console.error(`Error updating payment methods for campaign ${campaign.id}:`, error);
+        }
+      }
+
+      await Promise.allSettled(campaigns.map(processCampaign));
+      
+      response.message = `Payment methods updated successfully: ${JSON.stringify(paymentMethods)} to ${campaigns.length} campaign(s) with API key ${_apiKey}`;
+
+    } catch (error) {
+      console.error('Error updating payment methods:', error);
+      response.message = "Error updating payment methods";
+      response.status = "error";
+      response.code = 500;
+    }
+    res.status(response.code).json(response);
+  });
 
   // Get recent events
   app.get('/api/events', async (req, res) => {
@@ -1226,20 +1582,20 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
 
   app.post('/api/auth/token', async (req, res) => {
     try {
-      const { reachuUserId } = req.body;
-      if (!reachuUserId) {
-        return res.status(400).json({ message: 'reachuUserId is required' });
+      const { apiKey } = req.body;
+      if (!apiKey) {
+        return res.status(400).json({ message: 'apiKey is required' });
       }
-      const user = await storage.getUserByReachuId(reachuUserId);
-      if (!user) {
-        return res.status(404).json({ message: 'User not found' });
+      const clientApp = await storage.getClientAppByApiKey(apiKey);
+      if (!clientApp) {
+        return res.status(404).json({ message: 'Client app not found' });
       }
       const token = jwt.sign(
-        { userId: user.id, reachuUserId: user.reachuUserId },
+        { clientAppId: clientApp.id },
         JWT_SECRET,
         { expiresIn: '7d' }
       );
-      res.json({ token, userId: user.id, expiresIn: '7d' });
+      res.json({ token, clientAppId: clientApp.id, expiresIn: '7d' });
     } catch (error) {
       console.error('Error generating token:', error);
       res.status(500).json({ message: 'Error generating token' });
@@ -1624,45 +1980,158 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
     }
   });
 
-  // Get components assigned to an app
-  app.get('/api/client-apps/:id/components', async (req, res) => {
+  // GET /api/client-apps/:id/components — RETIRED (migration 0004).
+  // The legacy `app_components` table was dropped; the dashboard now reads
+  // `/api/client-apps/:id/placements` (named instances) and
+  // `/api/client-apps/:id/component-locations` (slot manifest). The route
+  // returns 410 Gone with a pointer so old dashboard builds fail loudly.
+  app.get('/api/client-apps/:id/components', async (_req, res) => {
+    res.status(410).json({
+      error: 'gone',
+      message: 'Legacy `app_components` retired. Use GET /api/client-apps/:id/placements + /api/client-apps/:id/component-locations.',
+    });
+  });
+
+  /**
+   * Dashboard-only read endpoint for the locations registered by the SDK
+   * manifest upload. Used by the operator's "Add placement" dialog so the
+   * location picker matches what the dev's app actually exposes.
+   *
+   * No auth on this read mirrors the rest of `/api/client-apps/:id/...`.
+   * (Session auth on the dashboard is enforced upstream by Vite + the
+   * frontend route guard, not by this Express endpoint.)
+   */
+  app.get('/api/client-apps/:id/component-locations', async (req, res) => {
     try {
       const appId = parseInt(req.params.id);
-      const appComps = await storage.getAppComponents(appId);
-      res.json(appComps);
+      const locations = await storage.getAppComponentLocations(appId);
+      res.json(locations);
     } catch (error) {
-      console.error('Error fetching app components:', error);
-      res.status(500).json({ message: 'Error fetching app components' });
+      console.error('Error fetching app component locations:', error);
+      res.status(500).json({ message: 'Error fetching app component locations' });
     }
   });
 
-  // Add component to app
-  app.post('/api/client-apps/:id/components', async (req, res) => {
+  /**
+   * Named app placements (post-2026-04-27 model: created by dashboard, not
+   * SDK manifest). Each row is a (template, location, name) tuple the
+   * operator declared via `/apps/:id` "Add from library" form.
+   *
+   * Returns rows joined with the canonical template so the picker can
+   * render `{name} (type, location)`.
+   *
+   * `?includeDeprecated=true` includes soft-deleted rows for admin views.
+   * Default omits them.
+   */
+  app.get('/api/client-apps/:id/placements', async (req, res) => {
     try {
-      const clientAppId = parseInt(req.params.id);
-      const { componentId, customConfig } = req.body;
-      if (!componentId) {
-        return res.status(400).json({ message: 'componentId is required' });
+      const appId = parseInt(req.params.id);
+      const includeDeprecated = req.query.includeDeprecated === 'true' || req.query.includeDeprecated === '1';
+      const placements = await storage.getAppPlacements(appId, includeDeprecated);
+      res.json(placements);
+    } catch (error) {
+      console.error('Error fetching app placements:', error);
+      res.status(500).json({ message: 'Error fetching app placements' });
+    }
+  });
+
+  /**
+   * Create a named placement for an app. Operator-driven (dashboard form):
+   * pick template + name + locationId. Backend validates the chosen
+   * locationId is one the SDK declared (and not deprecated), and the
+   * template is canonical (`is_template = true`).
+   *
+   * Body: `{ componentId, locationId, name, customConfig?, createdBy? }`.
+   *
+   * Errors (HTTP 400 with `code` field for dashboard branching):
+   *   - PLACEMENT_LOCATION_INVALID — location not declared (or deprecated)
+   *   - PLACEMENT_TEMPLATE_INVALID — componentId not in canonical library
+   *   - PLACEMENT_NAME_COLLISION   — name already used (active row)
+   *   - PLACEMENT_SLOT_COLLISION   — (template, location) slot already claimed
+   */
+  app.post('/api/client-apps/:id/placements', async (req, res) => {
+    try {
+      const appId = parseInt(req.params.id);
+      const { componentId, locationId, name, customConfig, createdBy } = req.body ?? {};
+      if (!componentId || !locationId || !name) {
+        return res.status(400).json({ error: 'componentId, locationId, and name are required' });
       }
-      const appComp = await storage.addComponentToApp({ clientAppId, componentId, customConfig });
-      res.status(201).json(appComp);
-    } catch (error) {
-      console.error('Error adding component to app:', error);
-      res.status(500).json({ message: 'Error adding component to app' });
+      const placement = await storage.createAppPlacement({
+        clientAppId: appId,
+        componentId: String(componentId),
+        locationId: String(locationId),
+        name: String(name).trim(),
+        customConfig: customConfig ?? null,
+        createdBy: createdBy ? Number(createdBy) : undefined,
+      });
+      res.status(201).json(placement);
+    } catch (error: any) {
+      if (error?.code?.startsWith('PLACEMENT_')) {
+        return res.status(400).json({ code: error.code, error: error.message });
+      }
+      console.error('Error creating app placement:', error);
+      res.status(500).json({ error: 'Failed to create app placement' });
     }
   });
 
-  // Remove component from app
-  app.delete('/api/client-apps/:id/components/:componentId', async (req, res) => {
+  /**
+   * Soft-delete an app placement. Sets `deprecated_at = now()`. Existing
+   * `campaign_components` referencing this placement keep rendering — the
+   * dashboard surfaces the deprecated state with a warning so operators
+   * can clean up at their own pace.
+   *
+   * Emits WebSocket `app_placement_deprecated` (campaign-scoped fan-out for
+   * any campaign currently using this placement) so live SDK clients can
+   * react in real-time.
+   */
+  app.delete('/api/client-apps/:id/placements/:placementId', async (req, res) => {
     try {
-      const clientAppId = parseInt(req.params.id);
-      const componentId = req.params.componentId;
-      await storage.removeComponentFromApp(clientAppId, componentId);
-      res.json({ message: 'Component removed from app' });
-    } catch (error) {
-      console.error('Error removing component from app:', error);
-      res.status(500).json({ message: 'Error removing component from app' });
+      const placementId = parseInt(req.params.placementId);
+      if (Number.isNaN(placementId)) return res.status(400).json({ error: 'Invalid placementId' });
+      const row = await storage.deprecateAppPlacement(placementId);
+
+      // Find any active campaigns using this placement and broadcast the
+      // deprecation event so connected clients can update warnings live.
+      const campaignsAffected = await db
+        .selectDistinct({ campaignId: campaignComponents.campaignId })
+        .from(campaignComponents)
+        .where(eq(campaignComponents.appPlacementId, placementId));
+
+      for (const { campaignId } of campaignsAffected) {
+        broadcastToCampaign(campaignId, JSON.stringify({
+          type: 'app_placement_deprecated',
+          campaignId,
+          appPlacementId: placementId,
+          name: row.name,
+          deprecatedAt: row.deprecatedAt,
+        }));
+      }
+
+      res.json({ success: true, placement: row, campaignsAffected: campaignsAffected.length });
+    } catch (error: any) {
+      if (error?.code === 'PLACEMENT_NOT_FOUND') {
+        return res.status(404).json({ code: error.code, error: error.message });
+      }
+      console.error('Error deprecating app placement:', error);
+      res.status(500).json({ error: 'Failed to deprecate app placement' });
     }
+  });
+
+  // POST /api/client-apps/:id/components — RETIRED (migration 0004).
+  // Use POST /api/client-apps/:id/placements (named instances).
+  app.post('/api/client-apps/:id/components', async (_req, res) => {
+    res.status(410).json({
+      error: 'gone',
+      message: 'Legacy app_components endpoint retired. Use POST /api/client-apps/:id/placements with { componentId, locationId, name }.',
+    });
+  });
+
+  // DELETE /api/client-apps/:id/components/:componentId — RETIRED.
+  app.delete('/api/client-apps/:id/components/:componentId', async (_req, res) => {
+    res.status(410).json({
+      error: 'gone',
+      message: 'Legacy app_components endpoint retired. Use DELETE /api/client-apps/:id/placements/:placementId (soft delete).',
+    });
   });
 
   // Get campaigns for a specific app (includes both clientAppId-linked and channel-linked)
@@ -1735,17 +2204,21 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
         }
       }
 
-      if (req.body.sponsorId) {
-        const sponsor = await storage.getSponsor(req.body.sponsorId);
-        if (!sponsor) {
-          return res.status(404).json({ message: 'Sponsor not found' });
-        }
-        if (sponsor.userId !== userId) {
-          return res.status(403).json({ message: 'Access denied - sponsor does not belong to this user' });
-        }
+      // Multi-sponsor redesign: primarySponsorId is required at creation.
+      // Accept legacy `sponsorId` as an alias for backwards compat during rollout.
+      const primarySponsorId = req.body.primarySponsorId ?? req.body.sponsorId;
+      if (!primarySponsorId) {
+        return res.status(400).json({ message: 'primarySponsorId is required — select a primary sponsor' });
+      }
+      const sponsor = await storage.getSponsor(Number(primarySponsorId));
+      if (!sponsor) {
+        return res.status(404).json({ message: 'Primary sponsor not found' });
+      }
+      if (sponsor.userId !== userId) {
+        return res.status(403).json({ message: 'Access denied - sponsor does not belong to this user' });
       }
 
-      const campaignData = { ...req.body };
+      const campaignData = { ...req.body, primarySponsorId: Number(primarySponsorId) };
       if (campaignData.startDate) {
         campaignData.startDate = new Date(campaignData.startDate);
       }
@@ -1795,7 +2268,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       const sponsorMap = new Map(sponsors.map(s => [s.id, s]));
 
       const enriched = userCampaigns.map(c => {
-        const sponsor = c.sponsorId ? sponsorMap.get(c.sponsorId) : undefined;
+        const sponsor = sponsorMap.get(c.primarySponsorId);
         return {
           ...c,
           broadcastCount: countMap.get(c.id) || 0,
@@ -1839,10 +2312,49 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   });
 
   // GET /api/campaigns/:id/sponsors
+  // GET /api/campaigns/:id/sponsors
+  // Returns primary sponsor (from campaigns.primary_sponsor_id) + all secondaries
+  // (from campaign_sponsors). Primary is first in the array with role='primary',
+  // id=null (no campaign_sponsors row exists for it — it's a logical entry).
+  // This single source of truth keeps the dashboard consistent across every
+  // place that needs to show "all sponsors of this campaign":
+  // - campaign-dashboard Sponsors tab
+  // - broadcast-detail Add Slot + Quick Fire dropdowns
+  // - future callers
+  //
+  // Consumers that want ONLY secondaries use /api/campaigns/:id/secondary-sponsors.
   app.get('/api/campaigns/:id/sponsors', async (req, res) => {
     try {
-      const sponsors = await storage.getCampaignSponsors(parseInt(req.params.id));
-      res.json(sponsors);
+      const campaignId = parseInt(req.params.id);
+      const [campaign, secondaries] = await Promise.all([
+        storage.getCampaign(campaignId),
+        storage.getCampaignSponsors(campaignId),
+      ]);
+
+      const result: any[] = [];
+      if (campaign?.primarySponsorId) {
+        const primary = await storage.getSponsor(campaign.primarySponsorId);
+        if (primary) {
+          result.push({
+            id: null,
+            sponsorId: primary.id,
+            campaignId,
+            role: 'primary',
+            name: primary.name,
+            logoUrl: primary.logoUrl,
+            primaryColor: primary.primaryColor,
+            secondaryColor: primary.secondaryColor,
+          });
+        }
+      }
+      // Drop any accidental duplicate where primary is also in campaign_sponsors
+      // (shouldn't happen post de-dupe, but defensive).
+      const primarySponsorId = campaign?.primarySponsorId ?? null;
+      for (const s of secondaries) {
+        if (s.sponsorId === primarySponsorId) continue;
+        result.push(s);
+      }
+      res.json(result);
     } catch (error) {
       res.status(500).json({ error: 'Failed to fetch campaign sponsors' });
     }
@@ -1971,20 +2483,34 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
         updateData.matchStartTime = updateData.matchStartTime ? new Date(updateData.matchStartTime) : null;
       }
 
-      if (updateData.sponsorId) {
-        const existingCampaign = await storage.getCampaign(parseInt(req.params.id));
+      const campaignId = parseInt(req.params.id);
+
+      // Multi-sponsor redesign: reject changes to primary sponsor once child rows exist.
+      const newPrimary = updateData.primarySponsorId;
+      if (newPrimary !== undefined) {
+        const existingCampaign = await storage.getCampaign(campaignId);
         if (existingCampaign) {
-          const sponsor = await storage.getSponsor(updateData.sponsorId);
+          if (existingCampaign.primarySponsorId && existingCampaign.primarySponsorId !== Number(newPrimary)) {
+            const canChange = await storage.canChangePrimarySponsor(campaignId);
+            if (!canChange) {
+              return res.status(403).json({
+                message: 'Primary sponsor is immutable once broadcasts, activations or cart intents exist for this campaign',
+                code: 'PRIMARY_SPONSOR_LOCKED',
+              });
+            }
+          }
+          const sponsor = await storage.getSponsor(Number(newPrimary));
           if (!sponsor) {
             return res.status(404).json({ message: 'Sponsor not found' });
           }
           if (sponsor.userId !== existingCampaign.userId) {
             return res.status(403).json({ message: 'Access denied - sponsor does not belong to this user' });
           }
+          updateData.primarySponsorId = Number(newPrimary);
         }
       }
 
-      const campaign = await storage.updateCampaign(parseInt(req.params.id), updateData);
+      const campaign = await storage.updateCampaign(campaignId, updateData);
       if (!campaign) {
         return res.status(404).json({ message: 'Campaign not found' });
       }
@@ -2297,8 +2823,21 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
         }
       }
 
+      // Resolve sponsor: accept explicit sponsorId, or default to campaign primary.
+      // Sponsor must be primary OR one of the campaign's secondary sponsors.
+      const campaignForSponsor = await storage.getCampaign(campaignId);
+      if (!campaignForSponsor || !campaignForSponsor.primarySponsorId) {
+        return res.status(400).json({ message: 'Campaign has no primary sponsor' });
+      }
+      const requestedSponsorId: number = req.body.sponsorId ? Number(req.body.sponsorId) : campaignForSponsor.primarySponsorId;
+      const sponsorAllowed = await storage.isSponsorAllowedForCampaign(requestedSponsorId, campaignId);
+      if (!sponsorAllowed) {
+        return res.status(400).json({ message: 'Sponsor is not associated with this campaign (must be primary or secondary)' });
+      }
+
       const component = await storage.createScheduledComponent({
         campaignId,
+        sponsorId: requestedSponsorId,
         type,
         scheduledTime: new Date(scheduledTime),
         endTime: endTime ? new Date(endTime) : undefined,
@@ -2673,7 +3212,8 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
           // Use campaign-specific customConfig if available, otherwise use component's default config
           config: normalizeUrls(cc.customConfig || cc.component.config, req.protocol, req.get('host')),
           status: cc.status,
-          activatedAt: cc.activatedAt
+          activatedAt: cc.activatedAt,
+          sponsor: cc.sponsor,
         }));
 
       res.json(activeComponents);
@@ -2683,33 +3223,85 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
     }
   });
 
-  // Add component to campaign
+  // Add placement to campaign (post-2026-04-27 model: references an
+  // app_placement instead of (componentId, locationId) pair).
+  //
+  // Body: `{ appPlacementId, sponsorId, status?, instanceName?,
+  //          customConfig?, broadcastId?, createdBy? }`.
+  //
+  // Validates:
+  //   - app_placement exists, not deprecated, belongs to the same clientApp as the campaign
+  //   - sponsor is primary or in campaign_sponsors
+  //   - if status='active', no other active row for same (campaign, app_placement)
+  //     (defense-in-depth — DB partial UNIQUE index also enforces)
   app.post('/api/campaigns/:id/components', async (req, res) => {
     try {
       const campaignId = parseInt(req.params.id);
-      const { componentId, status, instanceName, locationId } = req.body;
+      const { appPlacementId, status, instanceName, sponsorId, broadcastId, customConfig, createdBy } = req.body ?? {};
 
-      if (!componentId) {
-        return res.status(400).json({ message: 'Missing required field: componentId' });
+      if (!appPlacementId) {
+        return res.status(400).json({ message: 'Missing required field: appPlacementId' });
       }
 
-      // Get component details
-      const component = await storage.getComponentById(componentId);
-      if (!component) {
-        return res.status(404).json({ message: 'Component not found' });
+      // 1. Validate app_placement exists, not deprecated, same clientApp.
+      const placement = await storage.getAppPlacementById(Number(appPlacementId));
+      if (!placement) {
+        return res.status(404).json({ message: `App placement ${appPlacementId} not found` });
+      }
+      if (placement.deprecatedAt) {
+        return res.status(400).json({ message: `App placement ${appPlacementId} is deprecated; cannot bind new instances` });
       }
 
-      // Generate default instanceName if not provided
+      // 2. Validate campaign + clientApp match.
+      const campaign = await storage.getCampaign(campaignId);
+      if (!campaign) {
+        return res.status(404).json({ message: 'Campaign not found' });
+      }
+      if (placement.clientAppId !== campaign.clientAppId) {
+        return res.status(400).json({
+          message: `App placement belongs to clientApp ${placement.clientAppId}, but campaign is for clientApp ${campaign.clientAppId}`,
+        });
+      }
+      if (!campaign.primarySponsorId) {
+        return res.status(400).json({ message: 'Campaign has no primary sponsor' });
+      }
+
+      // 3. Validate sponsor.
+      const requestedSponsorId: number = sponsorId ? Number(sponsorId) : campaign.primarySponsorId;
+      const sponsorAllowed = await storage.isSponsorAllowedForCampaign(requestedSponsorId, campaignId);
+      if (!sponsorAllowed) {
+        return res.status(400).json({ message: 'Sponsor is not associated with this campaign (must be primary or secondary)' });
+      }
+
+      // 4. Multi-sponsor "one active per (campaign, placement)" — partial
+      //    UNIQUE index on the DB enforces this; we pre-check for a clearer
+      //    400 error so the dashboard can surface the in-use sponsor.
+      if ((status || 'inactive') === 'active') {
+        const existing = await db.select({ id: campaignComponents.id, sponsorId: campaignComponents.sponsorId })
+          .from(campaignComponents)
+          .where(and(
+            eq(campaignComponents.campaignId, campaignId),
+            eq(campaignComponents.appPlacementId, Number(appPlacementId)),
+            eq(campaignComponents.status, 'active'),
+          ))
+          .limit(1);
+        if (existing.length > 0) {
+          return res.status(409).json({
+            code: 'PLACEMENT_ACTIVE_CONFLICT',
+            message: `Placement is already active in this campaign with sponsor ${existing[0].sponsorId}. Deactivate it first or schedule a rotation.`,
+            activeCampaignComponentId: existing[0].id,
+          });
+        }
+      }
+
+      // 5. Generate sequential instanceName if not provided.
       let finalInstanceName = instanceName;
       if (!finalInstanceName) {
         const existingComponents = await storage.getCampaignComponents(campaignId);
-        const sameTemplateInstances = existingComponents.filter(cc => cc.componentId === componentId);
-        const sdkName = componentSDKNames[component.type as keyof typeof componentSDKNames] || component.name;
-
-        // Find highest number in existing instance names
+        const sameTemplateInstances = existingComponents.filter(cc => cc.appPlacementId === Number(appPlacementId));
+        const sdkName = componentSDKNames[placement.component.type as keyof typeof componentSDKNames] || placement.name;
         const instancePattern = new RegExp(`^${sdkName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} (\\d+)$`);
         let maxNumber = 0;
-
         for (const instance of sameTemplateInstances) {
           if (!instance.instanceName) continue;
           const match = instance.instanceName.match(instancePattern);
@@ -2718,38 +3310,44 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
             if (num > maxNumber) maxNumber = num;
           }
         }
-
-        // Generate next sequential name
         finalInstanceName = `${sdkName} ${maxNumber + 1}`;
       }
 
-      // Validate component availability if status is active
-      if (status === 'active') {
-        const availability = await storage.validateComponentAvailability(componentId, component.isTemplate === 'true', campaignId);
-        if (!availability.available) {
-          return res.status(409).json({
-            message: 'Component is already active in another campaign',
-            activeCampaignId: availability.activeCampaignId
-          });
-        }
-      }
+      const broadcastScope: string | null = broadcastId ? String(broadcastId) : null;
 
       const campaignComponent = await storage.addComponentToCampaign({
         campaignId,
-        componentId,
+        appPlacementId: Number(appPlacementId),
+        sponsorId: requestedSponsorId,
+        broadcastId: broadcastScope,
         instanceName: finalInstanceName,
         status: status || 'inactive',
-        locationId: locationId || null,
-      });
+        customConfig: customConfig ?? null,
+        createdBy: createdBy ? Number(createdBy) : null,
+      } as any);
 
       res.status(201).json(campaignComponent);
-    } catch (error) {
-      console.error('Error adding component to campaign:', error);
-      res.status(500).json({ message: 'Error adding component to campaign' });
+    } catch (error: any) {
+      // DB partial UNIQUE index trips here if dashboard validation missed.
+      if (error?.code === '23505' && /one_active/i.test(error?.message ?? '')) {
+        return res.status(409).json({
+          code: 'PLACEMENT_ACTIVE_CONFLICT',
+          message: 'A row is already active for this (campaign, app_placement). Deactivate it first.',
+        });
+      }
+      console.error('Error adding placement to campaign:', error);
+      res.status(500).json({ message: 'Error adding placement to campaign' });
     }
   });
 
   // Update campaign component status (toggle ON/OFF)
+  // PATCH /api/campaigns/:id/components/:componentId — toggle status / locationId.
+  //
+  // `:componentId` is the **campaign_components row PK** (a numeric id passed as
+  // string from the URL). Pre-migration 0004 it was the FK to `components.id`
+  // (template uuid); the column is gone and the routes now consistently
+  // reference the row PK. The locationId update is a no-op shim — location is
+  // immutable post-migration (lives on app_placements).
   app.patch('/api/campaigns/:id/components/:componentId', async (req, res) => {
     try {
       const campaignId = parseInt(req.params.id);
@@ -2763,62 +3361,110 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
         return res.status(400).json({ message: 'Invalid status. Must be "active" or "inactive"' });
       }
 
-      // Get component details to check type
-      const component = await storage.getComponentById(componentId);
-      if (!component) {
-        return res.status(404).json({ message: 'Component not found' });
+      const rowId = parseInt(componentId);
+      if (Number.isNaN(rowId)) {
+        return res.status(400).json({ message: 'componentId must be a numeric campaign_components row id' });
       }
 
-      // Validate component availability if activating
+      // Multi-sponsor "one active per (campaign, app_placement)" — the partial
+      // UNIQUE index on the DB enforces this; pre-check to surface a friendlier
+      // 409 with the active row's id so the dashboard can prompt to deactivate.
       if (status === 'active') {
-        const availability = await storage.validateComponentAvailability(componentId, component.isTemplate === 'true', campaignId);
-        if (!availability.available) {
+        const target = await db.select().from(campaignComponents)
+          .where(eq(campaignComponents.id, rowId))
+          .limit(1);
+        if (target.length === 0) {
+          return res.status(404).json({ message: 'Campaign component not found' });
+        }
+        const targetRow = target[0];
+        if (targetRow.campaignId !== campaignId) {
+          return res.status(404).json({ message: 'Campaign component not found in this campaign' });
+        }
+        const otherActive = await db.select({ id: campaignComponents.id, sponsorId: campaignComponents.sponsorId })
+          .from(campaignComponents)
+          .where(and(
+            eq(campaignComponents.campaignId, campaignId),
+            eq(campaignComponents.appPlacementId, targetRow.appPlacementId),
+            eq(campaignComponents.status, 'active'),
+            ne(campaignComponents.id, rowId),
+          ))
+          .limit(1);
+        if (otherActive.length > 0) {
           return res.status(409).json({
-            message: 'Component is already active in another campaign',
-            activeCampaignId: availability.activeCampaignId
+            code: 'PLACEMENT_ACTIVE_CONFLICT',
+            message: `Another row is already active for this placement (sponsor ${otherActive[0].sponsorId}). Deactivate it first.`,
+            activeCampaignComponentId: otherActive[0].id,
           });
         }
       }
 
+      // Atomic UPDATE + outbox enqueue. Both rows commit together (the
+      // event is guaranteed to fire iff the data change persisted) or
+      // both roll back on error. The worker (server/events/worker.ts)
+      // ships the event to subscribed sockets within ~500ms.
       let updated: any;
-      if (status) {
-        updated = await storage.updateCampaignComponentStatus(campaignId, componentId, status);
-      } else {
-        updated = await storage.getComponentById(componentId);
-      }
+      try {
+        updated = await db.transaction(async (tx) => {
+          let row: any;
+          if (status) {
+            const [r] = await tx.update(campaignComponents)
+              .set({
+                status,
+                ...(status === 'active' ? { activatedAt: new Date() } : {}),
+                updatedAt: new Date(),
+              })
+              .where(and(
+                eq(campaignComponents.campaignId, campaignId),
+                eq(campaignComponents.id, rowId),
+              ))
+              .returning();
+            row = r;
+            if (!row) return undefined;
 
-      if (locationId !== undefined) {
-        updated = await storage.updateCampaignComponentLocationId(campaignId, componentId, locationId || null);
+            // Enqueue placement_status_changed inside the same tx.
+            // Payload is minimal — status is a flag, the SDK already has
+            // the rest of the component cached locally.
+            await enqueueEvent(tx, {
+              topic: PLACEMENT_TOPICS.STATUS_CHANGED,
+              module: 'placements',
+              scopeType: 'campaign',
+              scopeId: campaignId,
+              payload: {
+                campaignId,
+                appPlacementId: row.appPlacementId,
+                campaignComponentId: row.id,
+                status: row.status,
+              },
+            });
+          }
+          if (locationId !== undefined && !row) {
+            // No-op shim — location_id is immutable post-migration 0004.
+            // Read the current row so the response stays consistent.
+            const [r] = await tx.select().from(campaignComponents)
+              .where(and(
+                eq(campaignComponents.campaignId, campaignId),
+                eq(campaignComponents.id, rowId),
+              ))
+              .limit(1);
+            row = r;
+          }
+          return row;
+        });
+      } catch (txErr: any) {
+        // Partial UNIQUE index trip (defense-in-depth — pre-check above
+        // catches the common case but a race between concurrent PATCHes
+        // can still hit this).
+        if (txErr?.code === '23505') {
+          return res.status(409).json({
+            code: 'PLACEMENT_ACTIVE_CONFLICT',
+            message: 'A row is already active for this (campaign, app_placement). Deactivate it first.',
+          });
+        }
+        throw txErr;
       }
 
       if (!updated) {
         return res.status(404).json({ message: 'Campaign component not found' });
-      }
-
-      // Only broadcast WS event when status changes (not for locationId-only updates)
-      if (status) {
-        const campaign = await storage.getCampaign(campaignId);
-        if (campaign && isCampaignActive(campaign)) {
-          const fullComponent = await storage.getComponentById(componentId);
-          const event: any = {
-            type: 'component_status_changed',
-            campaignId,
-            componentId,
-            status,
-            component: fullComponent ? {
-              id: fullComponent.id,
-              type: fullComponent.type,
-              name: fullComponent.name,
-              config: normalizeUrls(updated.customConfig || fullComponent.config, req.protocol, req.get('host'))
-            } : null
-          };
-          if (updated.matchId) {
-            event.matchId = updated.matchId;
-          } else if (campaign.matchId) {
-            event.matchId = campaign.matchId;
-          }
-          broadcastToCampaignImpl(campaignId, JSON.stringify(event));
-        }
       }
 
       res.json(updated);
@@ -2828,51 +3474,134 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
     }
   });
 
-  // Update campaign component custom configuration
+  // Update campaign component custom configuration (and optionally
+  // the placement's sponsor).
+  //
+  // Atomic UPDATE + outbox enqueue (Phase 3 of the live-updates sprint,
+  // extended later to cover in-place sponsor swaps so the operator can
+  // edit an active row without first pausing it).
+  //
+  // Body: `{ customConfig, sponsorId? }`.
+  //   - `customConfig` is required (use `null` to clear / revert to
+  //     template defaults).
+  //   - `sponsorId` is optional. When present and different from the
+  //     row's current sponsor, validates against campaign_sponsors and
+  //     updates the row.
+  //
+  // Emits a single `placement_config_updated` event covering both the
+  // customConfig change and the sponsor swap so the SDK applies them
+  // atomically (SDK reads new sponsorId, ProductService picks the new
+  // sponsor's commerce key on the next load).
   app.patch('/api/campaigns/:id/components/:componentId/config', async (req, res) => {
     try {
       const campaignId = parseInt(req.params.id);
       const { componentId } = req.params;
-      const { customConfig } = req.body;
+      const { customConfig, sponsorId: rawSponsorId } = req.body;
 
       // Allow null/undefined to clear customConfig and revert to template defaults
       if (customConfig === undefined) {
         return res.status(400).json({ message: 'Missing required field: customConfig (use null to clear)' });
       }
 
-      const updated = await storage.updateCampaignComponentConfig(campaignId, componentId, customConfig);
+      const rowId = parseInt(componentId);
+      if (Number.isNaN(rowId)) {
+        return res.status(400).json({ message: 'componentId must be a numeric campaign_components row id' });
+      }
+
+      const sponsorIdProvided = rawSponsorId !== undefined && rawSponsorId !== null;
+      const newSponsorId = sponsorIdProvided ? Number(rawSponsorId) : null;
+      if (sponsorIdProvided && (Number.isNaN(newSponsorId as number) || (newSponsorId as number) <= 0)) {
+        return res.status(400).json({ message: 'sponsorId must be a positive integer' });
+      }
+      if (sponsorIdProvided) {
+        // Ensure the new sponsor is allowed for this campaign (primary or secondary).
+        const allowed = await storage.isSponsorAllowedForCampaign(newSponsorId as number, campaignId);
+        if (!allowed) {
+          return res.status(400).json({ message: 'Sponsor is not associated with this campaign (must be primary or secondary)' });
+        }
+      }
+
+      // Helper: extract `productIds: string[]` from a customConfig blob.
+      // Used to compute the `productIdsChanged` hint sent to the SDK.
+      // Returns [] if absent or malformed (treated as "no products
+      // configured" in the diff).
+      const extractProductIds = (cfg: unknown): string[] => {
+        if (!cfg || typeof cfg !== 'object') return [];
+        const ids = (cfg as Record<string, unknown>).productIds;
+        if (!Array.isArray(ids)) return [];
+        return ids.filter((x): x is string => typeof x === 'string');
+      };
+
+      // Atomic: read old config (for productIdsChanged diff), UPDATE,
+      // enqueueEvent — all in one tx.
+      const updated = await db.transaction(async (tx) => {
+        const [before] = await tx.select({
+          id: campaignComponents.id,
+          customConfig: campaignComponents.customConfig,
+          appPlacementId: campaignComponents.appPlacementId,
+          sponsorId: campaignComponents.sponsorId,
+          status: campaignComponents.status,
+        })
+          .from(campaignComponents)
+          .where(and(
+            eq(campaignComponents.campaignId, campaignId),
+            eq(campaignComponents.id, rowId),
+          ))
+          .limit(1);
+
+        if (!before) return undefined;
+
+        const sponsorChanged = sponsorIdProvided && before.sponsorId !== newSponsorId;
+        const updatePatch: Record<string, unknown> = {
+          customConfig,
+          updatedAt: new Date(),
+        };
+        if (sponsorChanged) {
+          updatePatch.sponsorId = newSponsorId;
+        }
+
+        const [row] = await tx.update(campaignComponents)
+          .set(updatePatch)
+          .where(and(
+            eq(campaignComponents.campaignId, campaignId),
+            eq(campaignComponents.id, rowId),
+          ))
+          .returning();
+
+        // Compute productIdsChanged hint for the SDK. Strict array
+        // equality on the productIds field — order matters because the
+        // operator may have re-ordered the carousel.
+        const oldIds = extractProductIds(before.customConfig);
+        const newIds = extractProductIds(customConfig);
+        const productIdsChanged =
+          oldIds.length !== newIds.length ||
+          oldIds.some((id, i) => id !== newIds[i]);
+
+        // Only emit if the row is active — paused placements are invisible
+        // to the SDK, so a config change is just persisted for later.
+        if (row.status === 'active') {
+          await enqueueEvent(tx, {
+            topic: PLACEMENT_TOPICS.CONFIG_UPDATED,
+            module: 'placements',
+            scopeType: 'campaign',
+            scopeId: campaignId,
+            payload: {
+              campaignId,
+              appPlacementId: row.appPlacementId,
+              campaignComponentId: row.id,
+              customConfig: customConfig ?? null,
+              productIdsChanged,
+              sponsorId: row.sponsorId,
+              sponsorChanged,
+            },
+          });
+        }
+
+        return row;
+      });
 
       if (!updated) {
         return res.status(404).json({ message: 'Campaign component not found' });
-      }
-
-      // Check if campaign is active and component is active before broadcasting
-      const campaign = await storage.getCampaign(campaignId);
-      if (campaign && isCampaignActive(campaign) && updated.status === 'active') {
-        // Get full component details for broadcast
-        const fullComponent = await storage.getComponentById(componentId);
-
-        // Broadcast config update via WebSocket
-        const effectiveConfig = updated.customConfig || fullComponent?.config;
-
-        const event: any = {
-          type: 'component_config_updated',
-          campaignId,
-          componentId,
-          component: fullComponent ? {
-            id: fullComponent.id,
-            type: fullComponent.type,
-            name: fullComponent.name,
-            config: normalizeUrls(effectiveConfig, req.protocol, req.get('host'))
-          } : null
-        };
-        // Include matchId if component or campaign is associated with a match
-        if (updated.matchId) {
-          event.matchId = updated.matchId;
-        } else if (campaign.matchId) {
-          event.matchId = campaign.matchId;
-        }
-        broadcastToCampaignImpl(campaignId, JSON.stringify(event));
       }
 
       res.json(updated);
@@ -2896,6 +3625,293 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
     }
   });
 
+  // ========================================
+  // Live placement control (Phase 3 of live-updates sprint)
+  //
+  // Three operator-facing verbs that the dashboard wires to buttons:
+  //
+  //   POST /api/campaigns/:id/components/:componentId/pause
+  //   POST /api/campaigns/:id/components/:componentId/resume
+  //   POST /api/campaigns/:id/placements/:appPlacementId/activate
+  //
+  // All three flip campaign_components rows + enqueue an outbox event
+  // INSIDE the same transaction. The worker (server/events/worker.ts)
+  // ships the event to subscribed sockets within ~500ms; the SDK toggles
+  // visibility (pause/resume) or swaps the active row (activate)
+  // without a cold start.
+  //
+  // pause/resume are sugar around PATCH status — same atomicity, clearer
+  // verbs for the dashboard. activate is the multi-sponsor rotation:
+  // atomic A→B swap inside one tx, single placement_activation_swapped
+  // event emitted (see server/events/types.ts for the payload shape).
+  // ========================================
+
+  // Pause a campaign_components row — sets status='inactive', emits
+  // placement_status_changed. Always reversible via /resume.
+  app.post('/api/campaigns/:id/components/:componentId/pause', async (req, res) => {
+    try {
+      const campaignId = parseInt(req.params.id);
+      const rowId = parseInt(req.params.componentId);
+      if (Number.isNaN(rowId)) {
+        return res.status(400).json({ message: 'componentId must be a numeric campaign_components row id' });
+      }
+
+      const updated = await db.transaction(async (tx) => {
+        const [row] = await tx.update(campaignComponents)
+          .set({ status: 'inactive', updatedAt: new Date() })
+          .where(and(
+            eq(campaignComponents.campaignId, campaignId),
+            eq(campaignComponents.id, rowId),
+          ))
+          .returning();
+        if (!row) return undefined;
+
+        await enqueueEvent(tx, {
+          topic: PLACEMENT_TOPICS.STATUS_CHANGED,
+          module: 'placements',
+          scopeType: 'campaign',
+          scopeId: campaignId,
+          payload: {
+            campaignId,
+            appPlacementId: row.appPlacementId,
+            campaignComponentId: row.id,
+            status: 'inactive',
+          },
+        });
+        return row;
+      });
+
+      if (!updated) {
+        return res.status(404).json({ message: 'Campaign component not found' });
+      }
+      res.json(updated);
+    } catch (error) {
+      console.error('Error pausing placement:', error);
+      res.status(500).json({ message: 'Error pausing placement' });
+    }
+  });
+
+  // Resume a campaign_components row — sets status='active', emits
+  // placement_status_changed. Pre-checks the active-conflict (partial
+  // UNIQUE index) so the dashboard surfaces a clean 409 with the row id
+  // currently holding the slot.
+  app.post('/api/campaigns/:id/components/:componentId/resume', async (req, res) => {
+    try {
+      const campaignId = parseInt(req.params.id);
+      const rowId = parseInt(req.params.componentId);
+      if (Number.isNaN(rowId)) {
+        return res.status(400).json({ message: 'componentId must be a numeric campaign_components row id' });
+      }
+
+      // Read target row to get appPlacementId for the conflict check.
+      const [target] = await db.select()
+        .from(campaignComponents)
+        .where(and(
+          eq(campaignComponents.campaignId, campaignId),
+          eq(campaignComponents.id, rowId),
+        ))
+        .limit(1);
+      if (!target) {
+        return res.status(404).json({ message: 'Campaign component not found' });
+      }
+
+      const otherActive = await db.select({ id: campaignComponents.id, sponsorId: campaignComponents.sponsorId })
+        .from(campaignComponents)
+        .where(and(
+          eq(campaignComponents.campaignId, campaignId),
+          eq(campaignComponents.appPlacementId, target.appPlacementId),
+          eq(campaignComponents.status, 'active'),
+          ne(campaignComponents.id, rowId),
+        ))
+        .limit(1);
+      if (otherActive.length > 0) {
+        return res.status(409).json({
+          code: 'PLACEMENT_ACTIVE_CONFLICT',
+          message: `Another row is already active for this placement (sponsor ${otherActive[0].sponsorId}). Use /activate to swap, or pause it first.`,
+          activeCampaignComponentId: otherActive[0].id,
+        });
+      }
+
+      const updated = await db.transaction(async (tx) => {
+        const [row] = await tx.update(campaignComponents)
+          .set({ status: 'active', activatedAt: new Date(), updatedAt: new Date() })
+          .where(and(
+            eq(campaignComponents.campaignId, campaignId),
+            eq(campaignComponents.id, rowId),
+          ))
+          .returning();
+        if (!row) return undefined;
+
+        await enqueueEvent(tx, {
+          topic: PLACEMENT_TOPICS.STATUS_CHANGED,
+          module: 'placements',
+          scopeType: 'campaign',
+          scopeId: campaignId,
+          payload: {
+            campaignId,
+            appPlacementId: row.appPlacementId,
+            campaignComponentId: row.id,
+            status: 'active',
+          },
+        });
+        return row;
+      });
+
+      if (!updated) {
+        return res.status(404).json({ message: 'Campaign component not found' });
+      }
+      res.json(updated);
+    } catch (error: any) {
+      if (error?.code === '23505') {
+        return res.status(409).json({
+          code: 'PLACEMENT_ACTIVE_CONFLICT',
+          message: 'A row is already active for this placement (race condition). Pause it first.',
+        });
+      }
+      console.error('Error resuming placement:', error);
+      res.status(500).json({ message: 'Error resuming placement' });
+    }
+  });
+
+  // Activate a specific campaign_components row within a placement slot,
+  // atomically deactivating whichever row is currently active. This is
+  // the multi-sponsor rotation entry point.
+  //
+  // Body: `{ campaignComponentId: number }` — the row to make active.
+  //
+  // Three states possible:
+  //   1. Target is already active → no-op (idempotent), returns 200 with
+  //      the unchanged row.
+  //   2. No prior active row → simple activation, emits
+  //      `placement_status_changed`.
+  //   3. Active row exists and is different → atomic swap (deactivate A,
+  //      activate B in one tx), emits `placement_activation_swapped`
+  //      with both ids.
+  //
+  // The order matters: deactivate FIRST, then activate, so the partial
+  // UNIQUE index never sees two active rows simultaneously even within
+  // the tx.
+  app.post('/api/campaigns/:id/placements/:appPlacementId/activate', async (req, res) => {
+    try {
+      const campaignId = parseInt(req.params.id);
+      const appPlacementId = parseInt(req.params.appPlacementId);
+      const targetRowId = Number(req.body?.campaignComponentId);
+
+      if (Number.isNaN(campaignId) || Number.isNaN(appPlacementId) || !Number.isFinite(targetRowId)) {
+        return res.status(400).json({
+          message: 'campaign id, appPlacementId (path) and campaignComponentId (body) must be numeric',
+        });
+      }
+
+      // Validate target exists, belongs to (campaign, placement).
+      const [target] = await db.select()
+        .from(campaignComponents)
+        .where(and(
+          eq(campaignComponents.campaignId, campaignId),
+          eq(campaignComponents.id, targetRowId),
+          eq(campaignComponents.appPlacementId, appPlacementId),
+        ))
+        .limit(1);
+      if (!target) {
+        return res.status(404).json({
+          message: `Campaign component ${targetRowId} not found for placement ${appPlacementId} in campaign ${campaignId}`,
+        });
+      }
+
+      const result = await db.transaction(async (tx) => {
+        // Find the currently active row for this slot (if any). Excludes
+        // the target itself in case it is already active (idempotency).
+        const [currentActive] = await tx.select()
+          .from(campaignComponents)
+          .where(and(
+            eq(campaignComponents.campaignId, campaignId),
+            eq(campaignComponents.appPlacementId, appPlacementId),
+            eq(campaignComponents.status, 'active'),
+            ne(campaignComponents.id, targetRowId),
+          ))
+          .limit(1);
+
+        // Idempotency: target already active and no other contender → no-op.
+        if (target.status === 'active' && !currentActive) {
+          return { row: target, eventEmitted: false, swap: false };
+        }
+
+        // 1) Deactivate the current active row (if any).
+        if (currentActive) {
+          await tx.update(campaignComponents)
+            .set({ status: 'inactive', updatedAt: new Date() })
+            .where(eq(campaignComponents.id, currentActive.id));
+        }
+
+        // 2) Activate the target.
+        const [activated] = await tx.update(campaignComponents)
+          .set({ status: 'active', activatedAt: new Date(), updatedAt: new Date() })
+          .where(eq(campaignComponents.id, targetRowId))
+          .returning();
+
+        // 3) Enqueue the appropriate event. Swap → activation_swapped
+        //    (one event, both ids); plain activation → status_changed.
+        if (currentActive) {
+          await enqueueEvent(tx, {
+            topic: PLACEMENT_TOPICS.ACTIVATION_SWAPPED,
+            module: 'placements',
+            scopeType: 'campaign',
+            scopeId: campaignId,
+            payload: {
+              campaignId,
+              appPlacementId,
+              fromCampaignComponentId: currentActive.id,
+              toCampaignComponentId: activated.id,
+              fromSponsorId: currentActive.sponsorId,
+              toSponsorId: activated.sponsorId,
+              newComponent: {
+                id: activated.id,
+                componentTypeId: null, // SDK reads this from cached app_placement
+                sponsorId: activated.sponsorId,
+                customConfig: activated.customConfig ?? null,
+                status: activated.status,
+              },
+            },
+          });
+        } else {
+          await enqueueEvent(tx, {
+            topic: PLACEMENT_TOPICS.STATUS_CHANGED,
+            module: 'placements',
+            scopeType: 'campaign',
+            scopeId: campaignId,
+            payload: {
+              campaignId,
+              appPlacementId,
+              campaignComponentId: activated.id,
+              status: 'active',
+            },
+          });
+        }
+
+        return { row: activated, eventEmitted: true, swap: !!currentActive };
+      });
+
+      res.json({
+        ...result.row,
+        _meta: {
+          eventEmitted: result.eventEmitted,
+          swap: result.swap,
+        },
+      });
+    } catch (error: any) {
+      if (error?.code === '23505') {
+        // Should be unreachable given the deactivate-first ordering,
+        // but kept as a defense-in-depth signal.
+        return res.status(409).json({
+          code: 'PLACEMENT_ACTIVE_CONFLICT',
+          message: 'Concurrent write race detected. Retry the request.',
+        });
+      }
+      console.error('Error activating placement row:', error);
+      res.status(500).json({ message: 'Error activating placement row' });
+    }
+  });
+
   // Validate component availability
   app.get('/api/components/:id/availability', async (req, res) => {
     try {
@@ -2913,404 +3929,6 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
     } catch (error) {
       console.error('Error validating component availability:', error);
       res.status(500).json({ message: 'Error validating component availability' });
-    }
-  });
-
-  // ========================================
-  // Broadcast Management API (v1) - Bearer Auth
-  // ========================================
-
-  // Create broadcast
-  app.post('/v1/broadcasts', requireBearerAuth, async (req, res) => {
-    try {
-      const authUser = (req as any).authUser;
-      const { broadcastName, externalId, campaignId, channelId, startTime, endTime, metadata } = req.body;
-
-      if (!broadcastName) {
-        return res.status(400).json({ message: 'broadcastName is required' });
-      }
-
-      const dateStr = startTime ? new Date(startTime).toISOString().split('T')[0] : undefined;
-      let broadcastId = generateBroadcastId(broadcastName, dateStr);
-
-      const existing = await storage.getBroadcast(broadcastId);
-      if (existing) {
-        broadcastId = `${broadcastId}-${Date.now()}`;
-      }
-
-      if (campaignId) {
-        const campaign = await storage.getCampaign(campaignId);
-        if (!campaign) {
-          return res.status(404).json({ message: 'Campaign not found' });
-        }
-      }
-
-      const broadcast = await storage.createBroadcast({
-        broadcastId,
-        broadcastName,
-        externalId: externalId || null,
-        campaignId: campaignId || null,
-        channelId: channelId || null,
-        startTime: startTime ? new Date(startTime) : null,
-        endTime: endTime ? new Date(endTime) : null,
-        status: 'upcoming',
-        metadata: metadata || null,
-        createdBy: authUser.userId
-      });
-
-      res.status(201).json(broadcast);
-    } catch (error) {
-      console.error('Error creating broadcast:', error);
-      res.status(500).json({ message: 'Error creating broadcast' });
-    }
-  });
-
-  // List broadcasts with optional filters
-  app.get('/v1/broadcasts', requireBearerAuth, async (req, res) => {
-    try {
-      const { status, campaignId } = req.query;
-      const filters: { status?: string; campaignId?: number } = {};
-      if (status) filters.status = status as string;
-      if (campaignId) filters.campaignId = parseInt(campaignId as string);
-
-      const broadcastsList = await storage.getAllBroadcasts(filters);
-      res.json(broadcastsList);
-    } catch (error) {
-      console.error('Error listing broadcasts:', error);
-      res.status(500).json({ message: 'Error listing broadcasts' });
-    }
-  });
-
-  // Get single broadcast
-  app.get('/v1/broadcasts/:broadcastId', requireBearerAuth, async (req, res) => {
-    try {
-      const broadcast = await storage.getBroadcast(req.params.broadcastId);
-      if (!broadcast) {
-        return res.status(404).json({ message: 'Broadcast not found' });
-      }
-      res.json(broadcast);
-    } catch (error) {
-      console.error('Error getting broadcast:', error);
-      res.status(500).json({ message: 'Error getting broadcast' });
-    }
-  });
-
-  // Update broadcast
-  app.put('/v1/broadcasts/:broadcastId', requireBearerAuth, async (req, res) => {
-    try {
-      const { broadcastName, externalId, campaignId, channelId, startTime, endTime, status, metadata } = req.body;
-      const existing = await storage.getBroadcast(req.params.broadcastId);
-      if (!existing) return res.status(404).json({ message: 'Broadcast not found' });
-
-      const updateData: any = {};
-      if (broadcastName !== undefined) updateData.broadcastName = broadcastName;
-      if (externalId !== undefined) updateData.externalId = externalId || null;
-      if (campaignId !== undefined) updateData.campaignId = campaignId;
-      if (channelId !== undefined) updateData.channelId = channelId;
-      if (startTime !== undefined) updateData.startTime = startTime ? new Date(startTime) : null;
-      if (endTime !== undefined) updateData.endTime = endTime ? new Date(endTime) : null;
-      if (status !== undefined) updateData.status = status;
-      if (metadata !== undefined) updateData.metadata = metadata;
-
-      const updated = await storage.updateBroadcast(req.params.broadcastId, updateData);
-      if (!updated) return res.status(404).json({ message: 'Broadcast not found' });
-
-      if (status !== undefined && status !== existing.status && updated.campaignId) {
-        if (status === 'live') {
-          broadcastToCampaign(updated.campaignId, JSON.stringify({
-            type: 'broadcast_started',
-            broadcastId: updated.broadcastId,
-            broadcastName: updated.broadcastName,
-            campaignId: updated.campaignId,
-            timestamp: new Date().toISOString()
-          }));
-        } else if (status === 'ended') {
-          broadcastToCampaign(updated.campaignId, JSON.stringify({
-            type: 'broadcast_ended',
-            broadcastId: updated.broadcastId,
-            broadcastName: updated.broadcastName,
-            campaignId: updated.campaignId,
-            timestamp: new Date().toISOString()
-          }));
-        }
-      }
-
-      res.json(updated);
-    } catch (error) {
-      console.error('Error updating broadcast:', error);
-      res.status(500).json({ message: 'Error updating broadcast' });
-    }
-  });
-
-  // Delete broadcast
-  app.delete('/v1/broadcasts/:broadcastId', requireBearerAuth, async (req, res) => {
-    try {
-      const broadcast = await storage.getBroadcast(req.params.broadcastId);
-      if (!broadcast) {
-        return res.status(404).json({ message: 'Broadcast not found' });
-      }
-      await storage.deleteBroadcast(req.params.broadcastId);
-      res.status(204).send();
-    } catch (error) {
-      console.error('Error deleting broadcast:', error);
-      res.status(500).json({ message: 'Error deleting broadcast' });
-    }
-  });
-
-  // Get broadcasts for a campaign
-  app.get('/v1/campaigns/:campaignId/broadcasts', requireBearerAuth, async (req, res) => {
-    try {
-      const campaignId = parseInt(req.params.campaignId);
-      const broadcastsList = await storage.getCampaignBroadcasts(campaignId);
-      res.json(broadcastsList);
-    } catch (error) {
-      console.error('Error getting campaign broadcasts:', error);
-      res.status(500).json({ message: 'Error getting campaign broadcasts' });
-    }
-  });
-
-  // ========================================
-  // Engagement API (v1) - Admin endpoints (Bearer Auth)
-  // ========================================
-
-  app.post('/v1/broadcasts/:broadcastId/polls', requireBearerAuth, async (req, res) => {
-    try {
-      const { broadcastId } = req.params;
-      const broadcast = await storage.getBroadcast(broadcastId);
-      if (!broadcast) {
-        return res.status(404).json({ message: 'Broadcast not found' });
-      }
-
-      const parsed = createPollInputSchema.safeParse(req.body);
-      if (!parsed.success) {
-        return res.status(400).json({ message: parsed.error.errors.map(e => e.message).join(', ') });
-      }
-      const { question, options, duration, startTime, endTime, isActive, videoStartTime, videoEndTime, broadcastStartTime } = parsed.data;
-
-      const pollData: any = {
-        broadcastId,
-        question,
-        duration: duration ?? null,
-        startTime: startTime ? new Date(startTime) : null,
-        endTime: endTime ? new Date(endTime) : null,
-        isActive: isActive !== undefined ? isActive : true
-      };
-
-      if (videoStartTime !== undefined) pollData.videoStartTime = videoStartTime;
-      if (videoEndTime !== undefined) pollData.videoEndTime = videoEndTime;
-
-      if (videoStartTime !== undefined && videoEndTime !== undefined && broadcastStartTime) {
-        const validation = validateScheduling({ broadcastStartTime, videoStartTime, videoEndTime });
-        if (!validation.valid) {
-          return res.status(400).json({ message: validation.error });
-        }
-        const scheduled = calculateScheduledTimes({ broadcastStartTime, videoStartTime, videoEndTime });
-        pollData.broadcastStartTime = new Date(broadcastStartTime);
-        pollData.scheduledStartTime = scheduled.scheduledStart;
-        pollData.scheduledEndTime = scheduled.scheduledEnd;
-      }
-
-      const poll = await storage.createPoll(pollData);
-
-      const createdOptions = [];
-      for (let i = 0; i < options.length; i++) {
-        const opt = options[i];
-        const optionText = typeof opt === 'string' ? opt : opt.text;
-        const option = await storage.createPollOption({
-          pollId: poll.id,
-          text: optionText,
-          displayOrder: i
-        });
-        createdOptions.push(option);
-      }
-
-      res.status(201).json({ ...poll, options: createdOptions });
-    } catch (error) {
-      console.error('Error creating poll:', error);
-      res.status(500).json({ message: 'Error creating poll' });
-    }
-  });
-
-  // Get polls for a broadcast
-  app.get('/v1/broadcasts/:broadcastId/polls', requireBearerAuth, async (req, res) => {
-    try {
-      const { broadcastId } = req.params;
-      const pollsList = await storage.getBroadcastPolls(broadcastId);
-      res.json(pollsList);
-    } catch (error) {
-      console.error('Error getting polls:', error);
-      res.status(500).json({ message: 'Error getting polls' });
-    }
-  });
-
-  // Update poll
-  app.put('/v1/polls/:pollId', requireBearerAuth, async (req, res) => {
-    try {
-      const pollId = parseInt(req.params.pollId);
-      const { question, isActive, startTime, endTime } = req.body;
-      const updateData: any = {};
-      if (question !== undefined) updateData.question = question;
-      if (isActive !== undefined) updateData.isActive = isActive;
-      if (startTime !== undefined) updateData.startTime = startTime ? new Date(startTime) : null;
-      if (endTime !== undefined) updateData.endTime = endTime ? new Date(endTime) : null;
-
-      const updated = await storage.updatePoll(pollId, updateData);
-      if (!updated) {
-        return res.status(404).json({ message: 'Poll not found' });
-      }
-      res.json(updated);
-    } catch (error) {
-      console.error('Error updating poll:', error);
-      res.status(500).json({ message: 'Error updating poll' });
-    }
-  });
-
-  // Delete poll
-  app.delete('/v1/polls/:pollId', requireBearerAuth, async (req, res) => {
-    try {
-      const pollId = parseInt(req.params.pollId);
-      const poll = await storage.getPoll(pollId);
-      if (!poll) {
-        return res.status(404).json({ message: 'Poll not found' });
-      }
-      await storage.deletePoll(pollId);
-      res.status(204).send();
-    } catch (error) {
-      console.error('Error deleting poll:', error);
-      res.status(500).json({ message: 'Error deleting poll' });
-    }
-  });
-
-  // Get poll results
-  app.get('/v1/polls/:pollId/results', requireBearerAuth, async (req, res) => {
-    try {
-      const pollId = parseInt(req.params.pollId);
-      const results = await storage.getPollResults(pollId);
-      if (!results) {
-        return res.status(404).json({ message: 'Poll not found' });
-      }
-      const totalVotes = results.poll.totalVotes;
-      const optionsWithPercentages = results.options.map(opt => ({
-        ...opt,
-        percentage: totalVotes > 0 ? Math.round((opt.voteCount / totalVotes) * 10000) / 100 : 0
-      }));
-      res.json({ ...results.poll, options: optionsWithPercentages });
-    } catch (error) {
-      console.error('Error getting poll results:', error);
-      res.status(500).json({ message: 'Error getting poll results' });
-    }
-  });
-
-  app.post('/v1/broadcasts/:broadcastId/contests', requireBearerAuth, async (req, res) => {
-    try {
-      const { broadcastId } = req.params;
-      const broadcast = await storage.getBroadcast(broadcastId);
-      if (!broadcast) {
-        return res.status(404).json({ message: 'Broadcast not found' });
-      }
-
-      const parsed = createContestInputSchema.safeParse(req.body);
-      if (!parsed.success) {
-        return res.status(400).json({ message: parsed.error.errors.map(e => e.message).join(', ') });
-      }
-      const { title, description, prize, contestType, startTime, endTime, isActive, videoStartTime, videoEndTime, broadcastStartTime } = parsed.data;
-
-      const contestData: any = {
-        broadcastId,
-        title,
-        description: description || null,
-        prize: prize || null,
-        contestType,
-        startTime: startTime ? new Date(startTime) : null,
-        endTime: endTime ? new Date(endTime) : null,
-        isActive: isActive !== undefined ? isActive : true
-      };
-
-      if (videoStartTime !== undefined) contestData.videoStartTime = videoStartTime;
-      if (videoEndTime !== undefined) contestData.videoEndTime = videoEndTime;
-
-      if (videoStartTime !== undefined && videoEndTime !== undefined && broadcastStartTime) {
-        const validation = validateScheduling({ broadcastStartTime, videoStartTime, videoEndTime });
-        if (!validation.valid) {
-          return res.status(400).json({ message: validation.error });
-        }
-        const scheduled = calculateScheduledTimes({ broadcastStartTime, videoStartTime, videoEndTime });
-        contestData.broadcastStartTime = new Date(broadcastStartTime);
-        contestData.scheduledStartTime = scheduled.scheduledStart;
-        contestData.scheduledEndTime = scheduled.scheduledEnd;
-      }
-
-      const contest = await storage.createContest(contestData);
-
-      res.status(201).json(contest);
-    } catch (error) {
-      console.error('Error creating contest:', error);
-      res.status(500).json({ message: 'Error creating contest' });
-    }
-  });
-
-  // Get contests for a broadcast
-  app.get('/v1/broadcasts/:broadcastId/contests', requireBearerAuth, async (req, res) => {
-    try {
-      const { broadcastId } = req.params;
-      const contestsList = await storage.getBroadcastContests(broadcastId);
-      res.json(contestsList);
-    } catch (error) {
-      console.error('Error getting contests:', error);
-      res.status(500).json({ message: 'Error getting contests' });
-    }
-  });
-
-  // Update contest
-  app.put('/v1/contests/:contestId', requireBearerAuth, async (req, res) => {
-    try {
-      const contestId = parseInt(req.params.contestId);
-      const { title, description, prize, contestType, isActive, startTime, endTime } = req.body;
-      const updateData: any = {};
-      if (title !== undefined) updateData.title = title;
-      if (description !== undefined) updateData.description = description;
-      if (prize !== undefined) updateData.prize = prize;
-      if (contestType !== undefined) updateData.contestType = contestType;
-      if (isActive !== undefined) updateData.isActive = isActive;
-      if (startTime !== undefined) updateData.startTime = startTime ? new Date(startTime) : null;
-      if (endTime !== undefined) updateData.endTime = endTime ? new Date(endTime) : null;
-
-      const updated = await storage.updateContest(contestId, updateData);
-      if (!updated) {
-        return res.status(404).json({ message: 'Contest not found' });
-      }
-      res.json(updated);
-    } catch (error) {
-      console.error('Error updating contest:', error);
-      res.status(500).json({ message: 'Error updating contest' });
-    }
-  });
-
-  // Delete contest
-  app.delete('/v1/contests/:contestId', requireBearerAuth, async (req, res) => {
-    try {
-      const contestId = parseInt(req.params.contestId);
-      const contest = await storage.getContest(contestId);
-      if (!contest) {
-        return res.status(404).json({ message: 'Contest not found' });
-      }
-      await storage.deleteContest(contestId);
-      res.status(204).send();
-    } catch (error) {
-      console.error('Error deleting contest:', error);
-      res.status(500).json({ message: 'Error deleting contest' });
-    }
-  });
-
-  // Get contest participations
-  app.get('/v1/contests/:contestId/participations', requireBearerAuth, async (req, res) => {
-    try {
-      const contestId = parseInt(req.params.contestId);
-      const participations = await storage.getContestParticipations(contestId);
-      res.json(participations);
-    } catch (error) {
-      console.error('Error getting contest participations:', error);
-      res.status(500).json({ message: 'Error getting contest participations' });
     }
   });
 
@@ -4686,169 +5304,203 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
     }
   });
 
-  // POST /api/broadcasts/:id/shoppable-ad — Trigger shoppable ad via Commerce GraphQL + WS
-  app.post('/api/broadcasts/:broadcastId/shoppable-ad', requireBearerAuth, async (req, res) => {
-    try {
-      const { broadcastId } = req.params;
-      const { productId, sponsorId } = req.body;
+  // ----------------------------------------------------------------------
+  // Shoppable Ad dispatch — unified helper used by all 4 entry points.
+  // Resolves product + sponsor via Commerce GraphQL, persists an activation
+  // row, then fans out the WS event. Insertion happens on the origin node
+  // only; Redis Pub/Sub fanout is payload-forward only (no duplicate writes).
+  // ----------------------------------------------------------------------
+  async function persistAndBroadcastShoppableAd(args: {
+    broadcast: Broadcast;
+    campaign: Campaign;
+    productId: string | number;
+    sponsorId?: number | null;
+    slotId?: number | null;
+    clientAppId?: number | null;
+    source: 'admin-api' | 'dashboard' | 'tv-sdk' | 'slot-scheduler';
+    req: Request;
+  }): Promise<{ activationId: number; wsEvent: Record<string, any>; product: any; sponsor: any }> {
+    const { broadcast, campaign, productId, sponsorId, slotId, clientAppId, source, req } = args;
 
-      if (!productId) {
-        return res.status(400).json({ error: 'productId is required' });
+    // 0. Sponsor must be primary OR a secondary of this campaign (validated for all sources
+    //    except slot-scheduler which is authoritative by design — the slot already enforces its sponsor)
+    if (sponsorId && source !== 'slot-scheduler') {
+      const allowed = await storage.isSponsorAllowedForCampaign(sponsorId, campaign.id);
+      if (!allowed) {
+        const err: any = new Error('Sponsor is not associated with this campaign (must be primary or secondary)');
+        err.status = 400;
+        err.code = 'SPONSOR_NOT_IN_CAMPAIGN';
+        throw err;
       }
+    }
 
-      const broadcast = await storage.getBroadcast(broadcastId);
-      if (!broadcast) return res.status(404).json({ error: 'Broadcast not found' });
-
-      const campaign = await storage.getCampaign(broadcast.campaignId);
-      if (!campaign) return res.status(404).json({ error: 'Campaign not found' });
-
-      // Resolve sponsor first, use sponsor's Commerce API key
-      let sponsor: any = null;
-      let commerceApiKey = process.env.COMMERCE_API_KEY || 'KCXF10Y-W5T4PCR-GG5119A-Z64SQ9S';
-      if (sponsorId) {
-        const sp = await storage.getSponsor(sponsorId);
-        if (sp) {
-          if (sp.commerceApiKey) commerceApiKey = sp.commerceApiKey;
-          sponsor = {
-            name: sp.name,
-            logoUrl: sp.logoUrl ? normalizeUrls(sp.logoUrl, req.protocol, req.get('host')) : null,
-            primaryColor: sp.primaryColor ?? null,
-          };
+    // 1. Resolve sponsor (includes its Commerce API key if present). The SDK renders
+    //    the shoppable overlay using the sponsor's **avatar** (square brand mark),
+    //    not the full horizontal logo — enforce that here so the overlay never has to
+    //    handle a missing avatar at display time.
+    let sponsor: any = null;
+    let commerceApiKey = process.env.COMMERCE_API_KEY || 'KCXF10Y-W5T4PCR-GG5119A-Z64SQ9S';
+    if (sponsorId) {
+      const sp = await storage.getSponsor(sponsorId);
+      if (sp) {
+        if (!sp.avatarUrl) {
+          const err: any = new Error(`Sponsor ${sp.id} (${sp.name}) has no avatar_url — set one in the dashboard before dispatching shoppable ads`);
+          err.status = 422;
+          err.code = 'SPONSOR_MISSING_AVATAR';
+          throw err;
         }
+        if (sp.commerceApiKey) commerceApiKey = sp.commerceApiKey;
+        sponsor = {
+          id: sp.id,
+          name: sp.name,
+          avatarUrl: normalizeUrls(sp.avatarUrl, req.protocol, req.get('host')),
+          logoUrl: sp.logoUrl ? normalizeUrls(sp.logoUrl, req.protocol, req.get('host')) : null,
+          primaryColor: sp.primaryColor ?? null,
+        };
       }
+    }
 
-      // Resolve product from Commerce GraphQL
-      const gqlQuery = `{ Channel { GetProductsByIds(product_ids: [${productId}]) { id title images { url order } price { amount amount_incl_taxes currency_code } } } }`;
-
-      let product: any = null;
+    // 2. Resolve product from Commerce GraphQL — with a 2-step fallback:
+    //    a) rich query (images + price) for the WS event + snapshot.
+    //    b) if upstream fails (e.g. some products return `Cannot return null for
+    //       non-nullable field Product.images.` — data-quality issue in Commerce),
+    //       retry with a minimal `{ id title }` query so we at least get the
+    //       product name into the push title + activation snapshot.
+    //    c) if that also fails, fall back to `Product #X` placeholder.
+    let product: any = null;
+    try {
+      const richQuery = `{ Channel { GetProductsByIds(product_ids: [${productId}]) { id title images { url order } price { amount amount_incl_taxes currency_code } } } }`;
+      const gqlData = await fetchGraphQL(richQuery, commerceApiKey);
+      const p = gqlData?.data?.Channel?.GetProductsByIds?.[0];
+      if (p) {
+        const image = p.images?.sort((a: any, b: any) => a.order - b.order)?.[0];
+        product = {
+          id: String(p.id),
+          name: p.title,
+          price: p.price?.amount_incl_taxes ?? p.price?.amount ?? null,
+          currency: p.price?.currency_code ?? 'NOK',
+          imageUrl: image?.url ?? null,
+        };
+      }
+    } catch (err) {
+      console.warn(`[ShoppableAd:${source}] Commerce GraphQL rich query failed — retrying minimal:`, (err as Error).message ?? err);
       try {
-        const gqlRes = await fetch(process.env.COMMERCE_GRAPHQL_URL || 'http://graph-ql.default.svc.cluster.local/graphql', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': commerceApiKey,
-          },
-          body: JSON.stringify({ query: gqlQuery }),
-        });
-        const gqlData = await gqlRes.json() as any;
+        const minQuery = `{ Channel { GetProductsByIds(product_ids: [${productId}]) { id title } } }`;
+        const gqlData = await fetchGraphQL(minQuery, commerceApiKey);
         const p = gqlData?.data?.Channel?.GetProductsByIds?.[0];
         if (p) {
-          const image = p.images?.sort((a: any, b: any) => a.order - b.order)?.[0];
           product = {
             id: String(p.id),
             name: p.title,
-            price: p.price?.amount_incl_taxes ?? p.price?.amount ?? null,
-            currency: p.price?.currency_code ?? 'NOK',
-            imageUrl: image?.url ?? null,
+            price: null,
+            currency: 'NOK',
+            imageUrl: null,
           };
         }
-      } catch (err) {
-        console.warn('[ShoppableAd] Commerce GraphQL error:', err);
+      } catch (minErr) {
+        console.warn(`[ShoppableAd:${source}] Commerce GraphQL minimal query also failed:`, (minErr as Error).message ?? minErr);
       }
+    }
+    if (!product) {
+      product = { id: String(productId), name: `Product #${productId}`, price: null, currency: 'NOK', imageUrl: null };
+    }
 
-      if (!product) {
-        product = { id: String(productId), name: 'Product', price: null, currency: 'NOK', imageUrl: null };
-      }
+    // 3. Persist activation BEFORE broadcasting. If DB fails, throw — callers translate to 500.
+    //    We flag ws_event_sent=true optimistically; if the subsequent broadcast throws, we update it to false.
+    const activation = await storage.createShoppableAdActivation({
+      broadcastId: broadcast.broadcastId,
+      campaignId: campaign.id,
+      sponsorId: sponsorId ?? null,
+      slotId: slotId ?? null,
+      clientAppId: clientAppId ?? null,
+      productId: String(productId),
+      productSnapshot: product,
+      sponsorSnapshot: sponsor,
+      source,
+      wsEventSent: true,
+      metadata: null,
+    });
 
-      const wsEvent = {
-        type: 'shoppable_ad',
-        broadcastId,
-        campaignId: campaign.id,
-        product,
-        ...(sponsor ? { sponsor } : {}),
-        timestamp: Date.now(),
-      };
+    // 4. Build WS event (includes activationId for attribution + sponsorId for per-sponsor
+    //    commerce-key routing on the SDK side via VioTVConfiguration.commerce(forSponsorId:))
+    const wsEvent: Record<string, any> = {
+      type: 'shoppable_ad',
+      broadcastId: broadcast.broadcastId,
+      campaignId: campaign.id,
+      sponsorId: sponsorId ?? null,
+      product,
+      ...(sponsor ? { sponsor } : {}),
+      ...(slotId ? { slotId } : {}),
+      activationId: activation.id,
+      timestamp: Date.now(),
+    };
 
-      if (campaign.id) {
-        broadcastToCampaign(campaign.id, JSON.stringify(wsEvent));
-      }
+    // 5. Fan-out (Redis Pub/Sub if enabled, otherwise local only)
+    try {
+      if (campaign.id) broadcastToCampaign(campaign.id, JSON.stringify(wsEvent));
+    } catch (err) {
+      console.error(`[ShoppableAd:${source}] broadcastToCampaign failed, marking ws_event_sent=false for activation ${activation.id}`, err);
+      // Best-effort flag update; swallow failures here so we don't mask the broadcast error
+      try {
+        await db.update(shoppableAdActivations)
+          .set({ wsEventSent: false })
+          .where(eq(shoppableAdActivations.id, activation.id));
+      } catch {/* ignore */}
+      throw err;
+    }
 
-      res.json({ success: true });
-    } catch (error) {
-      console.error('[ShoppableAd] Error:', error);
+    return { activationId: activation.id, wsEvent, product, sponsor };
+  }
+
+  // POST /api/broadcasts/:id/shoppable-ad — Admin Bearer trigger (source=admin-api)
+  app.post('/v2/admin/broadcasts/:broadcastId/shoppable-ad', requireBearerAuth, async (req, res) => {
+    try {
+      const { broadcastId } = req.params;
+      const { productId, sponsorId } = req.body;
+      if (!productId) return res.status(400).json({ error: 'productId is required' });
+
+      const broadcast = await storage.getBroadcast(broadcastId);
+      if (!broadcast) return res.status(404).json({ error: 'Broadcast not found' });
+      if (!broadcast.campaignId) return res.status(400).json({ error: 'Broadcast has no associated campaign' });
+      const campaign = await storage.getCampaign(broadcast.campaignId);
+      if (!campaign) return res.status(404).json({ error: 'Campaign not found' });
+
+      const { activationId, product, sponsor } = await persistAndBroadcastShoppableAd({
+        broadcast, campaign, productId,
+        sponsorId: sponsorId ? Number(sponsorId) : null,
+        source: 'admin-api', req,
+      });
+      res.json({ success: true, activationId, product, sponsor });
+    } catch (error: any) {
+      console.error('[ShoppableAd:admin-api] Error:', error);
+      if (error?.status) return res.status(error.status).json({ error: error.message, code: error.code });
       res.status(500).json({ error: 'Failed to trigger shoppable ad' });
     }
   });
 
-  // POST /api/broadcasts/:broadcastId/trigger-shoppable-ad — Dashboard trigger (no Bearer required)
+  // POST /api/broadcasts/:broadcastId/trigger-shoppable-ad — Dashboard trigger (source=dashboard, no auth)
   app.post('/api/broadcasts/:broadcastId/trigger-shoppable-ad', async (req, res) => {
     try {
       const { broadcastId } = req.params;
       const { productId, sponsorId } = req.body;
-
-      if (!productId) {
-        return res.status(400).json({ error: 'productId is required' });
-      }
+      if (!productId) return res.status(400).json({ error: 'productId is required' });
 
       const broadcast = await storage.getBroadcast(broadcastId);
       if (!broadcast) return res.status(404).json({ error: 'Broadcast not found' });
-
+      if (!broadcast.campaignId) return res.status(400).json({ error: 'Broadcast has no associated campaign' });
       const campaign = await storage.getCampaign(broadcast.campaignId);
       if (!campaign) return res.status(404).json({ error: 'Campaign not found' });
 
-      // Use sponsor's commerceApiKey if available, fallback to env
-      let commerceApiKey = process.env.COMMERCE_API_KEY || 'KCXF10Y-W5T4PCR-GG5119A-Z64SQ9S';
-      if (sponsorId) {
-        const sp = await storage.getSponsor(parseInt(sponsorId));
-        if (sp?.commerceApiKey) commerceApiKey = sp.commerceApiKey;
-      }
+      const { activationId, product, sponsor } = await persistAndBroadcastShoppableAd({
+        broadcast, campaign, productId,
+        sponsorId: sponsorId ? Number(sponsorId) : null,
+        source: 'dashboard', req,
+      });
 
-      let product: any = null;
-      try {
-        const gqlQuery = `{ Channel { GetProductsByIds(product_ids: [${productId}]) { id title images { url order } price { amount amount_incl_taxes currency_code } } } }`;
-        const gqlRes = await fetch(process.env.COMMERCE_GRAPHQL_URL || 'http://graph-ql.default.svc.cluster.local/graphql', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Authorization': commerceApiKey },
-          body: JSON.stringify({ query: gqlQuery }),
-        });
-        const gqlData = await gqlRes.json() as any;
-        const p = gqlData?.data?.Channel?.GetProductsByIds?.[0];
-        if (p) {
-          const image = p.images?.sort((a: any, b: any) => a.order - b.order)?.[0];
-          product = {
-            id: String(p.id),
-            name: p.title,
-            price: p.price?.amount_incl_taxes ?? p.price?.amount ?? null,
-            currency: p.price?.currency_code ?? 'NOK',
-            imageUrl: image?.url ?? null,
-          };
-        }
-      } catch (err) {
-        console.warn('[TriggerShoppableAd] Commerce GraphQL error:', err);
-      }
-
-      if (!product) {
-        product = { id: String(productId), name: `Product #${productId}`, price: null, currency: 'NOK', imageUrl: null };
-      }
-
-      let sponsor: any = null;
-      if (sponsorId) {
-        const sp = await storage.getSponsor(parseInt(sponsorId));
-        if (sp) {
-          sponsor = {
-            name: sp.name,
-            logoUrl: sp.logoUrl ? normalizeUrls(sp.logoUrl, req.protocol, req.get('host')) : null,
-            primaryColor: sp.primaryColor ?? null,
-          };
-        }
-      }
-
-      const wsEvent = {
-        type: 'shoppable_ad',
-        broadcastId,
-        campaignId: campaign.id,
-        product,
-        ...(sponsor ? { sponsor } : {}),
-        timestamp: Date.now(),
-      };
-
-      if (campaign.id) {
-        broadcastToCampaign(campaign.id, JSON.stringify(wsEvent));
-      }
-
-      res.json({ success: true, product, sponsor });
-    } catch (error) {
-      console.error('[TriggerShoppableAd] Error:', error);
+      res.json({ success: true, activationId, product, sponsor });
+    } catch (error: any) {
+      console.error('[ShoppableAd:dashboard] Error:', error);
+      if (error?.status) return res.status(error.status).json({ error: error.message, code: error.code });
       res.status(500).json({ error: 'Failed to trigger shoppable ad' });
     }
   });
@@ -4897,7 +5549,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
     }
   });
 
-  // POST /api/broadcasts/:id/sponsor-slots/:slotId/execute — Fire the slot as WS event
+  // POST /api/broadcasts/:id/sponsor-slots/:slotId/execute — Fire the slot as WS event (source=slot-scheduler)
   app.post('/api/broadcasts/:broadcastId/sponsor-slots/:slotId/execute', async (req, res) => {
     try {
       const { broadcastId } = req.params;
@@ -4907,52 +5559,84 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
 
       const broadcast = await storage.getBroadcast(broadcastId);
       if (!broadcast) return res.status(404).json({ error: 'Broadcast not found' });
+      if (!broadcast.campaignId) return res.status(400).json({ error: 'Broadcast has no associated campaign' });
+      const campaign = await storage.getCampaign(broadcast.campaignId);
+      if (!campaign) return res.status(404).json({ error: 'Campaign not found' });
 
-      await storage.getCampaign(broadcast.campaignId);
+      const productIds: (number | string)[] = slot.productIds ?? [];
+      const productId = productIds[0] ?? 'unknown';
 
-      // Use slot's sponsor commerceApiKey
-      const slotSponsor = await storage.getSponsor(slot.sponsorId);
-      const commerceApiKey = slotSponsor?.commerceApiKey || process.env.COMMERCE_API_KEY || 'KCXF10Y-W5T4PCR-GG5119A-Z64SQ9S';
-
-      const productIds = slot.productIds ?? [];
-      let product: any = null;
-      if (productIds.length > 0) {
-        try {
-          const gqlQuery = `{ Channel { GetProductsByIds(product_ids: [${productIds[0]}]) { id title images { url order } price { amount amount_incl_taxes currency_code } } } }`;
-          const gqlRes = await fetch(process.env.COMMERCE_GRAPHQL_URL || 'http://graph-ql.default.svc.cluster.local/graphql', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'Authorization': commerceApiKey },
-            body: JSON.stringify({ query: gqlQuery }),
-          });
-          const gqlData = await gqlRes.json() as any;
-          const p = gqlData?.data?.Channel?.GetProductsByIds?.[0];
-          if (p) {
-            const image = p.images?.sort((a: any, b: any) => a.order - b.order)?.[0];
-            product = { id: String(p.id), name: p.title, price: p.price?.amount_incl_taxes ?? p.price?.amount ?? null, currency: p.price?.currency_code ?? 'NOK', imageUrl: image?.url ?? null };
-          }
-        } catch (err) {
-          console.warn('[SponsorSlot] Commerce error:', err);
-        }
-      }
-      if (!product) product = { id: String(productIds[0] ?? 'unknown'), name: 'Product', price: null, currency: 'NOK', imageUrl: null };
-
-      const sp = await storage.getSponsor(slot.sponsorId);
-      const sponsor = sp ? { name: sp.name, logoUrl: sp.logoUrl ? normalizeUrls(sp.logoUrl, req.protocol, req.get('host')) : null, primaryColor: sp.primaryColor ?? null } : null;
-
-      const wsEvent = { type: 'shoppable_ad', broadcastId, campaignId: broadcast.campaignId, product, ...(sponsor ? { sponsor } : {}), slotId, timestamp: Date.now() };
-      if (broadcast.campaignId) broadcastToCampaign(broadcast.campaignId, JSON.stringify(wsEvent));
+      // Persist & broadcast first — only mark the slot completed if this succeeds,
+      // so we never leave a slot in 'completed' state without an activation row.
+      const { activationId, product, sponsor } = await persistAndBroadcastShoppableAd({
+        broadcast, campaign, productId,
+        sponsorId: slot.sponsorId,
+        slotId,
+        source: 'slot-scheduler', req,
+      });
 
       await storage.updateBroadcastSponsorSlot(slotId, { status: 'completed', executedAt: new Date() });
 
-      res.json({ success: true, product, sponsor });
-    } catch (error) {
-      console.error('[SponsorSlot] Execute error:', error);
+      res.json({ success: true, activationId, product, sponsor });
+    } catch (error: any) {
+      console.error('[ShoppableAd:slot-scheduler] Execute error:', error);
+      if (error?.status) return res.status(error.status).json({ error: error.message, code: error.code });
       res.status(500).json({ error: 'Failed to execute sponsor slot' });
     }
   });
 
+  // POST /api/sdk/tv/broadcasts/:broadcastId/shoppable-ad — TV SDK trigger (API Key auth, source=tv-sdk)
+  // Uses the same apiKey model as mobile SDK endpoints but on a dedicated path so TV-specific
+  // behaviours (reporting, rate limits, analytics) can diverge cleanly over time.
+  app.post('/v2/tv/broadcasts/:broadcastId/shoppable-ad', validateApiKey, async (req, res) => {
+    try {
+      const { broadcastId } = req.params;
+      const { productId, sponsorId } = req.body ?? {};
+      if (!productId) return res.status(400).json({ error: 'productId is required' });
+
+      const broadcast = await storage.getBroadcast(broadcastId);
+      if (!broadcast) return res.status(404).json({ error: 'Broadcast not found' });
+      if (!broadcast.campaignId) return res.status(400).json({ error: 'Broadcast has no associated campaign' });
+      const campaign = await storage.getCampaign(broadcast.campaignId);
+      if (!campaign) return res.status(404).json({ error: 'Campaign not found' });
+
+      const clientApp = (req as any).clientApp;
+      const { activationId, product, sponsor } = await persistAndBroadcastShoppableAd({
+        broadcast, campaign, productId,
+        sponsorId: sponsorId ? Number(sponsorId) : null,
+        clientAppId: clientApp?.id ?? null,
+        source: 'tv-sdk', req,
+      });
+      res.json({ success: true, activationId, product, sponsor });
+    } catch (error: any) {
+      console.error('[ShoppableAd:tv-sdk] Error:', error);
+      if (error?.status) return res.status(error.status).json({ error: error.message, code: error.code });
+      res.status(500).json({ error: 'Failed to trigger shoppable ad' });
+    }
+  });
+
+  // GET /api/broadcasts/:broadcastId/shoppable-ads — List activation history for a broadcast
+  // Session auth not enforced here (mirrors existing event-log endpoints in this file).
+  app.get('/api/broadcasts/:broadcastId/shoppable-ads', async (req, res) => {
+    try {
+      const { broadcastId } = req.params;
+      const limit = Math.min(parseInt(String(req.query.limit ?? '50')) || 50, 200);
+      const offset = parseInt(String(req.query.offset ?? '0')) || 0;
+      const sponsorId = req.query.sponsorId ? Number(req.query.sponsorId) : undefined;
+      const source = req.query.source ? String(req.query.source) : undefined;
+
+      const rows = await storage.listShoppableAdActivationsByBroadcast(broadcastId, {
+        limit, offset, sponsorId, source,
+      });
+      res.json({ activations: rows, limit, offset, count: rows.length });
+    } catch (error) {
+      console.error('[ShoppableAd:list] Error:', error);
+      res.status(500).json({ error: 'Failed to list shoppable ad activations' });
+    }
+  });
+
   // GET /api/commerce/products?sponsorId=:id OR ?campaignId=:id — Fetch products from Commerce GraphQL
-  app.get('/api/commerce/products', async (req, res) => {
+  app.get('/v2/commerce/products', async (req, res) => {
     try {
       const sponsorId = req.query.sponsorId ? parseInt(req.query.sponsorId as string) : null;
       const campaignId = req.query.campaignId ? parseInt(req.query.campaignId as string) : null;
@@ -4988,12 +5672,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       }
 
       const gqlQuery = `{ Channel { GetProductsByIds(product_ids: [${productIds.join(',')}]) { id title images { url order } price { amount amount_incl_taxes currency_code } } } }`;
-      const gqlRes = await fetch(process.env.COMMERCE_GRAPHQL_URL || 'http://graph-ql.default.svc.cluster.local/graphql', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': commerceApiKey },
-        body: JSON.stringify({ query: gqlQuery }),
-      });
-      const gqlData = await gqlRes.json() as any;
+      const gqlData = await fetchGraphQL(gqlQuery, commerceApiKey);
       const raw = gqlData?.data?.Channel?.GetProductsByIds ?? [];
       const products = raw.map((p: any) => {
         const image = p.images?.sort((a: any, b: any) => a.order - b.order)?.[0];
@@ -5007,8 +5686,94 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
     }
   });
 
+  // GET /api/commerce/sponsors/:sponsorId/catalog — list a sponsor's full Commerce catalog
+  // (used by the dashboard slot picker to browse a sponsor's channel before saving the
+  // chosen productId on a broadcast_sponsor_slot). Auth boundary: 404 if sponsor missing,
+  // 422 if the sponsor has no commerce_api_key wired (visual-only sponsors can't sell).
+  // Search filtering is performed client-side from the returned page since the upstream
+  // GraphQL `Channel.GetProducts` does not expose a search argument today.
+  app.get('/v2/commerce/sponsors/:sponsorId/catalog', async (req, res) => {
+    try {
+      const sponsorId = parseInt(req.params.sponsorId);
+      if (!Number.isFinite(sponsorId)) {
+        return res.status(400).json({ error: 'Invalid sponsorId' });
+      }
+
+      const sponsor = await storage.getSponsor(sponsorId);
+      if (!sponsor) return res.status(404).json({ error: 'Sponsor not found' });
+      if (!sponsor.commerceApiKey) {
+        return res.status(422).json({
+          error: `Sponsor ${sponsor.id} (${sponsor.name}) has no commerce key — cannot list a catalog`,
+          code: 'SPONSOR_MISSING_COMMERCE_KEY',
+        });
+      }
+
+      const shippingCountryCode = (req.query.shippingCountryCode as string) || 'NO';
+      const currency = (req.query.currency as string) || 'NOK';
+      const limit = Math.min(parseInt(req.query.limit as string) || 100, 200);
+      const offset = parseInt(req.query.offset as string) || 0;
+
+      const gqlQuery = `
+        query GetCatalog($shippingCountryCode: String, $currency: String) {
+          Channel {
+            GetProducts(shipping_country_code: $shippingCountryCode, currency: $currency) {
+              id
+              title
+              sku
+              description
+              images { id url height order }
+              price {
+                amount
+                currency_code
+                amount_incl_taxes
+                tax_amount
+                tax_rate
+                compare_at
+                compare_at_incl_taxes
+              }
+            }
+          }
+        }
+      `;
+
+      const gqlData = await fetchGraphQL(gqlQuery, sponsor.commerceApiKey, 3, {
+        shippingCountryCode,
+        currency,
+      });
+      const all = (gqlData?.data?.Channel?.GetProducts ?? []) as any[];
+
+      const products = all.map((p) => {
+        const image = p.images?.slice().sort((a: any, b: any) => (a.order ?? 0) - (b.order ?? 0))?.[0];
+        return {
+          id: p.id,
+          name: p.title,
+          sku: p.sku ?? null,
+          description: p.description ?? null,
+          imageUrl: image?.url ?? null,
+          price: p.price?.amount_incl_taxes ?? p.price?.amount ?? null,
+          currency: p.price?.currency_code ?? currency,
+        };
+      });
+
+      const total = products.length;
+      const page = products.slice(offset, offset + limit);
+
+      res.json({
+        sponsor: { id: sponsor.id, name: sponsor.name },
+        products: page,
+        total,
+        limit,
+        offset,
+        hasMore: offset + page.length < total,
+      });
+    } catch (error: any) {
+      console.error('[Commerce catalog] Error:', error?.message ?? error);
+      res.status(502).json({ error: 'Failed to fetch sponsor catalog from Commerce', detail: error?.message });
+    }
+  });
+
   // POST /api/campaigns/:id/register-device — Register APNs device token (SDK partner apps; used for Vio-side push fallback)
-  app.post('/api/campaigns/:campaignId/register-device', validateApiKey, async (req, res) => {
+  app.post('/v2/mobile/campaigns/:campaignId/register-device', validateApiKey, async (req, res) => {
     try {
       const campaignId = parseInt(req.params.campaignId);
       const clientApp = (req as any).clientApp;
@@ -5055,11 +5820,13 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   });
 
   // POST /api/campaigns/:id/cart-intent — TV adds to cart -> broadcast WS or webhook (partner-first)
-  app.post('/api/campaigns/:campaignId/cart-intent', validateApiKey, async (req, res) => {
+  // Accepts optional `activationId` to close the attribution chain (shoppable_ad → cart_intent → purchase).
+  // Persists a row in cart_intents for later analytics.
+  app.post('/v2/mobile/campaigns/:campaignId/cart-intent', validateApiKey, async (req, res) => {
     try {
       const campaignId = parseInt(req.params.campaignId);
       const clientApp = (req as any).clientApp;
-      const { productId, userId, productName } = req.body;
+      const { productId, userId, productName, activationId, sponsorId } = req.body;
 
       // Validate campaign belongs to this API key's clientApp
       const campaign = await storage.getCampaign(campaignId);
@@ -5074,257 +5841,116 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
         return res.status(400).json({ error: 'productId and userId are required' });
       }
 
+      // Resolve product name via Commerce — uses the sponsor's per-sponsor
+      // commerceApiKey from `sponsors.commerce_api_key`. Per the v2 rule
+      // "no hardcoded apiKeys", route to the right key based on the
+      // sponsorId passed in the body (or derived from activationId below
+      // when needed). Falls back across `campaign_sponsors` when the
+      // supplied sponsorId has no key configured. If no sponsor in the
+      // campaign has a key, name resolution is skipped — the push notif
+      // keeps the `Product ${productId}` placeholder rather than crashing.
+      // (Same pattern as `/v2/tv/cart-intent` and `/v2/commerce/products`.)
       let resolvedName = productName || `Product ${productId}`;
       if (!productName) {
-        try {
-          const commerceApiKey = process.env.COMMERCE_API_KEY || 'KCXF10Y-W5T4PCR-GG5119A-Z64SQ9S';
-          const gqlQuery = `{ Channel { GetProductsByIds(product_ids: [${productId}]) { id title images { url order } price { amount amount_incl_taxes currency_code } } } }`;
-          const gqlRes = await fetch(process.env.COMMERCE_GRAPHQL_URL || 'http://graph-ql.default.svc.cluster.local/graphql', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'Authorization': commerceApiKey },
-            body: JSON.stringify({ query: gqlQuery }),
-          });
-          const gqlData = await gqlRes.json() as any;
-          const name = gqlData?.data?.Channel?.GetProductsByIds?.[0]?.title;
-          if (name) resolvedName = name;
-        } catch (err) {
-          console.warn('[CartIntent] Commerce lookup failed:', err);
+        let resolvedCommerceKey: string | null = null;
+        if (sponsorId) {
+          const sp = await storage.getSponsor(Number(sponsorId));
+          if (sp?.commerceApiKey) resolvedCommerceKey = sp.commerceApiKey;
+        }
+        if (!resolvedCommerceKey) {
+          const campaignSponsorsForKey = await storage.getCampaignSponsors(campaign.id);
+          for (const cs of campaignSponsorsForKey) {
+            const csp = await storage.getSponsor(cs.sponsorId);
+            if (csp?.commerceApiKey) { resolvedCommerceKey = csp.commerceApiKey; break; }
+          }
+        }
+        if (resolvedCommerceKey) {
+          try {
+            const gqlQuery = `{ Channel { GetProductsByIds(product_ids: [${productId}]) { id title images { url order } price { amount amount_incl_taxes currency_code } } } }`;
+            const gqlData = await fetchGraphQL(gqlQuery, resolvedCommerceKey);
+            const name = gqlData?.data?.Channel?.GetProductsByIds?.[0]?.title;
+            if (name) resolvedName = name;
+          } catch (err) {
+            console.warn('[CartIntent] Commerce lookup failed:', err);
+          }
+        } else {
+          console.warn(`[CartIntent] No commerce key resolved for sponsorId=${sponsorId ?? '(none)'} campaignId=${campaign.id} — using placeholder "${resolvedName}" in push notif`);
         }
       }
 
       const normalizedUserId = String(userId).trim();
-      const directWs = wsUserMap.get(normalizedUserId);
-      console.log('[CartIntent] directWs', directWs ? 'connected' : 'undefined');
-      const isConnectedLocal = Boolean(directWs && directWs.readyState === WebSocket.OPEN);
-      console.log('[CartIntent] isConnectedLocal', isConnectedLocal);
-      console.log('[CartIntent] isRedisEnabled', isRedisEnabled());
 
-      // Check cluster with timeout to avoid hanging if Redis is down
-      let isConnectedCluster = false;
-      if (isRedisEnabled()) {
-        try {
-          isConnectedCluster = await Promise.race([
-            isUserConnectedAcrossCluster(normalizedUserId),
-            new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 1000))
-          ]);
-        } catch (err) {
-          console.warn('[CartIntent] isUserConnectedAcrossCluster error:', err);
-        }
-      }
-
-      const isUserConnected = isConnectedLocal || isConnectedCluster;
-      console.log('[CartIntent] isUserConnected', isUserConnected);
-
-      // Normalize clientApp name for source field (e.g., "TV2" -> "tv2")
-      const normalizedAppName = clientApp.name.toLowerCase().replace(/\s+/g, '_');
-      const source = `apptv_${normalizedAppName}`;
-      const deeplink = `product/${productId}?campaignId=${campaignId}`;
+      // Build the canonical envelope once — used by WS, partner webhook, APNs and persistence.
+      // Mobile-path callers historically have not propagated activation_id/sponsor_id into the
+      // payload (only into the persisted row); preserve that until we explicitly migrate the
+      // mobile contract. TV-path callers do propagate them — see below.
+      const envelope = buildCartIntentEnvelope({
+        userId: String(userId),
+        campaignId,
+        productId,
+        productName: resolvedName,
+        clientAppName: clientApp.name,
+      });
 
       const wsEvent = {
         type: 'cart_intent',
-        vio_notification_version: 1,
-        vio_user_id: String(userId),
-        vio_event_type: 'cart_intent',
-        vio_payload: {
-          product_id: String(productId),
-          campaign_id: String(campaignId),
-          product_name: resolvedName,
-          notification_title: resolvedName,
-          notification_body: `${resolvedName} – klikk for å kjøpe.`,
-          source,
-          deeplink,
-        },
+        ...envelope,
         timestamp: new Date().toISOString(),
       };
 
-      // Default: **dual delivery** — after WS (local or cluster), also run partner webhook / APNs so push
-      // reaches the device when the app is backgrounded (WS may not run on iOS until foreground).
-      // Opt out: `CART_INTENT_DUAL_DELIVERY=false` (saves duplicate partner calls when you only want WS).
-      const dualDelivery = process.env.CART_INTENT_DUAL_DELIVERY !== "false";
+      const { deliveryMode, userConnected } = await routeUserEvent({
+        userId: normalizedUserId,
+        clientApp,
+        envelope,
+        wsEvent,
+        campaignIdForDeviceLookup: campaignId,
+      });
 
-      let deliveryMode: 'websocket' | 'dual' | 'webhook';
-
-      if (isConnectedLocal && directWs) {
-        // Send via local socket
-        directWs.send(JSON.stringify(wsEvent));
-        console.log('[CartIntent] Sent via local socket to userId:', userId);
-        if (dualDelivery) {
-          console.log("[CartIntent] Dual delivery: also invoking partner fallback");
-          await notifyCartIntentPartnerFallback({
-            clientApp,
-            campaignId,
-            userId: String(userId),
-            productId,
-            resolvedName,
-            context: "dual",
-          });
-          deliveryMode = 'dual';
-        } else {
-          deliveryMode = 'websocket';
-        }
-      } else if (isConnectedCluster) {
-        // User is on another cluster node -> Forward via Redis Pub/Sub
-        await publishEvent("ws:events:forward", wsEvent);
-        console.log('[CartIntent] Forwarded via Redis Pub/Sub to cluster for userId:', userId);
-        if (dualDelivery) {
-          console.log("[CartIntent] Dual delivery: also invoking partner fallback");
-          await notifyCartIntentPartnerFallback({
-            clientApp,
-            campaignId,
-            userId: String(userId),
-            productId,
-            resolvedName,
-            context: "dual",
-          });
-          deliveryMode = 'dual';
-        } else {
-          deliveryMode = 'websocket';
-        }
-      } else {
-        // User is offline -> Partner webhook fallback (Partner-first architecture)
-        await notifyCartIntentPartnerFallback({
-          clientApp,
+      // Persist cart_intent with attribution chain (source_activation_id) for later analytics.
+      // Ensure-user: resolves (client_app, externalUserId) to the end_users row, creating if needed.
+      let cartIntentId: number | null = null;
+      try {
+        const endUser = await storage.ensureEndUser(clientApp.id, normalizedUserId);
+        const created = await storage.createCartIntent({
+          endUserId: endUser.id,
           campaignId,
-          userId: String(userId),
-          productId,
-          resolvedName,
-          context: "offline",
+          clientAppId: clientApp.id,
+          tvSessionId: null,
+          sponsorId: sponsorId ? Number(sponsorId) : null,
+          productId: String(productId),
+          sourceActivationId: activationId ? Number(activationId) : null,
+          sourceComponentId: null,
+          deliveryMode,
+          userConnected,
+          envelope,
+          metadata: null,
         });
-        deliveryMode = 'webhook';
+        cartIntentId = created.id;
+      } catch (persistErr) {
+        console.error('[UserEvent:cart_intent] persist failed (non-fatal):', persistErr);
       }
-
-      // Construct envelope for response (without internal WS fields)
-      const envelope = {
-        vio_notification_version: 1,
-        vio_user_id: String(userId),
-        vio_event_type: 'cart_intent',
-        vio_payload: {
-          product_id: String(productId),
-          campaign_id: String(campaignId),
-          product_name: resolvedName,
-          notification_title: resolvedName,
-          notification_body: `${resolvedName} – klikk for å kjøpe.`,
-          source,
-          deeplink,
-        },
-      };
 
       res.json({
         success: true,
         mode: deliveryMode,
-        userConnected: Boolean(isUserConnected),
+        userConnected,
         envelope,
+        cartIntentId,
       });
     } catch (error) {
-      console.error('[CartIntent] Error:', error);
+      console.error('[UserEvent:cart_intent] mobile handler error:', error);
       res.status(500).json({ error: 'Failed to process cart intent' });
-    }
-  });
-
-  // GET /v1/sdk/campaigns - Auto-Discovery endpoint
-  // Discovers all active campaigns using API key or Bundle ID
-  app.get('/v1/sdk/campaigns', async (req, res) => {
-    try {
-      // Auth: API key only (bundle ID reserved for future use)
-      const apiKey = req.query.apiKey as string || req.headers['x-api-key'] as string;
-
-      if (!apiKey) {
-        return res.status(401).json({ message: 'API key required' });
-      }
-
-      const clientApp = await storage.getClientAppByApiKey(apiKey);
-      if (!clientApp) {
-        return res.status(401).json({ message: 'Invalid API key' });
-      }
-
-      const matchIdFilter = req.query.matchId as string | undefined;
-      const now = new Date();
-
-      // Get all campaigns for this client app directly (channel is now campaign-level metadata)
-      const clientAppCampaigns = await storage.getClientAppCampaigns(clientApp.id);
-      const allCampaigns: any[] = [];
-
-      for (const campaign of clientAppCampaigns) {
-        // Filter by matchId if provided
-        if (matchIdFilter && campaign.matchId !== matchIdFilter) {
-          continue;
-        }
-
-        // Compute isActive — do NOT skip expired/paused campaigns.
-        // Returning [] when end_date passes breaks SDK initialization silently.
-        // SDKs use isActive to decide rendering; they should receive data always.
-        const isPaused = campaign.isPaused === 'true';
-        const startDate = campaign.startDate ? new Date(campaign.startDate) : null;
-        const endDate = campaign.endDate ? new Date(campaign.endDate) : null;
-
-        const isWithinDates = (!startDate || startDate <= now) && (!endDate || endDate >= now);
-        const isActive = !isPaused && isWithinDates;
-
-        // Get active components for this campaign (only when active to avoid unnecessary DB calls)
-        const components = isActive ? await storage.getCampaignComponents(campaign.id) : [];
-        const activeComponents = components
-          .filter(c => c.status === 'active')
-          .map(cc => {
-            const component: any = {
-              id: cc.componentId,
-              type: cc.component.type,
-              name: cc.instanceName || cc.component.name,
-              config: normalizeUrls(cc.customConfig || cc.component.config, req.protocol, req.get('host')),
-              status: cc.status,
-              locationId: cc.locationId || null
-            };
-
-            // Include matchContext if component has matchId
-            if (cc.matchId) {
-              component.matchContext = {
-                matchId: cc.matchId
-              };
-            }
-
-            return component;
-          });
-
-        const campaignData: any = {
-          campaignId: campaign.id,
-          campaignName: campaign.name,
-          campaignLogo: campaign.logo ? toAbsoluteUrl(campaign.logo, req) : null,
-          isActive,
-          startDate: campaign.startDate,
-          endDate: campaign.endDate,
-          isPaused: isPaused,
-          components: activeComponents
-        };
-
-        // Include matchContext if campaign has matchId
-        if (campaign.matchId) {
-          campaignData.matchContext = {
-            matchId: campaign.matchId,
-            matchName: campaign.matchName || null,
-            startTime: campaign.matchStartTime ? campaign.matchStartTime.toISOString() : null,
-            channelId: campaign.channelId
-          };
-        }
-
-        allCampaigns.push(campaignData);
-      }
-
-      // Sort by startDate (most recent first)
-      allCampaigns.sort((a, b) => {
-        if (!a.startDate && !b.startDate) return 0;
-        if (!a.startDate) return 1;
-        if (!b.startDate) return -1;
-        return new Date(b.startDate).getTime() - new Date(a.startDate).getTime();
-      });
-
-      res.json({ campaigns: allCampaigns });
-    } catch (error) {
-      console.error('Error fetching SDK campaigns:', error);
-      res.status(500).json({ message: 'Error fetching SDK campaigns' });
     }
   });
 
   // GET /v1/sdk/broadcast - Validate contentId and get broadcast engagement data
   // SDK calls this when a user opens a specific stream/content
+  // (NOTE: /v1/sdk/campaigns retired in commit 374a3ae after grep confirmed
+  // 0 callers across iOS / Apple TV / dashboard. Alan's commits c49ebca +
+  // acaa3e8 added a `sponsor: cc.sponsor` field to that endpoint's
+  // response — those refactors live now in `storage.getCampaignComponents`
+  // via the formatSponsor helper, available to any future v2 endpoint
+  // that wants the same shape.)
   app.get('/v1/sdk/broadcast', async (req, res) => {
     try {
       // Auth: API key only (bundle ID reserved for future use)
@@ -5442,81 +6068,6 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
     }
   });
 
-  // GET /v1/sdk/config — Zero-config bootstrap for SDK. Only needs apiKey.
-  app.get('/v1/sdk/config', validateApiKey, async (req, res) => {
-    try {
-      const clientApp = (req as any).clientApp;
-
-      // Auto-detect active campaign for this clientApp
-      const appCampaigns = await storage.getClientAppCampaigns(clientApp.id);
-      const now = new Date();
-      const activeCampaign = appCampaigns.find(c =>
-        c.status === 'active' &&
-        (!c.startDate || new Date(c.startDate) <= now) &&
-        (!c.endDate || new Date(c.endDate) >= now)
-      ) || appCampaigns[0] || null;
-
-      const { apiKey: commerceApiKey } = await resolveCommerceFromCampaignSponsors(
-        activeCampaign
-          ? {
-              id: activeCampaign.id,
-              sponsorId: activeCampaign.sponsorId ?? null,
-            }
-          : null,
-      );
-
-      // Trust X-Forwarded-Proto when behind TLS-terminating proxy (Cloudflare, AKS ingress)
-      const forwardedProto = (req.headers['x-forwarded-proto'] as string)?.split(',')[0]?.trim();
-      const effectiveProtocol = forwardedProto || req.protocol;
-      const baseUrl = `${effectiveProtocol}://${req.get('host')}`;
-      const wsProtocol = effectiveProtocol === 'https' ? 'wss' : 'ws';
-      const wsBase = `${wsProtocol}://${req.get('host')}`;
-      const COMMERCE_GRAPHQL = process.env.COMMERCE_GRAPHQL_URL || 'http://graph-ql.default.svc.cluster.local/graphql';
-
-      return res.json({
-        sdkVersion: "0.2.0",
-        clientApp: {
-          id: clientApp.id,
-          name: clientApp.name,
-          apiKey: clientApp.apiKey,
-        },
-        endpoints: {
-          restBase: baseUrl,
-          webSocketBase: wsBase,
-          commerceGraphQL: COMMERCE_GRAPHQL,
-        },
-        features: {
-          engagement: true,
-          adPlacements: true,
-          commerce: !!(commerceApiKey),
-          lineup: true,
-        },
-        commerce: commerceApiKey ? {
-          apiKey: commerceApiKey,
-          endpoint: COMMERCE_GRAPHQL,
-        } : null,
-        theme: {
-          primaryColor: (activeCampaign as any)?.primaryColor || null,
-          accentColor: (activeCampaign as any)?.accentColor || null,
-        },
-        markets: [],
-        campaign: activeCampaign ? {
-          id: activeCampaign.id,
-          campaignId: activeCampaign.id,
-          campaignName: (activeCampaign as any).name || null,
-          campaignLogo: (activeCampaign as any).logoUrl || null,
-          isActive: activeCampaign.status === 'active',
-          isPaused: (activeCampaign as any).isPaused ?? false,
-          startDate: (activeCampaign as any).startDate || null,
-          endDate: (activeCampaign as any).endDate || null,
-        } : null,
-      });
-    } catch (error) {
-      console.error('Error fetching SDK config:', error);
-      res.status(500).json({ message: 'Error fetching SDK config' });
-    }
-  });
-
   // GET /v1/campaigns/:campaignId/config - Complete dynamic campaign configuration
   app.get('/v1/campaigns/:campaignId/config', validateApiKey, async (req, res) => {
     try {
@@ -5576,7 +6127,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       const finalSponsorBadgeText = { ...defaultSponsorBadgeText, ...sponsorBadgeText };
 
       // Resolve sponsor for brand data (sponsor takes priority over campaign brand fields)
-      const sponsor = campaign.sponsorId ? await storage.getSponsor(campaign.sponsorId) : null;
+      const sponsor = await storage.getSponsor(campaign.primarySponsorId);
 
       // Build response with defaults for missing configs
       const config = {
@@ -5637,7 +6188,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
         channelId: sdkCommerceChannelId2,
       } = await resolveCommerceFromCampaignSponsors({
         id: campaign.id,
-        sponsorId: campaign.sponsorId ?? null,
+        sponsorId: campaign.primarySponsorId,
       });
       config.integrations = {
         commerce: {
@@ -5801,320 +6352,708 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
     }
   });
 
-  // GET /v1/offers - Get offers/products for a placement
-  app.get('/v1/offers', validateApiKey, async (req, res) => {
+
+  // ==================================================================
+  // v2 SDK endpoints — multi-sponsor redesign (see docs/multi-sponsor-architecture.md)
+  // ==================================================================
+
+  /**
+   * Helper: build the sponsor block for the /v2/sdk/config response.
+   * Returns the canonical shape the SDK consumes.
+   */
+  async function buildSponsorBlock(sponsorId: number) {
+    const sp = await storage.getSponsor(sponsorId);
+    if (!sp) return null;
+    const hasCommerce = !!sp.commerceApiKey;
+    const publicHost = process.env.PUBLIC_BASE_URL || 'api-dev.vio.live';
+    return {
+      id: sp.id,
+      name: sp.name,
+      // `avatarUrl` is the square brand mark rendered inside shoppable overlays / product
+      // cards. `logoUrl` is the wide horizontal logo used for sponsor intros / full-screen
+      // branding. Both ship so the SDK can pick the right one for each surface.
+      avatarUrl: sp.avatarUrl ? normalizeUrls(sp.avatarUrl, 'https', publicHost) : null,
+      logoUrl: sp.logoUrl ? normalizeUrls(sp.logoUrl, 'https', publicHost) : null,
+      primaryColor: sp.primaryColor ?? null,
+      secondaryColor: sp.secondaryColor ?? null,
+      commerce: hasCommerce
+        ? {
+            apiKey: sp.commerceApiKey,
+            channelId: sp.commerceChannelId ?? null,
+            paymentMethods: Array.isArray(sp.paymentMethods) ? sp.paymentMethods : [],
+          }
+        : null,
+    };
+  }
+
+  // GET /v2/sdk/config — primary + secondary sponsors with commerce per sponsor
+  app.get('/v2/mobile/config', validateApiKey, async (req, res) => {
     try {
       const clientApp = (req as any).clientApp;
-      const placement = req.query.placement as string;
-      const campaignIdParam = req.query.campaignId as string | undefined;
-      const userId = req.query.userId as string | undefined;
-      const userCountry = req.query.userCountry as string | undefined;
+      const appCampaigns = await storage.getClientAppCampaigns(clientApp.id);
+      const now = new Date();
+      const activeCampaign = appCampaigns.find(c =>
+        (!c.startDate || new Date(c.startDate) <= now) &&
+        (!c.endDate || new Date(c.endDate) >= now) &&
+        c.isPaused !== 'true'
+      ) || appCampaigns[0] || null;
 
-      // campaignId is optional — if not provided, resolve from the clientApp's active campaign
-      let requestedCampaignId: number;
-      if (campaignIdParam) {
-        const parsed = parseInt(campaignIdParam);
-        if (isNaN(parsed)) {
-          return res.status(400).json({ message: 'Invalid campaignId parameter' });
-        }
-        requestedCampaignId = parsed;
-      } else {
-        const now = new Date();
-        const appCampaigns = await storage.getClientAppCampaigns(clientApp.id);
-        const activeCampaign = appCampaigns.find(c =>
-          c.isPaused !== 'true' &&
-          (!c.startDate || new Date(c.startDate) <= now) &&
-          (!c.endDate || new Date(c.endDate) >= now)
-        ) || appCampaigns[0] || null;
-        if (!activeCampaign) {
-          return res.status(404).json({ message: 'No active campaign found for this API key' });
-        }
-        requestedCampaignId = activeCampaign.id;
+      if (!activeCampaign) {
+        return res.status(404).json({ error: 'No campaign configured for this client app' });
+      }
+      if (!activeCampaign.primarySponsorId) {
+        return res.status(500).json({ error: 'Active campaign has no primary sponsor — invariant violation' });
       }
 
-      // Get the campaign
-      const campaign = await storage.getCampaign(requestedCampaignId);
+      const [primary, secondaryList] = await Promise.all([
+        buildSponsorBlock(activeCampaign.primarySponsorId),
+        storage.listSecondarySponsors(activeCampaign.id),
+      ]);
+      const secondarySponsors = await Promise.all(secondaryList.map(s => buildSponsorBlock(s.id)));
 
-      if (!campaign) {
-        return res.status(404).json({ message: 'Campaign not found' });
-      }
+      const forwardedProto = (req.headers['x-forwarded-proto'] as string)?.split(',')[0]?.trim();
+      const effectiveProtocol = forwardedProto || req.protocol;
+      const wsProtocol = effectiveProtocol === 'https' ? 'wss' : 'ws';
+      const wsBase = `${wsProtocol}://${req.get('host')}`;
+      const commerceGraphQL = process.env.COMMERCE_GRAPHQL_PUBLIC_URL || 'https://graph-ql-dev.vio.live';
 
-      // Verify campaign belongs to this client app — direct match or via channel (legacy)
-      const directMatch = campaign.clientAppId === clientApp.id;
-      let channelMatch = false;
-      let channel = null;
-      if (campaign.channelId) {
-        channel = await storage.getChannel(campaign.channelId);
-        channelMatch = !!(channel && channel.clientAppId === clientApp.id);
-      }
-      if (!directMatch && !channelMatch) {
-        return res.status(403).json({ message: 'Campaign does not belong to this API key' });
-      }
-
-      // Check segmentation eligibility
-      if (!isUserEligibleForCampaign(
-        userId,
-        userCountry,
-        campaign.id,
-        campaign.isSegmented,
-        campaign.targetCountries,
-        campaign.targetPercentage
-      )) {
-        // User is not eligible - return empty offers
-        return res.json({
-          campaignId: campaign.id,
-          campaignName: campaign.name,
-          campaignLogo: campaign.logo ? toAbsoluteUrl(campaign.logo, req) : null,
-          channelId: channel?.id || null,
-          channelName: channel?.name || null,
-          offers: []
-        });
-      }
-
-      // Check if campaign is active
-      if (!isCampaignActive(campaign)) {
-        return res.json({
-          campaignId: campaign.id,
-          campaignName: campaign.name,
-          campaignLogo: campaign.logo ? toAbsoluteUrl(campaign.logo, req) : null,
-          channelId: channel?.id || null,
-          channelName: channel?.name || null,
-          offers: []
-        });
-      }
-
-      // Get active components for this campaign
-      const components = await storage.getCampaignComponents(campaign.id);
-      const activeComponents = components.filter(c => c.status === 'active');
-
-      // Transform components to offers format with optional matchContext
-      const offers = activeComponents.map(cc => {
-        const offer: any = {
-          id: cc.componentId,
-          type: cc.component.type,
-          name: cc.instanceName || cc.component.name,
-          config: normalizeUrls(cc.customConfig || cc.component.config, req.protocol, req.get('host')),
-          placement: placement || 'default'
-        };
-
-        // Include matchContext if component is associated with a specific match
-        if (cc.matchId) {
-          offer.matchContext = {
-            matchId: cc.matchId,
-            matchName: campaign.matchName || null,
-            startTime: campaign.matchStartTime ? campaign.matchStartTime.toISOString() : null,
-            channelId: campaign.channelId
-          };
-        }
-
-        return offer;
+      return res.json({
+        endpoints: {
+          webSocketBase: wsBase,
+          commerceGraphQL,
+        },
+        campaign: {
+          id: activeCampaign.id,
+          name: activeCampaign.name,
+          logo: (activeCampaign as any).logo ?? null,
+          isActive: (!activeCampaign.startDate || new Date(activeCampaign.startDate) <= now) &&
+                    (!activeCampaign.endDate || new Date(activeCampaign.endDate) >= now) &&
+                    activeCampaign.isPaused !== 'true',
+          isPaused: activeCampaign.isPaused === 'true',
+          startDate: activeCampaign.startDate ?? null,
+          endDate: activeCampaign.endDate ?? null,
+        },
+        primarySponsor: primary,
+        secondarySponsors: secondarySponsors.filter(Boolean),
+        features: {
+          shoppable: !!primary?.commerce,
+          lineup: !!(activeCampaign as any).showLineup,
+        },
       });
-
-      const response: any = {
-        campaignId: campaign.id,
-        campaignName: campaign.name,
-        campaignLogo: campaign.logo ? toAbsoluteUrl(campaign.logo, req) : null,
-        channelId: channel?.id || null,
-        channelName: channel?.name || null,
-        offers
-      };
-
-      // Include campaign-level matchContext if available
-      if (campaign.matchId) {
-        response.matchContext = {
-          matchId: campaign.matchId,
-          matchName: campaign.matchName || null,
-          startTime: campaign.matchStartTime ? campaign.matchStartTime.toISOString() : null,
-          channelId: campaign.channelId,
-          metadata: {}
-        };
-      }
-
-      res.json(response);
     } catch (error) {
-      console.error('Error fetching offers:', error);
-      res.status(500).json({ message: 'Error fetching offers' });
+      console.error('[v2 config] error', error);
+      res.status(500).json({ error: 'Failed to build config' });
     }
   });
 
-  // ========================================
-  // T1 — SDK Chat History
-  // GET /v1/sdk/broadcasts/:broadcastId/chat
-  // ========================================
-  app.get('/v1/sdk/broadcasts/:broadcastId/chat', validateApiKey, async (req, res) => {
+  // ============================================================
+  // POST /v2/mobile/components/manifest — SDK location declaration
+  // ============================================================
+  // The partner SDK uploads at app boot **only the slot locations** its
+  // layout exposes (e.g. "home_top", "match_pre_kickoff"). The dashboard's
+  // "Add from library" form reads from these so an operator can never bind
+  // an `app_placement` to a slot the dev's code doesn't actually render to.
+  //
+  // Decision (sprint 2026-04-27 PM):
+  //   - **Sync semantics**: locations not in the new payload get
+  //     `deprecated_at = now()`. Re-uploading clears the deprecated flag.
+  //   - Manifest does NOT create `app_placements` (those are created via
+  //     dashboard `/apps/:id` "Add from library" form). The SDK only owns
+  //     the slot manifest.
+  //   - **No legacy support**: `placements[]` and `components[]` arrays are
+  //     rejected with HTTP 400. Callers must update to v2 manifest.
+  //
+  // Auth: `validateApiKey` resolves the `client_app_id` from the SDK's
+  // `X-API-Key` header. Multi-tenant isolation by construction.
+  app.post('/v2/mobile/components/manifest', validateApiKey, async (req, res) => {
     try {
       const clientApp = (req as any).clientApp;
-      const { broadcastId } = req.params;
-      const limit = req.query.limit ? parseInt(req.query.limit as string) : 50;
-      const broadcast = await storage.getBroadcast(broadcastId);
-      if (!broadcast) return res.status(404).json({ message: 'Broadcast not found' });
+      const body = req.body ?? {};
 
-      // Validate broadcast's campaign belongs to this API key's clientApp
-      if (broadcast.campaignId) {
-        const campaign = await storage.getCampaign(broadcast.campaignId);
-        if (campaign && campaign.clientAppId !== clientApp.id) {
-          return res.status(403).json({ error: 'Broadcast does not belong to this API key' });
-        }
+      // Reject legacy v1/v2 fields explicitly so partners hit a hard error
+      // instead of silent no-op while the contract is still in flux.
+      if ('components' in body || 'placements' in body) {
+        return res.status(400).json({
+          error: 'Manifest only accepts `locations[]`. The legacy `components[]` and `placements[]` arrays were retired in the dashboard-driven placement model — placements are now created via the dashboard `/apps/:id` "Add from library" form. See docs/TASK_PLACEMENTS.md.',
+        });
       }
-      const messages = await storage.getChatMessages(broadcastId, limit);
-      res.json({ broadcastId, messages, count: messages.length });
+
+      const declaredLocations = body.locations;
+      if (!Array.isArray(declaredLocations)) {
+        return res.status(400).json({ error: 'Body must include `locations` array' });
+      }
+
+      const persistedLocations: any[] = [];
+      const warnings: { kind: string; detail: string }[] = [];
+      const seenLocationIds: string[] = [];
+
+      for (const entry of declaredLocations) {
+        if (!entry || typeof entry !== 'object') {
+          warnings.push({ kind: 'invalid_location_entry', detail: 'Entry must be an object with `id`' });
+          continue;
+        }
+        const id = typeof entry.id === 'string' ? entry.id.trim() : '';
+        if (!id) {
+          warnings.push({ kind: 'missing_location_id', detail: 'Location entry missing `id` string' });
+          continue;
+        }
+        if (id.length > 100) {
+          warnings.push({ kind: 'location_id_too_long', detail: `Location id '${id}' exceeds 100 chars; ignored.` });
+          continue;
+        }
+        if (seenLocationIds.includes(id)) {
+          warnings.push({ kind: 'duplicate_location_in_manifest', detail: `Location '${id}' declared more than once in this manifest; keeping first.` });
+          continue;
+        }
+        const displayName = typeof entry.displayName === 'string' && entry.displayName.trim() !== ''
+          ? entry.displayName.trim().slice(0, 255)
+          : null;
+        const row = await storage.upsertAppComponentLocation(clientApp.id, id, displayName);
+        seenLocationIds.push(id);
+        persistedLocations.push({
+          id: row.id,
+          locationId: row.locationId,
+          displayName: row.displayName,
+        });
+      }
+
+      // Sync semantics: locations not in this payload get deprecated.
+      // Idempotent — already-deprecated rows stay deprecated; re-uploaded
+      // ones get their `deprecated_at` cleared by the upsert above.
+      const deprecatedCount = await storage.deprecateAppComponentLocationsNotIn(clientApp.id, seenLocationIds);
+
+      console.log(
+        `[ManifestRegistry] clientApp=${clientApp.id} locations=${persistedLocations.length} deprecated=${deprecatedCount} warnings=${warnings.length}`
+      );
+
+      res.json({
+        clientAppId: clientApp.id,
+        locations: persistedLocations,
+        deprecatedCount,
+        warnings,
+      });
     } catch (error) {
-      res.status(500).json({ message: 'Error fetching chat history' });
+      console.error('[ManifestRegistry] error', error);
+      res.status(500).json({ error: 'Failed to process manifest' });
     }
   });
 
-  // ========================================
-  // T3 — SDK Score Endpoint
-  // GET /v1/sdk/broadcasts/:broadcastId/score
-  // ========================================
-  app.get('/v1/sdk/broadcasts/:broadcastId/score', validateApiKey, async (req, res) => {
+  // GET /v2/sdk/broadcasts/:broadcastId/capabilities — per-broadcast feature flags
+  app.get('/v2/mobile/broadcasts/:broadcastId/capabilities', validateApiKey, async (req, res) => {
     try {
-      const clientApp = (req as any).clientApp;
       const { broadcastId } = req.params;
       const broadcast = await storage.getBroadcast(broadcastId);
-      if (!broadcast) return res.status(404).json({ message: 'Broadcast not found' });
-
-      // Validate broadcast's campaign belongs to this API key's clientApp
-      if (broadcast.campaignId) {
-        const campaign = await storage.getCampaign(broadcast.campaignId);
-        if (campaign && campaign.clientAppId !== clientApp.id) {
-          return res.status(403).json({ error: 'Broadcast does not belong to this API key' });
-        }
-      }
-      const meta = (broadcast.metadata as any) || {};
-      const matchData = meta.matchData || null;
-      if (!matchData) return res.json({ broadcastId, hasScore: false });
-      res.set('Cache-Control', 'public, max-age=10');
+      if (!broadcast) return res.status(404).json({ error: 'Broadcast not found' });
+      const [pollCount, contestCount, activationCount] = await Promise.all([
+        db.select({ n: sql<number>`count(*)::int` }).from(polls).where(eq(polls.broadcastId, broadcastId)),
+        db.select({ n: sql<number>`count(*)::int` }).from(contests).where(eq(contests.broadcastId, broadcastId)),
+        db.select({ n: sql<number>`count(*)::int` }).from(shoppableAdActivations).where(eq(shoppableAdActivations.broadcastId, broadcastId)),
+      ]);
+      const hasPolls = pollCount[0].n > 0;
+      const hasContests = contestCount[0].n > 0;
+      const hasShoppable = activationCount[0].n > 0;
       res.json({
         broadcastId,
-        hasScore: true,
-        homeTeam: matchData.homeTeam || null,
-        awayTeam: matchData.awayTeam || null,
-        minute: matchData.minute ?? null,
-        matchStatus: matchData.matchStatus || 'NS',
+        campaignId: broadcast.campaignId,
+        engagement: {
+          enabled: broadcast.engagementEnabled === true,
+          hasPolls,
+          hasContests,
+        },
+        shoppable: { enabled: hasShoppable || broadcast.engagementEnabled === true },
+        lineup: { available: broadcast.showLineup === true },
       });
     } catch (error) {
-      res.status(500).json({ message: 'Error fetching score' });
+      console.error('[v2 capabilities] error', error);
+      res.status(500).json({ error: 'Failed to fetch capabilities' });
     }
   });
 
-  // ========================================
-  // T3 — SDK Stats Endpoint
-  // GET /v1/sdk/broadcasts/:broadcastId/stats
-  // ========================================
-  app.get('/v1/sdk/broadcasts/:broadcastId/stats', validateApiKey, async (req, res) => {
+  // GET /v2/sdk/broadcasts/:broadcastId/components — component placements for this broadcast
+  // Merges campaign-scoped (broadcast_id IS NULL) + broadcast-scoped (broadcast_id = this)
+  /**
+   * Campaign-level placement components for the SDK.
+   *
+   * Returns the active `campaign_components` rows for a campaign that are
+   * **not** scoped to a specific broadcast (i.e. `broadcast_id IS NULL`),
+   * with sponsor + commerce + customConfig flattened. Mirrors the shape of
+   * the broadcast-scoped endpoint below so the SDK can use the same decoder.
+   *
+   * Used by CampaignManager after discoverCampaigns to populate
+   * `activeComponents` on cold start — without this, a fresh app install
+   * sees no placements until a `component_status_changed` WS event arrives.
+   */
+  app.get('/v2/mobile/campaigns/:campaignId/components', validateApiKey, async (req, res) => {
     try {
-      const clientApp = (req as any).clientApp;
+      const campaignId = parseInt(req.params.campaignId);
+      if (Number.isNaN(campaignId)) return res.status(400).json({ error: 'Invalid campaignId' });
+      const campaign = await storage.getCampaign(campaignId);
+      if (!campaign) return res.status(404).json({ error: 'Campaign not found' });
+
+      // Post-migration 0004: campaign_components → app_placements → components.
+      // Filter rules:
+      //   - status = 'active'
+      //   - broadcast_id IS NULL (campaign-wide, not broadcast-scoped)
+      //   - app_placements.deprecated_at IS NULL — operator soft-deleted
+      //     placements stop rendering; existing campaign_components keep
+      //     existing in DB but the SDK is shielded from them.
+      const rows = await db.select({
+        cc: campaignComponents,
+        ap: appPlacements,
+        comp: components,
+        sp: sponsors,
+      })
+        .from(campaignComponents)
+        .innerJoin(appPlacements, eq(campaignComponents.appPlacementId, appPlacements.id))
+        .innerJoin(components, eq(appPlacements.componentId, components.id))
+        .innerJoin(sponsors, eq(campaignComponents.sponsorId, sponsors.id))
+        .where(and(
+          eq(campaignComponents.campaignId, campaignId),
+          eq(campaignComponents.status, 'active'),
+          isNull(campaignComponents.broadcastId),
+          isNull(appPlacements.deprecatedAt),
+        ));
+
+      // Response shape kept stable for iOS — `id` = template uuid (so the
+      // SDK's getActiveComponent(componentId:) keeps working with the
+      // template id), `locationId` sourced from app_placements (no longer
+      // on campaign_components post-migration). The new `appPlacementId`
+      // field exposes the FK so future SDK features can echo it back.
+      // Config: template baseline merged with operator's customConfig
+      // overlay (productIds, etc.).
+      const items = rows.map(({ cc, ap, comp, sp }) => {
+        const templateConfig = (comp as any).config ?? {};
+        const overlayConfig = cc.customConfig ?? {};
+        const mergedConfig =
+          typeof templateConfig === 'object' && typeof overlayConfig === 'object'
+            ? { ...templateConfig, ...overlayConfig }
+            : (overlayConfig || templateConfig);
+        return {
+          id: comp.id,                                  // template id (uuid string)
+          campaignComponentId: cc.id,                   // instance id (numeric)
+          appPlacementId: ap.id,                        // FK to app_placements
+          appPlacementName: ap.name,                    // human-friendly label ("Carrusel home")
+          type: comp.type,
+          name: cc.instanceName ?? ap.name,
+          status: cc.status,
+          locationId: ap.locationId,                    // sourced from app_placements
+          sponsorId: sp.id,
+          sponsor: {
+            id: sp.id,
+            name: sp.name,
+            // logoUrl is the wide / vector brand asset (often SVG which
+            // SwiftUI's AsyncImage can't decode). Pair it with the
+            // raster avatarUrl so SDK clients prefer the raster for
+            // inline UI rendering.
+            logoUrl: sp.logoUrl ?? null,
+            avatarUrl: sp.avatarUrl ?? null,
+            primaryColor: sp.primaryColor ?? null,
+          },
+          commerce: sp.commerceApiKey ? {
+            apiKey: sp.commerceApiKey,
+            channelId: sp.commerceChannelId ?? null,
+          } : null,
+          config: mergedConfig,
+        };
+      });
+
+      res.json({ campaignId, components: items });
+    } catch (error) {
+      console.error('[v2 campaign-components] error', error);
+      res.status(500).json({ error: 'Failed to fetch campaign components' });
+    }
+  });
+
+  // Broadcast-scoped placements (campaign-wide + broadcast-overridden,
+  // merged). Same JOIN-through-app_placements path as the campaign-scoped
+  // endpoint. Filters out deprecated placements so the SDK never sees
+  // stale slots after operator soft-delete.
+  app.get('/v2/mobile/broadcasts/:broadcastId/components', validateApiKey, async (req, res) => {
+    try {
       const { broadcastId } = req.params;
       const broadcast = await storage.getBroadcast(broadcastId);
-      if (!broadcast) return res.status(404).json({ message: 'Broadcast not found' });
+      if (!broadcast || !broadcast.campaignId) return res.status(404).json({ error: 'Broadcast not found' });
 
-      // Validate broadcast's campaign belongs to this API key's clientApp
-      if (broadcast.campaignId) {
-        const campaign = await storage.getCampaign(broadcast.campaignId);
-        if (campaign && campaign.clientAppId !== clientApp.id) {
-          return res.status(403).json({ error: 'Broadcast does not belong to this API key' });
-        }
-      }
-      const meta = (broadcast.metadata as any) || {};
-      const matchData = meta.matchData || null;
-      if (!matchData?.stats) return res.json({ broadcastId, hasStats: false });
-      res.set('Cache-Control', 'public, max-age=30');
-      res.json({ broadcastId, hasStats: true, stats: matchData.stats });
+      const rows = await db.select({
+        cc: campaignComponents,
+        ap: appPlacements,
+        comp: components,
+        sp: sponsors,
+      })
+        .from(campaignComponents)
+        .innerJoin(appPlacements, eq(campaignComponents.appPlacementId, appPlacements.id))
+        .innerJoin(components, eq(appPlacements.componentId, components.id))
+        .innerJoin(sponsors, eq(campaignComponents.sponsorId, sponsors.id))
+        .where(and(
+          eq(campaignComponents.campaignId, broadcast.campaignId),
+          eq(campaignComponents.status, 'active'),
+          isNull(appPlacements.deprecatedAt),
+          or(isNull(campaignComponents.broadcastId), eq(campaignComponents.broadcastId, broadcastId)),
+        ));
+
+      const items = rows.map(({ cc, ap, comp, sp }) => ({
+        id: cc.id,
+        campaignComponentId: cc.id,
+        appPlacementId: ap.id,
+        appPlacementName: ap.name,
+        type: comp.type,
+        locationId: ap.locationId,
+        instanceName: cc.instanceName ?? null,
+        sponsor: {
+          id: sp.id,
+          name: sp.name,
+          logoUrl: sp.logoUrl ?? null,
+          avatarUrl: sp.avatarUrl ?? null,
+          primaryColor: sp.primaryColor ?? null,
+        },
+        commerce: sp.commerceApiKey ? {
+          apiKey: sp.commerceApiKey,
+          channelId: sp.commerceChannelId ?? null,
+        } : null,
+        config: cc.customConfig ?? (comp as any).config ?? {},
+      }));
+
+      res.json({ broadcastId, components: items });
     } catch (error) {
-      res.status(500).json({ message: 'Error fetching stats' });
+      console.error('[v2 components] error', error);
+      res.status(500).json({ error: 'Failed to fetch components' });
     }
   });
 
-  // ========================================
-  // T3 — SDK Livescores
-  // GET /v1/sdk/livescores
-  // ========================================
-  app.get('/v1/sdk/livescores', validateApiKey, async (req, res) => {
+  // POST /api/sdk/tv/session/start — register / renew a TV session
+  app.post('/v2/tv/session/start', validateApiKey, async (req, res) => {
     try {
       const clientApp = (req as any).clientApp;
-      const campaigns = await storage.getClientAppCampaigns(clientApp.id);
-      const livescores: any[] = [];
-      for (const campaign of campaigns) {
-        const broadcastList = await storage.getCampaignBroadcasts(campaign.id);
-        for (const b of broadcastList) {
-          if (b.status !== 'live') continue;
-          const meta = (b.metadata as any) || {};
-          if (!meta.matchData) continue;
-          const md = meta.matchData;
-          livescores.push({
-            broadcastId: b.broadcastId,
-            broadcastName: b.broadcastName,
-            campaignId: campaign.id,
-            externalId: b.externalId || null,
-            homeTeam: md.homeTeam || null,
-            awayTeam: md.awayTeam || null,
-            minute: md.minute ?? null,
-            matchStatus: md.matchStatus || 'NS',
-          });
-        }
-      }
-      res.set('Cache-Control', 'public, max-age=15');
-      res.json({ livescores, count: livescores.length });
+      const { externalUserId, tvDeviceId, platform } = req.body ?? {};
+      if (!externalUserId) return res.status(400).json({ error: 'externalUserId is required' });
+      if (!platform) return res.status(400).json({ error: 'platform is required' });
+      const tvPlatforms = ['apple-tv', 'android-tv', 'fire-tv', 'roku'];
+      if (!tvPlatforms.includes(platform)) return res.status(400).json({ error: `platform must be one of ${tvPlatforms.join(', ')}` });
+
+      const endUser = await storage.ensureEndUser(clientApp.id, String(externalUserId));
+      const session = await storage.upsertTvSession({
+        clientAppId: clientApp.id,
+        endUserId: endUser.id,
+        platform,
+        tvDeviceId: tvDeviceId ?? null,
+      });
+
+      const tvEnabled = (clientApp as any).tvEnabled === true;
+      const platforms: string[] = (clientApp as any).tvPlatforms ?? [];
+      const platformAllowed = platforms.length === 0 ? true : platforms.includes(platform);
+
+      res.json({
+        sessionId: session.id,
+        endUserId: endUser.id,
+        capabilities: {
+          shoppable: tvEnabled && platformAllowed,
+        },
+      });
     } catch (error) {
-      res.status(500).json({ message: 'Error fetching livescores' });
+      console.error('[tv session start] error', error);
+      res.status(500).json({ error: 'Failed to start TV session' });
     }
   });
 
-  // ========================================
-  // T4 — SDK Components by locationId
-  // GET /v1/sdk/components?locationId=&campaignId=
-  // ========================================
-  app.get('/v1/sdk/components', validateApiKey, async (req, res) => {
+  // POST /api/sdk/tv/session/heartbeat — keep the session alive
+  app.post('/v2/tv/session/heartbeat', validateApiKey, async (req, res) => {
+    try {
+      const { sessionId } = req.body ?? {};
+      if (!sessionId) return res.status(400).json({ error: 'sessionId is required' });
+      await storage.touchTvSession(Number(sessionId));
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to update TV session' });
+    }
+  });
+
+  // POST /api/sdk/tv/session/end — explicit session close
+  app.post('/v2/tv/session/end', validateApiKey, async (req, res) => {
+    try {
+      const { sessionId } = req.body ?? {};
+      if (!sessionId) return res.status(400).json({ error: 'sessionId is required' });
+      await storage.endTvSession(Number(sessionId));
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to end TV session' });
+    }
+  });
+
+  // POST /api/sdk/tv/cart-intent — TV-originated cart intent with attribution
+  // Persists a cart_intents row AND forwards the envelope to the user's mobile
+  // via the same delivery path as /api/campaigns/:id/cart-intent (local WS →
+  // Redis cluster → partner webhook / APNs). Accepts `activationId` to close
+  // the attribution chain (shoppable_ad.activationId → cart_intents.source_activation_id).
+  app.post('/v2/tv/cart-intent', validateApiKey, async (req, res) => {
     try {
       const clientApp = (req as any).clientApp;
-      const locationId = req.query.locationId as string | undefined;
-      const campaignIdParam = req.query.campaignId as string | undefined;
+      let { externalUserId, productId, campaignId, activationId, sponsorId } = req.body ?? {};
+      if (!externalUserId) return res.status(400).json({ error: 'externalUserId is required' });
+      if (!productId) return res.status(400).json({ error: 'productId is required' });
 
-      let targetCampaignIds: number[] = [];
-      if (campaignIdParam) {
-        const cid = parseInt(campaignIdParam);
-        if (!isNaN(cid)) targetCampaignIds = [cid];
+      // v2 minimal body: when `activationId` is supplied, resolve campaignId +
+      // sponsorId from the shoppable_ad_activations row. Lets the SDK send only
+      // `{ externalUserId, productId, activationId }` and the backend infer the
+      // rest from the dispatch that originated the cart-intent. Fallbacks to
+      // explicit `campaignId` / `sponsorId` when the caller has no activation
+      // (ad-hoc triggers, legacy callers, etc.).
+      if (activationId && (!campaignId || !sponsorId)) {
+        const activation = await storage.getShoppableAdActivation(Number(activationId));
+        if (!activation) {
+          return res.status(404).json({ error: `activationId ${activationId} not found`, code: 'ACTIVATION_NOT_FOUND' });
+        }
+        if (activation.clientAppId && activation.clientAppId !== clientApp.id) {
+          return res.status(403).json({ error: 'Activation does not belong to this API key', code: 'ACTIVATION_WRONG_CLIENT_APP' });
+        }
+        if (!campaignId) campaignId = activation.campaignId;
+        if (!sponsorId && activation.sponsorId) sponsorId = activation.sponsorId;
+      }
+
+      if (!campaignId) return res.status(400).json({ error: 'campaignId is required (or pass activationId so it can be derived)' });
+
+      const endUser = await storage.ensureEndUser(clientApp.id, String(externalUserId));
+      const campaign = await storage.getCampaign(Number(campaignId));
+      if (!campaign) return res.status(404).json({ error: 'Campaign not found' });
+      if (campaign.clientAppId !== clientApp.id) {
+        return res.status(403).json({ error: 'Campaign does not belong to this API key' });
+      }
+
+      const tvSessionPlatform = req.body.platform as (string | undefined);
+      const session = tvSessionPlatform
+        ? await storage.getActiveTvSession(clientApp.id, endUser.id, tvSessionPlatform as any)
+        : undefined;
+
+      // 1. Resolve product name via Commerce — used in the push notif title/body.
+      //    Per the v2 rule "no hardcoded apiKeys", route to the sponsor's own
+      //    commerce key (`sponsors.commerce_api_key`) using the sponsorId that
+      //    came in the cart-intent body or was derived from the activation.
+      //    Falls back across `campaign_sponsors` when the supplied sponsorId
+      //    has no key configured. If no sponsor in the campaign has a key,
+      //    name resolution is skipped — the push notif keeps the
+      //    `Product ${productId}` placeholder rather than crashing.
+      //    (Same pattern as `/v2/commerce/products` resolver.)
+      let resolvedName = `Product ${productId}`;
+      let resolvedCommerceKey: string | null = null;
+      if (sponsorId) {
+        const sp = await storage.getSponsor(Number(sponsorId));
+        if (sp?.commerceApiKey) resolvedCommerceKey = sp.commerceApiKey;
+      }
+      if (!resolvedCommerceKey) {
+        const campaignSponsorsForKey = await storage.getCampaignSponsors(campaign.id);
+        for (const cs of campaignSponsorsForKey) {
+          const csp = await storage.getSponsor(cs.sponsorId);
+          if (csp?.commerceApiKey) { resolvedCommerceKey = csp.commerceApiKey; break; }
+        }
+      }
+      if (resolvedCommerceKey) {
+        try {
+          const gqlQuery = `{ Channel { GetProductsByIds(product_ids: [${productId}]) { id title } } }`;
+          const gqlData = await fetchGraphQL(gqlQuery, resolvedCommerceKey);
+          const name = gqlData?.data?.Channel?.GetProductsByIds?.[0]?.title;
+          if (name) resolvedName = name;
+        } catch (err) {
+          console.warn('[tv cart-intent] Commerce lookup failed:', err);
+        }
       } else {
-        // Only include active campaigns to avoid returning stale data from old campaigns
-        const now = new Date();
-        const appCampaigns = await storage.getClientAppCampaigns(clientApp.id);
-        const activeCampaigns = appCampaigns.filter(c =>
-          c.isPaused !== 'true' &&
-          (!c.startDate || new Date(c.startDate) <= now) &&
-          (!c.endDate || new Date(c.endDate) >= now)
-        );
-        // Fall back to most recent campaign if none are strictly active
-        targetCampaignIds = activeCampaigns.length > 0
-          ? activeCampaigns.map(c => c.id)
-          : appCampaigns.slice(0, 1).map(c => c.id);
+        console.warn(`[tv cart-intent] No commerce key resolved for sponsorId=${sponsorId ?? '(none)'} campaignId=${campaign.id} — using placeholder "${resolvedName}" in push notif`);
       }
 
-      const result: any[] = [];
-      for (const campaignId of targetCampaignIds) {
-        const comps = await storage.getCampaignComponents(campaignId);
-        const filtered = comps.filter(cc => {
-          if (cc.status !== 'active') return false;
-          if (locationId && cc.locationId !== locationId) return false;
-          return true;
-        });
-        for (const cc of filtered) {
-          result.push({
-            instanceId: cc.id,
-            campaignId,
-            componentId: cc.componentId,
-            locationId: cc.locationId || null,
-            instanceName: cc.instanceName || null,
-            type: cc.component?.type || null,
-            config: normalizeUrls(cc.customConfig || cc.component?.config || null, req.protocol, req.get('host')),
-          });
-        }
-      }
+      // 2. Build canonical envelope. TV-path includes activation_id + sponsor_id in
+      //    vio_payload so the iOS overlay can route to the correct per-sponsor commerce key.
+      const envelope = buildCartIntentEnvelope({
+        userId: String(externalUserId),
+        campaignId: campaign.id,
+        productId,
+        productName: resolvedName,
+        clientAppName: clientApp.name,
+        activationId,
+        sponsorId,
+      });
 
-      res.set('Cache-Control', 'public, max-age=30');
-      res.json({ components: result, count: result.length });
+      const wsEvent = {
+        type: 'cart_intent',
+        ...envelope,
+        timestamp: new Date().toISOString(),
+      };
+
+      // 3. Route — local WS / Redis cluster / partner webhook+APNs fallback.
+      const { deliveryMode, userConnected } = await routeUserEvent({
+        userId: String(externalUserId),
+        clientApp,
+        envelope,
+        wsEvent,
+        campaignIdForDeviceLookup: campaign.id,
+      });
+
+      // 4. Persist cart_intents row with the actual delivery outcome.
+      const row = await storage.createCartIntent({
+        endUserId: endUser.id,
+        campaignId: campaign.id,
+        clientAppId: clientApp.id,
+        tvSessionId: session?.id ?? null,
+        sponsorId: sponsorId ? Number(sponsorId) : null,
+        productId: String(productId),
+        sourceActivationId: activationId ? Number(activationId) : null,
+        sourceComponentId: null,
+        deliveryMode,
+        userConnected,
+        envelope,
+        metadata: null,
+      });
+
+      res.json({
+        success: true,
+        cartIntentId: row.id,
+        mode: deliveryMode,
+        userConnected,
+        envelope,
+      });
     } catch (error) {
-      res.status(500).json({ message: 'Error fetching components' });
+      console.error('[UserEvent:cart_intent] tv handler error:', error);
+      res.status(500).json({ error: 'Failed to record cart intent' });
+    }
+  });
+
+  // ============================================================
+  // POST /api/sdk/tv/broadcast/subscribe — combined TV bootstrap
+  // ============================================================
+  // One request that:
+  //   1. Validates the host-provided broadcastId against Vio's DB for this client_app.
+  //   2. Ensures the end_users row exists for (client_app, externalUserId).
+  //   3. Upserts the tv_sessions row (one per clientApp+user+platform).
+  //   4. Returns the campaign + primary/secondary sponsors with commerce blocks
+  //      + wsUrl + capabilities. TV SDK opens the WS with wsUrl after this.
+  //
+  // If the broadcast is not found or not owned by this client_app, returns 200
+  // with `{ subscribed: false, reason }` so the TV SDK can silently skip. This
+  // avoids noisy error states on host apps that try to subscribe speculatively.
+  app.post('/v2/tv/broadcast/subscribe', validateApiKey, async (req, res) => {
+    try {
+      const clientApp = (req as any).clientApp;
+      const { broadcastId, externalUserId, platform, tvDeviceId } = req.body ?? {};
+      if (!broadcastId) return res.status(400).json({ error: 'broadcastId is required' });
+      if (!externalUserId) return res.status(400).json({ error: 'externalUserId is required' });
+      if (!platform) return res.status(400).json({ error: 'platform is required' });
+      const tvPlatforms = ['apple-tv', 'android-tv', 'fire-tv', 'roku'];
+      if (!tvPlatforms.includes(platform)) return res.status(400).json({ error: `platform must be one of ${tvPlatforms.join(', ')}` });
+
+      const broadcast = await storage.getBroadcast(String(broadcastId));
+      // Soft-miss: broadcast unknown OR not bound to this client_app's campaigns.
+      const broadcastCampaign = broadcast?.campaignId ? await storage.getCampaign(broadcast.campaignId) : null;
+      if (!broadcast || !broadcastCampaign || broadcastCampaign.clientAppId !== clientApp.id) {
+        return res.json({ subscribed: false, reason: 'broadcast_not_registered_for_client_app' });
+      }
+      if (!broadcastCampaign.primarySponsorId) {
+        return res.json({ subscribed: false, reason: 'campaign_has_no_primary_sponsor' });
+      }
+
+      // TV capabilities come from the client_app flags (tv_enabled + tv_platforms).
+      const tvEnabled = (clientApp as any).tvEnabled === true;
+      const platformsAllowed: string[] = (clientApp as any).tvPlatforms ?? [];
+      const platformOk = platformsAllowed.length === 0 ? true : platformsAllowed.includes(platform);
+      if (!tvEnabled || !platformOk) {
+        return res.json({ subscribed: false, reason: 'tv_not_enabled_for_this_platform' });
+      }
+
+      const endUser = await storage.ensureEndUser(clientApp.id, String(externalUserId));
+      const session = await storage.upsertTvSession({
+        clientAppId: clientApp.id,
+        endUserId: endUser.id,
+        platform,
+        tvDeviceId: tvDeviceId ?? null,
+      });
+
+      // Resolve sponsors with commerce blocks — same shape as /v2/sdk/config.
+      const [primary, secondaryList] = await Promise.all([
+        buildSponsorBlock(broadcastCampaign.primarySponsorId),
+        storage.listSecondarySponsors(broadcastCampaign.id),
+      ]);
+      const secondarySponsors = await Promise.all(secondaryList.map((s) => buildSponsorBlock(s.id)));
+
+      const forwardedProto = (req.headers['x-forwarded-proto'] as string)?.split(',')[0]?.trim();
+      const effectiveProtocol = forwardedProto || req.protocol;
+      const wsProtocol = effectiveProtocol === 'https' ? 'wss' : 'ws';
+      const wsUrl = `${wsProtocol}://${req.get('host')}/ws/${broadcastCampaign.id}`;
+
+      res.json({
+        subscribed: true,
+        campaignId: broadcastCampaign.id,
+        broadcastId: broadcast.broadcastId,
+        sessionId: session.id,
+        endUserId: endUser.id,
+        wsUrl,
+        primarySponsor: primary,
+        secondarySponsors: secondarySponsors.filter(Boolean),
+        capabilities: {
+          shoppable: true,
+          engagement: broadcast.engagementEnabled === true,
+        },
+      });
+    } catch (error) {
+      console.error('[tv subscribe] error', error);
+      res.status(500).json({ error: 'Failed to subscribe TV to broadcast' });
+    }
+  });
+
+  // ---- Secondary sponsors CRUD (dashboard) ----
+
+  // GET /api/campaigns/:id/secondary-sponsors
+  app.get('/api/campaigns/:id/secondary-sponsors', async (req, res) => {
+    try {
+      const campaignId = parseInt(req.params.id);
+      const list = await storage.listSecondarySponsors(campaignId);
+      res.json({ campaignId, secondarySponsors: list });
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to list secondary sponsors' });
+    }
+  });
+
+  // POST /api/campaigns/:id/secondary-sponsors  body: { sponsorId }
+  app.post('/api/campaigns/:id/secondary-sponsors', async (req, res) => {
+    try {
+      const campaignId = parseInt(req.params.id);
+      const { sponsorId } = req.body ?? {};
+      if (!sponsorId) return res.status(400).json({ error: 'sponsorId is required' });
+      const sponsorIdNum = Number(sponsorId);
+
+      const campaign = await storage.getCampaign(campaignId);
+      if (!campaign) return res.status(404).json({ error: 'Campaign not found' });
+      if (campaign.primarySponsorId === sponsorIdNum) {
+        return res.status(400).json({ error: 'Sponsor is already the primary sponsor' });
+      }
+      const sp = await storage.getSponsor(sponsorIdNum);
+      if (!sp) return res.status(404).json({ error: 'Sponsor not found' });
+
+      await storage.addSecondarySponsor(campaignId, sponsorIdNum);
+      res.status(201).json({ success: true, campaignId, sponsorId: sponsorIdNum });
+    } catch (error) {
+      console.error('[secondary-sponsors add] error', error);
+      res.status(500).json({ error: 'Failed to add secondary sponsor' });
+    }
+  });
+
+  // DELETE /api/campaigns/:id/secondary-sponsors/:sponsorId
+  app.delete('/api/campaigns/:id/secondary-sponsors/:sponsorId', async (req, res) => {
+    try {
+      const campaignId = parseInt(req.params.id);
+      const sponsorId = parseInt(req.params.sponsorId);
+      // Block if any placement / poll / contest / activation references this sponsor in this campaign
+      const [[{ n: ccN }]] = [await db.select({ n: sql<number>`count(*)::int` }).from(campaignComponents)
+        .where(and(eq(campaignComponents.campaignId, campaignId), eq(campaignComponents.sponsorId, sponsorId)))];
+      const [[{ n: activN }]] = [await db.select({ n: sql<number>`count(*)::int` }).from(shoppableAdActivations)
+        .where(and(eq(shoppableAdActivations.campaignId, campaignId), eq(shoppableAdActivations.sponsorId, sponsorId)))];
+      if (ccN > 0 || activN > 0) {
+        return res.status(409).json({
+          error: 'Cannot remove: sponsor still referenced by components or activations',
+          componentRefs: ccN,
+          activationRefs: activN,
+        });
+      }
+      await storage.removeSecondarySponsor(campaignId, sponsorId);
+      res.json({ success: true });
+    } catch (error) {
+      console.error('[secondary-sponsors remove] error', error);
+      res.status(500).json({ error: 'Failed to remove secondary sponsor' });
     }
   });
 

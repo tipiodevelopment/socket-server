@@ -1,7 +1,7 @@
-import { WebSocketEvent, Campaign, InsertCampaign, Event, InsertEvent, CampaignFormState, InsertFormState, ScheduledComponent, InsertScheduledComponent, Component, InsertComponent, CampaignComponent, InsertCampaignComponent, AppComponent, InsertAppComponent, User, InsertUser, ClientApp, InsertClientApp, Channel, InsertChannel, CampaignTranslation, InsertCampaignTranslation, CampaignEngagementConfig, InsertCampaignEngagementConfig, CampaignUiConfig, InsertCampaignUiConfig, CampaignFeatureFlags, InsertCampaignFeatureFlags, SdkTranslation, InsertSdkTranslation, Broadcast, InsertBroadcast, Poll, InsertPoll, PollOptionRecord, InsertPollOption, PollVote, InsertPollVote, Contest, InsertContest, ContestParticipation, InsertContestParticipation, Sponsor, InsertSponsor, BroadcastAd, InsertBroadcastAd, BroadcastProduct, InsertBroadcastProduct, ChatMessage, InsertChatMessage, DeviceToken, InsertDeviceToken, SportmonksCache, type InsertCampaignSponsor, type InsertBroadcastSponsorSlot } from "@shared/schema";
+import { WebSocketEvent, Campaign, InsertCampaign, Event, InsertEvent, CampaignFormState, InsertFormState, ScheduledComponent, InsertScheduledComponent, Component, InsertComponent, CampaignComponent, InsertCampaignComponent, AppComponentLocation, InsertAppComponentLocation, AppPlacement, InsertAppPlacement, User, InsertUser, ClientApp, InsertClientApp, Channel, InsertChannel, CampaignTranslation, InsertCampaignTranslation, CampaignEngagementConfig, InsertCampaignEngagementConfig, CampaignUiConfig, InsertCampaignUiConfig, CampaignFeatureFlags, InsertCampaignFeatureFlags, SdkTranslation, InsertSdkTranslation, Broadcast, InsertBroadcast, Poll, InsertPoll, PollOptionRecord, InsertPollOption, PollVote, InsertPollVote, Contest, InsertContest, ContestParticipation, InsertContestParticipation, Sponsor, InsertSponsor, BroadcastAd, InsertBroadcastAd, BroadcastProduct, InsertBroadcastProduct, ChatMessage, InsertChatMessage, DeviceToken, InsertDeviceToken, SportmonksCache, type InsertCampaignSponsor, type InsertBroadcastSponsorSlot, type InsertShoppableAdActivation, type ShoppableAdActivation, type EndUser, type TvSession, type CartIntent, type InsertCartIntent, type TvPlatform } from "@shared/schema";
 import { db } from "./db";
-import { campaigns, events, campaignFormState, scheduledComponents, components, campaignComponents, appComponents, users, clientApps, channels, campaignTranslations, campaignEngagementConfig, campaignUiConfig, campaignFeatureFlags, sdkTranslations, broadcasts, polls, pollOptions, pollVotes, contests, contestParticipations, sponsors, broadcastAds, broadcastProducts, chatMessages, deviceTokens, sportmonksCache, campaignSponsors, broadcastSponsorSlots } from "@shared/schema";
-import { eq, desc, and, or, gte, ne, isNull, isNotNull, sql, lte, inArray } from "drizzle-orm";
+import { campaigns, events, campaignFormState, scheduledComponents, components, campaignComponents, appComponentLocations, appPlacements, users, clientApps, channels, campaignTranslations, campaignEngagementConfig, campaignUiConfig, campaignFeatureFlags, sdkTranslations, broadcasts, polls, pollOptions, pollVotes, contests, contestParticipations, sponsors, broadcastAds, broadcastProducts, chatMessages, deviceTokens, sportmonksCache, campaignSponsors, broadcastSponsorSlots, shoppableAdActivations, endUsers, tvSessions, cartIntents } from "@shared/schema";
+import { eq, desc, and, or, gte, ne, isNull, isNotNull, sql, lte, inArray, notInArray } from "drizzle-orm";
 
 export interface IStorage {
   addEvent(event: WebSocketEvent): Promise<void>;
@@ -47,6 +47,8 @@ export interface IStorage {
   getChannelCampaigns(channelId: number): Promise<Campaign[]>;
   getClientAppCampaigns(clientAppId: number): Promise<Campaign[]>;
   getUserCampaigns(userId: number): Promise<Campaign[]>;
+  getCampaignsByApiKey(apiKey: string): Promise<Campaign[]>;
+  updateCampaignPaymentMethods(id: number, paymentMethods: string[]): Promise<Campaign | undefined>;
   updateCampaign(id: number, campaign: Partial<InsertCampaign>): Promise<Campaign | undefined>;
   deleteCampaign(id: number): Promise<void>;
   
@@ -76,7 +78,7 @@ export interface IStorage {
   getComponentUsage(): Promise<Record<string, Array<{ campaignId: number; campaignName: string }>>>;
   
   // Campaign component methods
-  getCampaignComponents(campaignId: number): Promise<Array<CampaignComponent & { component: Component }>>;
+  getCampaignComponents(campaignId: number): Promise<Array<CampaignComponent & { component: Component } & { sponsor: any }>>;
   getComponentCountsForCampaigns(campaignIds: number[]): Promise<Map<number, number>>;
   addComponentToCampaign(campaignComponent: InsertCampaignComponent): Promise<CampaignComponent>;
   updateCampaignComponentStatus(campaignId: number, componentId: string, status: 'active' | 'inactive'): Promise<CampaignComponent | undefined>;
@@ -85,10 +87,42 @@ export interface IStorage {
   removeComponentFromCampaign(campaignId: number, componentId: string): Promise<void>;
   validateComponentAvailability(componentId: string, isTemplate: boolean, campaignId?: number): Promise<{ available: boolean; activeCampaignId?: number }>;
   
-  // App component methods
-  getAppComponents(clientAppId: number): Promise<Array<AppComponent & { component: Component }>>;
-  addComponentToApp(appComponent: InsertAppComponent): Promise<AppComponent>;
-  removeComponentFromApp(clientAppId: number, componentId: string): Promise<void>;
+  /** Resolve `is_template=true` template id by type. Returns null if no
+   *  template exists for that type. Used by dashboard "Add from library"
+   *  to validate the operator's selection. */
+  getCanonicalComponentByType(type: string): Promise<Component | null>;
+  /** All read-only library templates (`is_template = true`). Source of the
+   *  dashboard's library picker. */
+  getCanonicalLibraryTemplates(): Promise<Component[]>;
+
+  // App component locations — declared by SDK manifest (slots the dev's
+  // app exposes). Sync semantics: locations not in a new manifest payload
+  // get `deprecated_at = now()` instead of being deleted.
+  getAppComponentLocations(clientAppId: number, includeDeprecated?: boolean): Promise<AppComponentLocation[]>;
+  /** Idempotent upsert by (client_app_id, location_id). Updates display_name +
+   *  updated_at + clears deprecated_at if row exists. */
+  upsertAppComponentLocation(clientAppId: number, locationId: string, displayName: string | null): Promise<AppComponentLocation>;
+  /** Soft-delete locations not present in the latest manifest payload. */
+  deprecateAppComponentLocationsNotIn(clientAppId: number, keepLocationIds: string[]): Promise<number>;
+
+  // App placements — named (template, location) instances created by the
+  // operator via the dashboard `/apps/:id` "Add from library" form.
+  /** List placements for a clientApp, joined with template metadata. */
+  getAppPlacements(clientAppId: number, includeDeprecated?: boolean): Promise<Array<AppPlacement & { component: Component }>>;
+  /** Lookup by id (joined). Used to validate dashboard picker selections. */
+  getAppPlacementById(id: number): Promise<(AppPlacement & { component: Component }) | null>;
+  /** Create a named placement. Validates: location is not deprecated, template is canonical. */
+  createAppPlacement(args: {
+    clientAppId: number;
+    componentId: string;
+    locationId: string;
+    name: string;
+    customConfig?: any;
+    createdBy?: number;
+  }): Promise<AppPlacement>;
+  /** Soft-delete a placement (sets deprecated_at = now()). Existing
+   *  campaign_components keep rendering with a dashboard warning. */
+  deprecateAppPlacement(id: number): Promise<AppPlacement>;
 
   // Campaign translation methods
   getCampaignTranslations(campaignId: number): Promise<CampaignTranslation[]>;
@@ -211,6 +245,39 @@ export interface IStorage {
   createBroadcastSponsorSlot(data: any): Promise<any>;
   updateBroadcastSponsorSlot(id: number, data: any): Promise<any | undefined>;
   deleteBroadcastSponsorSlot(id: number): Promise<void>;
+
+  // Shoppable Ad Activations methods (one row per shoppable_ad dispatch)
+  createShoppableAdActivation(data: InsertShoppableAdActivation): Promise<ShoppableAdActivation>;
+  getShoppableAdActivation(id: number): Promise<ShoppableAdActivation | undefined>;
+  listShoppableAdActivationsByBroadcast(broadcastId: string, options?: { limit?: number; offset?: number; sponsorId?: number; source?: string }): Promise<ShoppableAdActivation[]>;
+  listShoppableAdActivationsByCampaign(campaignId: number, options?: { limit?: number; offset?: number; sponsorId?: number; source?: string }): Promise<ShoppableAdActivation[]>;
+
+  // End users (SDK viewers) — opaque id per partner, unique per client_app
+  ensureEndUser(clientAppId: number, externalUserId: string): Promise<EndUser>;
+  getEndUser(clientAppId: number, externalUserId: string): Promise<EndUser | undefined>;
+  touchEndUser(endUserId: number): Promise<void>;
+
+  // TV sessions — one active session per (clientApp, user, platform)
+  upsertTvSession(data: { clientAppId: number; endUserId: number; platform: TvPlatform; tvDeviceId?: string | null }): Promise<TvSession>;
+  getActiveTvSession(clientAppId: number, endUserId: number, platform: TvPlatform): Promise<TvSession | undefined>;
+  touchTvSession(sessionId: number): Promise<void>;
+  endTvSession(sessionId: number): Promise<void>;
+
+  // Cart intents — persistent log of user click-to-buy events with attribution
+  createCartIntent(data: InsertCartIntent): Promise<CartIntent>;
+  listCartIntentsByBroadcast(broadcastId: string, options?: { limit?: number; offset?: number }): Promise<CartIntent[]>;
+  listCartIntentsByCampaign(campaignId: number, options?: { limit?: number; offset?: number }): Promise<CartIntent[]>;
+
+  // Secondary sponsors — manage the M:N list (primary lives on campaigns.primary_sponsor_id)
+  listSecondarySponsors(campaignId: number): Promise<Sponsor[]>;
+  addSecondarySponsor(campaignId: number, sponsorId: number): Promise<void>;
+  removeSecondarySponsor(campaignId: number, sponsorId: number): Promise<void>;
+
+  // Validation: a sponsor must be the campaign's primary or in its secondary list
+  isSponsorAllowedForCampaign(sponsorId: number, campaignId: number): Promise<boolean>;
+
+  // Check whether changing the primary sponsor is still allowed (no child rows yet)
+  canChangePrimarySponsor(campaignId: number): Promise<boolean>;
 
   // getBroadcastsByCampaign alias
   getBroadcastsByCampaign(campaignId: number): Promise<Broadcast[]>;
@@ -408,6 +475,19 @@ export class MemStorage implements IStorage {
       .orderBy(desc(campaigns.createdAt));
   }
 
+  async getCampaignsByApiKey(apiKey: string): Promise<Campaign[]> {
+    const campaignsList = await db.select().from(campaigns).where(eq(campaigns.reachuApiKey, apiKey));
+    return campaignsList || [];
+  }
+
+  async updateCampaignPaymentMethods(id: number, paymentMethods: string[]): Promise<Campaign | undefined> {
+    const [updated] = await db.update(campaigns)
+      .set({ paymentMethods })
+      .where(eq(campaigns.id, id))
+      .returning();
+    return updated || undefined;
+  }
+
   async getBroadcastCountsForCampaigns(campaignIds: number[]): Promise<Map<number, number>> {
     if (campaignIds.length === 0) return new Map();
     const rows = await db
@@ -564,18 +644,23 @@ export class MemStorage implements IStorage {
     await db.delete(components).where(eq(components.id, id));
   }
 
+  /**
+   * Component usage by template — for the library page's "used in N
+   * campaigns" badge. Walks campaign_components → app_placements →
+   * components since campaign_components no longer carries component_id
+   * directly (post-migration 0004).
+   */
   async getComponentUsage(): Promise<Record<string, Array<{ campaignId: number; campaignName: string }>>> {
     const results = await db.select({
-      componentId: campaignComponents.componentId,
+      componentId: appPlacements.componentId,
       campaignId: campaigns.id,
       campaignName: campaigns.name
     })
       .from(campaignComponents)
+      .innerJoin(appPlacements, eq(campaignComponents.appPlacementId, appPlacements.id))
       .innerJoin(campaigns, eq(campaignComponents.campaignId, campaigns.id));
-    
-    // Group by componentId
+
     const usage: Record<string, Array<{ campaignId: number; campaignName: string }>> = {};
-    
     for (const row of results) {
       if (!usage[row.componentId]) {
         usage[row.componentId] = [];
@@ -585,20 +670,52 @@ export class MemStorage implements IStorage {
         campaignName: row.campaignName
       });
     }
-    
     return usage;
   }
 
-  // Campaign component methods (database-backed)
-  async getCampaignComponents(campaignId: number): Promise<Array<CampaignComponent & { component: Component }>> {
+  /**
+   * Campaign placements with the canonical template + named placement
+   * + sponsor block joined in. Synthesizes the legacy `componentId` and
+   * `locationId` fields on each row (sourced from `app_placements`) so
+   * callers that predate migration 0004 keep working without rewrites.
+   * Sponsor is shipped pre-formatted (helper below) so route handlers
+   * can reuse the canonical shape — pattern introduced by Alan's
+   * commits c49ebca + acaa3e8 on develop and preserved through the
+   * placements merge.
+   */
+  async getCampaignComponents(campaignId: number): Promise<Array<CampaignComponent & { component: Component; componentId: string; locationId: string | null; appPlacement: AppPlacement; sponsor: any }>> {
     const results = await db.select()
       .from(campaignComponents)
-      .leftJoin(components, eq(campaignComponents.componentId, components.id))
+      .innerJoin(appPlacements, eq(campaignComponents.appPlacementId, appPlacements.id))
+      .innerJoin(components, eq(appPlacements.componentId, components.id))
+      .leftJoin(sponsors, eq(campaignComponents.sponsorId, sponsors.id))
       .where(eq(campaignComponents.campaignId, campaignId));
-    
+
+    const formatSponsor = (sponsor: any): any => {
+      return sponsor ? {
+        id: sponsor.id,
+        name: sponsor.name,
+        avatarUrl: sponsor.avatarUrl,
+        logoUrl: sponsor.logoUrl,
+        primaryColor: sponsor.primaryColor,
+        secondaryColor: sponsor.secondaryColor,
+        commerce: {
+          apiKey: sponsor.commerceApiKey,
+          channelId: sponsor.commerceChannelId,
+          paymentMethods: sponsor.paymentMethods ?? [],
+        }
+      } : null;
+    };
+
     return results.map(row => ({
       ...row.campaign_components,
-      component: row.components!
+      // Legacy synthesized fields — column dropped from campaign_components
+      // in migration 0004; values now sourced from app_placements.
+      componentId: row.app_placements.componentId,
+      locationId: row.app_placements.locationId,
+      component: row.components,
+      appPlacement: row.app_placements,
+      sponsor: formatSponsor(row.sponsors),
     }));
   }
 
@@ -617,52 +734,65 @@ export class MemStorage implements IStorage {
     return newCampaignComponent;
   }
 
+  /**
+   * Status toggle. The `componentId` parameter is the campaign_components
+   * row PK (numeric, passed as a string from `req.params`). Pre-migration
+   * the same parameter was the FK to `components.id`; the column is gone
+   * post-migration 0004 so we look up by row PK now.
+   */
   async updateCampaignComponentStatus(campaignId: number, componentId: string, status: 'active' | 'inactive'): Promise<CampaignComponent | undefined> {
-    const updateData: any = { 
+    const rowId = parseInt(componentId);
+    if (Number.isNaN(rowId)) return undefined;
+    const updateData: any = {
       status,
       updatedAt: new Date()
     };
-    
-    // Set activatedAt when activating
     if (status === 'active') {
       updateData.activatedAt = new Date();
     }
-    
     const [updated] = await db.update(campaignComponents)
       .set(updateData)
       .where(
         and(
           eq(campaignComponents.campaignId, campaignId),
-          eq(campaignComponents.componentId, componentId)
+          eq(campaignComponents.id, rowId)
         )
       )
       .returning();
     return updated || undefined;
   }
 
-  async updateCampaignComponentLocationId(campaignId: number, componentId: string, locationId: string | null): Promise<CampaignComponent | undefined> {
-    const [updated] = await db.update(campaignComponents)
-      .set({ locationId, updatedAt: new Date() })
-      .where(
-        and(
-          eq(campaignComponents.campaignId, campaignId),
-          eq(campaignComponents.componentId, componentId)
-        )
-      )
-      .returning();
-    return updated || undefined;
+  /**
+   * NO-OP shim. `location_id` was dropped from `campaign_components` in
+   * migration 0004 — the location now lives on the linked `app_placements`
+   * row and is immutable from the campaign-side. Kept as a safety net for
+   * callers that haven't been migrated yet; returns the row unchanged.
+   */
+  async updateCampaignComponentLocationId(campaignId: number, componentId: string, _locationId: string | null): Promise<CampaignComponent | undefined> {
+    const rowId = parseInt(componentId);
+    if (Number.isNaN(rowId)) return undefined;
+    const [row] = await db.select()
+      .from(campaignComponents)
+      .where(and(
+        eq(campaignComponents.campaignId, campaignId),
+        eq(campaignComponents.id, rowId)
+      ))
+      .limit(1);
+    return row || undefined;
   }
 
   async updateCampaignComponentConfig(campaignId: number, componentId: string, customConfig: any): Promise<CampaignComponent | undefined> {
+    const rowId = parseInt(componentId);
+    if (Number.isNaN(rowId)) return undefined;
     const [updated] = await db.update(campaignComponents)
-      .set({ 
+      .set({
         customConfig,
         updatedAt: new Date()
       })
       .where(
         and(
           eq(campaignComponents.campaignId, campaignId),
-          eq(campaignComponents.componentId, componentId)
+          eq(campaignComponents.id, rowId)
         )
       )
       .returning();
@@ -681,73 +811,231 @@ export class MemStorage implements IStorage {
   }
 
   /**
-   * Validates if a component is available to be activated in a campaign.
-   * 
-   * Preconditions:
-   * - Caller must provide the true isTemplate value from the component
-   * - Caller is responsible for verifying component exists before calling this
-   * 
-   * Rules:
-   * - Template components (isTemplate=true) can be active in multiple campaigns simultaneously
-   * - Regular components (isTemplate=false) can only be active in one campaign at a time
-   * 
-   * @param componentId - ID of the component to validate
-   * @param isTemplate - Whether the component is a template (must be truthful value from component.isTemplate === 'true')
-   * @param campaignId - Optional campaign ID to exclude from the check (when updating existing component)
-   * @returns Object with available flag and optional activeCampaignId if not available
+   * No longer enforced — kept as a stub for callers that predate migration
+   * 0004. The new model allows the same template to be reused across
+   * campaigns through different `app_placements` (different per-app named
+   * instances), so the old "one-active-elsewhere" rule doesn't apply.
+   * The partial UNIQUE index on `campaign_components` already enforces
+   * "one active per (campaign, app_placement)".
    */
-  async validateComponentAvailability(componentId: string, isTemplate: boolean, campaignId?: number): Promise<{ available: boolean; activeCampaignId?: number }> {
-    // Templates can be used in multiple campaigns - always available
-    if (isTemplate) {
-      return { available: true };
-    }
-    
-    // Regular components: check if active in any other campaign
-    const conditions = [
-      eq(campaignComponents.componentId, componentId),
-      eq(campaignComponents.status, 'active')
-    ];
-    
-    // Exclude the current campaign if specified
-    if (campaignId !== undefined) {
-      conditions.push(ne(campaignComponents.campaignId, campaignId));
-    }
-    
-    const [activeInOtherCampaign] = await db.select()
-      .from(campaignComponents)
-      .where(and(...conditions))
-      .limit(1);
-    
-    if (activeInOtherCampaign) {
-      return {
-        available: false,
-        activeCampaignId: activeInOtherCampaign.campaignId
-      };
-    }
-    
+  async validateComponentAvailability(_componentId: string, _isTemplate: boolean, _campaignId?: number): Promise<{ available: boolean; activeCampaignId?: number }> {
     return { available: true };
   }
   
-  // App component methods
-  async getAppComponents(clientAppId: number): Promise<Array<AppComponent & { component: Component }>> {
-    const results = await db.select()
-      .from(appComponents)
-      .innerJoin(components, eq(appComponents.componentId, components.id))
-      .where(eq(appComponents.clientAppId, clientAppId));
-    return results.map(r => ({ ...r.app_components, component: r.components }));
-  }
-
-  async addComponentToApp(appComponent: InsertAppComponent): Promise<AppComponent> {
-    const [result] = await db.insert(appComponents).values(appComponent).returning();
-    return result;
-  }
-
-  async removeComponentFromApp(clientAppId: number, componentId: string): Promise<void> {
-    await db.delete(appComponents)
+  /**
+   * Resolve canonical (`is_template=true`) component template by type.
+   * Used by the dashboard's "Add from library" form to validate operator
+   * picks against the read-only library.
+   */
+  async getCanonicalComponentByType(type: string): Promise<Component | null> {
+    const rows = await db.select()
+      .from(components)
       .where(and(
-        eq(appComponents.clientAppId, clientAppId),
-        eq(appComponents.componentId, componentId)
-      ));
+        eq(components.type, type),
+        eq(components.isTemplate, true)
+      ))
+      .limit(1);
+    return rows[0] ?? null;
+  }
+
+  /** Read-only library: all canonical templates (`is_template=true`). */
+  async getCanonicalLibraryTemplates(): Promise<Component[]> {
+    return db.select()
+      .from(components)
+      .where(eq(components.isTemplate, true))
+      .orderBy(components.type, components.name);
+  }
+
+  // App component location methods (manifest registry — sync semantics)
+  async getAppComponentLocations(clientAppId: number, includeDeprecated: boolean = false): Promise<AppComponentLocation[]> {
+    const conditions: any[] = [eq(appComponentLocations.clientAppId, clientAppId)];
+    if (!includeDeprecated) {
+      conditions.push(isNull(appComponentLocations.deprecatedAt));
+    }
+    return db.select()
+      .from(appComponentLocations)
+      .where(and(...conditions))
+      .orderBy(appComponentLocations.locationId);
+  }
+
+  /**
+   * Soft-delete locations not present in the latest manifest payload. Sets
+   * deprecated_at = now() on rows that are not in `keepLocationIds`. Returns
+   * the number of rows deprecated.
+   *
+   * Idempotent: previously-deprecated rows that come back in a new payload
+   * will have their deprecated_at cleared by `upsertAppComponentLocation`.
+   */
+  async deprecateAppComponentLocationsNotIn(clientAppId: number, keepLocationIds: string[]): Promise<number> {
+    const conditions: any[] = [
+      eq(appComponentLocations.clientAppId, clientAppId),
+      isNull(appComponentLocations.deprecatedAt),
+    ];
+    if (keepLocationIds.length > 0) {
+      conditions.push(notInArray(appComponentLocations.locationId, keepLocationIds));
+    }
+    const result = await db
+      .update(appComponentLocations)
+      .set({ deprecatedAt: new Date(), updatedAt: new Date() })
+      .where(and(...conditions))
+      .returning({ id: appComponentLocations.id });
+    return result.length;
+  }
+
+  /**
+   * Idempotent upsert keyed by (client_app_id, location_id). If the row
+   * already exists, refreshes `display_name` + `updated_at` and returns the
+   * updated row. Otherwise inserts a new row.
+   *
+   * The unique index on (client_app_id, location_id) protects against race
+   * conditions if two SDK boots overlap.
+   */
+  async upsertAppComponentLocation(
+    clientAppId: number,
+    locationId: string,
+    displayName: string | null
+  ): Promise<AppComponentLocation> {
+    const [row] = await db
+      .insert(appComponentLocations)
+      .values({ clientAppId, locationId, displayName })
+      .onConflictDoUpdate({
+        target: [appComponentLocations.clientAppId, appComponentLocations.locationId],
+        set: {
+          displayName,
+          updatedAt: new Date(),
+          // Clear deprecated_at on re-upload — location is back in the
+          // manifest, so it's no longer deprecated.
+          deprecatedAt: null,
+        },
+      })
+      .returning();
+    return row;
+  }
+
+  // App placements (named instances — created by dashboard `/apps/:id`
+  // "Add from library" form; the SDK does NOT create these directly).
+  async getAppPlacements(clientAppId: number, includeDeprecated: boolean = false): Promise<Array<AppPlacement & { component: Component }>> {
+    const conditions: any[] = [eq(appPlacements.clientAppId, clientAppId)];
+    if (!includeDeprecated) {
+      conditions.push(isNull(appPlacements.deprecatedAt));
+    }
+    const rows = await db.select()
+      .from(appPlacements)
+      .innerJoin(components, eq(appPlacements.componentId, components.id))
+      .where(and(...conditions))
+      .orderBy(appPlacements.name);
+    return rows.map(r => ({ ...r.app_placements, component: r.components }));
+  }
+
+  async getAppPlacementById(id: number): Promise<(AppPlacement & { component: Component }) | null> {
+    const [row] = await db.select()
+      .from(appPlacements)
+      .innerJoin(components, eq(appPlacements.componentId, components.id))
+      .where(eq(appPlacements.id, id))
+      .limit(1);
+    if (!row) return null;
+    return { ...row.app_placements, component: row.components };
+  }
+
+  /**
+   * Operator-driven creation. Validates:
+   *   - location exists for this client app and is not deprecated
+   *   - template is canonical (`is_template = true`)
+   *   - dual-UNIQUE not violated (name unique per app, slot unique per app)
+   *
+   * Throws with `code` in {PLACEMENT_LOCATION_INVALID, PLACEMENT_TEMPLATE_INVALID,
+   * PLACEMENT_NAME_COLLISION, PLACEMENT_SLOT_COLLISION} so the dashboard
+   * can render specific UX per case.
+   */
+  async createAppPlacement(args: {
+    clientAppId: number;
+    componentId: string;
+    locationId: string;
+    name: string;
+    customConfig?: any;
+    createdBy?: number;
+  }): Promise<AppPlacement> {
+    const { clientAppId, componentId, locationId, name, customConfig, createdBy } = args;
+
+    // 1. Validate location is declared + not deprecated.
+    const [loc] = await db.select().from(appComponentLocations).where(and(
+      eq(appComponentLocations.clientAppId, clientAppId),
+      eq(appComponentLocations.locationId, locationId),
+      isNull(appComponentLocations.deprecatedAt),
+    )).limit(1);
+    if (!loc) {
+      const err: any = new Error(`location '${locationId}' not declared by app ${clientAppId} (or deprecated)`);
+      err.code = 'PLACEMENT_LOCATION_INVALID';
+      throw err;
+    }
+
+    // 2. Validate template is canonical (read-only library).
+    const [tpl] = await db.select().from(components).where(and(
+      eq(components.id, componentId),
+      eq(components.isTemplate, true),
+    )).limit(1);
+    if (!tpl) {
+      const err: any = new Error(`template '${componentId}' not in canonical library`);
+      err.code = 'PLACEMENT_TEMPLATE_INVALID';
+      throw err;
+    }
+
+    // 3. Validate name + slot uniqueness among non-deprecated rows.
+    //    DB-level UNIQUE indexes also enforce (defense-in-depth) but this
+    //    gives nicer errors with stable error codes.
+    const [byName] = await db.select().from(appPlacements).where(and(
+      eq(appPlacements.clientAppId, clientAppId),
+      eq(appPlacements.name, name),
+      isNull(appPlacements.deprecatedAt),
+    )).limit(1);
+    if (byName) {
+      const err: any = new Error(`name '${name}' already used by app placement ${byName.id}`);
+      err.code = 'PLACEMENT_NAME_COLLISION';
+      throw err;
+    }
+    const [bySlot] = await db.select().from(appPlacements).where(and(
+      eq(appPlacements.clientAppId, clientAppId),
+      eq(appPlacements.componentId, componentId),
+      eq(appPlacements.locationId, locationId),
+      isNull(appPlacements.deprecatedAt),
+    )).limit(1);
+    if (bySlot) {
+      const err: any = new Error(`slot (componentId=${componentId}, locationId=${locationId}) already claimed by placement '${bySlot.name}'`);
+      err.code = 'PLACEMENT_SLOT_COLLISION';
+      throw err;
+    }
+
+    const [row] = await db
+      .insert(appPlacements)
+      .values({
+        clientAppId,
+        componentId,
+        locationId,
+        name,
+        customConfig: customConfig ?? null,
+        createdBy: createdBy ?? null,
+      })
+      .returning();
+    return row;
+  }
+
+  /**
+   * Soft-delete: sets `deprecated_at = now()`. Existing campaign_components
+   * referencing this placement keep rendering — the dashboard surfaces the
+   * deprecated state with a warning so operators can clean up at their own pace.
+   */
+  async deprecateAppPlacement(id: number): Promise<AppPlacement> {
+    const [row] = await db
+      .update(appPlacements)
+      .set({ deprecatedAt: new Date(), updatedAt: new Date() })
+      .where(eq(appPlacements.id, id))
+      .returning();
+    if (!row) {
+      const err: any = new Error(`app placement ${id} not found`);
+      err.code = 'PLACEMENT_NOT_FOUND';
+      throw err;
+    }
+    return row;
   }
 
   // Campaign translation methods
@@ -1579,6 +1867,190 @@ export class MemStorage implements IStorage {
 
   async getBroadcastsByCampaign(campaignId: number): Promise<Broadcast[]> {
     return this.getCampaignBroadcasts(campaignId);
+  }
+
+  // Shoppable Ad Activations (dispatch log) ------------------------------
+  async createShoppableAdActivation(data: InsertShoppableAdActivation): Promise<ShoppableAdActivation> {
+    const [row] = await db.insert(shoppableAdActivations).values(data).returning();
+    return row;
+  }
+
+  /// Lookup an activation row by id. Used by `/api/sdk/tv/cart-intent` to
+  /// derive campaignId + sponsorId from the originating shoppable_ad so the
+  /// SDK only has to ship `{ externalUserId, productId, activationId }`.
+  async getShoppableAdActivation(id: number): Promise<ShoppableAdActivation | undefined> {
+    const [row] = await db.select().from(shoppableAdActivations).where(eq(shoppableAdActivations.id, id));
+    return row;
+  }
+
+  async listShoppableAdActivationsByBroadcast(
+    broadcastId: string,
+    options: { limit?: number; offset?: number; sponsorId?: number; source?: string } = {}
+  ): Promise<ShoppableAdActivation[]> {
+    const { limit = 50, offset = 0, sponsorId, source } = options;
+    const conditions = [eq(shoppableAdActivations.broadcastId, broadcastId)];
+    if (typeof sponsorId === 'number') conditions.push(eq(shoppableAdActivations.sponsorId, sponsorId));
+    if (source) conditions.push(eq(shoppableAdActivations.source, source));
+    return await db.select().from(shoppableAdActivations)
+      .where(and(...conditions))
+      .orderBy(desc(shoppableAdActivations.triggeredAt))
+      .limit(limit)
+      .offset(offset);
+  }
+
+  async listShoppableAdActivationsByCampaign(
+    campaignId: number,
+    options: { limit?: number; offset?: number; sponsorId?: number; source?: string } = {}
+  ): Promise<ShoppableAdActivation[]> {
+    const { limit = 50, offset = 0, sponsorId, source } = options;
+    const conditions = [eq(shoppableAdActivations.campaignId, campaignId)];
+    if (typeof sponsorId === 'number') conditions.push(eq(shoppableAdActivations.sponsorId, sponsorId));
+    if (source) conditions.push(eq(shoppableAdActivations.source, source));
+    return await db.select().from(shoppableAdActivations)
+      .where(and(...conditions))
+      .orderBy(desc(shoppableAdActivations.triggeredAt))
+      .limit(limit)
+      .offset(offset);
+  }
+
+  // --- Multi-sponsor redesign helpers (Phase 4) ---
+
+  async ensureEndUser(clientAppId: number, externalUserId: string): Promise<EndUser> {
+    const existing = await this.getEndUser(clientAppId, externalUserId);
+    if (existing) {
+      await this.touchEndUser(existing.id);
+      return existing;
+    }
+    const [created] = await db.insert(endUsers)
+      .values({ clientAppId, externalUserId })
+      .onConflictDoUpdate({
+        target: [endUsers.clientAppId, endUsers.externalUserId],
+        set: { lastSeenAt: new Date() },
+      })
+      .returning();
+    return created;
+  }
+
+  async getEndUser(clientAppId: number, externalUserId: string): Promise<EndUser | undefined> {
+    const [row] = await db.select().from(endUsers)
+      .where(and(eq(endUsers.clientAppId, clientAppId), eq(endUsers.externalUserId, externalUserId)))
+      .limit(1);
+    return row;
+  }
+
+  async touchEndUser(endUserId: number): Promise<void> {
+    await db.update(endUsers).set({ lastSeenAt: new Date() }).where(eq(endUsers.id, endUserId));
+  }
+
+  async upsertTvSession(data: { clientAppId: number; endUserId: number; platform: TvPlatform; tvDeviceId?: string | null }): Promise<TvSession> {
+    const [row] = await db.insert(tvSessions)
+      .values({
+        clientAppId: data.clientAppId,
+        endUserId: data.endUserId,
+        platform: data.platform,
+        tvDeviceId: data.tvDeviceId ?? null,
+      })
+      .onConflictDoUpdate({
+        target: [tvSessions.clientAppId, tvSessions.endUserId, tvSessions.platform],
+        set: {
+          lastSeenAt: new Date(),
+          endedAt: null,
+          tvDeviceId: data.tvDeviceId ?? sql`${tvSessions.tvDeviceId}`,
+        },
+      })
+      .returning();
+    return row;
+  }
+
+  async getActiveTvSession(clientAppId: number, endUserId: number, platform: TvPlatform): Promise<TvSession | undefined> {
+    const [row] = await db.select().from(tvSessions)
+      .where(and(
+        eq(tvSessions.clientAppId, clientAppId),
+        eq(tvSessions.endUserId, endUserId),
+        eq(tvSessions.platform, platform),
+        isNull(tvSessions.endedAt),
+      ))
+      .orderBy(desc(tvSessions.lastSeenAt))
+      .limit(1);
+    return row;
+  }
+
+  async touchTvSession(sessionId: number): Promise<void> {
+    await db.update(tvSessions).set({ lastSeenAt: new Date() }).where(eq(tvSessions.id, sessionId));
+  }
+
+  async endTvSession(sessionId: number): Promise<void> {
+    await db.update(tvSessions).set({ endedAt: new Date() }).where(eq(tvSessions.id, sessionId));
+  }
+
+  async createCartIntent(data: InsertCartIntent): Promise<CartIntent> {
+    const [row] = await db.insert(cartIntents).values(data).returning();
+    return row;
+  }
+
+  async listCartIntentsByBroadcast(
+    _broadcastId: string,
+    options: { limit?: number; offset?: number } = {},
+  ): Promise<CartIntent[]> {
+    // cart_intents are scoped to campaign (not broadcast); resolve via activation or source_component
+    const { limit = 50, offset = 0 } = options;
+    return await db.select().from(cartIntents)
+      .orderBy(desc(cartIntents.triggeredAt))
+      .limit(limit)
+      .offset(offset);
+  }
+
+  async listCartIntentsByCampaign(
+    campaignId: number,
+    options: { limit?: number; offset?: number } = {},
+  ): Promise<CartIntent[]> {
+    const { limit = 50, offset = 0 } = options;
+    return await db.select().from(cartIntents)
+      .where(eq(cartIntents.campaignId, campaignId))
+      .orderBy(desc(cartIntents.triggeredAt))
+      .limit(limit)
+      .offset(offset);
+  }
+
+  async listSecondarySponsors(campaignId: number): Promise<Sponsor[]> {
+    const rows = await db.select({ sponsor: sponsors })
+      .from(campaignSponsors)
+      .innerJoin(sponsors, eq(campaignSponsors.sponsorId, sponsors.id))
+      .where(eq(campaignSponsors.campaignId, campaignId));
+    return rows.map(r => r.sponsor);
+  }
+
+  async addSecondarySponsor(campaignId: number, sponsorId: number): Promise<void> {
+    await db.insert(campaignSponsors)
+      .values({ campaignId, sponsorId, role: 'secondary' })
+      .onConflictDoNothing();
+  }
+
+  async removeSecondarySponsor(campaignId: number, sponsorId: number): Promise<void> {
+    await db.delete(campaignSponsors)
+      .where(and(eq(campaignSponsors.campaignId, campaignId), eq(campaignSponsors.sponsorId, sponsorId)));
+  }
+
+  async isSponsorAllowedForCampaign(sponsorId: number, campaignId: number): Promise<boolean> {
+    const [campaign] = await db.select({ primary: campaigns.primarySponsorId })
+      .from(campaigns).where(eq(campaigns.id, campaignId)).limit(1);
+    if (!campaign) return false;
+    if (campaign.primary === sponsorId) return true;
+    const [secondary] = await db.select({ id: campaignSponsors.id })
+      .from(campaignSponsors)
+      .where(and(eq(campaignSponsors.campaignId, campaignId), eq(campaignSponsors.sponsorId, sponsorId)))
+      .limit(1);
+    return !!secondary;
+  }
+
+  async canChangePrimarySponsor(campaignId: number): Promise<boolean> {
+    // Blocked once any child row exists that references this campaign via its primary semantics.
+    const checks = await Promise.all([
+      db.select({ n: sql<number>`count(*)::int` }).from(broadcasts).where(eq(broadcasts.campaignId, campaignId)),
+      db.select({ n: sql<number>`count(*)::int` }).from(shoppableAdActivations).where(eq(shoppableAdActivations.campaignId, campaignId)),
+      db.select({ n: sql<number>`count(*)::int` }).from(cartIntents).where(eq(cartIntents.campaignId, campaignId)),
+    ]);
+    return checks.every(([row]) => row.n === 0);
   }
 }
 
