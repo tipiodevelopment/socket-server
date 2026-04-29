@@ -970,3 +970,69 @@ Drift between them costs real engineering time — the 2026-04-29 audit
 found 73 paths of drift accumulated over 3 weeks of sprints.
 The drift script makes the rule **mechanically verifiable** so we
 don't audit by hand again.
+
+## 23. Cart-intent push notif name resolution — per-sponsor commerce key (landed 2026-04-29 PM)
+
+### Symptom
+
+Apple TV demo dispatched a shoppable_ad → user tapped overlay → iOS
+push notification appeared with title `Product 408898` and body
+`Product 408898 – klikk for å kjøpe.` instead of the real product name.
+
+### Root cause
+
+Two cart-intent endpoints were still using the **legacy global**
+`COMMERCE_API_KEY` env var (with a hardcoded fallback to XXL's key
+`KCXF10Y-...`) for the Commerce GraphQL lookup that resolves the
+product name used in the push notif title/body:
+
+- `POST /v2/tv/cart-intent` (`server/routes.ts:6803`)
+- `POST /v2/mobile/campaigns/:campaignId/cart-intent` (`server/routes.ts:5847`)
+
+When the cart-intent referenced a product owned by a sponsor *other
+than* XXL (e.g. Elkjøp's product 408898), the GraphQL call to Commerce
+returned `Authentication failed` (the XXL channel key doesn't authorize
+Elkjøp's products) and `resolvedName` fell back to `Product ${productId}`.
+
+The bug was latent — masked locally as long as `COMMERCE_API_KEY` env
+happened to match the active sponsor's key. After the develop restore
+on 2026-04-29 13:50 UTC the env / DB / activation alignment changed
+and the fallback path activated visibly.
+
+### Fix
+
+Both endpoints now resolve the commerce key **per-sponsor** (same
+pattern as `/v2/commerce/products` and `/v2/admin/broadcasts/:id/shoppable-ad`):
+
+1. If request body carries `sponsorId` (from the SDK or derived from
+   `activationId` → `shoppable_ad_activations.sponsor_id`), look up
+   `sponsors.commerce_api_key` for that id.
+2. If still no key (sponsor has none configured, or `sponsorId` was
+   absent), iterate `campaign_sponsors` for the campaign and use the
+   first sponsor with a non-empty `commerce_api_key`.
+3. If no sponsor in the campaign has a key, **skip name resolution**
+   gracefully — the push notif keeps the `Product ${productId}`
+   placeholder, with a `[CartIntent]` warning logged. No crash, no 500.
+
+The hardcoded `'KCXF10Y-W5T4PCR-GG5119A-Z64SQ9S'` fallback is **gone**
+from these two endpoints. (The dispatch endpoint
+`/v2/admin/broadcasts/:id/shoppable-ad` line 5342 and `/v2/commerce/products`
+line 5644 still carry it as last-resort — that's pending a follow-up
+purge to align with the v2 rule "no hardcoded apiKeys" everywhere.)
+
+### Validation
+
+- Smoke: TV demo tap → push notif now shows the real product title
+  (e.g. `Sykkel`) with body `Sykkel — trykk for å kjøpe`.
+- `[tv cart-intent] No commerce key resolved...` warning fires only
+  when neither sponsorId nor any campaign sponsor has a key — verified
+  by inspection.
+- Drift script: still green (no contract / openapi / Postman changes,
+  pure internal logic).
+
+### Follow-up (separate PR)
+
+- Remove the `'KCXF10Y-...'` hardcoded fallback from lines 5342 + 5644
+  (apply the same per-sponsor pattern + graceful degrade).
+- Drop the `COMMERCE_API_KEY` env var from `.env.example` and
+  documentation — every sponsor carries its own key in the DB now.

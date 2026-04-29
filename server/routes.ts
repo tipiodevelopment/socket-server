@@ -5841,16 +5841,40 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
         return res.status(400).json({ error: 'productId and userId are required' });
       }
 
+      // Resolve product name via Commerce — uses the sponsor's per-sponsor
+      // commerceApiKey from `sponsors.commerce_api_key`. Per the v2 rule
+      // "no hardcoded apiKeys", route to the right key based on the
+      // sponsorId passed in the body (or derived from activationId below
+      // when needed). Falls back across `campaign_sponsors` when the
+      // supplied sponsorId has no key configured. If no sponsor in the
+      // campaign has a key, name resolution is skipped — the push notif
+      // keeps the `Product ${productId}` placeholder rather than crashing.
+      // (Same pattern as `/v2/tv/cart-intent` and `/v2/commerce/products`.)
       let resolvedName = productName || `Product ${productId}`;
       if (!productName) {
-        try {
-          const commerceApiKey = process.env.COMMERCE_API_KEY || 'KCXF10Y-W5T4PCR-GG5119A-Z64SQ9S';
-          const gqlQuery = `{ Channel { GetProductsByIds(product_ids: [${productId}]) { id title images { url order } price { amount amount_incl_taxes currency_code } } } }`;
-          const gqlData = await fetchGraphQL(gqlQuery, commerceApiKey);
-          const name = gqlData?.data?.Channel?.GetProductsByIds?.[0]?.title;
-          if (name) resolvedName = name;
-        } catch (err) {
-          console.warn('[CartIntent] Commerce lookup failed:', err);
+        let resolvedCommerceKey: string | null = null;
+        if (sponsorId) {
+          const sp = await storage.getSponsor(Number(sponsorId));
+          if (sp?.commerceApiKey) resolvedCommerceKey = sp.commerceApiKey;
+        }
+        if (!resolvedCommerceKey) {
+          const campaignSponsorsForKey = await storage.getCampaignSponsors(campaign.id);
+          for (const cs of campaignSponsorsForKey) {
+            const csp = await storage.getSponsor(cs.sponsorId);
+            if (csp?.commerceApiKey) { resolvedCommerceKey = csp.commerceApiKey; break; }
+          }
+        }
+        if (resolvedCommerceKey) {
+          try {
+            const gqlQuery = `{ Channel { GetProductsByIds(product_ids: [${productId}]) { id title images { url order } price { amount amount_incl_taxes currency_code } } } }`;
+            const gqlData = await fetchGraphQL(gqlQuery, resolvedCommerceKey);
+            const name = gqlData?.data?.Channel?.GetProductsByIds?.[0]?.title;
+            if (name) resolvedName = name;
+          } catch (err) {
+            console.warn('[CartIntent] Commerce lookup failed:', err);
+          }
+        } else {
+          console.warn(`[CartIntent] No commerce key resolved for sponsorId=${sponsorId ?? '(none)'} campaignId=${campaign.id} — using placeholder "${resolvedName}" in push notif`);
         }
       }
 
@@ -6799,16 +6823,39 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
         ? await storage.getActiveTvSession(clientApp.id, endUser.id, tvSessionPlatform as any)
         : undefined;
 
-      // 1. Resolve product name via Commerce (best-effort) — used in the push title/body.
+      // 1. Resolve product name via Commerce — used in the push notif title/body.
+      //    Per the v2 rule "no hardcoded apiKeys", route to the sponsor's own
+      //    commerce key (`sponsors.commerce_api_key`) using the sponsorId that
+      //    came in the cart-intent body or was derived from the activation.
+      //    Falls back across `campaign_sponsors` when the supplied sponsorId
+      //    has no key configured. If no sponsor in the campaign has a key,
+      //    name resolution is skipped — the push notif keeps the
+      //    `Product ${productId}` placeholder rather than crashing.
+      //    (Same pattern as `/v2/commerce/products` resolver.)
       let resolvedName = `Product ${productId}`;
-      try {
-        const commerceKey = process.env.COMMERCE_API_KEY || 'KCXF10Y-W5T4PCR-GG5119A-Z64SQ9S';
-        const gqlQuery = `{ Channel { GetProductsByIds(product_ids: [${productId}]) { id title } } }`;
-        const gqlData = await fetchGraphQL(gqlQuery, commerceKey);
-        const name = gqlData?.data?.Channel?.GetProductsByIds?.[0]?.title;
-        if (name) resolvedName = name;
-      } catch (err) {
-        console.warn('[tv cart-intent] Commerce lookup failed:', err);
+      let resolvedCommerceKey: string | null = null;
+      if (sponsorId) {
+        const sp = await storage.getSponsor(Number(sponsorId));
+        if (sp?.commerceApiKey) resolvedCommerceKey = sp.commerceApiKey;
+      }
+      if (!resolvedCommerceKey) {
+        const campaignSponsorsForKey = await storage.getCampaignSponsors(campaign.id);
+        for (const cs of campaignSponsorsForKey) {
+          const csp = await storage.getSponsor(cs.sponsorId);
+          if (csp?.commerceApiKey) { resolvedCommerceKey = csp.commerceApiKey; break; }
+        }
+      }
+      if (resolvedCommerceKey) {
+        try {
+          const gqlQuery = `{ Channel { GetProductsByIds(product_ids: [${productId}]) { id title } } }`;
+          const gqlData = await fetchGraphQL(gqlQuery, resolvedCommerceKey);
+          const name = gqlData?.data?.Channel?.GetProductsByIds?.[0]?.title;
+          if (name) resolvedName = name;
+        } catch (err) {
+          console.warn('[tv cart-intent] Commerce lookup failed:', err);
+        }
+      } else {
+        console.warn(`[tv cart-intent] No commerce key resolved for sponsorId=${sponsorId ?? '(none)'} campaignId=${campaign.id} — using placeholder "${resolvedName}" in push notif`);
       }
 
       // 2. Build canonical envelope. TV-path includes activation_id + sponsor_id in
