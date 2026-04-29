@@ -213,6 +213,16 @@ async function dbInvariants(): Promise<{ ok: boolean; report: string[] }> {
     if (noKey.rows.length > 0) report.push(`❌ sponsors used by campaign_components without commerce_api_key: ${JSON.stringify(noKey.rows)}`);
     else report.push(`✅ every cc-referenced sponsor has a commerce_api_key`);
 
+    // Invariant 7: components.id is in slug format (post-migration 0006).
+    // Slug = lowercase letters, digits, hyphens; must start with a letter.
+    // Catches any UUID slipping back in via dashboard or seed.
+    const nonSlug = await c.query(`
+      SELECT id, type FROM components
+      WHERE id !~ '^[a-z][a-z0-9-]*$'
+    `);
+    if (nonSlug.rows.length > 0) report.push(`❌ components.id rows not in slug format: ${JSON.stringify(nonSlug.rows)}`);
+    else report.push(`✅ all components.id values are in slug format`);
+
     await c.end();
     const ok = !report.some(line => line.startsWith("❌"));
     return { ok, report };

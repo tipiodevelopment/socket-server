@@ -279,6 +279,80 @@ exercised by host code as before.
 
 ---
 
+## Sprint 2026-04-29 — Doc consolidation + Q2 canonicalize component IDs
+
+Audit identified drift between docs / openapi / Postman / code, plus a schema
+inconsistency: 3 of 6 `components.id` values were random UUIDs, the other 3
+were slug-style — a mixed PK convention that propagated to every
+`/v2/mobile/campaigns/:id/components` SDK response (some rows shipped with
+`id: "product-store-template"`, others with `id: "5355258c-fad2-…"`).
+
+### What landed
+
+- [x] **Phase 1 — code cleanup**: 24 dead v1 routes deleted from `server/routes.ts`
+  (894 lines). Verified zero callers across iOS / Apple TV / dashboard /
+  scripts. Commit `374a3ae`.
+- [x] **Phase 2 — docs refresh**: `API_V2_CONTRACT` (sections 4 / 7 / 11 / 12),
+  `ARCHITECTURE_OVERVIEW` (section 4 + Hito 6 + new Hitos 6.5/6.6/6.7),
+  `docs/README`, `IOS_V2_MIGRATION_GAP`, `ROLLOUT_ROADMAP` — all rewritten
+  to match code state. Commit `4bdbc9d`.
+- [x] **Phase 3 — archive**: `multi-sponsor-implementation-plan.md` and
+  `PHASE_3_ENFORCEMENT.md` moved to `docs/archive/` (both phases landed,
+  kept for historical context).
+- [x] **Phase 4 — openapi.yaml**: 21 stale entries removed (3 `/v2/sdk/*`
+  renamed, 6 `/api/sdk/tv/*` renamed, 12 dead v1 routes); 13 missing v2
+  paths added. 101 → 97 paths total; v2 count 3 → 16; ghost paths 0.
+- [x] **Phase 5 — Postman**: new folder "5b. Placement control plane" (7
+  management routes), 2 missing v2 paths added to folder 2, folder 7
+  WebSocket events filled with reference items. Reordered iOS Mobile SDK
+  folder so requests follow cold-start sequence (commit `9b4e46e`). 31 →
+  45 requests across 9 → 10 folders.
+- [x] **Phase 6 — drift script**: `scripts/check-docs-drift.ts` runs 5
+  comparisons (routes ↔ openapi, ↔ contract, ↔ Postman, SDK ↔ DB
+  manifest, DB invariants). Reports drift as exit code 1.
+  Now extended with invariant 7 (components.id must be slug format).
+- [x] **Q2 — canonicalize component IDs**: migration
+  `0006_canonicalize_component_ids.sql`. ALTERs the FK
+  `app_placements.component_id` → `components.id` from `NO ACTION` to
+  `ON UPDATE CASCADE` (so future renames are a single UPDATE), then
+  renames the 3 UUID PKs:
+    - `1346badf-…` → `countdown-template`
+    - `5355258c-…` → `offer-banner-template`
+    - `321ce3d4-…` → `product-spotlight-template`
+  Cascade auto-updates the matching `app_placements` rows (TV2 ap=20
+  spotlight, ap=21 offer_banner). All 6 templates now use a uniform
+  `<type>-template` slug pattern. SDK response confirmed via probe:
+  `id` field now ships slugs across all 4 active placements.
+
+### Verification
+
+`npm run check:docs-drift` (5 of 5 checks passing):
+
+```
+[1/5] routes.ts ↔ openapi.yaml             ✅ aligned 25 contract routes
+[2/5] /v2/* in code ↔ API_V2_CONTRACT      ✅ aligned 16 routes
+[3/5] /v2/* in code ↔ Postman              ✅ aligned 16 routes
+[4/5] SDK slot manifest ↔ DB locations     ✅ aligned 6 slots
+[5/5] DB invariants                         ✅ 7 of 7 (1 known warning: 4
+                                              campaigns with primary_sponsor_id
+                                              missing from campaign_sponsors —
+                                              tracked as Q1 follow-up)
+```
+
+### Open follow-ups (decisions still pending)
+
+- **Q1 — primary↔junction sync** (4 campaigns: 31 SkiStar, 33 Elkjøp,
+  36 TV2/Elkjøp, 37 test). Path A = backfill INSERT + DB trigger,
+  Path B = deprecate `campaigns.primary_sponsor_id` column. Drift
+  script reports as ⚠️ until resolved.
+- **Q4 — `Product.sponsorId`** for per-product cart routing in
+  multi-sponsor stores. Today the detail-overlay routes via
+  `CommerceSdkClientProvider.activeSponsorId` (global), not the
+  tapped product's actual sponsor. Tracked in
+  `CURRENT_STATE.md §20` known limitations.
+
+---
+
 ## Sprint 2026-04-28 (PM evening) — Phase 2 polish per component
 
 Continuation of the Banner/Store/Slider first-phase sprint. Goal of
