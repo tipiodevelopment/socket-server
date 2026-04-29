@@ -116,7 +116,7 @@ own Commerce credentials. Key properties:
 
 ---
 
-## 4. API v2 surface (live as of 2026-04-24)
+## 4. API v2 surface (live, last refreshed 2026-04-29)
 
 The API is organized by **audience**, not by version:
 
@@ -403,29 +403,51 @@ Merged PRs:
 
 Pending user verification of Apple Pay checkout flow end-to-end (Apple TV tap → iOS overlay → per-sponsor Commerce → Apple Pay button → checkout completes).
 
-### ✅ Hito 6 — Product Placements (dashboard-driven model, post-pivot 2026-04-28)
+### ✅ Hito 6 — Product Placements (dashboard-driven model, landed 2026-04-28)
 
-Placements = always-on product UI (carousels, banners, spotlights, stores, sliders) that render at host-app-declared `locationId`s. **Dashboard-driven** model after the 2026-04-27 PM pivot: SDK declares only the slot **locations** its UI exposes, the **operator** creates named placements in the dashboard binding library templates to those slots, campaigns then bind to placements with sponsor + products + customConfig.
+Placements = always-on product UI (carousels, banners, spotlights, stores, offer banners) that render at host-app-declared `locationId`s. **Dashboard-driven** model after the 2026-04-27 PM pivot: SDK declares only the slot **locations** its UI exposes; the **operator** creates named placements in the dashboard binding library templates to those slots; campaigns then bind to placements with sponsor + products + customConfig.
 
 Three-layer data model:
-1. **`components`** (canonical templates, `is_template=true`) — read-only library, 6 entries
-2. **`app_placements`** (named instances per app) — operator creates via dashboard `/apps/:id` "Add from library"
-3. **`campaign_components`** (campaign bindings) — operator creates via dashboard `/campaigns/:id` Components tab; FK to `app_placements`; partial UNIQUE for "one active per (campaign, placement)" multi-sponsor rotation
+1. **`components`** (canonical templates, `is_template=true`) — read-only library, 6 entries.
+2. **`app_placements`** (named instances per app) — operator creates via dashboard `/apps/:id` "Add from library".
+3. **`campaign_components`** (campaign bindings) — operator creates via dashboard `/campaigns/:id` Components tab; FK to `app_placements`; partial UNIQUE for "one active per (campaign, placement)" multi-sponsor rotation.
 
 Plus `app_component_locations` (the SDK-declared slot manifest, sync-semantic with `deprecated_at`).
 
-Status: ✅ smoke E2E live-tested 2026-04-28 with TV2 campaign 36 ("tes1" placement = Product Carousel @ home_top + XXL sponsor + 2 products + dynamic header `title="Ukens tilbud"` + sponsor logo via SVG-capable WKWebView). See [`CURRENT_STATE.md` §17](./CURRENT_STATE.md) for the full architecture diagram + file map + new-session cheat sheet.
+Status: ✅ smoke E2E live-tested 2026-04-28. TV2 campaign 36 has 4 placements bound (`home_top` carousel · `home_spotlight` · `home_offer` banner · `home_store`) running against 2 sponsors (Torshov Sport + XXL). See [`CURRENT_STATE.md` §17](./CURRENT_STATE.md) for the full architecture diagram + file map + new-session cheat sheet.
 
-In-flight feature branches (NOT merged yet):
-- socket-server `feature/placements-app-placements-table` @ `1777914`
-- VioSwiftSDK `feature/placements-named-instances` @ `95eafdb`
+Active branches:
+- socket-server `feature/placements-app-placements-table` @ `374a3ae`
+- VioSwiftSDK `feature/placements-named-instances` @ `0f1a2c1`
 
-Pending tasks (tracked in [`TASK_PLACEMENTS.md`](./TASK_PLACEMENTS.md) "Pending for 2026-04-29"):
-- Postman regen
-- `locationId:` plumbing for VProductSpotlight / VProductBanner / VProductStore / VProductSlider (only Carousel today)
-- Scheduling fields exposure (scheduled_time + end_time on the campaign placement form)
-- Multi-sponsor rotation UX polish
-- Apple TV SDK consumption smoke (additive sponsor.avatarUrl shouldn't break it)
+Original Hito 6 follow-ups (all landed 2026-04-28):
+- ✅ Postman regen → 19 v2 requests in 9 folders.
+- ✅ `locationId:` plumbing for VProductSpotlight / VProductBanner / VProductStore / VOfferBanner.
+- ✅ Multi-sponsor rotation UX (atomic `placement_activation_swapped` event).
+- ✅ Apple TV SDK consumption smoke — sponsor.avatarUrl additive, no regressions.
+
+### ✅ Hito 6.5 — Live updates via outbox + module subscribe (landed 2026-04-28 PM)
+
+3 placement events emitted via the **outbox pattern** (atomic with the campaign_components UPDATE that triggered them) + a per-socket module subscribe protocol so SDKs filter the firehose. Sub-second pause/resume/edit/sponsor-swap from the dashboard. See [`CURRENT_STATE.md` §18](./CURRENT_STATE.md) and [`TASK_PLACEMENTS.md` "Sprint closure (landed 2026-04-28 PM)"](./TASK_PLACEMENTS.md).
+
+- Backend: `events_outbox` table + worker, 3 emit sites (status / config / activation_swapped), 6/6 phases shipped (commits `e2df66c` → `753abe0`).
+- iOS: subscribe protocol + 3 event handlers + dashboard `Pausar / Hacer activo` verbs (commits `f89eaa3` → `4fa2391`).
+
+### ✅ Hito 6.6 — Phase 2 polish per component (landed 2026-04-28 PM evening + 2026-04-29 cleanup)
+
+Take each campaign-driven placement end-to-end so the operator does create + customize + live edit from the dashboard without ever editing `customConfig` JSON by hand.
+
+- **VOfferBanner** — campaign-driven mode + brand-aware color pickers + live preview at create-time. Hardcoded `OfferBannerView()` and legacy `componentManager.activeBanner` retired 2026-04-29 (commit `0f1a2c1`).
+- **VProductBanner** — layout preset (compact/standard/large) + brand color pickers + inline content fields in Add + live preview.
+- **VProductStore** — multi-sponsor products array (`{productId, sponsorId}[]`), each routes through its own sponsor's commerce key. New shared `MultiSponsorProductPicker` component used in both Add and Customize dialogs. One detail modal at a time via `@State`.
+- **Cross-cutting: hide-on-failure** on Carousel + Spotlight + Store. `loadFailed: Bool` flag → view returns `EmptyView()` when load fails. Single-shot — fail → hide; next config / WS event triggers fresh attempt.
+- **Infra** — process-level `uncaughtException` + `unhandledRejection` guards in `server/db.ts` to swallow neon-serverless transport drops without crashing the process (commit `824cf69`).
+
+See [`CURRENT_STATE.md` §20](./CURRENT_STATE.md).
+
+### ✅ Hito 6.7 — v1 cleanup (2026-04-29)
+
+Empirical retirement: 24 of 33 v1 routes had zero callers across iOS/AppleTV/dashboard/scripts. Handlers deleted entirely (commit `374a3ae`, 894 lines). The remaining 9 v1 routes still serve iOS — tracked in `IOS_V2_MIGRATION_GAP.md`, retire as features migrate.
 
 ### ⏳ Hito 7 — Kotlin SDKs
 
