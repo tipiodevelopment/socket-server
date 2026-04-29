@@ -64,6 +64,7 @@ This doc is the single source of truth for:
 6. **No auto-merge of PRs** by the assistant. Open the PR, push the branch, tell the user the URL and what to test. User triggers merge with explicit "merge #NN". Applies to code AND docs (consistency > special cases).
 7. **No new doc files** (added 2026-04-27). When state changes, update existing docs in place: `CURRENT_STATE.md`, `DB_AND_ENDPOINTS.md`, `ARCHITECTURE_OVERVIEW.md`, `TASK_PLACEMENTS.md`, `multi-sponsor-architecture.md`, `API_V2_CONTRACT.md`, `IOS_V2_MIGRATION_GAP.md`, `ROLLOUT_ROADMAP.md`, KOTLIN specs. Don't create one-off snapshot/state docs (`docs/state-runtime-snapshot-...`, `docs/post-...-state.md`, etc.) — they go stale within hours and pollute the doc tree. If a new concept legitimately needs its own file, ask first.
 8. **No AI attribution in commit messages** (already in user memory). Skip the `Co-Authored-By: Claude…` trailer.
+9. **Merge-to-`develop` checklist** (added 2026-04-29). Every PR must update `API_V2_CONTRACT.md` + `openapi.yaml` + Postman + `CURRENT_STATE.md` + `TASK_PLACEMENTS.md` per the rules in §22, AND `npm run check:docs-drift` must exit 0. Exemptions: pure `/api/*` dashboard tweaks, pure refactors, docs-only, test-only. Locked because the 2026-04-29 audit found 73 paths of accumulated drift.
 
 ## 3. Open PRs awaiting user review
 
@@ -806,3 +807,165 @@ queued for removal once the dynamic flow is signed off.
 - Telemetry-to-backend on hide-on-failure: deferred. 4 design
   questions open (Q1 schema columns, Q2 batching strategy, Q3 PII
   in error message, Q4 retention).
+
+## 21. Q2 canonicalize component IDs + multi-app library convention (landed 2026-04-29)
+
+Migration `0006_canonicalize_component_ids.sql` (commit `ae17e28`) cleans up
+the last schema inconsistency surfaced in the 2026-04-29 audit: the
+`components` library had 3 of 6 PKs as random UUIDs and 3 as hand-picked
+slugs, surfacing as a mixed `id` field in every
+`/v2/mobile/campaigns/:id/components` SDK response.
+
+### Slug convention locked
+
+```
+components.id  →  <type>-template
+```
+
+| `type` | `id` (slug) |
+|---|---|
+| `countdown` | `countdown-template` |
+| `offer_banner` | `offer-banner-template` |
+| `product_banner` | `product-banner-template` |
+| `product_carousel` | `product-carousel-template` |
+| `product_spotlight` | `product-spotlight-template` |
+| `product_store` | `product-store-template` |
+
+Defended by `scripts/check-docs-drift.ts` invariant 7
+(`components.id !~ '^[a-z][a-z0-9-]*$'` fails the run). Any future template
+that lands as a UUID gets caught at the next CI run.
+
+### FK rule — `app_placements.component_id → components.id`
+
+Was: `ON UPDATE NO ACTION ON DELETE RESTRICT` (renames blocked unless drop+recreate).
+Now: `ON UPDATE CASCADE ON DELETE RESTRICT` (renames are a single UPDATE).
+
+### Multi-app library convention (clarified during Q2 review)
+
+The `components` table is **library global**. All client_apps share the
+same 6 templates by design. App-specific placements live in
+`app_placements` (segmented by `client_app_id`) and `campaign_components`
+(segmented by `campaign_id`). Naming + slot uniqueness is enforced
+**per app**, not globally:
+
+```sql
+-- app_placements UNIQUE indexes (verified 2026-04-29):
+PRIMARY KEY (id)
+UNIQUE INDEX idx_app_placements_unique_name  ON (client_app_id, name)
+UNIQUE INDEX idx_app_placements_unique_slot  ON (client_app_id, component_id, location_id)
+```
+
+Concrete state today:
+
+| client_app_id | name        | placements bound | example |
+|---|---|---|---|
+| 17 | Viaplay     | 2  | `product-banner-template @ sport-detail-banner`, `product-carousel-template @ sport-detail-carousel` |
+| 18 | TV2         | 5  | 5 home placements + 1 match placement (declared but no campaign binding) |
+
+Viaplay and TV2 already coexist using **the same templates** at different
+slots. Adding a new app reuses the library — no library migration. If a
+future app needs a private template, the migration is
+`ALTER TABLE components ADD COLUMN client_app_id INTEGER NULL`
+(NULL = global, NOT NULL = app-specific). Not implemented today.
+
+### Files touched
+
+- `migrations/0006_canonicalize_component_ids.sql` (new) — the SQL.
+- `scripts/check-docs-drift.ts` — invariant 7 added.
+- `docs/TASK_PLACEMENTS.md` — sprint section 2026-04-29.
+- `docs/CURRENT_STATE.md` — this section.
+
+### SDK / dashboard impact
+
+Zero code changes in any of the 3 repos (verified by grep — nothing
+parses `componentId` as UUID). The library picker in the dashboard
+(`pages/app-detail.tsx:1108-1115`) iterates whatever the backend ships,
+so it now offers slug-formatted values automatically. iOS decoder reads
+`componentId: String` — slugs decode identically.
+
+The ONLY visible difference for a human inspecting a SDK response or
+DB query: 3 columns of strings now read as
+`countdown-template / offer-banner-template / product-spotlight-template`
+instead of UUIDs. Easier to debug; same wire shape.
+
+## 22. Merge-to-`develop` rule (locked 2026-04-29)
+
+After the audit on 2026-04-29 found 73 paths of drift across openapi.yaml +
+Postman + the contract doc (which took the morning to consolidate — see
+commits `374a3ae` + `4bdbc9d` + `9b4e46e` + `ae17e28`), the team locks
+this rule to prevent re-accumulation:
+
+### Rule
+
+**Every PR landing on `develop` (any of the 3 repos) MUST include matching
+updates to:**
+
+1. **`docs/API_V2_CONTRACT.md`** — if the PR touches a SDK-facing route.
+2. **`openapi.yaml`** — same trigger.
+3. **`postman/vio-sdk.postman_collection.json`** — same trigger.
+4. **`docs/CURRENT_STATE.md`** — accumulate as a new section or extend
+   the latest sprint section. **Never delete prior sections**; this is
+   the audit log.
+5. **`docs/TASK_PLACEMENTS.md`** (or whichever feature tracker doc applies)
+   — mark items done, add new follow-ups.
+
+### Mandatory verification gate
+
+Before pushing the PR:
+
+```bash
+npm run check:docs-drift
+```
+
+Must exit 0. The script runs 5 comparisons:
+1. `routes.ts` ↔ `openapi.yaml` (contract scope `/v[12]/*`)
+2. `/v2/*` in code ↔ `API_V2_CONTRACT.md` (only sections 4.1, 5, 6, 7 — Planned + migration map excluded)
+3. `/v2/*` in code ↔ Postman (smoke folder excluded)
+4. SDK slot manifest (`TV2PlacementRegistration.swift`) ↔ DB `app_component_locations`
+5. DB invariants (orphan sponsors, primary↔junction, deprecated_at, outbox failures, missing commerce keys, slug-only `components.id`)
+
+`❌` errors fail the run. `⚠️` warnings are tracked but allowed (e.g. the
+4 campaigns with primary↔junction desync — Q1 follow-up).
+
+### What "matching update" means per artifact
+
+**`docs/API_V2_CONTRACT.md`**
+- New SDK route → row in §4.1 (mobile shipped) / §5 (TV) / §6 (commerce) / §7 (admin).
+- Removed route → row in §12.3 with commit hash.
+- Renamed route → §12.1 + section table.
+
+**`openapi.yaml`**
+- New route → path entry with `operationId` + tags + basic params + response. Schemas can be filled in incrementally.
+- Removed → delete the entry.
+- Body shape change → update `requestBody.content`.
+
+**`postman/vio-sdk.postman_collection.json`**
+- New SDK route → add request to matching folder (1 = TV, 2 = Mobile, 3 = Commerce, 4 = Admin, 5b = Control plane). Use `{{baseUrl}}` + `{{apiKey}}`. Realistic body with TV2 IDs (campaign 36, clientApp 18).
+- Numbering: `<folder#>.<step><n>` in cold-start order (e.g. `2.A1`, `2.A2`, `2.B1`). Renumber if needed so a top-to-bottom read follows the SDK init sequence.
+
+**`docs/CURRENT_STATE.md`**
+- New `## XX. <Sprint title> (landed YYYY-MM-DD)` section. Include: what landed, verification result, open follow-ups (with `Q<n>` naming when applicable).
+- Never delete prior sections.
+
+**`docs/TASK_PLACEMENTS.md`**
+- Mark items done with `[x]`.
+- Add new follow-ups with `[ ]`.
+- New sprint section at the top (most recent first).
+
+### Exemptions (do NOT require artifact updates)
+
+- Pure dashboard UI tweaks under `/api/*` (session cookie surface — informational drift in the script, not a blocker).
+- Pure refactors that don't change wire shape.
+- Documentation-only PRs (still update CURRENT_STATE if relevant).
+- Test-only PRs.
+
+If unsure: run `npm run check:docs-drift`. Green = ship. Red = fix.
+
+### Why this rule exists
+
+The contract drives Kotlin SDK development. openapi feeds API client
+generators. Postman is the live tool partners + ops use to debug.
+Drift between them costs real engineering time — the 2026-04-29 audit
+found 73 paths of drift accumulated over 3 weeks of sprints.
+The drift script makes the rule **mechanically verifiable** so we
+don't audit by hand again.

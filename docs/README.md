@@ -20,6 +20,7 @@ developer's machine that has all three repos cloned alongside this one.
 - **iOS legacy calls still in code** → [`IOS_V2_MIGRATION_GAP.md`](./IOS_V2_MIGRATION_GAP.md). 9 remaining (post 2026-04-29 cleanup that retired 24 dead v1 routes).
 - **Onboarding the Kotlin dev?** → [`KOTLIN_TV_SDK_SPEC.md`](./KOTLIN_TV_SDK_SPEC.md)
   and [`KOTLIN_MOBILE_SDK_SPEC.md`](./KOTLIN_MOBILE_SDK_SPEC.md).
+- **About to push a PR to `develop`?** → [`CURRENT_STATE.md` §22](./CURRENT_STATE.md). Mandatory checklist (contract + openapi + Postman + CURRENT_STATE refresh) and the `npm run check:docs-drift` gate.
 
 ## By role
 
