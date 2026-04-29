@@ -5338,8 +5338,13 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
     //    the shoppable overlay using the sponsor's **avatar** (square brand mark),
     //    not the full horizontal logo — enforce that here so the overlay never has to
     //    handle a missing avatar at display time.
+    // Per the v2 rule "no hardcoded apiKeys": commerce key resolves strictly
+    // per-sponsor (`sponsors.commerce_api_key`). If the dispatched sponsor has
+    // no key configured (visual-only sponsor) the product enrichment is
+    // skipped — the activation snapshot keeps the `Product #${productId}`
+    // placeholder rather than authenticating against an unrelated channel.
     let sponsor: any = null;
-    let commerceApiKey = process.env.COMMERCE_API_KEY || 'KCXF10Y-W5T4PCR-GG5119A-Z64SQ9S';
+    let commerceApiKey: string | null = null;
     if (sponsorId) {
       const sp = await storage.getSponsor(sponsorId);
       if (sp) {
@@ -5368,38 +5373,42 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
     //       product name into the push title + activation snapshot.
     //    c) if that also fails, fall back to `Product #X` placeholder.
     let product: any = null;
-    try {
-      const richQuery = `{ Channel { GetProductsByIds(product_ids: [${productId}]) { id title images { url order } price { amount amount_incl_taxes currency_code } } } }`;
-      const gqlData = await fetchGraphQL(richQuery, commerceApiKey);
-      const p = gqlData?.data?.Channel?.GetProductsByIds?.[0];
-      if (p) {
-        const image = p.images?.sort((a: any, b: any) => a.order - b.order)?.[0];
-        product = {
-          id: String(p.id),
-          name: p.title,
-          price: p.price?.amount_incl_taxes ?? p.price?.amount ?? null,
-          currency: p.price?.currency_code ?? 'NOK',
-          imageUrl: image?.url ?? null,
-        };
-      }
-    } catch (err) {
-      console.warn(`[ShoppableAd:${source}] Commerce GraphQL rich query failed — retrying minimal:`, (err as Error).message ?? err);
+    if (commerceApiKey) {
       try {
-        const minQuery = `{ Channel { GetProductsByIds(product_ids: [${productId}]) { id title } } }`;
-        const gqlData = await fetchGraphQL(minQuery, commerceApiKey);
+        const richQuery = `{ Channel { GetProductsByIds(product_ids: [${productId}]) { id title images { url order } price { amount amount_incl_taxes currency_code } } } }`;
+        const gqlData = await fetchGraphQL(richQuery, commerceApiKey);
         const p = gqlData?.data?.Channel?.GetProductsByIds?.[0];
         if (p) {
+          const image = p.images?.sort((a: any, b: any) => a.order - b.order)?.[0];
           product = {
             id: String(p.id),
             name: p.title,
-            price: null,
-            currency: 'NOK',
-            imageUrl: null,
+            price: p.price?.amount_incl_taxes ?? p.price?.amount ?? null,
+            currency: p.price?.currency_code ?? 'NOK',
+            imageUrl: image?.url ?? null,
           };
         }
-      } catch (minErr) {
-        console.warn(`[ShoppableAd:${source}] Commerce GraphQL minimal query also failed:`, (minErr as Error).message ?? minErr);
+      } catch (err) {
+        console.warn(`[ShoppableAd:${source}] Commerce GraphQL rich query failed — retrying minimal:`, (err as Error).message ?? err);
+        try {
+          const minQuery = `{ Channel { GetProductsByIds(product_ids: [${productId}]) { id title } } }`;
+          const gqlData = await fetchGraphQL(minQuery, commerceApiKey);
+          const p = gqlData?.data?.Channel?.GetProductsByIds?.[0];
+          if (p) {
+            product = {
+              id: String(p.id),
+              name: p.title,
+              price: null,
+              currency: 'NOK',
+              imageUrl: null,
+            };
+          }
+        } catch (minErr) {
+          console.warn(`[ShoppableAd:${source}] Commerce GraphQL minimal query also failed:`, (minErr as Error).message ?? minErr);
+        }
       }
+    } else {
+      console.warn(`[ShoppableAd:${source}] No commerce key resolved (sponsorId=${sponsorId ?? '(none)'}) — skipping enrichment, using "Product #${productId}" placeholder`);
     }
     if (!product) {
       product = { id: String(productId), name: `Product #${productId}`, price: null, currency: 'NOK', imageUrl: null };
@@ -5641,7 +5650,11 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       const sponsorId = req.query.sponsorId ? parseInt(req.query.sponsorId as string) : null;
       const campaignId = req.query.campaignId ? parseInt(req.query.campaignId as string) : null;
 
-      let commerceApiKey = process.env.COMMERCE_API_KEY || 'KCXF10Y-W5T4PCR-GG5119A-Z64SQ9S';
+      // Per the v2 rule "no hardcoded apiKeys": commerce key resolves strictly
+      // per-sponsor. Falls back across campaign sponsors when only campaignId
+      // is supplied. If no sponsor in scope has a key, returns an empty list
+      // rather than authenticating against an unrelated channel.
+      let commerceApiKey: string | null = null;
 
       // Prefer sponsor-level key
       if (sponsorId) {
@@ -5669,6 +5682,11 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
 
       if (productIds.length === 0) {
         productIds = [408841, 408874, 408895, 408896, 408898];
+      }
+
+      if (!commerceApiKey) {
+        console.warn(`[Commerce] No commerce key resolved for sponsorId=${sponsorId ?? '(none)'} campaignId=${campaignId ?? '(none)'} — returning empty list`);
+        return res.json([]);
       }
 
       const gqlQuery = `{ Channel { GetProductsByIds(product_ids: [${productIds.join(',')}]) { id title images { url order } price { amount amount_incl_taxes currency_code } } } }`;

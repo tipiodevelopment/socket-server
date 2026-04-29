@@ -1512,7 +1512,7 @@
                 "shoppable-ad"
               ]
             },
-            "description": "**Purpose**: Fires a FC Barcelona Dri-Fit Jersey shoppable ad sponsored by XXL (secondary, role=full).\n\n**Called by**: Phase 5 smoke test step 3.\n\n**Expected**: 200 `{activationId, product:{id:\"408841\", price:759}, sponsor:{id:7, name:\"XXL\", primaryColor:\"#97f700\"}}`. Overlay green. On Select/Play → iOS routes Commerce via key `KCXF10Y-…` (not Elkjøp's, not Torshov's).\n\n**Pre-conditions**: XXL secondary, commerce_api_key = `KCXF10Y-W5T4PCR-GG5119A-Z64SQ9S`.",
+            "description": "**Purpose**: Fires a FC Barcelona Dri-Fit Jersey shoppable ad sponsored by XXL (secondary, role=full).\n\n**Called by**: Phase 5 smoke test step 3.\n\n**Expected**: 200 `{activationId, product:{id:\"408841\", price:759}, sponsor:{id:7, name:\"XXL\", primaryColor:\"#97f700\"}}`. Overlay green. On Select/Play → iOS routes Commerce via XXL's per-sponsor `commerce_api_key` (not Elkjøp's, not Torshov's).\n\n**Pre-conditions**: XXL secondary; XXL has `commerce_api_key` configured in `sponsors` table (resolved via subscribe response, never hardcoded in client or server).",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"productId\": \"408841\",\n  \"sponsorId\": 7\n}",

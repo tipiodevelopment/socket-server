@@ -1030,9 +1030,39 @@ purge to align with the v2 rule "no hardcoded apiKeys" everywhere.)
 - Drift script: still green (no contract / openapi / Postman changes,
   pure internal logic).
 
-### Follow-up (separate PR)
+### Follow-up — landed same-day (commit pending)
 
-- Remove the `'KCXF10Y-...'` hardcoded fallback from lines 5342 + 5644
-  (apply the same per-sponsor pattern + graceful degrade).
-- Drop the `COMMERCE_API_KEY` env var from `.env.example` and
-  documentation — every sponsor carries its own key in the DB now.
+- ✅ Removed `'KCXF10Y-...'` hardcoded fallback from `routes.ts:5342`
+  (`/v2/admin/broadcasts/:id/shoppable-ad`) and `routes.ts:5644`
+  (`/v2/commerce/products`). Both now resolve commerce key strictly
+  per-sponsor (`sponsors.commerce_api_key`); when no sponsor in scope
+  has a key, the dispatch keeps the `Product #${productId}` placeholder
+  and `/v2/commerce/products` returns `[]` rather than authenticating
+  against an unrelated channel.
+- ✅ Postman doc string `commerce_api_key = KCXF10Y-...` masked — the
+  key is no longer in source-controlled artifacts. (Commit history
+  still has it; XXL should rotate the key on their channel side as a
+  hygiene step, separate from this fix.)
+- ⚠️ The host-machine `.env` may still carry `COMMERCE_API_KEY=...`
+  for backwards compatibility — safe to delete locally, no longer
+  read by any code path. No `.env.example` in repo to update.
+
+### What "no hardcoded apiKeys" means now (locked 2026-04-29)
+
+Every commerce GraphQL call in `server/routes.ts` resolves the API key
+from `sponsors.commerce_api_key` for the sponsor that owns the
+operation:
+
+| Endpoint | Key source |
+|---|---|
+| `POST /v2/admin/broadcasts/:id/shoppable-ad` | `sponsorId` param → `sponsors.commerce_api_key` |
+| `GET /v2/commerce/products` | `sponsorId` query, else first sponsor in `campaign_sponsors` |
+| `GET /v2/commerce/sponsors/:sponsorId/catalog` | path `:sponsorId` → 422 if no key |
+| `POST /v2/tv/cart-intent` | body `sponsorId` (or activationId-derived) |
+| `POST /v2/mobile/campaigns/:id/cart-intent` | body `sponsorId` |
+
+If no sponsor in scope has a key, the endpoint **degrades gracefully**:
+either skips enrichment (placeholders) or returns empty/422.
+
+The `process.env.COMMERCE_API_KEY` env var is no longer read anywhere
+in code. It can be deleted from any `.env` without effect.
