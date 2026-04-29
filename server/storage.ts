@@ -78,7 +78,7 @@ export interface IStorage {
   getComponentUsage(): Promise<Record<string, Array<{ campaignId: number; campaignName: string }>>>;
   
   // Campaign component methods
-  getCampaignComponents(campaignId: number): Promise<Array<CampaignComponent & { component: Component } & { sponsor: Sponsor }>>;
+  getCampaignComponents(campaignId: number): Promise<Array<CampaignComponent & { component: Component } & { sponsor: any }>>;
   getComponentCountsForCampaigns(campaignIds: number[]): Promise<Map<number, number>>;
   addComponentToCampaign(campaignComponent: InsertCampaignComponent): Promise<CampaignComponent>;
   updateCampaignComponentStatus(campaignId: number, componentId: string, status: 'active' | 'inactive'): Promise<CampaignComponent | undefined>;
@@ -646,17 +646,33 @@ export class MemStorage implements IStorage {
   }
 
   // Campaign component methods (database-backed)
-  async getCampaignComponents(campaignId: number): Promise<Array<CampaignComponent & { component: Component } & { sponsor: Sponsor }>> {
+  async getCampaignComponents(campaignId: number): Promise<Array<CampaignComponent & { component: Component } & { sponsor: any }>> {
     const results = await db.select()
       .from(campaignComponents)
       .leftJoin(components, eq(campaignComponents.componentId, components.id))
       .leftJoin(sponsors, eq(campaignComponents.sponsorId, sponsors.id))
       .where(eq(campaignComponents.campaignId, campaignId));
+
+    const formatSponsor = (sponsor: any): any => {
+      return sponsor ? {
+        id: sponsor.id,
+        name: sponsor.name,
+        avatarUrl: sponsor.avatarUrl,
+        logoUrl: sponsor.logoUrl,
+        primaryColor: sponsor.primaryColor,
+        secondaryColor: sponsor.secondaryColor,
+        commerce: {
+          apiKey: sponsor.commerceApiKey,
+          channelId: sponsor.commerceChannelId,
+          paymentMethods: sponsor.paymentMethods ?? [],
+        }
+      } : null
+    };
     
     return results.map(row => ({
       ...row.campaign_components,
       component: row.components!,
-      sponsor: row.sponsors!,
+      sponsor: formatSponsor(row.sponsors),
     }));
   }
 

@@ -3081,7 +3081,8 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
           // Use campaign-specific customConfig if available, otherwise use component's default config
           config: normalizeUrls(cc.customConfig || cc.component.config, req.protocol, req.get('host')),
           status: cc.status,
-          activatedAt: cc.activatedAt
+          activatedAt: cc.activatedAt,
+          sponsor: cc.sponsor,
         }));
 
       res.json(activeComponents);
@@ -5782,19 +5783,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
               config: normalizeUrls(cc.customConfig || cc.component.config, req.protocol, req.get('host')),
               status: cc.status,
               locationId: cc.locationId || null,
-              sponsor: cc.sponsor ? {
-                id: cc.sponsor.id,
-                name: cc.sponsor.name,
-                avatarUrl: cc.sponsor.avatarUrl,
-                logoUrl: cc.sponsor.logoUrl,
-                primaryColor: cc.sponsor.primaryColor,
-                secondaryColor: cc.sponsor.secondaryColor,
-                commerce: {
-                  apiKey: cc.sponsor.commerceApiKey,
-                  channelId: cc.sponsor.commerceChannelId,
-                  paymentMethods: cc.sponsor.paymentMethods ?? [],
-                }
-              } : null
+              sponsor: cc.sponsor
             };
 
             // Include matchContext if component has matchId
