@@ -400,6 +400,44 @@
           }
         },
         {
+          "name": "2.A2 POST /v2/mobile/components/manifest (cold-start manifest)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"locations\": [\n    {\n      \"id\": \"home_top\",\n      \"displayName\": \"Home — Top\"\n    },\n    {\n      \"id\": \"home_spotlight\",\n      \"displayName\": \"Home — Featured product\"\n    },\n    {\n      \"id\": \"home_offer\",\n      \"displayName\": \"Home — Offer banner\"\n    },\n    {\n      \"id\": \"home_product_banner\",\n      \"displayName\": \"Home — Product banner\"\n    },\n    {\n      \"id\": \"home_store\",\n      \"displayName\": \"Home — Multi-sponsor store\"\n    },\n    {\n      \"id\": \"match_pre_kickoff\",\n      \"displayName\": \"Match — Pre-kickoff\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v2/mobile/components/manifest",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v2",
+                "mobile",
+                "components",
+                "manifest"
+              ]
+            },
+            "description": "Sync semantics: locations not in payload get deprecated_at = now(). Rejects body with `placements[]` or `components[]` (HTTP 400 — those legacy arrays were retired post-migration 0004)."
+          }
+        },
+        {
           "name": "2.B1 (WS) wss://<host>/ws/{{campaignId}} — open + identify",
           "request": {
             "auth": {
@@ -484,6 +522,32 @@
               ]
             },
             "description": "**Purpose**: Active campaign_components + broadcast-scoped overrides. Each entry carries sponsor.id + commerce block for per-sponsor routing.\n\n**Called by**: 5 product views: VProductCarousel, VProductSpotlight, VProductStore, VProductBanner, VProductSlider.\n\n**Expected**: 200 `{broadcastId, components:[{id, type, locationId, sponsor:{id,name,commerce:{apiKey}}, config:{productIds}}]}`"
+          }
+        },
+        {
+          "name": "2.B4 GET /v2/mobile/campaigns/:id/components (campaign-scoped placements)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v2/mobile/campaigns/{{campaignId}}/components",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v2",
+                "mobile",
+                "campaigns",
+                "{{campaignId}}",
+                "components"
+              ]
+            },
+            "description": "Primary placement fetch. Returns active campaign_components JOINed through app_placements (filters deprecated). Each row carries `appPlacementId + appPlacementName + locationId` + `sponsor` block (logoUrl + avatarUrl + primaryColor) + template config merged with customConfig."
           }
         },
         {
@@ -648,70 +712,6 @@
                 }
               }
             }
-          }
-        },
-        {
-          "name": "2.A2 POST /v2/mobile/components/manifest (cold-start manifest)",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "x-api-key",
-                "value": "{{apiKey}}"
-              },
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"locations\": [\n    {\n      \"id\": \"home_top\",\n      \"displayName\": \"Home — Top\"\n    },\n    {\n      \"id\": \"home_spotlight\",\n      \"displayName\": \"Home — Featured product\"\n    },\n    {\n      \"id\": \"home_offer\",\n      \"displayName\": \"Home — Offer banner\"\n    },\n    {\n      \"id\": \"home_product_banner\",\n      \"displayName\": \"Home — Product banner\"\n    },\n    {\n      \"id\": \"home_store\",\n      \"displayName\": \"Home — Multi-sponsor store\"\n    },\n    {\n      \"id\": \"match_pre_kickoff\",\n      \"displayName\": \"Match — Pre-kickoff\"\n    }\n  ]\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            },
-            "url": {
-              "raw": "{{baseUrl}}/v2/mobile/components/manifest",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "v2",
-                "mobile",
-                "components",
-                "manifest"
-              ]
-            },
-            "description": "Sync semantics: locations not in payload get deprecated_at = now(). Rejects body with `placements[]` or `components[]` (HTTP 400 — those legacy arrays were retired post-migration 0004)."
-          }
-        },
-        {
-          "name": "2.B4 GET /v2/mobile/campaigns/:id/components (campaign-scoped placements)",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "x-api-key",
-                "value": "{{apiKey}}"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/v2/mobile/campaigns/{{campaignId}}/components",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "v2",
-                "mobile",
-                "campaigns",
-                "{{campaignId}}",
-                "components"
-              ]
-            },
-            "description": "Primary placement fetch. Returns active campaign_components JOINed through app_placements (filters deprecated). Each row carries `appPlacementId + appPlacementName + locationId` + `sponsor` block (logoUrl + avatarUrl + primaryColor) + template config merged with customConfig."
           }
         }
       ]
