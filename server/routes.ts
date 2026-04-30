@@ -37,7 +37,8 @@ import {
   type WebSocketEvent,
   type InsertScheduledComponent,
   Campaign,
-  Broadcast
+  Broadcast,
+  Sponsor
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, or, isNull, desc, sql, ne } from "drizzle-orm";
@@ -1046,25 +1047,25 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       const _apiKey = req.params.apiKey;
       const { paymentMethods } = req.body;
 
-      const campaigns = await storage.getCampaignsByApiKey(_apiKey);
-      if (!campaigns || campaigns.length === 0) {
-        throw new Error('Campaigns not found for provided API key');
+      const sponsors = await storage.getSponsorsByApiKey(_apiKey);
+      if (!sponsors || sponsors.length === 0) {
+        throw new Error('Sponsors not found for provided API key');
       }
       if(paymentMethods && !Array.isArray(paymentMethods)) {
         throw new Error('paymentMethods should be an array');
       }
 
-      const processCampaign = async (campaign: Campaign) => {
+      const processSponsors = async (sponsor: Sponsor) => {
         try {
-          await storage.updateCampaignPaymentMethods(campaign.id, paymentMethods);          
+          await storage.updateSponsorPaymentMethods(sponsor.id, paymentMethods);          
         } catch (error) {
-          console.error(`Error updating payment methods for campaign ${campaign.id}:`, error);
+          console.error(`Error updating payment methods for sponsor ${sponsor.id}:`, error);
         }
       }
 
-      await Promise.allSettled(campaigns.map(processCampaign));
+      await Promise.allSettled(sponsors.map(processSponsors));
       
-      response.message = `Payment methods updated successfully: ${JSON.stringify(paymentMethods)} to ${campaigns.length} campaign(s) with API key ${_apiKey}`;
+      response.message = `Payment methods updated successfully: ${JSON.stringify(paymentMethods)} to ${sponsors.length} sponsor(s) with API key ${_apiKey}`;
 
     } catch (error) {
       console.error('Error updating payment methods:', error);
