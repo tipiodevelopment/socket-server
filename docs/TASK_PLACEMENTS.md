@@ -344,12 +344,20 @@ were slug-style — a mixed PK convention that propagated to every
 - **Q1 — primary↔junction sync** (4 campaigns: 31 SkiStar, 33 Elkjøp,
   36 TV2/Elkjøp, 37 test). Path A = backfill INSERT + DB trigger,
   Path B = deprecate `campaigns.primary_sponsor_id` column. Drift
-  script reports as ⚠️ until resolved.
-- **Q4 — `Product.sponsorId`** for per-product cart routing in
-  multi-sponsor stores. Today the detail-overlay routes via
-  `CommerceSdkClientProvider.activeSponsorId` (global), not the
-  tapped product's actual sponsor. Tracked in
-  `CURRENT_STATE.md §20` known limitations.
+  script reports as ⚠️ until resolved. Path C (preferred) was drafted
+  on 2026-04-30 in `CURRENT_STATE.md §22` follow-up plan but not
+  shipped — replaces invariant 2 with a dangling-FK check + extends
+  4 callers to iterate `[primary, ...secondaries]`. Estimate ~1h.
+- **Q4 — multi-sponsor cart + Apple Pay — ✅ landed 2026-05-04**
+  via PRs #10 (sponsorId UI propagation) + #11 (cartsBySponsor +
+  per-sponsor Apple Pay flow). See `CURRENT_STATE.md §24` for the
+  sprint log. The known limitation is now Commerce-side: each sponsor
+  channel must have a Stripe Connect account linked + `merchant.live.vio`
+  whitelisted before its checkout works end-to-end.
+- **VProductSlider Phase 2** — promote VProductSlider to a
+  campaign-driven placement template (`product_slider`). Today it
+  stays manual host-app convenience view. Schema + dashboard + iOS +
+  Postman all need a synchronized add. Estimate ~2h 20min.
 
 ---
 

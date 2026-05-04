@@ -1066,3 +1066,138 @@ either skips enrichment (placeholders) or returns empty/422.
 
 The `process.env.COMMERCE_API_KEY` env var is no longer read anywhere
 in code. It can be deleted from any `.env` without effect.
+
+## 24. Q4 multi-sponsor cart + Apple Pay (landed 2026-05-04)
+
+iOS SDK gained per-sponsor cart routing across the 4 layers of Q4.
+Lives in `feature/q4-product-sponsor-id` (PR #10) and
+`feature/q4-l3-cart-per-sponsor` (PR #11), both merged to develop on
+2026-05-04. Backend was not touched — Q4 is iOS-side only; the
+sponsor-aware backend pieces (per-sponsor `commerce_api_key` resolver
+and the `/v2/{tv,mobile}/cart-intent` fixes) shipped earlier in §23.
+
+### Q4 L1 — sponsorId propagation through the UI chain (PR #10)
+
+Threads `sponsorId: Int?` through `VProductCard` → `VProductDetailOverlay`
+→ `VApplePayButton` → `VApplePayConfirmationSheet`. The sheet's
+post-purchase logo now reflects the sponsor that owned the item, not
+the global `CommerceSdkClientProvider.activeSponsorId` which was a
+mutable side-effect of the last sponsor SDK lookup.
+
+Out of scope: cart routing (that's L3). L1 only fixes the visible
+sponsor logo in the confirmation sheet so `home_store` items from XXL
+no longer show "Elkjøp" as the merchant after Apple Pay completes.
+
+### Q4 L2 — per-sponsor product detail fetch (already shipped pre-Q4)
+
+`ProductService.loadProduct(sponsorId:)` was wired during the multi-
+sponsor polish sprint (2026-04-28). No new code in this Q4 phase —
+just verified that the carousel/spotlight/store paths exercise it.
+
+### Q4 L3 — per-sponsor cart end-to-end (PR #11)
+
+Storage:
+
+  - New `CartManager.SponsorCart` nested struct (cartId, checkoutId,
+    items, subtotal, currency, country, shippingTotal, shippingCurrency,
+    lastDiscountCode, lastDiscountId, sponsorId).
+  - New `@Published cartsBySponsor: [Int: SponsorCart]` source of
+    truth for multi-sponsor stores. The legacy `@Published items /
+    cartTotal / cartId / checkoutId` properties remain for back-compat
+    with single-sponsor placements.
+
+Lifecycle (`CartModule+SponsorCart.swift`):
+
+  - `addProduct(_:variant:quantity:sponsorId:)` overload — resolves
+    sponsor's SDK via `CommerceSdkClientProvider.client(forSponsorId:)`,
+    creates a Reachu cart in that channel on first item, syncs
+    SponsorCart from CartDto.
+  - `removeItem(_:fromSponsor:)`, `updateQuantity(for:to:fromSponsor:)`,
+    `clearCart(forSponsor:)`, `clearAllCarts()`.
+  - `createCheckout(forSponsor:)` — analogous to legacy createCheckout
+    but uses sponsor's SDK + sponsor's cartId; stores `checkoutId` on
+    the SponsorCart so it persists across multiple Apple Pay attempts.
+  - Aggregate readers: `itemCountAcrossSponsors`, `totalAcrossSponsors`,
+    `shippingTotalAcrossSponsors`, `sponsorCart(forSponsorId:)`.
+  - Strict per-sponsor key resolution in `resolveSponsorSdk` — if the
+    sponsor has no `commerce_api_key`, returns nil (no silent primary
+    fallback). Per the v2 rule "no hardcoded apiKeys".
+
+Apple Pay (`ApplePayManager.swift`):
+
+  - `pay(... sponsorId: Int? = nil)` overload + `pendingSponsorId`
+    state + `sdkForActivePayment(_:)` helper that returns the
+    sponsor's SDK when `pendingSponsorId` is set, else
+    `cartManager.sdk` (legacy).
+  - All downstream SDK calls go through `sdkForActivePayment`:
+    `cart.getById`, `payment.applePayInit`, `payment.stripeIntent`,
+    `payment.applePayConfirm`. Result: charge routes to the sponsor's
+    Stripe Connect account, not the primary's.
+  - `didSelectShippingContact` and `didSelectShippingMethod` PKPayment
+    delegates branch on sponsor mode: cart country update, shipping
+    methods list, and per-item `cart.updateItem(shipping_id:)` all go
+    through the sponsor's SDK + sponsor cart. Replicates the legacy
+    UX (Apple Pay sheet shows shipping picker) but for the right cart.
+  - `buildSummaryItems` reads from `cartsBySponsor[pendingSponsorId]`
+    in sponsor mode, falls back to `cartManager.items` legacy. Total
+    `merchantName` (the "Pay X" label in the Apple Pay sheet) resolves
+    from the sponsor's display name in the subscribe response when
+    sponsor mode is active.
+  - Hardcoded `BrandConfiguration.default.name = "Elkjøp"` was changed
+    to `"Vio"` (the aggregator brand) so hosts that don't override
+    `brand` no longer see "Pay Elkjøp" by accident.
+
+UI (`VCheckoutOverlay.swift` + `SponsorCheckoutSection.swift`):
+
+  - `VCheckoutOverlay.body` is dual-mode: when `cartsBySponsor.isEmpty`,
+    renders the legacy `mainContent` (single-cart flow with
+    Klarna/Vipps/Stripe options); otherwise renders
+    `multiSponsorContent` which iterates `cartsBySponsor` ordered by
+    subtotal desc.
+  - `SponsorCheckoutSection` is the per-sponsor card: header (logo +
+    name + subtotal), items list with quantity buttons, totals
+    (subtotal + shipping + total), and a single Apple Pay button
+    scoped to that sponsor's `sponsorId`. Multi-sponsor mode is
+    Apple-Pay-only this sprint; Klarna/Vipps/Stripe stay in the
+    legacy single-cart path.
+
+### Stripe Connect setup requirement per sponsor channel
+
+For multi-sponsor Apple Pay to charge the correct Stripe account, each
+sponsor's channel in Commerce must have:
+
+  1. `commerce_api_key` configured on `sponsors.commerce_api_key`
+     (verified by drift invariant 6 — already enforced).
+  2. **Stripe Connect account linked** to that channel — separate from
+     the "Apple Pay enabled" flag in Commerce dashboard. Without it,
+     `applePayConfirm` returns the generic `[object Object]` 500 error.
+  3. `merchant.live.vio` whitelisted on that Stripe Connect account
+     (Apple Pay merchant ID).
+  4. The product being purchased must exist in the channel's catalog.
+
+This is **Commerce ops responsibility**, not SDK code. The SDK now
+sends the correct apiKey, checkoutId, and shipping_id per item — if
+Commerce rejects, the error is per-channel config.
+
+### What's deliberately not in Q4 L3
+
+  - Cross-session cart persistence — `cartsBySponsor` lives in memory
+    only.
+  - Klarna / Vipps / Stripe per-sponsor handlers — multi-sponsor is
+    Apple-Pay-only this sprint.
+  - Per-sponsor Apple Pay merchant identifier — `merchant.live.vio`
+    stays the same across all sponsors (Vio aggregator pattern).
+    Different sponsors get distinguished by the "Pay X" label
+    (B8 fix) and by Stripe Connect routing (B4 fix), not by
+    different merchant IDs.
+
+### Apple TV SDK status (independent)
+
+`InteractiveAds-vio` repo on `main` @ `873ec19` (since 2026-04-29).
+PRs #4 (docstrings) and #5 (minimal config) merged. The empty
+`InteractiveAds-vio.xcodeproj/` directory at the repo root is a
+leftover from before the Swift Package split — has no `project.pbxproj`,
+0 tracked files, can be deleted from disk. The real demo lives at
+`Demo/tv2demo-appletv/` and depends on the SDK as a local Swift
+Package. Its `vio-config.json` is 2 fields (apiKey, environment) per
+the post-PR #5 minimal pattern.
