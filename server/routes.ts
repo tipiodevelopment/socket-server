@@ -2283,6 +2283,33 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
     }
   });
 
+  // Bulk broadcast counts per campaign — frontend `app-detail.tsx` posts a
+  // CSV `?ids=38,39,…` and expects `{ [campaignId]: count }`. Must be
+  // declared BEFORE `/api/campaigns/:id` so Express doesn't capture
+  // "broadcast-counts" as the `:id` param (yields NaN → SQL 500).
+  app.get('/api/campaigns/broadcast-counts', async (req, res) => {
+    try {
+      const raw = (req.query.ids as string | undefined) ?? '';
+      const ids = raw
+        .split(',')
+        .map(s => parseInt(s.trim(), 10))
+        .filter(n => Number.isFinite(n));
+      if (ids.length === 0) return res.json({});
+
+      const counts: Record<number, number> = {};
+      await Promise.all(
+        ids.map(async (id) => {
+          const broadcasts = await storage.getBroadcastsByCampaign(id);
+          counts[id] = broadcasts.length;
+        })
+      );
+      res.json(counts);
+    } catch (error) {
+      console.error('Error fetching broadcast counts:', error);
+      res.status(500).json({ message: 'Error fetching broadcast counts' });
+    }
+  });
+
   // Get single campaign
   app.get('/api/campaigns/:id', async (req, res) => {
     try {
