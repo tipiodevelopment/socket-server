@@ -104,7 +104,10 @@ export default function SponsorsPage() {
 
   const updateMutation = useMutation({
     mutationFn: async ({ id, data }: { id: number; data: Partial<SponsorFormData> }) => {
-      const response = await apiRequest('PATCH', `/api/sponsors/${id}`, data);
+      // Backend requires `userId` in the body for ownership check (same
+      // pattern as DELETE which already includes it). Without it the
+      // handler short-circuits with 400 "userId is required".
+      const response = await apiRequest('PATCH', `/api/sponsors/${id}`, { ...data, userId });
       return response.json();
     },
     onSuccess: () => {
