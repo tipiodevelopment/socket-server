@@ -60,7 +60,7 @@ jobs:
 
       - name: Run DB migrations (Container Apps Job)
         run: |
-          JOB_NAME="migrate-$(echo ${{ github.sha }} | head -c 8)"
+          JOB_NAME="migrate-$(echo ${{ github.sha }} | cut -c1-8)"
           IDENTITY_ID=$(az identity show \
             --name "id-socket-server-${{ steps.env.outputs.name }}" \
             --resource-group "${{ steps.env.outputs.rg }}" \
@@ -76,16 +76,21 @@ jobs:
             --registry-identity "$IDENTITY_ID" \
             --mi-user-assigned "$IDENTITY_ID" \
             --replica-timeout 300 \
+            --replica-retry-limit 0 \
             --replica-completion-count 1 \
-            --command "npx" "drizzle-kit" "push" 2>&1 || true
+            --trigger-type Manual \
+            --command "npx" "drizzle-kit" "push"
 
-          # Wait for job to finish
+          az containerapp job start \
+            --name "$JOB_NAME" \
+            --resource-group "${{ steps.env.outputs.rg }}"
+
           for i in $(seq 1 20); do
             STATUS=$(az containerapp job execution list \
               --name "$JOB_NAME" \
               --resource-group "${{ steps.env.outputs.rg }}" \
               --query "[0].properties.status" -o tsv 2>/dev/null)
-            echo "Migration job status: $STATUS"
+            echo "Migration status: $STATUS"
             [ "$STATUS" = "Succeeded" ] && break
             [ "$STATUS" = "Failed" ] && echo "Migration failed" && exit 1
             sleep 15
