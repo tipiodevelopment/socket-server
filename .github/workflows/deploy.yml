@@ -58,49 +58,6 @@ jobs:
             ${{ env.ACR_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.env.outputs.tag }}
             ${{ env.ACR_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.env.outputs.name }}-latest
 
-      - name: Run DB migrations (Container Apps Job)
-        run: |
-          JOB_NAME="migrate-$(echo ${{ github.sha }} | cut -c1-8)"
-          IDENTITY_ID=$(az identity show \
-            --name "id-socket-server-${{ steps.env.outputs.name }}" \
-            --resource-group "${{ steps.env.outputs.rg }}" \
-            --query id -o tsv)
-
-          az containerapp job create \
-            --name "$JOB_NAME" \
-            --resource-group "${{ steps.env.outputs.rg }}" \
-            --environment "cae-socket-server-${{ steps.env.outputs.name }}" \
-            --image "${{ env.ACR_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.env.outputs.tag }}" \
-            --cpu 0.5 --memory 1Gi \
-            --registry-server ${{ env.ACR_REGISTRY }} \
-            --registry-identity "$IDENTITY_ID" \
-            --mi-user-assigned "$IDENTITY_ID" \
-            --replica-timeout 300 \
-            --replica-retry-limit 0 \
-            --replica-completion-count 1 \
-            --trigger-type Manual \
-            --command "npx" "drizzle-kit" "push"
-
-          az containerapp job start \
-            --name "$JOB_NAME" \
-            --resource-group "${{ steps.env.outputs.rg }}"
-
-          for i in $(seq 1 20); do
-            STATUS=$(az containerapp job execution list \
-              --name "$JOB_NAME" \
-              --resource-group "${{ steps.env.outputs.rg }}" \
-              --query "[0].properties.status" -o tsv 2>/dev/null)
-            echo "Migration status: $STATUS"
-            [ "$STATUS" = "Succeeded" ] && break
-            [ "$STATUS" = "Failed" ] && echo "Migration failed" && exit 1
-            sleep 15
-          done
-
-          az containerapp job delete \
-            --name "$JOB_NAME" \
-            --resource-group "${{ steps.env.outputs.rg }}" \
-            --yes 2>/dev/null || true
-
       - name: Deploy new revision
         run: |
           az containerapp update \
