@@ -7,11 +7,11 @@ if (!process.env.DATABASE_URL) {
   );
 }
 
-const isLocal = /localhost|127\.0\.0\.1/.test(process.env.DATABASE_URL);
+// neon-serverless uses WebSocket transport — only works with Neon endpoints.
+// Azure PostgreSQL and local Docker both use standard TCP (pg driver).
+const useNeon = process.env.DATABASE_URL?.includes('neon.tech') ?? false;
 
-// Local dev uses standard pg driver (no WebSocket proxy needed).
-// Cloud envs use @neondatabase/serverless with WebSocket transport.
-const { db, pool } = await (isLocal ? createLocalDb() : createNeonDb());
+const { db, pool } = await (useNeon ? createNeonDb() : createLocalDb());
 export { db, pool };
 
 async function createLocalDb() {
