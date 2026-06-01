@@ -17,7 +17,7 @@ permissions:
   contents: read
 
 env:
-  ACR_REGISTRY: reachuprod2.azurecr.io
+  ACR_REGISTRY: acrvioapi.azurecr.io
   IMAGE_NAME: socket-server
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
@@ -47,7 +47,7 @@ jobs:
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
       - name: Login to ACR
-        run: az acr login --name reachuprod2
+        run: az acr login --name acrvioapi
 
       - name: Build and push image
         uses: docker/build-push-action@v5
