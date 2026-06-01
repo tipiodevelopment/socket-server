@@ -35,8 +35,8 @@ jobs:
         run: |
           ENV="${{ github.event.inputs.environment || 'development' }}"
           echo "name=$ENV" >> $GITHUB_OUTPUT
-          echo "rg=rg-socket-server-$ENV" >> $GITHUB_OUTPUT
-          echo "app=ca-socket-server-$ENV" >> $GITHUB_OUTPUT
+          echo "rg=rg-api-vio-$ENV" >> $GITHUB_OUTPUT
+          echo "app=ca-api-vio-$ENV" >> $GITHUB_OUTPUT
           echo "tag=$ENV-${{ github.sha }}" >> $GITHUB_OUTPUT
 
       - name: Azure login (OIDC)
