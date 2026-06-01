@@ -24,7 +24,7 @@ if (!DATABASE_URL) {
 if (!CONN_STR) {
   console.error(
     "❌  AZURE_STORAGE_CONNECTION_STRING not set.\n" +
-    "    Run: az storage account show-connection-string --name containerqa2 --resource-group qa -o tsv"
+    "    Run: az storage account show-connection-string --name saapivio --resource-group rg-vio-shared -o tsv"
   );
   process.exit(1);
 }
