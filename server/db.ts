@@ -1,10 +1,5 @@
 import "./env";
-import { Pool, neonConfig } from '@neondatabase/serverless';
-import { drizzle } from 'drizzle-orm/neon-serverless';
-import ws from "ws";
 import * as schema from "@shared/schema";
-
-neonConfig.webSocketConstructor = ws;
 
 if (!process.env.DATABASE_URL) {
   throw new Error(
@@ -12,48 +7,52 @@ if (!process.env.DATABASE_URL) {
   );
 }
 
-export const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+const isLocal = /localhost|127\.0\.0\.1/.test(process.env.DATABASE_URL);
 
-// Catch idle-connection drops from Neon's WebSocket transport. Without
-// this, a transient `Connection terminated unexpectedly` from a stale
-// pool member surfaces as an unhandled error and crashes the entire
-// Node process — taking down WS clients, the outbox worker, and the
-// scheduler with it. Logging it lets the pool re-acquire a fresh
-// connection on the next query and keeps the rest of the app alive.
-pool.on('error', (err) => {
-  console.error('[db.pool] connection error (recoverable):', (err as Error)?.message ?? err);
-});
+// Local dev uses standard pg driver (no WebSocket proxy needed).
+// Cloud envs use @neondatabase/serverless with WebSocket transport.
+const { db, pool } = await (isLocal ? createLocalDb() : createNeonDb());
+export { db, pool };
 
-// Belt-and-suspenders. neon-serverless emits some errors on internal
-// Client / WebSocket instances that the pool-level handler above
-// doesn't see (the trace ends in `EventEmitter at index.mjs:395
-// "Unhandled error"` because the listener chain hops past the pool
-// before throwing). Process-level handlers are the only way to keep
-// the Node process alive when the inner emitter has no listener.
-//
-// We log + swallow rather than exit. The pool auto-evicts dead
-// clients; the next query opens a fresh one. Worst case is a single
-// query fails and the caller retries.
-process.on('uncaughtException', (err) => {
-  const msg = (err as Error)?.message ?? String(err);
-  if (msg.includes('Connection terminated') || msg.includes('Unhandled error')) {
-    console.error('[db.process] swallowed neon-serverless connection drop (recoverable):', msg);
-    return;
-  }
-  // Re-throw anything that isn't a known recoverable Neon transport
-  // glitch — those still deserve to crash the process so we don't
-  // mask real bugs.
-  console.error('[db.process] uncaught (re-throwing):', err);
-  throw err;
-});
+async function createLocalDb() {
+  const { default: pg } = await import("pg");
+  const { drizzle } = await import("drizzle-orm/node-postgres");
+  const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
+  const db = drizzle({ client: pool, schema });
+  return { db, pool };
+}
 
-process.on('unhandledRejection', (reason) => {
-  const msg = (reason as Error)?.message ?? String(reason);
-  if (msg.includes('Connection terminated') || msg.includes('Unhandled error')) {
-    console.error('[db.process] swallowed neon-serverless rejection (recoverable):', msg);
-    return;
-  }
-  console.error('[db.process] unhandled rejection:', reason);
-});
+async function createNeonDb() {
+  const { Pool, neonConfig } = await import("@neondatabase/serverless");
+  const { drizzle } = await import("drizzle-orm/neon-serverless");
+  const { default: ws } = await import("ws");
 
-export const db = drizzle({ client: pool, schema });
+  neonConfig.webSocketConstructor = ws;
+  const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+
+  pool.on("error", (err) => {
+    console.error("[db.pool] connection error (recoverable):", (err as Error)?.message ?? err);
+  });
+
+  process.on("uncaughtException", (err) => {
+    const msg = (err as Error)?.message ?? String(err);
+    if (msg.includes("Connection terminated") || msg.includes("Unhandled error")) {
+      console.error("[db.process] swallowed neon-serverless connection drop (recoverable):", msg);
+      return;
+    }
+    console.error("[db.process] uncaught (re-throwing):", err);
+    throw err;
+  });
+
+  process.on("unhandledRejection", (reason) => {
+    const msg = (reason as Error)?.message ?? String(reason);
+    if (msg.includes("Connection terminated") || msg.includes("Unhandled error")) {
+      console.error("[db.process] swallowed neon-serverless rejection (recoverable):", msg);
+      return;
+    }
+    console.error("[db.process] unhandled rejection:", reason);
+  });
+
+  const db = drizzle({ client: pool, schema });
+  return { db, pool };
+}
