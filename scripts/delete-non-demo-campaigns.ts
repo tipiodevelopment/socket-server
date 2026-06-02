@@ -15,7 +15,7 @@
  * is a no-op.
  */
 
-import { Pool } from '@neondatabase/serverless';
+import { Pool } from 'pg';
 
 // Keep these campaign ids — Viaplay (app 17) and TV2 (app 18) live demos.
 const KEEP_IDS: number[] = [3, 31, 33, 35, 36];

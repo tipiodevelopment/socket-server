@@ -13,7 +13,7 @@
  * `scripts/delete-non-demo-campaigns.ts` first if you added new test data.
  */
 
-import { Pool } from '@neondatabase/serverless';
+import { Pool } from 'pg';
 
 // Test/demo apps to remove. VG (2), Pregnancy (3), Viaplay (17), TV2 (18) stay.
 const DELETE_IDS: number[] = [4, 5, 7, 9, 10, 11, 13, 19];

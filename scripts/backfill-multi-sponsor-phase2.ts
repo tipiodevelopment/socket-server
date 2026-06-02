@@ -23,7 +23,7 @@
  * Idempotent — re-running with --yes on a clean DB is a no-op (WHERE ... IS NULL).
  */
 
-import { Pool } from '@neondatabase/serverless';
+import { Pool } from 'pg';
 
 async function main() {
   const execute = process.argv.includes('--yes');

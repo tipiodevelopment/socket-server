@@ -20,8 +20,8 @@
  *   - campaign engagement config, ui config, feature flags
  */
 
-import { drizzle } from "drizzle-orm/neon-http";
-import { neon } from "@neondatabase/serverless";
+import pg from "pg";
+import { drizzle } from "drizzle-orm/node-postgres";
 import * as schema from "../shared/schema";
 
 const DATABASE_URL = process.env.DATABASE_URL;
@@ -30,8 +30,8 @@ if (!DATABASE_URL) {
   process.exit(1);
 }
 
-const sql = neon(DATABASE_URL);
-const db = drizzle(sql, { schema });
+const pool = new pg.Pool({ connectionString: DATABASE_URL });
+const db = drizzle({ client: pool, schema });
 
 // ─── Predictable test identifiers (safe to share) ─────────────────────────
 const TEST_API_KEY = "test_kotlin_sdk_dev_key_abc123";
