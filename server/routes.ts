@@ -53,6 +53,12 @@ import { createRateLimiter, rateLimitPresets } from "./middleware/rate-limiter";
 import { validateBroadcastId } from "./middleware/broadcast-validator";
 import { setVoteBroadcastFunction } from "./services/vote-processor";
 import { sendAPNs } from "./services/ios-flow";
+import {
+  createKlarnaOrder,
+  createKlarnaSession,
+  KlarnaConfigError,
+  KlarnaApiError,
+} from "./services/klarna";
 import { enqueueEvent } from "./events/outbox";
 import { PLACEMENT_TOPICS } from "./events/types";
 import {
@@ -5632,6 +5638,124 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
     } catch (error) {
       console.error('[ShoppableAd:list] Error:', error);
       res.status(500).json({ error: 'Failed to list shoppable ad activations' });
+    }
+  });
+
+  // POST /v2/commerce/klarna/sessions — start a Klarna Payments session.
+  // Returns a client_token the browser feeds to the Klarna Payments widget
+  // (classic flow) plus the available payment_method_categories. No public
+  // clientId / origin handshake involved — auth is the server-side API key.
+  app.post('/v2/commerce/klarna/sessions', validateApiKey, async (req, res) => {
+    try {
+      const { purchaseCountry, currency, locale, orderAmount, orderLines, shippingOptions } =
+        req.body ?? {};
+
+      if (!currency || !Array.isArray(orderLines) || orderLines.length === 0) {
+        return res
+          .status(400)
+          .json({ error: 'currency and a non-empty orderLines[] are required' });
+      }
+
+      const session = await createKlarnaSession({
+        purchaseCountry: purchaseCountry || 'NO',
+        purchaseCurrency: currency,
+        locale: locale || 'nb-NO',
+        orderAmount: typeof orderAmount === 'number' ? orderAmount : undefined,
+        orderLines,
+        shippingOptions: Array.isArray(shippingOptions) ? shippingOptions : undefined,
+      });
+
+      return res.status(201).json({
+        success: true,
+        sessionId: session.session_id,
+        clientToken: session.client_token,
+        paymentMethodCategories: session.payment_method_categories ?? [],
+      });
+    } catch (error) {
+      if (error instanceof KlarnaConfigError) {
+        console.error('[Klarna:createSession] not configured:', error.message);
+        return res.status(503).json({
+          error: 'Klarna is not configured on the server',
+          detail: error.message,
+        });
+      }
+      if (error instanceof KlarnaApiError) {
+        console.error('[Klarna:createSession] Klarna rejected:', error.status, error.body);
+        return res.status(402).json({
+          error: 'Klarna rejected the session',
+          klarnaStatus: error.status,
+          klarna: error.body,
+        });
+      }
+      console.error('[Klarna:createSession] unexpected error:', error);
+      return res.status(500).json({ error: 'Failed to create Klarna session' });
+    }
+  });
+
+  // POST /v2/commerce/klarna/orders — complete a Klarna Express Checkout.
+  // The Web SDK authorizes client-side and returns an authorization token;
+  // this exchanges it for a real Klarna order (sandbox by default). Standalone
+  // — does not create a Vio Commerce order (that's a separate step).
+  app.post('/v2/commerce/klarna/orders', validateApiKey, async (req, res) => {
+    try {
+      const {
+        authorizationToken,
+        purchaseCountry,
+        currency,
+        locale,
+        orderAmount,
+        orderLines,
+        merchantReference,
+        confirmationUrl,
+        autoCapture,
+      } = req.body ?? {};
+
+      if (!authorizationToken || typeof authorizationToken !== 'string') {
+        return res.status(400).json({ error: 'authorizationToken is required' });
+      }
+      if (!currency || !Array.isArray(orderLines) || orderLines.length === 0) {
+        return res
+          .status(400)
+          .json({ error: 'currency and a non-empty orderLines[] are required' });
+      }
+
+      const order = await createKlarnaOrder({
+        authorizationToken,
+        purchaseCountry: purchaseCountry || 'NO',
+        purchaseCurrency: currency,
+        locale: locale || 'nb-NO',
+        orderAmount: typeof orderAmount === 'number' ? orderAmount : undefined,
+        orderLines,
+        merchantReference1: merchantReference,
+        confirmationUrl,
+        autoCapture: autoCapture === true,
+      });
+
+      return res.status(201).json({
+        success: true,
+        orderId: order.order_id,
+        fraudStatus: order.fraud_status,
+        redirectUrl: order.redirect_url,
+      });
+    } catch (error) {
+      if (error instanceof KlarnaConfigError) {
+        console.error('[Klarna:createOrder] not configured:', error.message);
+        return res.status(503).json({
+          error: 'Klarna is not configured on the server',
+          detail: error.message,
+        });
+      }
+      if (error instanceof KlarnaApiError) {
+        console.error('[Klarna:createOrder] Klarna rejected:', error.status, error.body);
+        // 402 = upstream payment provider rejected (e.g. token consumed/invalid).
+        return res.status(402).json({
+          error: 'Klarna rejected the order',
+          klarnaStatus: error.status,
+          klarna: error.body,
+        });
+      }
+      console.error('[Klarna:createOrder] unexpected error:', error);
+      return res.status(500).json({ error: 'Failed to create Klarna order' });
     }
   });
 
