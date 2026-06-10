@@ -52,6 +52,7 @@ import { calculateScheduledTimes, validateScheduling } from "./utils/scheduling"
 import { voteQueue, contestParticipationQueue, isQueueEnabled } from "./queue/queues";
 import { createRateLimiter, rateLimitPresets } from "./middleware/rate-limiter";
 import { validateBroadcastId } from "./middleware/broadcast-validator";
+import { firebaseAuth } from "./middleware/firebase-auth";
 import { setVoteBroadcastFunction } from "./services/vote-processor";
 import { sendAPNs } from "./services/ios-flow";
 import { enqueueEvent } from "./events/outbox";
@@ -1597,6 +1598,12 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       console.error('Error generating token:', error);
       res.status(500).json({ message: 'Error generating token' });
     }
+  });
+
+  // Spike ADR-0007: echo the identity of a verified Firebase ID token
+  // (Commerce project). No dashboard route depends on this yet.
+  app.get('/api/auth/me', firebaseAuth, (req, res) => {
+    res.json({ identity: req.firebaseIdentity });
   });
 
   // Create user

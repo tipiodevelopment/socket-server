@@ -15,6 +15,7 @@ import ComponentsPage from "@/pages/components";
 import ComponentDetailPage from "@/pages/component-detail";
 import CampaignDashboard from "@/pages/campaign-dashboard";
 import UserSessionPage from "@/pages/user-session";
+import FirebaseLoginPage from "@/pages/firebase-login";
 import BroadcastDetailPage from "@/pages/broadcast-detail";
 import AppsPage from "@/pages/apps";
 import AppDetailPage from "@/pages/app-detail";
@@ -31,6 +32,7 @@ function Router() {
   return (
     <Switch>
       <Route path="/user-session" component={UserSessionPage} />
+      <Route path="/firebase-login" component={FirebaseLoginPage} />
 
       <Route path="/">
         <RequireAuth><DashboardPage /></RequireAuth>
