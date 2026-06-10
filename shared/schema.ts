@@ -20,6 +20,10 @@ export const users = pgTable("users", {
   firebaseUid: varchar("firebase_uid", { length: 128 }).unique(),
   role: userRoleEnum("role").notNull().default("viewer"),
   sponsorId: integer("sponsor_id").references((): AnyPgColumn => sponsors.id),
+  // Tenancy (ADR-0007): admin = tenant root (owns client_apps + sponsors via
+  // their user_id). operator/viewer belong to an admin's tenant via this FK.
+  // null for super_admin (global) and for admin (they ARE the tenant root).
+  parentAdminId: integer("parent_admin_id").references((): AnyPgColumn => users.id),
   email: text("email"),
   name: text("name"),
   firebaseToken: text("firebase_token"),

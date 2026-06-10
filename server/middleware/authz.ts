@@ -2,6 +2,7 @@ import type { Request, Response, RequestHandler } from "express";
 import jwt from "jsonwebtoken";
 import type { User } from "@shared/schema";
 import type { FirebaseIdentity } from "./firebase-auth";
+import { can, requiredCapabilityFor, type Role } from "./capabilities";
 
 // Operator sessions (ADR-0007, F2/F3).
 //
@@ -13,15 +14,6 @@ import type { FirebaseIdentity } from "./firebase-auth";
 
 export const SESSION_COOKIE = "vio_session";
 const SESSION_TTL_SECONDS = 7 * 24 * 60 * 60;
-
-type Role = User["role"];
-
-const ROLE_LEVEL: Record<Role, number> = {
-  viewer: 1,
-  operator: 2,
-  admin: 3,
-  super_admin: 4,
-};
 
 declare global {
   namespace Express {
@@ -150,19 +142,6 @@ export function isPublicApiPath(method: string, path: string): boolean {
   return PUBLIC_API.some((rule) => rule.method === method && rule.pattern.test(path));
 }
 
-const MUTATING = new Set(["POST", "PUT", "PATCH", "DELETE"]);
-
-export function requiredRoleFor(method: string, path: string): Role {
-  if (/^\/api\/(auth\/users|users)(\/|$)/.test(path)) return "super_admin";
-  if (!MUTATING.has(method)) return "viewer";
-  if (/^\/api\/(client-apps|sponsors)(\/|$)/.test(path)) return "admin";
-  return "operator";
-}
-
-export function roleAtLeast(role: Role, required: Role): boolean {
-  return ROLE_LEVEL[role] >= ROLE_LEVEL[required];
-}
-
 // ── The /api gate ────────────────────────────────────────────────────────
 
 export function createApiGate(opts: { loadOperator: (id: number) => Promise<User | undefined> }): RequestHandler {
@@ -184,9 +163,9 @@ export function createApiGate(opts: { loadOperator: (id: number) => Promise<User
       return res.status(401).json({ message: "Session no longer valid" });
     }
 
-    const required = requiredRoleFor(method, path);
-    if (!roleAtLeast(operator.role, required)) {
-      return res.status(403).json({ message: `Requires ${required} role` });
+    const required = requiredCapabilityFor(method, path);
+    if (!can(operator.role, required)) {
+      return res.status(403).json({ message: `Your role (${operator.role}) lacks capability: ${required}` });
     }
 
     req.operator = operator;

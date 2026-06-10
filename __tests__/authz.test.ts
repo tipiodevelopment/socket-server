@@ -5,9 +5,7 @@ import {
   createSessionToken,
   isPublicApiPath,
   readSessionOperatorId,
-  requiredRoleFor,
   resolveAllowlistedOperator,
-  roleAtLeast,
 } from "../server/middleware/authz";
 
 process.env.SESSION_SECRET = process.env.SESSION_SECRET || "test-secret";
@@ -19,6 +17,7 @@ function fakeUser(overrides: Partial<User> = {}): User {
     firebaseUid: null,
     role: "viewer",
     sponsorId: null,
+    parentAdminId: null,
     email: "ops@vio.live",
     name: "Ops",
     firebaseToken: null,
@@ -45,7 +44,7 @@ function reqWithSession(operatorId: number, method: string, path: string) {
   } as any;
 }
 
-describe("route policy", () => {
+describe("public surface", () => {
   it("classifies the public end-user surface", () => {
     expect(isPublicApiPath("GET", "/api/status")).toBe(true);
     expect(isPublicApiPath("POST", "/api/auth/token")).toBe(true);
@@ -54,27 +53,6 @@ describe("route policy", () => {
     expect(isPublicApiPath("GET", "/api/campaigns")).toBe(false);
     expect(isPublicApiPath("PUT", "/api/campaigns/12")).toBe(false);
     expect(isPublicApiPath("GET", "/api/campaigns/12/stats")).toBe(false);
-  });
-
-  it("maps user management to super_admin", () => {
-    expect(requiredRoleFor("GET", "/api/users")).toBe("super_admin");
-    expect(requiredRoleFor("GET", "/api/auth/users")).toBe("super_admin");
-    expect(requiredRoleFor("DELETE", "/api/auth/users/4")).toBe("super_admin");
-  });
-
-  it("maps app/sponsor registration to admin and the rest to operator/viewer", () => {
-    expect(requiredRoleFor("POST", "/api/client-apps")).toBe("admin");
-    expect(requiredRoleFor("DELETE", "/api/sponsors/3")).toBe("admin");
-    expect(requiredRoleFor("POST", "/api/campaigns")).toBe("operator");
-    expect(requiredRoleFor("PATCH", "/api/broadcasts/9")).toBe("operator");
-    expect(requiredRoleFor("GET", "/api/campaigns")).toBe("viewer");
-  });
-
-  it("applies the role hierarchy", () => {
-    expect(roleAtLeast("super_admin", "admin")).toBe(true);
-    expect(roleAtLeast("admin", "operator")).toBe(true);
-    expect(roleAtLeast("operator", "admin")).toBe(false);
-    expect(roleAtLeast("viewer", "operator")).toBe(false);
   });
 });
 

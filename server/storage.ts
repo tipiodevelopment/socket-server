@@ -31,6 +31,7 @@ export interface IStorage {
   createSponsor(sponsor: InsertSponsor): Promise<Sponsor>;
   getSponsor(id: number): Promise<Sponsor | undefined>;
   getUserSponsors(userId: number): Promise<Sponsor[]>;
+  getAllSponsors(): Promise<Sponsor[]>;
   updateSponsor(id: number, sponsor: Partial<InsertSponsor>): Promise<Sponsor | undefined>;
   deleteSponsor(id: number): Promise<void>;
 
@@ -410,6 +411,10 @@ export class MemStorage implements IStorage {
     return await db.select().from(sponsors)
       .where(eq(sponsors.userId, userId))
       .orderBy(desc(sponsors.createdAt));
+  }
+
+  async getAllSponsors(): Promise<Sponsor[]> {
+    return await db.select().from(sponsors).orderBy(desc(sponsors.createdAt));
   }
 
   async updateSponsor(id: number, data: Partial<InsertSponsor>): Promise<Sponsor | undefined> {

@@ -40,7 +40,8 @@ import {
   Campaign,
   Broadcast,
   Sponsor,
-  userRoleEnum
+  userRoleEnum,
+  type User
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, or, isNull, desc, sql, ne } from "drizzle-orm";
@@ -63,6 +64,24 @@ import {
   readSessionOperatorId,
   resolveAllowlistedOperator,
 } from "./middleware/authz";
+import { ownerScope } from "./middleware/capabilities";
+
+// ── Tenant scoping helpers (ADR-0007) ────────────────────────────────────
+// Reads: which owner's rows the operator may see — null = all (super_admin).
+function readScopeOwnerId(operator: User | undefined): number | null {
+  if (!operator) return null;
+  const scope = ownerScope(operator);
+  return "all" in scope ? null : scope.ownerId;
+}
+// Creates: the user_id a newly-created row belongs to. super_admin may target
+// a specific admin via body.userId (that's how it assigns); everyone else is
+// forced to their own tenant owner so they can't create on someone else's behalf.
+function createOwnerId(operator: User | undefined, bodyUserId?: unknown): number {
+  if (operator && operator.role === "super_admin" && typeof bodyUserId === "number") return bodyUserId;
+  if (!operator) return typeof bodyUserId === "number" ? bodyUserId : 0;
+  const scope = ownerScope(operator);
+  return "all" in scope ? operator.id : scope.ownerId;
+}
 import { setVoteBroadcastFunction } from "./services/vote-processor";
 import { sendAPNs } from "./services/ios-flow";
 import { enqueueEvent } from "./events/outbox";
@@ -1053,6 +1072,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
     name: u.name,
     role: u.role,
     sponsorId: u.sponsorId,
+    parentAdminId: u.parentAdminId,
     linked: Boolean(u.firebaseUid),
   });
 
@@ -1106,7 +1126,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
 
   app.post('/api/auth/users', async (req, res) => {
     try {
-      const { email, role, name, sponsorId } = req.body ?? {};
+      const { email, role, name, sponsorId, parentAdminId } = req.body ?? {};
       if (!email || typeof email !== 'string') {
         return res.status(400).json({ message: 'email is required' });
       }
@@ -1115,6 +1135,16 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       }
       if (role === 'viewer' && sponsorId != null && !(await storage.getSponsor(Number(sponsorId)))) {
         return res.status(400).json({ message: 'sponsorId does not exist' });
+      }
+      // operator/viewer belong to an admin's tenant (ADR-0007).
+      if ((role === 'operator' || role === 'viewer')) {
+        if (parentAdminId == null) {
+          return res.status(400).json({ message: 'parentAdminId is required for operator/viewer (the admin tenant they belong to)' });
+        }
+        const admin = await storage.getUser(Number(parentAdminId));
+        if (!admin || (admin.role !== 'admin' && admin.role !== 'super_admin')) {
+          return res.status(400).json({ message: 'parentAdminId must reference an admin' });
+        }
       }
       const existing = await storage.getUserByEmailInsensitive(email);
       if (existing) {
@@ -1125,6 +1155,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
         name: name ?? null,
         role,
         sponsorId: sponsorId ?? null,
+        parentAdminId: (role === 'operator' || role === 'viewer') ? Number(parentAdminId) : null,
       });
       res.status(201).json(operatorProfile(created));
     } catch (error) {
@@ -1738,20 +1769,12 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   // Get all client apps for a user
   app.get('/api/client-apps', async (req, res) => {
     try {
-      const userIdParam = req.query.userId as string | undefined;
-
-      if (!userIdParam) {
-        return res.status(400).json({
-          message: 'userId query parameter is required'
-        });
-      }
-
-      const userId = parseInt(userIdParam);
-      if (isNaN(userId)) {
-        return res.status(400).json({ message: 'Invalid userId parameter' });
-      }
-
-      const apps = await storage.getUserClientApps(userId);
+      // Scoped to the authenticated operator's tenant (ADR-0007); super_admin
+      // sees all. The legacy ?userId= query param is ignored.
+      const owner = readScopeOwnerId(req.operator);
+      const apps = owner === null
+        ? await storage.getAllClientApps()
+        : await storage.getUserClientApps(owner);
       res.json(apps);
     } catch (error) {
       console.error('Error fetching client apps:', error);
@@ -1761,18 +1784,11 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
 
   app.get('/api/client-apps/with-stats', async (req, res) => {
     try {
-      const userIdParam = req.query.userId as string | undefined;
-      if (!userIdParam) {
-        return res.status(400).json({ message: 'userId query parameter is required' });
-      }
-      const userId = parseInt(userIdParam);
-      if (isNaN(userId)) {
-        return res.status(400).json({ message: 'Invalid userId parameter' });
-      }
+      const owner = readScopeOwnerId(req.operator);
 
-      const apps = await storage.getUserClientApps(userId);
-      const allChannels = await storage.getUserChannels(userId);
-      const allCampaigns = await storage.getUserCampaigns(userId);
+      const apps = owner === null ? await storage.getAllClientApps() : await storage.getUserClientApps(owner);
+      const allChannels = owner === null ? await storage.getAllChannels() : await storage.getUserChannels(owner);
+      const allCampaigns = owner === null ? await storage.getAllCampaigns() : await storage.getUserCampaigns(owner);
       const allBroadcasts = await storage.getAllBroadcasts();
 
       const result = await Promise.all(apps.map(async (app) => {
@@ -1826,25 +1842,17 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
     }
   });
 
-  // Get single client app (requires userId for ownership verification)
+  // Get single client app — ownership enforced by session (ADR-0007).
   app.get('/api/client-apps/:id', async (req, res) => {
     try {
-      const userIdParam = req.query.userId as string | undefined;
-      if (!userIdParam) {
-        return res.status(400).json({ message: 'userId query parameter is required' });
-      }
-      const userId = parseInt(userIdParam);
-      if (isNaN(userId)) {
-        return res.status(400).json({ message: 'Invalid userId parameter' });
-      }
-
       const app = await storage.getClientApp(parseInt(req.params.id));
       if (!app) {
         return res.status(404).json({ message: 'Client app not found' });
       }
 
-      // Verify ownership
-      if (app.userId !== userId) {
+      // super_admin (owner === null) sees any app; everyone else only their tenant's.
+      const owner = readScopeOwnerId(req.operator);
+      if (owner !== null && app.userId !== owner) {
         return res.status(403).json({ message: 'Access denied' });
       }
 
@@ -1859,11 +1867,10 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
 
   app.get('/api/sponsors', async (req, res) => {
     try {
-      const userId = parseInt(req.query.userId as string);
-      if (!userId || isNaN(userId)) {
-        return res.status(400).json({ message: 'userId query param is required' });
-      }
-      const result = await storage.getUserSponsors(userId);
+      const owner = readScopeOwnerId(req.operator);
+      const result = owner === null
+        ? await storage.getAllSponsors()
+        : await storage.getUserSponsors(owner);
       res.json(result);
     } catch (error) {
       console.error('Error fetching sponsors:', error);
@@ -1885,10 +1892,12 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
 
   app.post('/api/sponsors', async (req, res) => {
     try {
-      const { userId, name, description, logoUrl, avatarUrl, primaryColor, secondaryColor } = req.body;
-      if (!userId || !name) {
-        return res.status(400).json({ message: 'userId and name are required' });
+      const { name, description, logoUrl, avatarUrl, primaryColor, secondaryColor } = req.body;
+      if (!name) {
+        return res.status(400).json({ message: 'name is required' });
       }
+      // Owner is the creator's tenant (super_admin may target via body.userId).
+      const userId = createOwnerId(req.operator, req.body.userId);
       const sponsor = await storage.createSponsor({
         userId,
         name,
@@ -1944,17 +1953,16 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   // Create client app
   app.post('/api/client-apps', async (req, res) => {
     try {
-      const { userId, name, bundleId, iconUrl, bannerUrl, description } = req.body;
+      const { name, bundleId, iconUrl, bannerUrl, description } = req.body;
 
-      if (!userId || !name || !bundleId) {
+      if (!name || !bundleId) {
         return res.status(400).json({
-          message: 'userId, name, and bundleId are required'
+          message: 'name and bundleId are required'
         });
       }
 
-      if (typeof userId !== 'number' || isNaN(userId)) {
-        return res.status(400).json({ message: 'Invalid userId - must be a number' });
-      }
+      // The new app belongs to the creator's tenant (ADR-0007).
+      const userId = createOwnerId(req.operator, req.body.userId);
 
       const apiKey = `${name.toLowerCase().replace(/\s+/g, '_')}_api_key_${randomUUID().replace(/-/g, '').substring(0, 16)}`;
 
@@ -2284,17 +2292,12 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   // Create campaign (requires userId for multi-tenant scoping)
   app.post('/api/campaigns', async (req, res) => {
     try {
-      const { userId, clientAppId } = req.body;
+      const { clientAppId } = req.body;
 
-      if (!userId) {
-        return res.status(400).json({
-          message: 'userId is required in request body for multi-tenant scoping'
-        });
-      }
-
-      if (typeof userId !== 'number' || isNaN(userId)) {
-        return res.status(400).json({ message: 'Invalid userId - must be a number' });
-      }
+      // Campaign belongs to the creator's tenant; the app + sponsor below must
+      // belong to that same tenant (ADR-0007). An operator can only build
+      // campaigns on its admin's apps/sponsors.
+      const userId = createOwnerId(req.operator, req.body.userId);
 
       if (clientAppId) {
         const app = await storage.getClientApp(clientAppId);
@@ -2320,7 +2323,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
         return res.status(403).json({ message: 'Access denied - sponsor does not belong to this user' });
       }
 
-      const campaignData = { ...req.body, primarySponsorId: Number(primarySponsorId) };
+      const campaignData = { ...req.body, userId, primarySponsorId: Number(primarySponsorId) };
       if (campaignData.startDate) {
         campaignData.startDate = new Date(campaignData.startDate);
       }
@@ -2345,26 +2348,18 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   // Get campaigns (requires userId for multi-tenant isolation)
   app.get('/api/campaigns', async (req, res) => {
     try {
-      const userIdParam = req.query.userId as string | undefined;
+      // Scoped to the operator's tenant (ADR-0007); super_admin sees all.
+      const owner = readScopeOwnerId(req.operator);
 
-      if (!userIdParam) {
-        return res.status(400).json({
-          message: 'userId query parameter is required for multi-tenant scoping'
-        });
-      }
-
-      const userId = parseInt(userIdParam);
-      if (isNaN(userId)) {
-        return res.status(400).json({ message: 'Invalid userId parameter' });
-      }
-
-      const userCampaigns = await storage.getUserCampaigns(userId);
+      const userCampaigns = owner === null
+        ? await storage.getAllCampaigns()
+        : await storage.getUserCampaigns(owner);
       const campaignIds = userCampaigns.map(c => c.id);
       const [countMap, componentCountMap, engagementMap, sponsors] = await Promise.all([
         storage.getBroadcastCountsForCampaigns(campaignIds),
         storage.getComponentCountsForCampaigns(campaignIds),
         storage.getCampaignEngagementTotals(campaignIds),
-        storage.getUserSponsors(userId),
+        owner === null ? storage.getAllSponsors() : storage.getUserSponsors(owner),
       ]);
 
       const sponsorMap = new Map(sponsors.map(s => [s.id, s]));
