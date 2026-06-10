@@ -34,11 +34,13 @@ import {
   endUsers,
   tvSessions,
   cartIntents,
+  users,
   type WebSocketEvent,
   type InsertScheduledComponent,
   Campaign,
   Broadcast,
-  Sponsor
+  Sponsor,
+  userRoleEnum
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, or, isNull, desc, sql, ne } from "drizzle-orm";
@@ -53,6 +55,14 @@ import { voteQueue, contestParticipationQueue, isQueueEnabled } from "./queue/qu
 import { createRateLimiter, rateLimitPresets } from "./middleware/rate-limiter";
 import { validateBroadcastId } from "./middleware/broadcast-validator";
 import { firebaseAuth } from "./middleware/firebase-auth";
+import {
+  createApiGate,
+  createSessionToken,
+  setSessionCookie,
+  clearSessionCookie,
+  readSessionOperatorId,
+  resolveAllowlistedOperator,
+} from "./middleware/authz";
 import { setVoteBroadcastFunction } from "./services/vote-processor";
 import { sendAPNs } from "./services/ios-flow";
 import { enqueueEvent } from "./events/outbox";
@@ -1032,6 +1042,134 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
     }
   }
 
+  // ── Operator auth (ADR-0007) ──────────────────────────────────────────
+  // Session endpoints first, then the role gate via app.use('/api', …):
+  // every /api route registered after this point requires an operator
+  // session unless listed in PUBLIC_API (authz.ts).
+
+  const operatorProfile = (u: typeof users.$inferSelect) => ({
+    id: u.id,
+    email: u.email,
+    name: u.name,
+    role: u.role,
+    sponsorId: u.sponsorId,
+    linked: Boolean(u.firebaseUid),
+  });
+
+  // Exchange a verified Firebase ID token (shared Commerce project) for a
+  // first-party session cookie. Strict allowlist — see resolveAllowlistedOperator.
+  app.post('/api/auth/session', firebaseAuth, async (req, res) => {
+    try {
+      const operator = await resolveAllowlistedOperator(storage, req.firebaseIdentity!);
+      if (!operator) {
+        return res.status(403).json({ message: 'Account is not provisioned for this dashboard' });
+      }
+      setSessionCookie(res, createSessionToken(operator.id));
+      res.json(operatorProfile(operator));
+    } catch (error) {
+      console.error('Error creating operator session:', error);
+      res.status(500).json({ message: 'Error creating session' });
+    }
+  });
+
+  app.delete('/api/auth/session', (_req, res) => {
+    clearSessionCookie(res);
+    res.status(204).end();
+  });
+
+  app.get('/api/auth/me', async (req, res) => {
+    try {
+      const operatorId = readSessionOperatorId(req);
+      if (operatorId) {
+        const operator = await storage.getUser(operatorId);
+        if (operator) return res.json(operatorProfile(operator));
+      }
+      res.status(401).json({ message: 'No active session' });
+    } catch (error) {
+      console.error('Error reading session:', error);
+      res.status(500).json({ message: 'Error reading session' });
+    }
+  });
+
+  app.use('/api', createApiGate({ loadOperator: (id) => storage.getUser(id) }));
+
+  // Allowlist management. The gate maps /api/auth/users* to super_admin.
+  app.get('/api/auth/users', async (_req, res) => {
+    try {
+      const all = await storage.getAllUsers();
+      res.json(all.map(operatorProfile));
+    } catch (error) {
+      console.error('Error listing operators:', error);
+      res.status(500).json({ message: 'Error listing operators' });
+    }
+  });
+
+  app.post('/api/auth/users', async (req, res) => {
+    try {
+      const { email, role, name, sponsorId } = req.body ?? {};
+      if (!email || typeof email !== 'string') {
+        return res.status(400).json({ message: 'email is required' });
+      }
+      if (!userRoleEnum.enumValues.includes(role)) {
+        return res.status(400).json({ message: `role must be one of: ${userRoleEnum.enumValues.join(', ')}` });
+      }
+      if (role === 'viewer' && sponsorId != null && !(await storage.getSponsor(Number(sponsorId)))) {
+        return res.status(400).json({ message: 'sponsorId does not exist' });
+      }
+      const existing = await storage.getUserByEmailInsensitive(email);
+      if (existing) {
+        return res.status(409).json({ message: 'A user with this email already exists' });
+      }
+      const created = await storage.createUser({
+        email: email.toLowerCase(),
+        name: name ?? null,
+        role,
+        sponsorId: sponsorId ?? null,
+      });
+      res.status(201).json(operatorProfile(created));
+    } catch (error) {
+      console.error('Error creating operator:', error);
+      res.status(500).json({ message: 'Error creating operator' });
+    }
+  });
+
+  app.patch('/api/auth/users/:id', async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const { role, name, sponsorId } = req.body ?? {};
+      if (role !== undefined && !userRoleEnum.enumValues.includes(role)) {
+        return res.status(400).json({ message: `role must be one of: ${userRoleEnum.enumValues.join(', ')}` });
+      }
+      if (id === req.operator!.id && role !== undefined && role !== 'super_admin') {
+        return res.status(400).json({ message: 'You cannot demote your own account' });
+      }
+      const updated = await storage.updateUser(id, {
+        ...(role !== undefined ? { role } : {}),
+        ...(name !== undefined ? { name } : {}),
+        ...(sponsorId !== undefined ? { sponsorId } : {}),
+      });
+      if (!updated) return res.status(404).json({ message: 'User not found' });
+      res.json(operatorProfile(updated));
+    } catch (error) {
+      console.error('Error updating operator:', error);
+      res.status(500).json({ message: 'Error updating operator' });
+    }
+  });
+
+  app.delete('/api/auth/users/:id', async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (id === req.operator!.id) {
+        return res.status(400).json({ message: 'You cannot delete your own account' });
+      }
+      await storage.deleteUser(id);
+      res.status(204).end();
+    } catch (error) {
+      console.error('Error deleting operator:', error);
+      res.status(500).json({ message: 'Error deleting operator' });
+    }
+  });
+
   // HTTP API endpoints
   // Post update payment methods by apykey
   app.post('/api/campaign/payments/apikey/:apiKey', async (req, res) => {
@@ -1541,42 +1679,8 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
     }
   });
 
-  // Ensure user exists (create if not, return if exists) - for multi-tenant session simulation
-  app.post('/api/users/ensure', async (req, res) => {
-    try {
-      const { reachuUserId, email, name } = req.body;
-
-      if (!reachuUserId) {
-        return res.status(400).json({ message: 'reachuUserId is required' });
-      }
-
-      // Try to find existing user
-      let user = await storage.getUserByReachuId(reachuUserId);
-
-      // If not found, create new user
-      if (!user) {
-        user = await storage.createUser({
-          reachuUserId,
-          email: email || null,
-          name: name || null
-        });
-      }
-
-      const token = jwt.sign(
-        { userId: user.id, reachuUserId: user.reachuUserId },
-        JWT_SECRET,
-        { expiresIn: '7d' }
-      );
-
-      res.json({ ...user, token });
-    } catch (error) {
-      console.error('Error ensuring user exists:', error);
-      res.status(500).json({
-        message: 'Error ensuring user exists',
-        error: error instanceof Error ? error.message : String(error)
-      });
-    }
-  });
+  // POST /api/users/ensure (simulated session) removed in ADR-0007 F2 —
+  // operator sessions come from POST /api/auth/session now.
 
   app.post('/api/auth/token', async (req, res) => {
     try {
@@ -1598,12 +1702,6 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       console.error('Error generating token:', error);
       res.status(500).json({ message: 'Error generating token' });
     }
-  });
-
-  // Spike ADR-0007: echo the identity of a verified Firebase ID token
-  // (Commerce project). No dashboard route depends on this yet.
-  app.get('/api/auth/me', firebaseAuth, (req, res) => {
-    res.json({ identity: req.firebaseIdentity });
   });
 
   // Create user

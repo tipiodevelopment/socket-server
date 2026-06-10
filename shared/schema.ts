@@ -1,16 +1,25 @@
 import { z } from "zod";
-import { pgTable, serial, varchar, text, timestamp, json, jsonb, integer, bigint, boolean, uniqueIndex, index, uuid } from "drizzle-orm/pg-core";
+import { pgTable, pgEnum, serial, varchar, text, timestamp, json, jsonb, integer, bigint, boolean, uniqueIndex, index, uuid } from "drizzle-orm/pg-core";
 import { relations, sql } from "drizzle-orm";
 import type { AnyPgColumn } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 
 // Database Tables
 
+// Operator roles (ADR-0007). Hierarchical: super_admin > admin > operator > viewer.
+// viewer is the sponsor-facing read-only role; sponsor_id links it to its sponsor.
+export const userRoleEnum = pgEnum("user_role", ["super_admin", "admin", "operator", "viewer"]);
+
 // Operators (dashboard users). Distinct from end_users (viewers of broadcasts).
 // Legacy reachu_user_id kept nullable during Phase 2 transition; dropped in Phase 4.
+// firebase_uid links the row to the shared Commerce Firebase identity (ADR-0007);
+// rows are pre-provisioned (strict allowlist) and the uid attaches on first login.
 export const users = pgTable("users", {
   id: serial("id").primaryKey(),
   reachuUserId: varchar("reachu_user_id", { length: 255 }).unique(),
+  firebaseUid: varchar("firebase_uid", { length: 128 }).unique(),
+  role: userRoleEnum("role").notNull().default("viewer"),
+  sponsorId: integer("sponsor_id").references((): AnyPgColumn => sponsors.id),
   email: text("email"),
   name: text("name"),
   firebaseToken: text("firebase_token"),

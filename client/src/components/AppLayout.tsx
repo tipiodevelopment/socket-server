@@ -92,7 +92,7 @@ function isActiveRoute(itemHref: string, location: string, exact?: boolean) {
 }
 
 export function AppLayout({ children, breadcrumbs = [], title, subtitle, actions, headerBreadcrumb, headerBreadcrumbHref, hideSearch = false }: AppLayoutProps) {
-  const { reachuUserId, logout } = useUser();
+  const { email, logout } = useUser();
   const { theme, toggleTheme } = useTheme();
   const [location] = useLocation();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -162,7 +162,7 @@ export function AppLayout({ children, breadcrumbs = [], title, subtitle, actions
             </div>
           </button>
           <div className="w-8 h-8 rounded-full bg-[#3d8b7a] dark:bg-white flex items-center justify-center text-white dark:text-[#0a0e1a] text-xs font-bold">
-            {(reachuUserId || 'U').charAt(0).toUpperCase()}
+            {(email || 'U').charAt(0).toUpperCase()}
           </div>
         </div>
       </aside>

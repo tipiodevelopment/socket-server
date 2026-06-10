@@ -11,8 +11,11 @@ export interface IStorage {
   createUser(user: InsertUser): Promise<User>;
   getUser(id: number): Promise<User | undefined>;
   getUserByReachuId(reachuUserId: string): Promise<User | undefined>;
+  getUserByFirebaseUid(firebaseUid: string): Promise<User | undefined>;
+  getUserByEmailInsensitive(email: string): Promise<User | undefined>;
   getAllUsers(): Promise<User[]>;
   updateUser(id: number, user: Partial<InsertUser>): Promise<User | undefined>;
+  deleteUser(id: number): Promise<void>;
   
   // Client App methods
   createClientApp(clientApp: InsertClientApp): Promise<ClientApp>;
@@ -322,6 +325,17 @@ export class MemStorage implements IStorage {
     return user || undefined;
   }
 
+  async getUserByFirebaseUid(firebaseUid: string): Promise<User | undefined> {
+    const [user] = await db.select().from(users).where(eq(users.firebaseUid, firebaseUid));
+    return user || undefined;
+  }
+
+  async getUserByEmailInsensitive(email: string): Promise<User | undefined> {
+    const [user] = await db.select().from(users)
+      .where(sql`lower(${users.email}) = ${email.toLowerCase()}`);
+    return user || undefined;
+  }
+
   async getAllUsers(): Promise<User[]> {
     return await db.select().from(users).orderBy(desc(users.createdAt));
   }
@@ -332,6 +346,10 @@ export class MemStorage implements IStorage {
       .where(eq(users.id, id))
       .returning();
     return updated || undefined;
+  }
+
+  async deleteUser(id: number): Promise<void> {
+    await db.delete(users).where(eq(users.id, id));
   }
 
   // Client App methods (database-backed)

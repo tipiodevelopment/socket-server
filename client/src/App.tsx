@@ -14,8 +14,7 @@ import AdvancedCampaignPage from "@/pages/advanced-campaign";
 import ComponentsPage from "@/pages/components";
 import ComponentDetailPage from "@/pages/component-detail";
 import CampaignDashboard from "@/pages/campaign-dashboard";
-import UserSessionPage from "@/pages/user-session";
-import FirebaseLoginPage from "@/pages/firebase-login";
+import LoginPage from "@/pages/login";
 import BroadcastDetailPage from "@/pages/broadcast-detail";
 import AppsPage from "@/pages/apps";
 import AppDetailPage from "@/pages/app-detail";
@@ -31,8 +30,7 @@ import NotFound from "@/pages/not-found";
 function Router() {
   return (
     <Switch>
-      <Route path="/user-session" component={UserSessionPage} />
-      <Route path="/firebase-login" component={FirebaseLoginPage} />
+      <Route path="/login" component={LoginPage} />
 
       <Route path="/">
         <RequireAuth><DashboardPage /></RequireAuth>
@@ -83,11 +81,17 @@ function Router() {
       <Route path="/campaign/:id/dashboard">
         <RequireAuth><CampaignDashboard /></RequireAuth>
       </Route>
-      <Route path="/campaign/:id/advanced" component={AdvancedCampaignPage} />
-      <Route path="/campaign/:id/admin" component={AdminPage} />
+      <Route path="/campaign/:id/advanced">
+        <RequireAuth><AdvancedCampaignPage /></RequireAuth>
+      </Route>
+      <Route path="/campaign/:id/admin">
+        <RequireAuth><AdminPage /></RequireAuth>
+      </Route>
       <Route path="/campaign/:name/:id" component={CampaignViewerPage} />
 
-      <Route path="/admin" component={AdminPage} />
+      <Route path="/admin">
+        <RequireAuth><AdminPage /></RequireAuth>
+      </Route>
       <Route path="/viewer" component={ViewerPage} />
 
       <Route component={NotFound} />

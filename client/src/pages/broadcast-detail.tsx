@@ -1457,7 +1457,7 @@ function ShoppableAdTriggerSection({ broadcastId, campaignId }: { broadcastId: s
   );
 }
 
-function LiveChatSidebar({ broadcastId, analytics, reachuUserId, broadcastStatus }: { broadcastId: string; analytics?: BroadcastAnalytics; reachuUserId: string | null; broadcastStatus?: string }) {
+function LiveChatSidebar({ broadcastId, analytics, username, broadcastStatus }: { broadcastId: string; analytics?: BroadcastAnalytics; username: string | null; broadcastStatus?: string }) {
   const [activeTab, setActiveTab] = useState<'chat' | 'analytics'>('chat');
   const [chatInput, setChatInput] = useState('');
   const [tweetMode, setTweetMode] = useState(false);
@@ -1476,9 +1476,9 @@ function LiveChatSidebar({ broadcastId, analytics, reachuUserId, broadcastStatus
   const sendMessageMutation = useMutation({
     mutationFn: (message: string) => {
       if (tweetMode) {
-        return apiRequest('POST', `/api/broadcasts/${broadcastId}/tweet`, { username: reachuUserId ?? 'Guest', message });
+        return apiRequest('POST', `/api/broadcasts/${broadcastId}/tweet`, { username: username ?? 'Guest', message });
       }
-      return apiRequest('POST', `/api/broadcasts/${broadcastId}/chat`, { username: reachuUserId ?? 'Guest', message });
+      return apiRequest('POST', `/api/broadcasts/${broadcastId}/chat`, { username: username ?? 'Guest', message });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/broadcasts', broadcastId, 'chat'] });
@@ -1594,10 +1594,10 @@ function LiveChatSidebar({ broadcastId, analytics, reachuUserId, broadcastStatus
         ) : (
           <>
             <div className="flex items-center justify-between mb-2">
-              {reachuUserId && (
+              {username && (
                 <div className="flex items-center gap-1.5">
                   <Users className="w-2.5 h-2.5 text-gray-400 dark:text-gray-500" />
-                  <span className="text-[10px] text-gray-400 dark:text-gray-500">As <span className="font-semibold text-gray-600 dark:text-gray-300">{reachuUserId}</span></span>
+                  <span className="text-[10px] text-gray-400 dark:text-gray-500">As <span className="font-semibold text-gray-600 dark:text-gray-300">{username}</span></span>
                 </div>
               )}
               <button
@@ -1767,7 +1767,7 @@ function LineupSection({ broadcastId, hasFixture, showLineup, broadcastStatus }:
 export default function BroadcastDetailPage() {
   const params = useParams();
   const [, setLocation] = useLocation();
-  const { userId, reachuUserId } = useUser();
+  const { userId, email } = useUser();
   const broadcastId = params.broadcastId;
   const { toast } = useToast();
 
@@ -2471,7 +2471,7 @@ export default function BroadcastDetailPage() {
           )}
         </main>
 
-        <LiveChatSidebar broadcastId={broadcastId!} analytics={analytics} reachuUserId={reachuUserId} broadcastStatus={broadcast?.status} />
+        <LiveChatSidebar broadcastId={broadcastId!} analytics={analytics} username={email} broadcastStatus={broadcast?.status} />
       </div>
     </AppLayout>
   );
