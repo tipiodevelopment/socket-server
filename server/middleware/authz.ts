@@ -136,6 +136,11 @@ const PUBLIC_API: Array<{ method: string; pattern: RegExp }> = [
   { method: "POST", pattern: /^\/api\/auth\/token$/ },
   { method: "GET", pattern: /^\/api\/campaigns\/\d+$/ },
   { method: "GET", pattern: /^\/api\/events\/\d+$/ },
+  // apiKey-authenticated SDK/external endpoints that happen to live under
+  // /api. They carry their own apiKey auth (validateApiKey / getSponsorsByApiKey),
+  // so they must bypass the OPERATOR session gate, not require a session.
+  { method: "POST", pattern: /^\/api\/checkout\/confirm-apple-pay$/ },
+  { method: "POST", pattern: /^\/api\/campaign\/payments\/apikey\/.+$/ },
 ];
 
 export function isPublicApiPath(method: string, path: string): boolean {

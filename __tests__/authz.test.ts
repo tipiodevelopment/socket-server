@@ -54,6 +54,14 @@ describe("public surface", () => {
     expect(isPublicApiPath("PUT", "/api/campaigns/12")).toBe(false);
     expect(isPublicApiPath("GET", "/api/campaigns/12/stats")).toBe(false);
   });
+
+  it("lets apiKey-authenticated SDK endpoints under /api bypass the operator gate", () => {
+    expect(isPublicApiPath("POST", "/api/checkout/confirm-apple-pay")).toBe(true);
+    expect(isPublicApiPath("POST", "/api/campaign/payments/apikey/some_api_key_123")).toBe(true);
+    // but not the dashboard checkout/payment surface
+    expect(isPublicApiPath("GET", "/api/checkout/confirm-apple-pay")).toBe(false);
+    expect(isPublicApiPath("POST", "/api/campaign/payments")).toBe(false);
+  });
 });
 
 describe("session token", () => {
