@@ -15,6 +15,7 @@ import ComponentsPage from "@/pages/components";
 import ComponentDetailPage from "@/pages/component-detail";
 import CampaignDashboard from "@/pages/campaign-dashboard";
 import LoginPage from "@/pages/login";
+import UsersPage from "@/pages/users";
 import BroadcastDetailPage from "@/pages/broadcast-detail";
 import AppsPage from "@/pages/apps";
 import AppDetailPage from "@/pages/app-detail";
@@ -75,6 +76,9 @@ function Router() {
       </Route>
       <Route path="/analytics">
         <RequireAuth><AnalyticsPage /></RequireAuth>
+      </Route>
+      <Route path="/users">
+        <RequireAuth><UsersPage /></RequireAuth>
       </Route>
       <Route path="/docs" component={DocsPage} />
 
