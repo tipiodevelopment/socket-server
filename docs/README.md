@@ -12,6 +12,8 @@ developer's machine that has all three repos cloned alongside this one.
   is the live truth: branches, DB, runtime, demo data, PRs, current phase.
 - **Building or consuming the API?** → [`API_V2_CONTRACT.md`](./API_V2_CONTRACT.md)
   is the SDK contract (5 surfaces under `/v2/*`).
+- **Operator login, roles & permissions?** → [`AUTH_AND_PERMISSIONS.md`](./AUTH_AND_PERMISSIONS.md)
+  — Firebase IdP, the capability matrix, tenant scoping, the `/api` gate, and the decision log (ADR-0007).
 - **Need the map** (schema + endpoints + WS events + recipes) → [`DB_AND_ENDPOINTS.md`](./DB_AND_ENDPOINTS.md).
 - **Authoritative data-model spec** → [`multi-sponsor-architecture.md`](./multi-sponsor-architecture.md) (deeper than ARCHITECTURE_OVERVIEW; the design → implementation spec).
 - **Planning next steps?** → [`ROLLOUT_ROADMAP.md`](./ROLLOUT_ROADMAP.md).
@@ -27,6 +29,7 @@ developer's machine that has all three repos cloned alongside this one.
 ### Backend / dashboard developer
 
 1. [`multi-sponsor-architecture.md`](./multi-sponsor-architecture.md) — schema + endpoints + WS events.
+1. [`AUTH_AND_PERMISSIONS.md`](./AUTH_AND_PERMISSIONS.md) — operator auth, roles/capabilities, tenant scoping, the `/api` gate. **Read before touching auth or adding endpoints** (so you know if your route needs a capability or a public exemption).
 2. [`SHOPPABLE_AD_AUTHORING.md`](./SHOPPABLE_AD_AUTHORING.md) — dashboard flow (slot authoring, sponsor scoping, trigger types, validation gates).
 3. [`openapi.yaml`](../openapi.yaml) — authoritative endpoint schemas.
 4. [`postman/vio-sdk.postman_collection.json`](../postman/vio-sdk.postman_collection.json) — drop in, set `apiKey`, run the flows.

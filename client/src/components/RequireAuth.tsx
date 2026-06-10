@@ -13,7 +13,7 @@ export function RequireAuth({ children }: { children: React.ReactNode }) {
   }
 
   if (!userId) {
-    return <Redirect to="/user-session" />;
+    return <Redirect to="/login" />;
   }
 
   return <>{children}</>;

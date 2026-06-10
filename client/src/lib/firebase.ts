@@ -1,9 +1,11 @@
 import { initializeApp, getApps } from "firebase/app";
 import { getAuth, type Auth } from "firebase/auth";
 
-// Same Firebase project as the Commerce webapp (ADR-0007): one identity
-// pool shared by both products. These are public client-config values,
-// injected per environment via Vite env vars.
+// Shared Commerce Firebase identity (ADR-0007), one project PER ENVIRONMENT:
+//   local / development / staging → Commerce STAGING project (reachu-qa)
+//   production                    → separate Commerce PRODUCTION project
+// Never point prod at the staging project. Public client-config values,
+// injected per environment via build-time VITE_ vars (see vite envDir).
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY as string | undefined,
   authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN as string | undefined,

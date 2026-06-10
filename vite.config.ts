@@ -27,6 +27,10 @@ export default defineConfig({
     },
   },
   root: path.resolve(import.meta.dirname, "client"),
+  // Load .env from the repo root (where the backend's .env lives), not from
+  // `root`/client. VITE_-prefixed vars (e.g. VITE_FIREBASE_*) are exposed to
+  // the client; everything else stays server-side. (ADR-0007)
+  envDir: path.resolve(import.meta.dirname),
   build: {
     outDir: path.resolve(import.meta.dirname, "dist/public"),
     emptyOutDir: true,

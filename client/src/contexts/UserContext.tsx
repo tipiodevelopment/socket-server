@@ -1,15 +1,30 @@
 import { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import type { User } from '@shared/schema';
+import { signOut } from 'firebase/auth';
+import { getFirebaseAuth, isFirebaseConfigured } from '@/lib/firebase';
 
-const USER_SESSION_KEY = "reachu_simulated_user_id";
+// Operator session (ADR-0007). The session lives in an httpOnly cookie set
+// by POST /api/auth/session, so every fetch in the app (they all send
+// credentials) is authenticated without touching call sites. This context
+// only mirrors the profile for the UI.
+
+export interface OperatorProfile {
+  id: number;
+  email: string | null;
+  name: string | null;
+  role: 'super_admin' | 'admin' | 'operator' | 'viewer';
+  sponsorId: number | null;
+  linked: boolean;
+}
 
 interface UserContextValue {
   userId: number | null;
-  userData: User | null;
-  reachuUserId: string | null;
+  userData: OperatorProfile | null;
+  email: string | null;
+  role: OperatorProfile['role'] | null;
   isLoading: boolean;
-  login: (reachuUserId: string) => Promise<void>;
-  logout: () => void;
+  loginWithIdToken: (idToken: string) => Promise<OperatorProfile>;
+  logout: () => Promise<void>;
+  refresh: () => Promise<void>;
 }
 
 const UserContext = createContext<UserContextValue | null>(null);
@@ -21,56 +36,62 @@ export function useUser() {
 }
 
 export function UserProvider({ children }: { children: React.ReactNode }) {
-  const [userId, setUserId] = useState<number | null>(null);
-  const [userData, setUserData] = useState<User | null>(null);
-  const [reachuUserId, setReachuUserId] = useState<string | null>(null);
+  const [profile, setProfile] = useState<OperatorProfile | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  const ensureUser = useCallback(async (storedId: string) => {
+  const refresh = useCallback(async () => {
     try {
-      const res = await fetch('/api/users/ensure', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ reachuUserId: storedId })
-      });
-      if (!res.ok) throw new Error('Failed to ensure user');
-      const user = await res.json();
-      setUserId(user.id);
-      setUserData(user);
-      setReachuUserId(storedId);
+      const res = await fetch('/api/auth/me', { credentials: 'include' });
+      setProfile(res.ok ? await res.json() : null);
     } catch {
-      localStorage.removeItem(USER_SESSION_KEY);
-      setUserId(null);
-      setUserData(null);
-      setReachuUserId(null);
+      setProfile(null);
     }
   }, []);
 
   useEffect(() => {
-    const stored = localStorage.getItem(USER_SESSION_KEY);
-    if (stored) {
-      ensureUser(stored).finally(() => setIsLoading(false));
-    } else {
-      setIsLoading(false);
+    refresh().finally(() => setIsLoading(false));
+  }, [refresh]);
+
+  const loginWithIdToken = useCallback(async (idToken: string) => {
+    const res = await fetch('/api/auth/session', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${idToken}` },
+      credentials: 'include',
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      throw new Error(body.message || `Login failed (${res.status})`);
     }
-  }, [ensureUser]);
+    const operator: OperatorProfile = await res.json();
+    setProfile(operator);
+    return operator;
+  }, []);
 
-  const login = useCallback(async (id: string) => {
-    setIsLoading(true);
-    localStorage.setItem(USER_SESSION_KEY, id);
-    await ensureUser(id);
-    setIsLoading(false);
-  }, [ensureUser]);
-
-  const logout = useCallback(() => {
-    localStorage.removeItem(USER_SESSION_KEY);
-    setUserId(null);
-    setUserData(null);
-    setReachuUserId(null);
+  const logout = useCallback(async () => {
+    try {
+      await fetch('/api/auth/session', { method: 'DELETE', credentials: 'include' });
+    } catch {
+      // best effort — the cookie is httpOnly, only the server can clear it
+    }
+    if (isFirebaseConfigured()) {
+      await signOut(getFirebaseAuth()).catch(() => undefined);
+    }
+    setProfile(null);
   }, []);
 
   return (
-    <UserContext.Provider value={{ userId, userData, reachuUserId, isLoading, login, logout }}>
+    <UserContext.Provider
+      value={{
+        userId: profile?.id ?? null,
+        userData: profile,
+        email: profile?.email ?? null,
+        role: profile?.role ?? null,
+        isLoading,
+        loginWithIdToken,
+        logout,
+        refresh,
+      }}
+    >
       {children}
     </UserContext.Provider>
   );
