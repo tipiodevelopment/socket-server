@@ -261,6 +261,9 @@ ADR-0001.
   super_admin bypasses; public paths skip; missing/unknown resources fall
   through (handler 404s) so it never blocks a valid request. Tests:
   `resource-ownership.test.ts`.
+- Also scoped `GET /api/broadcasts` by tenant (it was returning **all**
+  broadcasts to every operator) — a broadcast belongs to a tenant via its
+  campaign's owner; super_admin sees all.
 - **Residual (still not ownership-checked):** `broadcasts/ads|products/:id` (no
   storage getter for the leaf) and `components/:id` (the components table is a
   **global library**, intentionally not tenant-scoped).

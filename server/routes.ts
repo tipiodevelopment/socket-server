@@ -4242,7 +4242,15 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       const filters: { status?: string; campaignId?: number } = {};
       if (status) filters.status = status as string;
       if (campaignId) filters.campaignId = parseInt(campaignId as string);
-      const broadcastsList = await storage.getAllBroadcasts(filters);
+      let broadcastsList = await storage.getAllBroadcasts(filters);
+
+      // Tenant-scope the list (ADR-0008): a broadcast belongs to a tenant via
+      // its campaign's owner. super_admin (owner === null) sees all.
+      const owner = readScopeOwnerId(req.operator);
+      if (owner !== null) {
+        const myCampaignIds = new Set((await storage.getUserCampaigns(owner)).map(c => c.id));
+        broadcastsList = broadcastsList.filter(b => b.campaignId !== null && myCampaignIds.has(b.campaignId));
+      }
 
       const broadcastIds = broadcastsList.map(b => b.broadcastId);
       const engagementCounts = await storage.getBroadcastEngagementCounts(broadcastIds);
