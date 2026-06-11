@@ -64,25 +64,8 @@ import {
   readSessionOperatorId,
   resolveAllowlistedOperator,
 } from "./middleware/authz";
-import { ownerScope } from "./middleware/capabilities";
+import { ownerScope, readScopeOwnerId, createOwnerId } from "./middleware/capabilities";
 import { createOwnershipGuard } from "./middleware/resource-ownership";
-
-// ── Tenant scoping helpers (ADR-0007) ────────────────────────────────────
-// Reads: which owner's rows the operator may see — null = all (super_admin).
-function readScopeOwnerId(operator: User | undefined): number | null {
-  if (!operator) return null;
-  const scope = ownerScope(operator);
-  return "all" in scope ? null : scope.ownerId;
-}
-// Creates: the user_id a newly-created row belongs to. super_admin may target
-// a specific admin via body.userId (that's how it assigns); everyone else is
-// forced to their own tenant owner so they can't create on someone else's behalf.
-function createOwnerId(operator: User | undefined, bodyUserId?: unknown): number {
-  if (operator && operator.role === "super_admin" && typeof bodyUserId === "number") return bodyUserId;
-  if (!operator) return typeof bodyUserId === "number" ? bodyUserId : 0;
-  const scope = ownerScope(operator);
-  return "all" in scope ? operator.id : scope.ownerId;
-}
 import { setVoteBroadcastFunction } from "./services/vote-processor";
 import { sendAPNs } from "./services/ios-flow";
 import { enqueueEvent } from "./events/outbox";
