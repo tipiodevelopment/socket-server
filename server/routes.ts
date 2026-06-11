@@ -65,6 +65,7 @@ import {
   resolveAllowlistedOperator,
 } from "./middleware/authz";
 import { ownerScope } from "./middleware/capabilities";
+import { createOwnershipGuard } from "./middleware/resource-ownership";
 
 // ── Tenant scoping helpers (ADR-0007) ────────────────────────────────────
 // Reads: which owner's rows the operator may see — null = all (super_admin).
@@ -1112,6 +1113,9 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   });
 
   app.use('/api', createApiGate({ loadOperator: (id) => storage.getUser(id) }));
+  // Per-resource tenant ownership (ADR-0008): after the capability gate, block
+  // cross-tenant access to a specific resource by id. super_admin bypasses.
+  app.use('/api', createOwnershipGuard(storage));
 
   // Allowlist management. The gate maps /api/auth/users* to super_admin.
   app.get('/api/auth/users', async (_req, res) => {
