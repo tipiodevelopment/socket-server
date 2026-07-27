@@ -9,3 +9,4 @@ vite.config.ts.*
 .mcp.json
 .claude/
 CLAUDE.md
+.codex/
