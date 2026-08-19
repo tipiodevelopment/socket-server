@@ -41,6 +41,8 @@ import {
   Broadcast,
   Sponsor,
   userRoleEnum,
+  SURFACE_PLATFORM_KINDS,
+  type SurfacePlatformKind,
   type User
 } from "@shared/schema";
 import { db } from "./db";
@@ -1854,7 +1856,10 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       const apps = owner === null
         ? await storage.getAllClientApps()
         : await storage.getUserClientApps(owner);
-      res.json(apps);
+      // A surface spans platforms (web/iOS/Android/Vev/TV) — send them along so
+      // the dashboard can show what each surface actually runs on.
+      const byId = await storage.getPlatformsForSurfaces(apps.map((a) => a.id));
+      res.json(apps.map((a) => ({ ...a, platforms: byId.get(a.id) ?? [] })));
     } catch (error) {
       console.error('Error fetching client apps:', error);
       res.status(500).json({ message: 'Error fetching client apps' });
@@ -1869,6 +1874,8 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       const allChannels = owner === null ? await storage.getAllChannels() : await storage.getUserChannels(owner);
       const allCampaigns = owner === null ? await storage.getAllCampaigns() : await storage.getUserCampaigns(owner);
       const allBroadcasts = await storage.getAllBroadcasts();
+      // Platforms of each surface (web/iOS/Android/Vev/TV) — one query for all.
+      const platformsBySurface = await storage.getPlatformsForSurfaces(apps.map((a) => a.id));
 
       const result = await Promise.all(apps.map(async (app) => {
         const appChannels = allChannels.filter(ch => ch.clientAppId === app.id);
@@ -1904,6 +1911,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
 
         return {
           ...app,
+          platforms: platformsBySurface.get(app.id) ?? [],
           stats: {
             campaignCount: appCampaigns.length,
             activeBroadcasts,
@@ -1935,7 +1943,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
         return res.status(403).json({ message: 'Access denied' });
       }
 
-      res.json(app);
+      res.json({ ...app, platforms: await storage.getSurfacePlatforms(app.id) });
     } catch (error) {
       console.error('Error fetching client app:', error);
       res.status(500).json({ message: 'Error fetching client app' });
@@ -2077,38 +2085,96 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
     }
   });
 
-  // Create client app
+  // Create a surface (client app). A surface spans platforms — web, iOS,
+  // Android, Vev, TV — so `bundleId` is no longer required: per-platform
+  // identifiers go in `platforms` (migration 0010). Legacy callers that still
+  // send bundleId keep working.
   app.post('/api/client-apps', async (req, res) => {
     try {
-      const { name, bundleId, iconUrl, bannerUrl, description } = req.body;
+      const { name, bundleId, iconUrl, bannerUrl, description, platforms } = req.body;
 
-      if (!name || !bundleId) {
+      if (!name) {
+        return res.status(400).json({ message: 'name is required' });
+      }
+      if (platforms !== undefined && !Array.isArray(platforms)) {
+        return res.status(400).json({ message: 'platforms must be an array' });
+      }
+      const badKind = (platforms ?? []).find(
+        (p: { kind?: string }) => !p?.kind || !SURFACE_PLATFORM_KINDS.includes(p.kind as SurfacePlatformKind),
+      );
+      if (badKind) {
         return res.status(400).json({
-          message: 'name and bundleId are required'
+          message: `platform kind must be one of: ${SURFACE_PLATFORM_KINDS.join(', ')}`,
         });
       }
 
       // The new app belongs to the creator's tenant (ADR-0007).
       const userId = createOwnerId(req.operator, req.body.userId);
 
-      const apiKey = `${name.toLowerCase().replace(/\s+/g, '_')}_api_key_${randomUUID().replace(/-/g, '').substring(0, 16)}`;
+      // Slugify to URL-safe ASCII: the key is passed as `?apiKey=` by the SDKs,
+      // so a raw name would break the query string (e.g. "Møte & Livsstil" → an
+      // unescaped `&` truncates the value) and non-ASCII invites encoding bugs.
+      // ø/æ don't decompose via NFKD (they're distinct letters, not accents), so
+      // transliterate them explicitly — otherwise "Møte" becomes "m_te".
+      const slug = name.normalize('NFKD').replace(/[̀-ͯ]/g, '')
+        .toLowerCase()
+        .replace(/ø/g, 'o').replace(/æ/g, 'ae').replace(/ß/g, 'ss')
+        .replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '') || 'surface';
+      const apiKey = `${slug}_api_key_${randomUUID().replace(/-/g, '').substring(0, 16)}`;
 
       const app = await storage.createClientApp({
         userId,
         name,
-        bundleId,
+        bundleId: bundleId || null,
         apiKey,
         ...(iconUrl && { iconUrl }),
         ...(bannerUrl && { bannerUrl }),
         ...(description && { description }),
       });
-      res.status(201).json(app);
+      const created = platforms?.length
+        ? await storage.setSurfacePlatforms(app.id, platforms)
+        : [];
+      res.status(201).json({ ...app, platforms: created });
     } catch (error) {
       console.error('Error creating client app:', error);
       res.status(400).json({
         message: 'Error creating client app',
         error: error instanceof Error ? error.message : String(error)
       });
+    }
+  });
+
+  // Replace the platform set of a surface (web/iOS/Android/Vev/TV). Ownership is
+  // enforced by the per-resource guard on /api/client-apps/:id plus the check
+  // below; the body is the full desired set, mirroring the dashboard form.
+  app.put('/api/client-apps/:id/platforms', async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const surface = await storage.getClientApp(id);
+      if (!surface) return res.status(404).json({ message: 'Surface not found' });
+
+      const owner = readScopeOwnerId(req.operator);
+      if (owner !== null && surface.userId !== owner) {
+        return res.status(403).json({ message: 'Access denied' });
+      }
+
+      const platforms = req.body?.platforms;
+      if (!Array.isArray(platforms)) {
+        return res.status(400).json({ message: 'platforms must be an array' });
+      }
+      const bad = platforms.find(
+        (p: { kind?: string }) => !p?.kind || !SURFACE_PLATFORM_KINDS.includes(p.kind as SurfacePlatformKind),
+      );
+      if (bad) {
+        return res.status(400).json({
+          message: `platform kind must be one of: ${SURFACE_PLATFORM_KINDS.join(', ')}`,
+        });
+      }
+
+      res.json(await storage.setSurfacePlatforms(id, platforms));
+    } catch (error) {
+      console.error('Error setting surface platforms:', error);
+      res.status(500).json({ message: 'Error setting surface platforms' });
     }
   });
 

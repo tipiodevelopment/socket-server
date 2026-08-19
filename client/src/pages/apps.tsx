@@ -5,6 +5,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
   Form,
   FormControl,
@@ -47,7 +48,14 @@ import { ImageUploadWithPreview } from '@/components/ImageUploadWithPreview';
 import { Plus, Smartphone, Pencil, MoreVertical, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 
+interface SurfacePlatform {
+  id: number;
+  kind: string;
+  identifier: string | null;
+}
+
 interface ClientAppWithStats extends ClientApp {
+  platforms?: SurfacePlatform[];
   stats: {
     campaignCount: number;
     activeBroadcasts: number;
@@ -59,12 +67,29 @@ interface ClientAppWithStats extends ClientApp {
 
 const createClientAppSchema = z.object({
   name: z.string().min(1, 'App name is required').max(255, 'App name too long'),
-  bundleId: z.string().min(1, 'Bundle ID is required').max(255, 'Bundle ID too long'),
   iconUrl: z.string().optional(),
   bannerUrl: z.string().optional(),
 });
 
 type CreateClientAppForm = z.infer<typeof createClientAppSchema>;
+
+// A surface spans platforms — it is not one native app. Identifiers are
+// per-platform (an iOS bundle id differs from an Android package name), which
+// is why they are collected here instead of a single "Bundle ID" field.
+const PLATFORM_LABELS: Record<string, string> = {
+  web: 'Web', ios: 'iOS', android: 'Android', vev: 'Vev',
+  'apple-tv': 'Apple TV', 'android-tv': 'Android TV', 'fire-tv': 'Fire TV',
+};
+
+const PLATFORM_KINDS: { kind: string; label: string; placeholder: string }[] = [
+  { kind: 'web', label: 'Web', placeholder: 'e.g. vg.no' },
+  { kind: 'ios', label: 'iOS', placeholder: 'Bundle ID — e.g. com.laliga.fanapp' },
+  { kind: 'android', label: 'Android', placeholder: 'Package name — e.g. com.laliga.fanapp' },
+  { kind: 'vev', label: 'Vev', placeholder: 'Vev project id (optional)' },
+  { kind: 'apple-tv', label: 'Apple TV', placeholder: 'Bundle ID (optional)' },
+  { kind: 'android-tv', label: 'Android TV', placeholder: 'Package name (optional)' },
+  { kind: 'fire-tv', label: 'Fire TV', placeholder: 'Package name (optional)' },
+];
 
 function formatViewers(num: number): string {
   if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M';
@@ -140,9 +165,17 @@ export default function AppsPage() {
   const [logoUrl, setLogoUrl] = useState('');
   const [bannerUrl, setBannerUrl] = useState('');
 
+  // kind → identifier ('' = selected, no identifier yet). Presence = selected.
+  const [platforms, setPlatforms] = useState<Record<string, string>>({});
+  const togglePlatform = (kind: string) => setPlatforms((prev) => {
+    const next = { ...prev };
+    if (kind in next) delete next[kind]; else next[kind] = '';
+    return next;
+  });
+
   const form = useForm<CreateClientAppForm>({
     resolver: zodResolver(createClientAppSchema),
-    defaultValues: { name: '', bundleId: '', iconUrl: '', bannerUrl: '' },
+    defaultValues: { name: '', iconUrl: '', bannerUrl: '' },
   });
 
   const { data: clientApps = [], isLoading } = useQuery<ClientAppWithStats[]>({
@@ -156,7 +189,10 @@ export default function AppsPage() {
   });
 
   const createMutation = useMutation({
-    mutationFn: async (data: { name: string; bundleId: string; userId: number; iconUrl?: string; bannerUrl?: string }) => {
+    mutationFn: async (data: {
+      name: string; userId: number; iconUrl?: string; bannerUrl?: string;
+      platforms: { kind: string; identifier: string | null }[];
+    }) => {
       const response = await apiRequest('POST', '/api/client-apps', data);
       return response.json();
     },
@@ -167,6 +203,7 @@ export default function AppsPage() {
       form.reset();
       setLogoUrl('');
       setBannerUrl('');
+      setPlatforms({});
       toast({ title: 'App Created', description: 'Your new app is ready to use' });
     },
     onError: () => {
@@ -194,10 +231,13 @@ export default function AppsPage() {
     if (!userId) return;
     createMutation.mutate({
       name: data.name,
-      bundleId: data.bundleId,
       userId,
       iconUrl: logoUrl || undefined,
       bannerUrl: bannerUrl || undefined,
+      platforms: Object.entries(platforms).map(([kind, identifier]) => ({
+        kind,
+        identifier: identifier.trim() || null,
+      })),
     });
   };
 
@@ -229,22 +269,38 @@ export default function AppsPage() {
                   </FormItem>
                 )}
               />
-              <FormField
-                control={form.control}
-                name="bundleId"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Bundle ID</FormLabel>
-                    <FormControl>
-                      <Input placeholder="e.g. com.laliga.fanapp" data-testid="input-bundle-id" {...field} />
-                    </FormControl>
-                    <FormDescription>
-                      The unique identifier for your app (iOS Bundle ID or Android Package Name)
-                    </FormDescription>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+              <div className="space-y-2">
+                <FormLabel>Platforms</FormLabel>
+                <FormDescription>
+                  Where this surface runs. One surface can span web, mobile and TV — pick every platform it
+                  has, and give each its own identifier.
+                </FormDescription>
+                <div className="space-y-2 pt-1">
+                  {PLATFORM_KINDS.map(({ kind, label, placeholder }) => {
+                    const selected = kind in platforms;
+                    return (
+                      <div key={kind} className="flex items-center gap-3">
+                        <label className="flex items-center gap-2 w-28 shrink-0 cursor-pointer">
+                          <Checkbox
+                            checked={selected}
+                            onCheckedChange={() => togglePlatform(kind)}
+                            data-testid={`checkbox-platform-${kind}`}
+                          />
+                          <span className="text-sm">{label}</span>
+                        </label>
+                        <Input
+                          value={platforms[kind] ?? ''}
+                          onChange={(e) => setPlatforms((p) => ({ ...p, [kind]: e.target.value }))}
+                          placeholder={placeholder}
+                          disabled={!selected}
+                          className="h-9"
+                          data-testid={`input-platform-${kind}`}
+                        />
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
               <ImageUploadWithPreview
                 label="Logo"
                 value={logoUrl}
@@ -352,6 +408,19 @@ export default function AppsPage() {
                     <p className="text-[10px] text-gray-400 dark:text-white/30 font-mono truncate mt-0.5" data-testid={`text-api-key-${app.id}`}>
                       {app.apiKey ? `${app.apiKey.slice(0, 10)}••••` : '—'}
                     </p>
+                    {app.platforms && app.platforms.length > 0 && (
+                      <div className="flex flex-wrap gap-1 mt-2" data-testid={`platforms-${app.id}`}>
+                        {app.platforms.map((p) => (
+                          <span
+                            key={p.id}
+                            title={p.identifier ?? undefined}
+                            className="px-1.5 py-0.5 rounded text-[10px] bg-gray-100 dark:bg-[#1e2433] text-gray-600 dark:text-gray-300"
+                          >
+                            {PLATFORM_LABELS[p.kind] ?? p.kind}
+                          </span>
+                        ))}
+                      </div>
+                    )}
                   </div>
 
                   <div className="grid grid-cols-2 gap-4 mb-4">

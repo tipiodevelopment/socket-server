@@ -49,7 +49,12 @@ export const clientApps = pgTable("client_apps", {
   id: serial("id").primaryKey(),
   userId: integer("user_id").notNull().references(() => users.id, { onDelete: 'cascade' }),
   name: varchar("name", { length: 255 }).notNull(),
-  bundleId: varchar("bundle_id", { length: 255 }).notNull().unique(),
+  /**
+   * Legacy single-app identifier. A surface is NOT one native app (VG = web +
+   * iOS + Android), so real identifiers live per platform in `surfacePlatforms`.
+   * Nullable since migration 0010 — a web/Vev surface has none.
+   */
+  bundleId: varchar("bundle_id", { length: 255 }).unique(),
   apiKey: text("api_key").notNull().unique(),
   reachuApiKey: text("reachu_api_key"),
   description: text("description"),
@@ -63,6 +68,29 @@ export const clientApps = pgTable("client_apps", {
   tvEnabled: boolean("tv_enabled").notNull().default(false),
   /** Array of TV platforms supported: ['apple-tv', 'android-tv', 'fire-tv', ...] */
   tvPlatforms: text("tv_platforms").array().default(sql`'{}'`).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull()
+});
+
+/**
+ * Platforms of a surface (migration 0010).
+ *
+ * Vocabulary: **Surface** = the publisher property where Vio runs (VG, TV2) —
+ * that's `clientApps` above, whose table rename is a separate project because
+ * the SDK contract exposes `clientAppId`. **Platform** = web/iOS/Android/Vev/TV
+ * within it. **Placement** = the slot inside (`appPlacements`). **Channel** is a
+ * COMMERCE concept (the brand's product outlet) and is never used for surfaces.
+ *
+ * `surfaceId` already uses the target vocabulary, so the future table rename
+ * needs no change here.
+ */
+export const surfacePlatforms = pgTable("surface_platforms", {
+  id: serial("id").primaryKey(),
+  surfaceId: integer("surface_id").notNull().references(() => clientApps.id, { onDelete: 'cascade' }),
+  /** 'web' | 'ios' | 'android' | 'vev' | 'apple-tv' | 'android-tv' | 'fire-tv' */
+  kind: varchar("kind", { length: 32 }).notNull(),
+  /** bundle id / package name / web domain / Vev project id — null when not needed yet. */
+  identifier: varchar("identifier", { length: 255 }),
+  enabled: boolean("enabled").notNull().default(true),
   createdAt: timestamp("created_at").defaultNow().notNull()
 });
 
@@ -1082,9 +1110,14 @@ export const insertClientAppSchema = createInsertSchema(clientApps).omit({
   createdAt: true 
 });
 
-export const insertChannelSchema = createInsertSchema(channels).omit({ 
+export const insertSurfacePlatformSchema = createInsertSchema(surfacePlatforms).omit({
   id: true,
-  createdAt: true 
+  createdAt: true
+});
+
+export const insertChannelSchema = createInsertSchema(channels).omit({
+  id: true,
+  createdAt: true
 });
 
 export const insertCampaignSchema = createInsertSchema(campaigns).omit({ 
@@ -1259,6 +1292,11 @@ export type InsertUser = z.infer<typeof insertUserSchema>;
 export type Sponsor = typeof sponsors.$inferSelect;
 export type InsertSponsor = z.infer<typeof insertSponsorSchema>;
 export type ClientApp = typeof clientApps.$inferSelect;
+export type SurfacePlatform = typeof surfacePlatforms.$inferSelect;
+export type InsertSurfacePlatform = z.infer<typeof insertSurfacePlatformSchema>;
+/** Platform kinds a surface can have. Order drives the dashboard picker. */
+export const SURFACE_PLATFORM_KINDS = ['web', 'ios', 'android', 'vev', 'apple-tv', 'android-tv', 'fire-tv'] as const;
+export type SurfacePlatformKind = typeof SURFACE_PLATFORM_KINDS[number];
 export type InsertClientApp = z.infer<typeof insertClientAppSchema>;
 export type Channel = typeof channels.$inferSelect;
 export type InsertChannel = z.infer<typeof insertChannelSchema>;
