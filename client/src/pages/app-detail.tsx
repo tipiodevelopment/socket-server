@@ -14,9 +14,9 @@ import { queryClient, apiRequest } from '@/lib/queryClient';
 import { useUser } from '@/contexts/UserContext';
 import { AppLayout } from '@/components/AppLayout';
 import type { ClientApp, Campaign, Component as ComponentType } from '@shared/schema';
-import { Checkbox } from '@/components/ui/checkbox';
+import { PlatformPicker } from '@/components/PlatformPicker';
 import {
-  PLATFORM_KINDS, PLATFORM_LABELS, platformsToMap, platformsToPayload,
+  PLATFORM_LABELS, PLATFORM_ICONS, platformsToMap, platformsToPayload,
   type SurfacePlatform,
 } from '@/lib/platforms';
 
@@ -199,12 +199,6 @@ export default function AppDetailPage() {
     setPlatformDraft(platformsToMap(app?.platforms));
     setPlatformsOpen(true);
   };
-
-  const togglePlatform = (kind: string) => setPlatformDraft((prev) => {
-    const next = { ...prev };
-    if (kind in next) delete next[kind]; else next[kind] = '';
-    return next;
-  });
 
   const regenerateKeyMutation = useMutation({
     mutationFn: async () => {
@@ -424,16 +418,20 @@ export default function AppDetailPage() {
                   <div className="flex-1">
                     <div className="flex items-center gap-2 flex-wrap">
                       {app.platforms && app.platforms.length > 0 ? (
-                        app.platforms.map((p) => (
-                          <span
-                            key={p.id}
-                            className="px-2 py-1 rounded text-xs bg-white/5 border border-white/10 text-gray-200"
-                            data-testid={`platform-${p.kind}`}
-                          >
-                            {PLATFORM_LABELS[p.kind] ?? p.kind}
-                            {p.identifier && <span className="ml-1.5 font-mono text-gray-400">{p.identifier}</span>}
-                          </span>
-                        ))
+                        app.platforms.map((p) => {
+                          const Icon = PLATFORM_ICONS[p.kind];
+                          return (
+                            <span
+                              key={p.id}
+                              className="inline-flex items-center gap-1.5 px-2 py-1 rounded text-xs bg-white/5 border border-white/10 text-gray-200"
+                              data-testid={`platform-${p.kind}`}
+                            >
+                              {Icon && <Icon className="w-3.5 h-3.5 text-[#5fb3a0]" />}
+                              {PLATFORM_LABELS[p.kind] ?? p.kind}
+                              {p.identifier && <span className="ml-0.5 font-mono text-gray-400">{p.identifier}</span>}
+                            </span>
+                          );
+                        })
                       ) : (
                         <span className="text-sm text-gray-500">No platforms yet</span>
                       )}
@@ -750,30 +748,8 @@ export default function AppDetailPage() {
               own identifier.
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-2 py-2">
-            {PLATFORM_KINDS.map(({ kind, label, placeholder }) => {
-              const selected = kind in platformDraft;
-              return (
-                <div key={kind} className="flex items-center gap-3">
-                  <label className="flex items-center gap-2 w-28 shrink-0 cursor-pointer">
-                    <Checkbox
-                      checked={selected}
-                      onCheckedChange={() => togglePlatform(kind)}
-                      data-testid={`checkbox-edit-platform-${kind}`}
-                    />
-                    <span className="text-sm text-gray-200">{label}</span>
-                  </label>
-                  <Input
-                    value={platformDraft[kind] ?? ''}
-                    onChange={(e) => setPlatformDraft((p) => ({ ...p, [kind]: e.target.value }))}
-                    placeholder={placeholder}
-                    disabled={!selected}
-                    className="h-9 bg-white/5 border-white/10 text-gray-200"
-                    data-testid={`input-edit-platform-${kind}`}
-                  />
-                </div>
-              );
-            })}
+          <div className="py-2">
+            <PlatformPicker value={platformDraft} onChange={setPlatformDraft} variant="dark" />
           </div>
           <DialogFooter>
             <button

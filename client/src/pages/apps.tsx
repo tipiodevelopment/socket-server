@@ -5,8 +5,8 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Checkbox } from '@/components/ui/checkbox';
-import { PLATFORM_KINDS, PLATFORM_LABELS, platformsToPayload, type SurfacePlatform } from '@/lib/platforms';
+import { PlatformPicker } from '@/components/PlatformPicker';
+import { PLATFORM_LABELS, PLATFORM_ICONS, platformsToPayload, type SurfacePlatform } from '@/lib/platforms';
 import {
   Form,
   FormControl,
@@ -148,11 +148,6 @@ export default function AppsPage() {
 
   // kind → identifier ('' = selected, no identifier yet). Presence = selected.
   const [platforms, setPlatforms] = useState<Record<string, string>>({});
-  const togglePlatform = (kind: string) => setPlatforms((prev) => {
-    const next = { ...prev };
-    if (kind in next) delete next[kind]; else next[kind] = '';
-    return next;
-  });
 
   const form = useForm<CreateClientAppForm>({
     resolver: zodResolver(createClientAppSchema),
@@ -253,30 +248,8 @@ export default function AppsPage() {
                   Where this surface runs. One surface can span web, mobile and TV — pick every platform it
                   has, and give each its own identifier.
                 </FormDescription>
-                <div className="space-y-2 pt-1">
-                  {PLATFORM_KINDS.map(({ kind, label, placeholder }) => {
-                    const selected = kind in platforms;
-                    return (
-                      <div key={kind} className="flex items-center gap-3">
-                        <label className="flex items-center gap-2 w-28 shrink-0 cursor-pointer">
-                          <Checkbox
-                            checked={selected}
-                            onCheckedChange={() => togglePlatform(kind)}
-                            data-testid={`checkbox-platform-${kind}`}
-                          />
-                          <span className="text-sm">{label}</span>
-                        </label>
-                        <Input
-                          value={platforms[kind] ?? ''}
-                          onChange={(e) => setPlatforms((p) => ({ ...p, [kind]: e.target.value }))}
-                          placeholder={placeholder}
-                          disabled={!selected}
-                          className="h-9"
-                          data-testid={`input-platform-${kind}`}
-                        />
-                      </div>
-                    );
-                  })}
+                <div className="pt-1">
+                  <PlatformPicker value={platforms} onChange={setPlatforms} />
                 </div>
               </div>
               <ImageUploadWithPreview
@@ -388,15 +361,19 @@ export default function AppsPage() {
                     </p>
                     {app.platforms && app.platforms.length > 0 && (
                       <div className="flex flex-wrap gap-1 mt-2" data-testid={`platforms-${app.id}`}>
-                        {app.platforms.map((p) => (
-                          <span
-                            key={p.id}
-                            title={p.identifier ?? undefined}
-                            className="px-1.5 py-0.5 rounded text-[10px] bg-gray-100 dark:bg-[#1e2433] text-gray-600 dark:text-gray-300"
-                          >
-                            {PLATFORM_LABELS[p.kind] ?? p.kind}
-                          </span>
-                        ))}
+                        {app.platforms.map((p) => {
+                          const Icon = PLATFORM_ICONS[p.kind];
+                          return (
+                            <span
+                              key={p.id}
+                              title={p.identifier ?? undefined}
+                              className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] bg-gray-100 dark:bg-[#1e2433] text-gray-600 dark:text-gray-300"
+                            >
+                              {Icon && <Icon className="w-2.5 h-2.5" />}
+                              {PLATFORM_LABELS[p.kind] ?? p.kind}
+                            </span>
+                          );
+                        })}
                       </div>
                     )}
                   </div>
