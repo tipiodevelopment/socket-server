@@ -14,6 +14,14 @@ import { queryClient, apiRequest } from '@/lib/queryClient';
 import { useUser } from '@/contexts/UserContext';
 import { AppLayout } from '@/components/AppLayout';
 import type { ClientApp, Campaign, Component as ComponentType } from '@shared/schema';
+import { Checkbox } from '@/components/ui/checkbox';
+import {
+  PLATFORM_KINDS, PLATFORM_LABELS, platformsToMap, platformsToPayload,
+  type SurfacePlatform,
+} from '@/lib/platforms';
+
+/** A surface spans platforms (web/iOS/Android/Vev/TV) — served with the app. */
+type ClientAppWithPlatforms = ClientApp & { platforms?: SurfacePlatform[] };
 import { ImageUploadWithPreview } from '@/components/ImageUploadWithPreview';
 import { ArrowLeft, Plus, Key, Copy, RefreshCw, Eye, EyeOff, Settings, ChevronRight, Megaphone, Puzzle, BarChart3, Users, Radio, Palette, Shield, Bell, Plug, X, Calendar, Tv } from 'lucide-react';
 
@@ -53,6 +61,9 @@ export default function AppDetailPage() {
   const [settingsTab, setSettingsTab] = useState('general');
   const [addComponentOpen, setAddComponentOpen] = useState(false);
   const [regenerateDialogOpen, setRegenerateDialogOpen] = useState(false);
+  const [platformsOpen, setPlatformsOpen] = useState(false);
+  // kind → identifier ('' = selected without one). Presence in the map = selected.
+  const [platformDraft, setPlatformDraft] = useState<Record<string, string>>({});
 
   const [editName, setEditName] = useState('');
   const [editDescription, setEditDescription] = useState('');
@@ -64,7 +75,7 @@ export default function AppDetailPage() {
   const [editTvEnabled, setEditTvEnabled] = useState(false);
   const [editTvPlatforms, setEditTvPlatforms] = useState<string[]>([]);
 
-  const { data: app, isLoading: appLoading } = useQuery<ClientApp>({
+  const { data: app, isLoading: appLoading } = useQuery<ClientAppWithPlatforms>({
     queryKey: ['/api/client-apps', appIdNum, userId],
     queryFn: async () => {
       const res = await fetch(`/api/client-apps/${appIdNum}?userId=${userId}`);
@@ -164,6 +175,35 @@ export default function AppDetailPage() {
     onError: () => {
       toast({ title: 'Error', description: 'Failed to update app', variant: 'destructive' });
     }
+  });
+
+  // Replace the whole platform set of this surface (PUT is a full replace,
+  // mirroring the picker below).
+  const platformsMutation = useMutation({
+    mutationFn: async (platforms: { kind: string; identifier: string | null }[]) => {
+      const response = await apiRequest('PUT', `/api/client-apps/${appIdNum}/platforms`, { platforms });
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/client-apps', appIdNum] });
+      queryClient.invalidateQueries({ queryKey: ['/api/client-apps/with-stats'] });
+      setPlatformsOpen(false);
+      toast({ title: 'Platforms updated', description: 'This surface now reflects where it runs.' });
+    },
+    onError: () => {
+      toast({ title: 'Error', description: 'Failed to update platforms', variant: 'destructive' });
+    }
+  });
+
+  const openPlatforms = () => {
+    setPlatformDraft(platformsToMap(app?.platforms));
+    setPlatformsOpen(true);
+  };
+
+  const togglePlatform = (kind: string) => setPlatformDraft((prev) => {
+    const next = { ...prev };
+    if (kind in next) delete next[kind]; else next[kind] = '';
+    return next;
   });
 
   const regenerateKeyMutation = useMutation({
@@ -380,9 +420,42 @@ export default function AppDetailPage() {
                   <div className="flex-1 text-sm text-gray-200">{app.name}</div>
                 </div>
                 <div className="flex items-start">
-                  <div className="w-36 text-xs text-gray-500 uppercase font-medium pt-2">Bundle ID</div>
-                  <div className="flex-1 text-sm font-mono bg-white/5 border border-white/10 px-3 py-2 rounded inline-block text-gray-200">{app.bundleId}</div>
+                  <div className="w-36 text-xs text-gray-500 uppercase font-medium pt-1">Platforms</div>
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      {app.platforms && app.platforms.length > 0 ? (
+                        app.platforms.map((p) => (
+                          <span
+                            key={p.id}
+                            className="px-2 py-1 rounded text-xs bg-white/5 border border-white/10 text-gray-200"
+                            data-testid={`platform-${p.kind}`}
+                          >
+                            {PLATFORM_LABELS[p.kind] ?? p.kind}
+                            {p.identifier && <span className="ml-1.5 font-mono text-gray-400">{p.identifier}</span>}
+                          </span>
+                        ))
+                      ) : (
+                        <span className="text-sm text-gray-500">No platforms yet</span>
+                      )}
+                      <button
+                        onClick={openPlatforms}
+                        data-testid="button-edit-platforms"
+                        className="px-2 py-1 rounded text-xs bg-white/5 hover:bg-white/10 border border-white/10 text-gray-400 hover:text-white transition"
+                      >
+                        Edit
+                      </button>
+                    </div>
+                  </div>
                 </div>
+                {app.bundleId && (
+                  <div className="flex items-start">
+                    <div className="w-36 text-xs text-gray-500 uppercase font-medium pt-2">Bundle ID</div>
+                    <div className="flex-1">
+                      <span className="text-sm font-mono bg-white/5 border border-white/10 px-3 py-2 rounded inline-block text-gray-200">{app.bundleId}</span>
+                      <p className="text-[11px] text-gray-500 mt-1">Legacy — identifiers now live per platform.</p>
+                    </div>
+                  </div>
+                )}
                 <div className="flex items-start">
                   <div className="w-36 text-xs text-gray-500 uppercase font-medium pt-2">API Key</div>
                   <div className="flex-1 text-sm">
@@ -668,6 +741,59 @@ export default function AppDetailPage() {
         </div>
       </div>
 
+      <Dialog open={platformsOpen} onOpenChange={setPlatformsOpen}>
+        <DialogContent className="bg-[#141824] border border-white/10 max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="text-white">Platforms</DialogTitle>
+            <DialogDescription>
+              Where this surface runs. One surface can span web, mobile and TV — each platform keeps its
+              own identifier.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2 py-2">
+            {PLATFORM_KINDS.map(({ kind, label, placeholder }) => {
+              const selected = kind in platformDraft;
+              return (
+                <div key={kind} className="flex items-center gap-3">
+                  <label className="flex items-center gap-2 w-28 shrink-0 cursor-pointer">
+                    <Checkbox
+                      checked={selected}
+                      onCheckedChange={() => togglePlatform(kind)}
+                      data-testid={`checkbox-edit-platform-${kind}`}
+                    />
+                    <span className="text-sm text-gray-200">{label}</span>
+                  </label>
+                  <Input
+                    value={platformDraft[kind] ?? ''}
+                    onChange={(e) => setPlatformDraft((p) => ({ ...p, [kind]: e.target.value }))}
+                    placeholder={placeholder}
+                    disabled={!selected}
+                    className="h-9 bg-white/5 border-white/10 text-gray-200"
+                    data-testid={`input-edit-platform-${kind}`}
+                  />
+                </div>
+              );
+            })}
+          </div>
+          <DialogFooter>
+            <button
+              onClick={() => setPlatformsOpen(false)}
+              className="px-4 py-2 rounded text-sm text-gray-400 hover:text-white transition"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={() => platformsMutation.mutate(platformsToPayload(platformDraft))}
+              disabled={platformsMutation.isPending}
+              data-testid="button-save-platforms"
+              className="px-4 py-2 bg-white hover:bg-gray-200 text-black rounded text-sm font-medium transition disabled:opacity-50"
+            >
+              {platformsMutation.isPending ? 'Saving…' : 'Save platforms'}
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={editModalOpen} onOpenChange={setEditModalOpen}>
         <DialogContent className="bg-[#141824] border border-white/10 max-h-[85vh] overflow-y-auto">
           <DialogHeader>
@@ -686,15 +812,15 @@ export default function AppDetailPage() {
                 data-testid="input-edit-name"
               />
             </div>
-            <div>
+            <div className={app.bundleId ? undefined : 'hidden'}>
               <Label className="text-gray-400 text-xs uppercase">Bundle ID</Label>
               <Input
-                value={app.bundleId}
+                value={app.bundleId ?? ''}
                 readOnly
                 className="bg-white/5 border-white/10 text-gray-500 font-mono cursor-not-allowed mt-1"
                 data-testid="input-edit-bundle-id"
               />
-              <p className="text-xs text-gray-600 mt-1">Cannot be changed after creation</p>
+              <p className="text-xs text-gray-600 mt-1">Legacy — edit Platforms instead.</p>
             </div>
             <div>
               <Label className="text-gray-400 text-xs uppercase">Description</Label>

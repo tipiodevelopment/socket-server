@@ -6,6 +6,7 @@ import { z } from 'zod';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
+import { PLATFORM_KINDS, PLATFORM_LABELS, platformsToPayload, type SurfacePlatform } from '@/lib/platforms';
 import {
   Form,
   FormControl,
@@ -48,12 +49,6 @@ import { ImageUploadWithPreview } from '@/components/ImageUploadWithPreview';
 import { Plus, Smartphone, Pencil, MoreVertical, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 
-interface SurfacePlatform {
-  id: number;
-  kind: string;
-  identifier: string | null;
-}
-
 interface ClientAppWithStats extends ClientApp {
   platforms?: SurfacePlatform[];
   stats: {
@@ -76,20 +71,6 @@ type CreateClientAppForm = z.infer<typeof createClientAppSchema>;
 // A surface spans platforms — it is not one native app. Identifiers are
 // per-platform (an iOS bundle id differs from an Android package name), which
 // is why they are collected here instead of a single "Bundle ID" field.
-const PLATFORM_LABELS: Record<string, string> = {
-  web: 'Web', ios: 'iOS', android: 'Android', vev: 'Vev',
-  'apple-tv': 'Apple TV', 'android-tv': 'Android TV', 'fire-tv': 'Fire TV',
-};
-
-const PLATFORM_KINDS: { kind: string; label: string; placeholder: string }[] = [
-  { kind: 'web', label: 'Web', placeholder: 'e.g. vg.no' },
-  { kind: 'ios', label: 'iOS', placeholder: 'Bundle ID — e.g. com.laliga.fanapp' },
-  { kind: 'android', label: 'Android', placeholder: 'Package name — e.g. com.laliga.fanapp' },
-  { kind: 'vev', label: 'Vev', placeholder: 'Vev project id (optional)' },
-  { kind: 'apple-tv', label: 'Apple TV', placeholder: 'Bundle ID (optional)' },
-  { kind: 'android-tv', label: 'Android TV', placeholder: 'Package name (optional)' },
-  { kind: 'fire-tv', label: 'Fire TV', placeholder: 'Package name (optional)' },
-];
 
 function formatViewers(num: number): string {
   if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M';
@@ -234,10 +215,7 @@ export default function AppsPage() {
       userId,
       iconUrl: logoUrl || undefined,
       bannerUrl: bannerUrl || undefined,
-      platforms: Object.entries(platforms).map(([kind, identifier]) => ({
-        kind,
-        identifier: identifier.trim() || null,
-      })),
+      platforms: platformsToPayload(platforms),
     });
   };
 
