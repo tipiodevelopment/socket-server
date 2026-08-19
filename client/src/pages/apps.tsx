@@ -61,7 +61,7 @@ interface ClientAppWithStats extends ClientApp {
 }
 
 const createClientAppSchema = z.object({
-  name: z.string().min(1, 'App name is required').max(255, 'App name too long'),
+  name: z.string().min(1, 'Name is required').max(255, 'Name too long'),
   iconUrl: z.string().optional(),
   bannerUrl: z.string().optional(),
 });
@@ -180,10 +180,10 @@ export default function AppsPage() {
       setLogoUrl('');
       setBannerUrl('');
       setPlatforms({});
-      toast({ title: 'App Created', description: 'Your new app is ready to use' });
+      toast({ title: 'Surface created', description: 'Your new surface is ready to use' });
     },
     onError: () => {
-      toast({ title: 'Error', description: 'Failed to create app', variant: 'destructive' });
+      toast({ title: 'Error', description: 'Failed to create surface', variant: 'destructive' });
     }
   });
 
@@ -196,10 +196,10 @@ export default function AppsPage() {
       queryClient.invalidateQueries({ queryKey: ['/api/client-apps', userId] });
       setDeleteDialogOpen(false);
       setAppToDelete(null);
-      toast({ title: 'App Deleted', description: 'The app has been deleted.' });
+      toast({ title: 'Surface deleted', description: 'The surface has been deleted.' });
     },
     onError: () => {
-      toast({ title: 'Error', description: 'Failed to delete app', variant: 'destructive' });
+      toast({ title: 'Error', description: 'Failed to delete surface', variant: 'destructive' });
     }
   });
 
@@ -216,15 +216,15 @@ export default function AppsPage() {
 
   return (
     <AppLayout
-      breadcrumbs={[{ label: 'Apps' }]}
-      title="Client Apps"
+      breadcrumbs={[{ label: 'Surfaces' }]}
+      title="Surfaces"
     >
       <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
         <DialogContent className="max-h-[85vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Create New App</DialogTitle>
+            <DialogTitle>Create surface</DialogTitle>
             <DialogDescription>
-              Add a new mobile or web application to manage campaigns.
+              A surface is where Vio runs — a site, an app, a TV channel. Campaigns are placed on it.
             </DialogDescription>
           </DialogHeader>
           <Form {...form}>
@@ -234,9 +234,9 @@ export default function AppsPage() {
                 name="name"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>App Name</FormLabel>
+                    <FormLabel>Name</FormLabel>
                     <FormControl>
-                      <Input placeholder="e.g. LaLiga Fan App" data-testid="input-app-name" {...field} />
+                      <Input placeholder="e.g. Møte & Livsstil" data-testid="input-app-name" {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -277,8 +277,8 @@ export default function AppsPage() {
       </Dialog>
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h2 className="text-lg font-semibold text-gray-900 dark:text-white">All Client Apps</h2>
-          <p className="text-sm text-gray-500 dark:text-white/40">{clientApps.length} app{clientApps.length !== 1 ? 's' : ''} registered</p>
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-white">All surfaces</h2>
+          <p className="text-sm text-gray-500 dark:text-white/40">{clientApps.length} surface{clientApps.length !== 1 ? 's' : ''} registered</p>
         </div>
         <Button
           data-testid="button-create-app"
@@ -286,7 +286,7 @@ export default function AppsPage() {
           className="gap-2 bg-[#3d8b7a] hover:bg-[#2f7365] dark:bg-white dark:hover:bg-gray-200 text-white dark:text-[#0a0e1a]"
         >
           <Plus className="w-4 h-4" />
-          New App
+          New surface
         </Button>
       </div>
       {isLoading ? (
@@ -305,7 +305,7 @@ export default function AppsPage() {
       ) : clientApps.length === 0 ? (
         <div className="bg-white dark:bg-white/[0.03] border border-gray-200 dark:border-white/10 rounded-2xl p-12 text-center">
           <Smartphone className="w-12 h-12 text-gray-300 dark:text-white/20 mx-auto mb-4" />
-          <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">No apps yet</h3>
+          <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">No surfaces yet</h3>
           <p className="text-gray-500 dark:text-white/40 mb-4 max-w-md mx-auto">
             Create your first app to start managing campaigns and broadcasts
           </p>
@@ -423,7 +423,7 @@ export default function AppsPage() {
                             data-testid={`button-delete-app-${app.id}`}
                           >
                             <Trash2 className="w-4 h-4 mr-2" />
-                            Delete App
+                            Delete surface
                           </DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>
@@ -439,9 +439,9 @@ export default function AppsPage() {
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete App?</AlertDialogTitle>
+            <AlertDialogTitle>Delete surface?</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to delete "{appToDelete?.name}"? This will remove all channels, campaigns, and broadcasts associated with this app.
+              Are you sure you want to delete "{appToDelete?.name}"? This will remove all channels, campaigns, and broadcasts associated with this surface.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

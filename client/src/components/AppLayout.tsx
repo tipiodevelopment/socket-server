@@ -14,7 +14,7 @@ import { Input } from '@/components/ui/input';
 import { VioLogo } from '@/components/VioLogo';
 import {
   LayoutDashboard,
-  Smartphone,
+  Layers,
   Megaphone,
   Radio,
   ShoppingBag,
@@ -78,7 +78,9 @@ function HeaderBreadcrumbs({ breadcrumbs }: { breadcrumbs: BreadcrumbItem[] }) {
 
 const NAV_ITEMS = [
   { href: '/', label: 'Dashboard', icon: LayoutDashboard, exact: true },
-  { href: '/apps', label: 'Apps', icon: Smartphone },
+  // A "surface" is the publisher property where Vio runs — a site, an app, a TV
+  // channel. The route stays /apps (the SDK contract still says clientApp).
+  { href: '/apps', label: 'Surfaces', icon: Layers },
   { href: '/campaigns', label: 'Campaigns', icon: Megaphone },
   { href: '/sponsors', label: 'Sponsors', icon: Award },
   { href: '/broadcasts', label: 'Broadcasts', icon: Radio },

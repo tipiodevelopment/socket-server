@@ -2490,14 +2490,18 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       // Campaign belongs to the creator's tenant; the app + sponsor below must
       // belong to that same tenant (ADR-0007). An operator can only build
       // campaigns on its admin's apps/sponsors.
-      const userId = createOwnerId(req.operator, req.body.userId);
+      let userId = createOwnerId(req.operator, req.body.userId);
 
       if (clientAppId) {
         const app = await storage.getClientApp(clientAppId);
         if (!app) {
           return res.status(404).json({ message: 'Client app not found' });
         }
-        if (app.userId !== userId) {
+        if (readScopeOwnerId(req.operator) === null) {
+          // super_admin builds on any tenant's surface; the campaign joins that
+          // surface's tenant so it stays visible to the admin who owns it.
+          userId = app.userId;
+        } else if (app.userId !== userId) {
           return res.status(403).json({ message: 'Access denied - app does not belong to this user' });
         }
       }

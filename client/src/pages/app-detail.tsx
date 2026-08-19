@@ -170,10 +170,10 @@ export default function AppDetailPage() {
       queryClient.invalidateQueries({ queryKey: ['/api/client-apps', appIdNum] });
       queryClient.invalidateQueries({ queryKey: ['/api/client-apps/with-stats'] });
       setEditModalOpen(false);
-      toast({ title: 'App Updated', description: 'Changes saved successfully.' });
+      toast({ title: 'Surface updated', description: 'Changes saved successfully.' });
     },
     onError: () => {
-      toast({ title: 'Error', description: 'Failed to update app', variant: 'destructive' });
+      toast({ title: 'Error', description: 'Failed to update surface', variant: 'destructive' });
     }
   });
 
@@ -256,7 +256,7 @@ export default function AppDetailPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/client-apps', appIdNum, 'components'] });
-      toast({ title: 'Component Added', description: 'Component has been added to the app.' });
+      toast({ title: 'Component Added', description: 'Component has been added to the surface.' });
     },
     onError: () => {
       toast({ title: 'Error', description: 'Failed to add component', variant: 'destructive' });
@@ -269,7 +269,7 @@ export default function AppDetailPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/client-apps', appIdNum, 'components'] });
-      toast({ title: 'Component Removed', description: 'Component has been removed from the app.' });
+      toast({ title: 'Component Removed', description: 'Component has been removed from the surface.' });
     },
     onError: () => {
       toast({ title: 'Error', description: 'Failed to remove component', variant: 'destructive' });
@@ -322,7 +322,7 @@ export default function AppDetailPage() {
 
   if (appLoading || userLoading || (!app && !userId)) {
     return (
-      <AppLayout breadcrumbs={[{ label: 'Apps', href: '/apps' }, { label: 'Loading...' }]}>
+      <AppLayout breadcrumbs={[{ label: 'Surfaces', href: '/apps' }, { label: 'Loading...' }]}>
         <div className="text-center py-12">
           <p className="text-gray-500 dark:text-gray-400">Loading app...</p>
         </div>
@@ -332,7 +332,7 @@ export default function AppDetailPage() {
 
   if (!app) {
     return (
-      <AppLayout breadcrumbs={[{ label: 'Apps', href: '/apps' }, { label: 'Not Found' }]}>
+      <AppLayout breadcrumbs={[{ label: 'Surfaces', href: '/apps' }, { label: 'Not Found' }]}>
         <div className="text-center py-12">
           <p className="text-gray-900 dark:text-gray-100">App not found</p>
         </div>
@@ -343,7 +343,7 @@ export default function AppDetailPage() {
   const statusBadge = getStatusBadge(app.status || 'active');
 
   return (
-    <AppLayout breadcrumbs={[{ label: 'Apps', href: '/apps' }, { label: app.name }]}>
+    <AppLayout breadcrumbs={[{ label: 'Surfaces', href: '/apps' }, { label: app.name }]}>
       <div className="space-y-6">
         {app.bannerUrl && (
           <div className="relative h-32 rounded-xl overflow-hidden -mt-2 mb-2">
@@ -397,7 +397,7 @@ export default function AppDetailPage() {
           <div className="lg:col-span-2 space-y-6">
             <div className="border border-white/10 rounded-lg p-6">
               <div className="flex items-center justify-between mb-6">
-                <h2 className="text-sm font-semibold text-gray-400 uppercase">App Details</h2>
+                <h2 className="text-sm font-semibold text-gray-400 uppercase">Surface details</h2>
                 <button
                   data-testid="button-edit-details"
                   onClick={openEditModal}
@@ -410,7 +410,7 @@ export default function AppDetailPage() {
 
               <div className="space-y-4">
                 <div className="flex items-start">
-                  <div className="w-36 text-xs text-gray-500 uppercase font-medium pt-0.5">App Name</div>
+                  <div className="w-36 text-xs text-gray-500 uppercase font-medium pt-0.5">Name</div>
                   <div className="flex-1 text-sm text-gray-200">{app.name}</div>
                 </div>
                 <div className="flex items-start">
@@ -773,14 +773,14 @@ export default function AppDetailPage() {
       <Dialog open={editModalOpen} onOpenChange={setEditModalOpen}>
         <DialogContent className="bg-[#141824] border border-white/10 max-h-[85vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle className="text-white">Edit App Details</DialogTitle>
+            <DialogTitle className="text-white">Edit surface</DialogTitle>
             <DialogDescription className="text-gray-500">
               Update your app information
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div>
-              <Label className="text-gray-400 text-xs uppercase">App Name</Label>
+              <Label className="text-gray-400 text-xs uppercase">Name</Label>
               <Input
                 value={editName}
                 onChange={(e) => setEditName(e.target.value)}
@@ -998,7 +998,7 @@ ReachuSDK.configure(
                   <div className={editTvEnabled ? '' : 'opacity-40 pointer-events-none'}>
                     <Label className="text-gray-400 text-xs uppercase">Supported platforms</Label>
                     <p className="text-xs text-gray-500 mt-1 mb-3">
-                      Pick which TV platforms this app supports. Subscribe rejects any TV client whose <code className="text-gray-400">platform</code> isn't in this list.
+                      Pick which TV platforms this surface supports. Subscribe rejects any TV client whose <code className="text-gray-400">platform</code> isn't in this list.
                     </p>
                     <div className="grid grid-cols-2 gap-2">
                       {[
@@ -1198,7 +1198,7 @@ function AddPlacementFromLibraryDialog({
           <DialogTitle className="text-white">Add placement from library</DialogTitle>
           <DialogDescription className="text-gray-500">
             Pick a template, a slot the SDK declared, and give it a human name.
-            The result is available to all campaigns of this app.
+            The result is available to all campaigns of this surface.
           </DialogDescription>
         </DialogHeader>
 
@@ -1245,7 +1245,7 @@ function AddPlacementFromLibraryDialog({
               className="w-full bg-[#0d1018] border border-white/10 rounded px-3 py-2 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-white/30"
             />
             {nameTaken && (
-              <p className="text-xs text-red-400 mt-1">Name already used by another placement in this app.</p>
+              <p className="text-xs text-red-400 mt-1">Name already used by another placement in this surface.</p>
             )}
           </div>
         </div>

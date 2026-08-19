@@ -104,9 +104,13 @@ export default function NewCampaignPage() {
     }
   });
 
+  // A campaign always sells some brand's products, so the backend requires a
+  // primary sponsor (campaigns.primary_sponsor_id is NOT NULL).
+  const canSubmit = Boolean(name.trim() && userId && selectedSponsorId && selectedSponsorId !== 'none');
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name.trim() || !userId) return;
+    if (!canSubmit) return;
 
     const data: any = {
       name: name.trim(),
@@ -135,7 +139,7 @@ export default function NewCampaignPage() {
 
   const breadcrumbs = preselectedApp
     ? [
-        { label: 'Apps', href: '/apps' },
+        { label: 'Surfaces', href: '/apps' },
         { label: preselectedApp.name, href: `/apps/${preselectedApp.id}` },
         { label: 'New Campaign' },
       ]
@@ -204,20 +208,20 @@ export default function NewCampaignPage() {
 
           <div className="bg-white dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-xl p-6 space-y-5">
             <h2 className="text-sm font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-              App & Sponsor
+              Surface & Sponsor
             </h2>
 
             <div className="space-y-2">
-              <Label className="text-gray-700 dark:text-gray-300">Assign to App</Label>
+              <Label className="text-gray-700 dark:text-gray-300">Assign to surface</Label>
               <Select value={selectedAppId} onValueChange={setSelectedAppId}>
                 <SelectTrigger
                   data-testid="select-app"
                   className="bg-gray-50 dark:bg-gray-700 border-gray-200 dark:border-gray-600 text-gray-900 dark:text-white"
                 >
-                  <SelectValue placeholder="Select an app (optional)" />
+                  <SelectValue placeholder="Select a surface (optional)" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="none">No app</SelectItem>
+                  <SelectItem value="none">No surface</SelectItem>
                   {clientApps.map((app) => (
                     <SelectItem key={app.id} value={String(app.id)} data-testid={`option-app-${app.id}`}>
                       {app.name}
@@ -226,21 +230,22 @@ export default function NewCampaignPage() {
                 </SelectContent>
               </Select>
               <p className="text-xs text-gray-400 dark:text-gray-500">
-                Link this campaign to an app to share components and branding.
+                Link this campaign to a surface to share components and branding.
               </p>
             </div>
 
             <div className="space-y-2">
-              <Label className="text-gray-700 dark:text-gray-300">Sponsor</Label>
+              <Label className="text-gray-700 dark:text-gray-300">
+                Sponsor <span className="text-destructive">*</span>
+              </Label>
               <Select value={selectedSponsorId} onValueChange={setSelectedSponsorId}>
                 <SelectTrigger
                   data-testid="select-sponsor"
                   className="bg-gray-50 dark:bg-gray-700 border-gray-200 dark:border-gray-600 text-gray-900 dark:text-white"
                 >
-                  <SelectValue placeholder="Select a sponsor (optional)" />
+                  <SelectValue placeholder="Select a sponsor" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="none">No sponsor</SelectItem>
                   {sponsorsList.map((sponsor) => (
                     <SelectItem key={sponsor.id} value={String(sponsor.id)} data-testid={`option-sponsor-${sponsor.id}`}>
                       <span className="flex items-center gap-2">
@@ -256,6 +261,9 @@ export default function NewCampaignPage() {
                   ))}
                 </SelectContent>
               </Select>
+              <p className="text-xs text-gray-400 dark:text-gray-500">
+                The brand this campaign sells for. Its commerce channel provides the products.
+              </p>
               {selectedSponsor && (
                 <div className="flex items-center gap-3 p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg mt-2">
                   {selectedSponsor.logoUrl && (
@@ -377,7 +385,7 @@ export default function NewCampaignPage() {
             </Button>
             <Button
               type="submit"
-              disabled={createMutation.isPending || !name.trim()}
+              disabled={createMutation.isPending || !canSubmit}
               data-testid="button-create-campaign"
               className="bg-white hover:bg-gray-200 text-[#0a0e1a] gap-2"
             >
