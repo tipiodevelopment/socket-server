@@ -246,19 +246,33 @@ export default function NewCampaignPage() {
                   <SelectValue placeholder="Select a sponsor" />
                 </SelectTrigger>
                 <SelectContent>
-                  {sponsorsList.map((sponsor) => (
-                    <SelectItem key={sponsor.id} value={String(sponsor.id)} data-testid={`option-sponsor-${sponsor.id}`}>
-                      <span className="flex items-center gap-2">
-                        {sponsor.logoUrl && (
-                          <img src={sponsor.logoUrl} alt="" className="w-4 h-4 rounded object-cover" />
-                        )}
-                        {sponsor.primaryColor && (
-                          <span className="w-3 h-3 rounded-full border border-white/20" style={{ backgroundColor: sponsor.primaryColor }} />
-                        )}
-                        {sponsor.name}
-                      </span>
-                    </SelectItem>
-                  ))}
+                  {sponsorsList.map((sponsor) => {
+                    // Products come from the sponsor's commerce channel. Without
+                    // that key the campaign would render empty, so it can't be
+                    // picked — paste the key on the sponsor to activate it.
+                    const connected = Boolean((sponsor as any).commerceApiKey);
+                    return (
+                      <SelectItem
+                        key={sponsor.id}
+                        value={String(sponsor.id)}
+                        disabled={!connected}
+                        data-testid={`option-sponsor-${sponsor.id}`}
+                      >
+                        <span className="flex items-center gap-2">
+                          {sponsor.logoUrl && (
+                            <img src={sponsor.logoUrl} alt="" className="w-4 h-4 rounded object-cover" />
+                          )}
+                          {sponsor.primaryColor && (
+                            <span className="w-3 h-3 rounded-full border border-white/20" style={{ backgroundColor: sponsor.primaryColor }} />
+                          )}
+                          {sponsor.name}
+                          {!connected && (
+                            <span className="text-[10px] text-amber-500">needs a commerce key</span>
+                          )}
+                        </span>
+                      </SelectItem>
+                    );
+                  })}
                 </SelectContent>
               </Select>
               <p className="text-xs text-gray-400 dark:text-gray-500">
