@@ -18,7 +18,7 @@ import { getFirebaseAuth, isFirebaseConfigured } from "@/lib/firebase";
 // project, then exchanges the ID token for the dashboard session cookie.
 // Only allowlisted accounts get a session — anyone else sees the 403 message.
 export default function LoginPage() {
-  const { loginWithIdToken, userId } = useUser();
+  const { loginWithIdToken, userId, role } = useUser();
   const [, setLocation] = useLocation();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -26,7 +26,7 @@ export default function LoginPage() {
   const [busy, setBusy] = useState(false);
 
   if (userId) {
-    setLocation("/");
+    setLocation(role === "sponsor" ? "/my-brand" : "/");
     return null;
   }
 
@@ -36,8 +36,8 @@ export default function LoginPage() {
     try {
       const { user } = await credential;
       const idToken = await user.getIdToken();
-      await loginWithIdToken(idToken);
-      setLocation("/");
+      const operator = await loginWithIdToken(idToken);
+      setLocation(operator.role === "sponsor" ? "/my-brand" : "/");
     } catch (e) {
       // Leave no half-session behind when the account is not allowlisted.
       await signOut(getFirebaseAuth()).catch(() => undefined);

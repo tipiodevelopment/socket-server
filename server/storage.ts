@@ -32,6 +32,12 @@ export interface IStorage {
   getSponsor(id: number): Promise<Sponsor | undefined>;
   getUserSponsors(userId: number): Promise<Sponsor[]>;
   getAllSponsors(): Promise<Sponsor[]>;
+  getSponsorUsage(sponsorId: number): Promise<{
+    campaigns: Array<{ id: number; name: string; role: 'primary' | 'secondary'; surface: { id: number; name: string } | null }>;
+    surfaces: Array<{ id: number; name: string }>;
+    placements: number;
+  }>;
+  getSponsorStats(sponsorId: number): Promise<{ dispatches: number; cartIntents: number; sponsorSlots: number }>;
   updateSponsor(id: number, sponsor: Partial<InsertSponsor>): Promise<Sponsor | undefined>;
   deleteSponsor(id: number): Promise<void>;
 
@@ -415,6 +421,54 @@ export class MemStorage implements IStorage {
 
   async getAllSponsors(): Promise<Sponsor[]> {
     return await db.select().from(sponsors).orderBy(desc(sponsors.createdAt));
+  }
+
+  // Sponsor "footprint" — where this brand is used (campaigns + surfaces +
+  // placements). Powers the self-scoped /api/sponsor/me/usage view.
+  async getSponsorUsage(sponsorId: number): Promise<{
+    campaigns: Array<{ id: number; name: string; role: 'primary' | 'secondary'; surface: { id: number; name: string } | null }>;
+    surfaces: Array<{ id: number; name: string }>;
+    placements: number;
+  }> {
+    const rows = await db.select({
+      id: campaigns.id,
+      name: campaigns.name,
+      primarySponsorId: campaigns.primarySponsorId,
+      appId: campaigns.clientAppId,
+      appName: clientApps.name,
+    }).from(campaigns)
+      .leftJoin(clientApps, eq(clientApps.id, campaigns.clientAppId))
+      .where(or(
+        eq(campaigns.primarySponsorId, sponsorId),
+        inArray(campaigns.id,
+          db.select({ id: campaignSponsors.campaignId }).from(campaignSponsors).where(eq(campaignSponsors.sponsorId, sponsorId))),
+      ))
+      .orderBy(campaigns.id);
+
+    const campaignsOut = rows.map((r) => ({
+      id: r.id,
+      name: r.name,
+      role: (r.primarySponsorId === sponsorId ? 'primary' : 'secondary') as 'primary' | 'secondary',
+      surface: r.appId != null ? { id: r.appId, name: r.appName ?? `#${r.appId}` } : null,
+    }));
+
+    const surfacesMap = new Map<number, string>();
+    for (const c of campaignsOut) if (c.surface) surfacesMap.set(c.surface.id, c.surface.name);
+    const surfaces = Array.from(surfacesMap.entries(), ([id, name]) => ({ id, name }));
+
+    const [pc] = await db.select({ n: sql<number>`count(*)::int` })
+      .from(campaignComponents).where(eq(campaignComponents.sponsorId, sponsorId));
+
+    return { campaigns: campaignsOut, surfaces, placements: pc?.n ?? 0 };
+  }
+
+  // Sponsor "data" — DB-side metrics for this brand (impressions/clicks live in
+  // Mixpanel, not here). Powers /api/sponsor/me/stats.
+  async getSponsorStats(sponsorId: number): Promise<{ dispatches: number; cartIntents: number; sponsorSlots: number }> {
+    const [d] = await db.select({ n: sql<number>`count(*)::int` }).from(shoppableAdActivations).where(eq(shoppableAdActivations.sponsorId, sponsorId));
+    const [c] = await db.select({ n: sql<number>`count(*)::int` }).from(cartIntents).where(eq(cartIntents.sponsorId, sponsorId));
+    const [s] = await db.select({ n: sql<number>`count(*)::int` }).from(broadcastSponsorSlots).where(eq(broadcastSponsorSlots.sponsorId, sponsorId));
+    return { dispatches: d?.n ?? 0, cartIntents: c?.n ?? 0, sponsorSlots: s?.n ?? 0 };
   }
 
   async updateSponsor(id: number, data: Partial<InsertSponsor>): Promise<Sponsor | undefined> {

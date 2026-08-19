@@ -8,7 +8,7 @@ import { createInsertSchema } from "drizzle-zod";
 
 // Operator roles (ADR-0007). Hierarchical: super_admin > admin > operator > viewer.
 // viewer is the sponsor-facing read-only role; sponsor_id links it to its sponsor.
-export const userRoleEnum = pgEnum("user_role", ["super_admin", "admin", "operator", "viewer"]);
+export const userRoleEnum = pgEnum("user_role", ["super_admin", "admin", "operator", "viewer", "sponsor"]);
 
 // Operators (dashboard users). Distinct from end_users (viewers of broadcasts).
 // Legacy reachu_user_id kept nullable during Phase 2 transition; dropped in Phase 4.

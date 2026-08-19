@@ -56,6 +56,7 @@ import { voteQueue, contestParticipationQueue, isQueueEnabled } from "./queue/qu
 import { createRateLimiter, rateLimitPresets } from "./middleware/rate-limiter";
 import { validateBroadcastId } from "./middleware/broadcast-validator";
 import { firebaseAuth } from "./middleware/firebase-auth";
+import { ensureFirebaseUser, deleteFirebaseUser, isFirebaseAdminEnabled, listPendingSignups } from "./services/firebase-admin";
 import {
   createApiGate,
   createSessionToken,
@@ -1111,6 +1112,32 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
     }
   });
 
+  // Pending signups — Firebase identities the Commerce signup marked as a
+  // business/brand (`business`) or a channel (`channel`) that don't have a Vio
+  // user yet. The super_admin triages each into a Vio role. Contract with
+  // Commerce: top-level claims `{ business|channel: true, brand_name }`.
+  // Google/login-only identities have no claim → manual "Add user" instead.
+  app.get('/api/pending-brands', async (_req, res) => {
+    try {
+      if (!isFirebaseAdminEnabled()) return res.json([]);
+      const [signups, existing] = await Promise.all([
+        listPendingSignups(),
+        storage.getAllUsers(),
+      ]);
+      const takenUids = new Set(existing.map((u) => u.firebaseUid).filter(Boolean));
+      const takenEmails = new Set(
+        existing.map((u) => u.email?.toLowerCase()).filter(Boolean),
+      );
+      const pending = signups.filter(
+        (s) => !takenUids.has(s.uid) && !(s.email && takenEmails.has(s.email.toLowerCase())),
+      );
+      res.json(pending);
+    } catch (error) {
+      console.error('[pending-brands] error', error);
+      res.status(500).json({ message: 'Error listing pending brand signups' });
+    }
+  });
+
   app.post('/api/auth/users', async (req, res) => {
     try {
       const { email, role, name, sponsorId, parentAdminId } = req.body ?? {};
@@ -1120,10 +1147,16 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       if (!userRoleEnum.enumValues.includes(role)) {
         return res.status(400).json({ message: `role must be one of: ${userRoleEnum.enumValues.join(', ')}` });
       }
-      if (role === 'viewer' && sponsorId != null && !(await storage.getSponsor(Number(sponsorId)))) {
+      // sponsorId is REQUIRED for a `sponsor` user (the brand they represent);
+      // optional for a viewer. Validate it exists whenever provided.
+      if (role === 'sponsor' && sponsorId == null) {
+        return res.status(400).json({ message: 'sponsorId is required for a sponsor user' });
+      }
+      if ((role === 'viewer' || role === 'sponsor') && sponsorId != null && !(await storage.getSponsor(Number(sponsorId)))) {
         return res.status(400).json({ message: 'sponsorId does not exist' });
       }
-      // operator/viewer belong to an admin's tenant (ADR-0007).
+      // operator/viewer belong to an admin's tenant (ADR-0007). A sponsor does
+      // not (it's brand-scoped, not inside a publisher tenant) — no parentAdminId.
       if ((role === 'operator' || role === 'viewer')) {
         if (parentAdminId == null) {
           return res.status(400).json({ message: 'parentAdminId is required for operator/viewer (the admin tenant they belong to)' });
@@ -1137,14 +1170,47 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       if (existing) {
         return res.status(409).json({ message: 'A user with this email already exists' });
       }
-      const created = await storage.createUser({
-        email: email.toLowerCase(),
-        name: name ?? null,
-        role,
-        sponsorId: sponsorId ?? null,
-        parentAdminId: (role === 'operator' || role === 'viewer') ? Number(parentAdminId) : null,
+
+      // Create (or link) the Firebase identity so the user can actually log in.
+      // Without this the dashboard only writes an authorization row. If the
+      // Admin SDK isn't configured, degrade to DB-row-only (no login yet).
+      let firebaseUid: string | null = null;
+      let tempPassword: string | null = null;
+      let firebaseExisted = false;
+      if (isFirebaseAdminEnabled()) {
+        try {
+          const fb = await ensureFirebaseUser(email.toLowerCase(), name ?? null);
+          firebaseUid = fb.uid;
+          tempPassword = fb.tempPassword;
+          firebaseExisted = fb.existed;
+        } catch (e) {
+          console.error('Error creating Firebase user:', e);
+          return res.status(502).json({ message: `Could not create the Firebase account: ${(e as Error).message}` });
+        }
+      }
+
+      let created;
+      try {
+        created = await storage.createUser({
+          email: email.toLowerCase(),
+          name: name ?? null,
+          role,
+          sponsorId: sponsorId ?? null,
+          parentAdminId: (role === 'operator' || role === 'viewer') ? Number(parentAdminId) : null,
+          firebaseUid,
+        });
+      } catch (e) {
+        // Roll back the Firebase account we just created so we don't orphan it.
+        if (firebaseUid && !firebaseExisted) await deleteFirebaseUser(firebaseUid).catch(() => {});
+        throw e;
+      }
+
+      res.status(201).json({
+        ...operatorProfile(created),
+        firebaseEnabled: isFirebaseAdminEnabled(),
+        firebaseExisted,
+        tempPassword, // present only when a NEW Firebase account was created
       });
-      res.status(201).json(operatorProfile(created));
     } catch (error) {
       console.error('Error creating operator:', error);
       res.status(500).json({ message: 'Error creating operator' });
@@ -1160,6 +1226,14 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       }
       if (id === req.operator!.id && role !== undefined && role !== 'super_admin') {
         return res.status(400).json({ message: 'You cannot demote your own account' });
+      }
+      // A sponsor must always be linked to a brand (mirrors POST). Check the
+      // effective value: the incoming sponsorId if provided, else the current one.
+      if (role === 'sponsor') {
+        const effectiveSponsor = sponsorId !== undefined ? sponsorId : (await storage.getUser(id))?.sponsorId;
+        if (effectiveSponsor == null) {
+          return res.status(400).json({ message: 'sponsorId is required for a sponsor user' });
+        }
       }
       const updated = await storage.updateUser(id, {
         ...(role !== undefined ? { role } : {}),
@@ -1180,8 +1254,26 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       if (id === req.operator!.id) {
         return res.status(400).json({ message: 'You cannot delete your own account' });
       }
+      // Opt-in (?firebase=true): also delete the shared Firebase identity. Off by
+      // default — that identity is Commerce's, so deleting it revokes their
+      // Commerce login too, not just the Vio dashboard.
+      const alsoFirebase = req.query.firebase === 'true';
+      const target = await storage.getUser(id);
       await storage.deleteUser(id);
-      res.status(204).end();
+      let firebaseDeleted = false;
+      if (alsoFirebase && target?.firebaseUid && isFirebaseAdminEnabled()) {
+        try {
+          await deleteFirebaseUser(target.firebaseUid);
+          firebaseDeleted = true;
+        } catch (e) {
+          console.error('Deleted the DB row but Firebase delete failed:', e);
+          return res.status(207).json({
+            message: 'Removed from the dashboard, but the Firebase account could not be deleted.',
+            firebaseDeleted: false,
+          });
+        }
+      }
+      res.status(200).json({ firebaseDeleted });
     } catch (error) {
       console.error('Error deleting operator:', error);
       res.status(500).json({ message: 'Error deleting operator' });
@@ -1852,12 +1944,11 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
 
   // Sponsor CRUD endpoints
 
-  app.get('/api/sponsors', async (req, res) => {
+  app.get('/api/sponsors', async (_req, res) => {
     try {
-      const owner = readScopeOwnerId(req.operator);
-      const result = owner === null
-        ? await storage.getAllSponsors()
-        : await storage.getUserSponsors(owner);
+      // Sponsors are a SHARED catalog (interim toward the Brand-tenant model):
+      // every tenant sees the full pool, not just its own.
+      const result = await storage.getAllSponsors();
       res.json(result);
     } catch (error) {
       console.error('Error fetching sponsors:', error);
@@ -1934,6 +2025,55 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
     } catch (error) {
       console.error('Error deleting sponsor:', error);
       res.status(500).json({ message: 'Error deleting sponsor' });
+    }
+  });
+
+  // ───────────────────────────────────────────────────────────────────────
+  // Sponsor-facing surface (role `sponsor`). Every route is SELF-SCOPED to the
+  // logged-in sponsor's users.sponsor_id — the sponsor never passes a sponsor
+  // id, so there is no cross-sponsor leakage by construction. Gated by the
+  // `sponsor:read-own` capability. Interim toward the Brand-tenant model.
+  // ───────────────────────────────────────────────────────────────────────
+  app.get('/api/sponsor/me', async (req, res) => {
+    const sid = req.operator?.sponsorId ?? null;
+    if (sid == null) return res.status(403).json({ message: 'This account is not linked to a sponsor' });
+    try {
+      const s = await storage.getSponsor(sid);
+      if (!s) return res.status(404).json({ message: 'Sponsor not found' });
+      res.json({
+        id: s.id,
+        name: s.name,
+        logoUrl: s.logoUrl,
+        avatarUrl: s.avatarUrl,
+        primaryColor: s.primaryColor,
+        secondaryColor: s.secondaryColor,
+        hasCommerce: Boolean(s.commerceApiKey),
+      });
+    } catch (error) {
+      console.error('[sponsor/me] error', error);
+      res.status(500).json({ message: 'Error loading sponsor' });
+    }
+  });
+
+  app.get('/api/sponsor/me/usage', async (req, res) => {
+    const sid = req.operator?.sponsorId ?? null;
+    if (sid == null) return res.status(403).json({ message: 'This account is not linked to a sponsor' });
+    try {
+      res.json(await storage.getSponsorUsage(sid));
+    } catch (error) {
+      console.error('[sponsor/me/usage] error', error);
+      res.status(500).json({ message: 'Error loading usage' });
+    }
+  });
+
+  app.get('/api/sponsor/me/stats', async (req, res) => {
+    const sid = req.operator?.sponsorId ?? null;
+    if (sid == null) return res.status(403).json({ message: 'This account is not linked to a sponsor' });
+    try {
+      res.json(await storage.getSponsorStats(sid));
+    } catch (error) {
+      console.error('[sponsor/me/stats] error', error);
+      res.status(500).json({ message: 'Error loading stats' });
     }
   });
 
@@ -2306,9 +2446,9 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       if (!sponsor) {
         return res.status(404).json({ message: 'Primary sponsor not found' });
       }
-      if (sponsor.userId !== userId) {
-        return res.status(403).json({ message: 'Access denied - sponsor does not belong to this user' });
-      }
+      // Sponsors are a SHARED catalog (interim toward the Brand-tenant model in
+      // the handbook platform-definition): any publisher can use any sponsor, so
+      // there is no tenant-ownership check on the primary sponsor.
 
       const campaignData = { ...req.body, userId, primarySponsorId: Number(primarySponsorId) };
       if (campaignData.startDate) {

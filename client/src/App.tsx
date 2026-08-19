@@ -5,8 +5,9 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { UserProvider } from "@/contexts/UserContext";
 import { ThemeProvider } from "@/contexts/ThemeContext";
-import { RequireAuth } from "@/components/RequireAuth";
+import { RequireAuth, RequireSponsor } from "@/components/RequireAuth";
 import AdminPage from "@/pages/admin";
+import MyBrandPage from "@/pages/my-brand";
 import ViewerPage from "@/pages/viewer";
 import DocsPage from "@/pages/docs";
 import CampaignViewerPage from "@/pages/campaign-viewer";
@@ -95,6 +96,9 @@ function Router() {
 
       <Route path="/admin">
         <RequireAuth><AdminPage /></RequireAuth>
+      </Route>
+      <Route path="/my-brand">
+        <RequireSponsor><MyBrandPage /></RequireSponsor>
       </Route>
       <Route path="/viewer" component={ViewerPage} />
 

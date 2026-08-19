@@ -19,13 +19,15 @@ export type Capability =
   | "campaigns:read"
   | "campaigns:create"
   | "campaigns:write"
-  | "users:manage";
+  | "users:manage"
+  | "sponsor:read-own";
 
 export const ALL_CAPABILITIES: Capability[] = [
   "apps:read", "apps:create", "apps:write",
   "sponsors:read", "sponsors:write",
   "campaigns:read", "campaigns:create", "campaigns:write",
   "users:manage",
+  "sponsor:read-own",
 ];
 
 // v1 starting point (owner decision 2026-06-10):
@@ -42,6 +44,9 @@ export const ROLE_CAPABILITIES: Record<Role, Capability[]> = {
   ],
   operator: ["apps:read", "campaigns:read", "campaigns:create"],
   viewer: ["sponsors:read"],
+  // Brand-facing user: sees ONLY its own footprint via /api/sponsor/me/*
+  // (self-scoped to users.sponsor_id). Deliberately no operator capabilities.
+  sponsor: ["sponsor:read-own"],
 };
 
 export function can(role: Role, cap: Capability): boolean {
@@ -60,6 +65,12 @@ export function requiredCapabilityFor(method: string, path: string): Capability 
   const clean = path.replace(/\/+$/, "");
 
   if (/^\/api\/(auth\/users|users)(\/|$)/.test(clean)) return "users:manage";
+
+  // Pending brand-signup inbox — provisioning surface, super_admin only.
+  if (/^\/api\/pending-brands(\/|$)/.test(clean)) return "users:manage";
+
+  // Sponsor-facing surface — the handler always self-scopes to req.operator.sponsorId.
+  if (/^\/api\/sponsor\/me(\/|$)/.test(clean)) return "sponsor:read-own";
 
   if (/^\/api\/client-apps(\/|$)/.test(clean)) {
     if (m === "POST" && clean === "/api/client-apps") return "apps:create";

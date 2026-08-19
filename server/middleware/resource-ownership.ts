@@ -27,8 +27,9 @@ export interface OwnershipStore {
 /**
  * The owning `user_id` of the tenant resource a request targets, or `undefined`
  * when the path isn't a guarded resource, or the resource (or a parent in its
- * chain) doesn't exist. Components are intentionally absent — the components
- * table is a global library, not tenant-owned.
+ * chain) doesn't exist. Components and sponsors are intentionally absent — both
+ * are global/shared catalogs, not tenant-owned (sponsors: interim toward the
+ * Brand-tenant model in the handbook platform-definition).
  */
 export async function resolveResourceOwnerId(
   store: OwnershipStore,
@@ -40,7 +41,8 @@ export async function resolveResourceOwnerId(
   if ((m = path.match(/^\/api\/client-apps\/(\d+)(\/|$)/))) return (await store.getClientApp(+m[1]))?.userId;
   if ((m = path.match(/^\/api\/campaigns\/(\d+)(\/|$)/))) return (await store.getCampaign(+m[1]))?.userId;
   if ((m = path.match(/^\/api\/events\/(\d+)(\/|$)/))) return (await store.getCampaign(+m[1]))?.userId;
-  if ((m = path.match(/^\/api\/sponsors\/(\d+)(\/|$)/))) return (await store.getSponsor(+m[1]))?.userId;
+  // sponsors/:id is intentionally absent — sponsors are a shared/global catalog
+  // (interim toward the Brand-tenant model), not tenant-owned.
 
   // Via campaign.
   if ((m = path.match(/^\/api\/scheduled-components\/(\d+)(\/|$)/))) {
