@@ -2,6 +2,7 @@ import { WebSocketEvent, Campaign, InsertCampaign, Event, InsertEvent, CampaignF
 import { db } from "./db";
 import { campaigns, events, campaignFormState, scheduledComponents, components, campaignComponents, appComponentLocations, appPlacements, users, clientApps, channels, campaignTranslations, campaignEngagementConfig, campaignUiConfig, campaignFeatureFlags, sdkTranslations, broadcasts, polls, pollOptions, pollVotes, contests, contestParticipations, sponsors, broadcastAds, broadcastProducts, chatMessages, deviceTokens, sportmonksCache, campaignSponsors, broadcastSponsorSlots, shoppableAdActivations, endUsers, tvSessions, cartIntents } from "@shared/schema";
 import { eq, desc, and, or, gte, ne, isNull, isNotNull, sql, lte, inArray, notInArray } from "drizzle-orm";
+import { enqueueAdActivationMirror, enqueueCartIntentMirror, isAnalyticsMirrorEnabled } from "./events/analytics-mirror";
 
 export interface IStorage {
   addEvent(event: WebSocketEvent): Promise<void>;
@@ -1871,8 +1872,25 @@ export class MemStorage implements IStorage {
 
   // Shoppable Ad Activations (dispatch log) ------------------------------
   async createShoppableAdActivation(data: InsertShoppableAdActivation): Promise<ShoppableAdActivation> {
-    const [row] = await db.insert(shoppableAdActivations).values(data).returning();
-    return row;
+    // Transaction so the analytics mirror (outbox row) exists iff the
+    // activation committed. When mirroring is off this collapses to the
+    // plain insert. See server/events/analytics-mirror.ts (F4).
+    return await db.transaction(async (tx) => {
+      const [row] = await tx.insert(shoppableAdActivations).values(data).returning();
+      if (isAnalyticsMirrorEnabled()) {
+        let fallbackClientAppId: number | null = null;
+        if (!row.clientAppId) {
+          // Legacy dispatch paths don't set clientAppId — attribute via campaign.
+          const [campaign] = await tx
+            .select({ clientAppId: campaigns.clientAppId })
+            .from(campaigns)
+            .where(eq(campaigns.id, row.campaignId));
+          fallbackClientAppId = campaign?.clientAppId ?? null;
+        }
+        await enqueueAdActivationMirror(tx, row, fallbackClientAppId);
+      }
+      return row;
+    });
   }
 
   /// Lookup an activation row by id. Used by `/api/sdk/tv/cart-intent` to
@@ -1984,8 +2002,14 @@ export class MemStorage implements IStorage {
   }
 
   async createCartIntent(data: InsertCartIntent): Promise<CartIntent> {
-    const [row] = await db.insert(cartIntents).values(data).returning();
-    return row;
+    // Same transactional-mirror pattern as createShoppableAdActivation.
+    return await db.transaction(async (tx) => {
+      const [row] = await tx.insert(cartIntents).values(data).returning();
+      if (isAnalyticsMirrorEnabled()) {
+        await enqueueCartIntentMirror(tx, row);
+      }
+      return row;
+    });
   }
 
   async listCartIntentsByBroadcast(

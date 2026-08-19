@@ -20,6 +20,10 @@ export const EVENT_MODULES = [
   "engagement",
   "broadcast",
   "cart_intent",
+  // Server→collector mirror rows (vio-analytics). NEVER emitted over WS —
+  // the worker branches on this module before the scope switch, so
+  // firehose sockets can't see them. See server/events/analytics-mirror.ts.
+  "analytics",
 ] as const;
 
 export type EventModule = (typeof EVENT_MODULES)[number];

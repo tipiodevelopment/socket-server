@@ -23,6 +23,7 @@ import type { EventScopeType, WsEventEnvelope } from "./types";
 // always read the live function reference, not a stale snapshot at
 // import time.
 import { broadcastToCampaign } from "../routes";
+import { dispatchAnalyticsMirror } from "./analytics-mirror";
 
 // ── Tunables ────────────────────────────────────────────────────────────────
 
@@ -86,16 +87,24 @@ export async function processOutbox(): Promise<void> {
         const id: string = row.id;
         const attempts: number = Number(row.attempts ?? 0);
         try {
-          dispatchOne({
-            topic: row.topic,
-            module: row.module,
-            scopeType: row.scope_type as EventScopeType,
-            scopeId: Number(row.scope_id),
-            payload: row.payload ?? {},
-            serverTimestamp: row.server_timestamp instanceof Date
-              ? row.server_timestamp
-              : new Date(row.server_timestamp),
-          });
+          if (row.module === "analytics") {
+            // Analytics mirror rows go to the vio-analytics collector via
+            // HTTP, NEVER over WS (firehose sockets must not see them).
+            // Branching BEFORE dispatchOne keeps the scope switch WS-only.
+            // Async on purpose: a failed POST throws → normal retry path.
+            await dispatchAnalyticsMirror(row.payload ?? {});
+          } else {
+            dispatchOne({
+              topic: row.topic,
+              module: row.module,
+              scopeType: row.scope_type as EventScopeType,
+              scopeId: Number(row.scope_id),
+              payload: row.payload ?? {},
+              serverTimestamp: row.server_timestamp instanceof Date
+                ? row.server_timestamp
+                : new Date(row.server_timestamp),
+            });
+          }
 
           await tx.update(eventsOutbox)
             .set({
