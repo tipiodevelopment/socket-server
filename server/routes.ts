@@ -999,6 +999,15 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   setInterval(checkAndNotifyStartedCampaigns, 30000);
 
   const delay = (ms: number) => new Promise(res => setTimeout(res, ms));
+  /**
+   * Commerce is an upstream we don't control, and its dev environment shuts
+   * down on a schedule — so every attempt is bounded. Without a timeout a
+   * single call could hang for as long as the socket stayed open, and with
+   * retries on top an editor-facing request (the product picker) sat for 40s+
+   * before answering with nothing.
+   */
+  const GRAPHQL_TIMEOUT_MS = Number(process.env.COMMERCE_GRAPHQL_TIMEOUT_MS) || 8000;
+
   async function fetchGraphQL(
     query: string,
     commerceApiKey: string,
@@ -1006,6 +1015,8 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
     variables?: Record<string, unknown>,
   ): Promise<any> {
     console.log('[GraphQL] Fetching data...');
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), GRAPHQL_TIMEOUT_MS);
     try {
       const res = await fetch(process.env.COMMERCE_GRAPHQL_URL || 'http://graph-ql', {
         method: 'POST',
@@ -1014,6 +1025,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
           'Authorization': commerceApiKey,
         },
         body: JSON.stringify(variables ? { query, variables } : { query }),
+        signal: controller.signal,
       });
 
       if (!res.ok) {
@@ -1035,17 +1047,23 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       const isRetryable =
         code === 'ECONNRESET' ||
         code === 'ETIMEDOUT' ||
+        err.name === 'AbortError' ||          // our own timeout fired
         err.message?.includes('fetch failed');
 
       if (retries > 0 && isRetryable) {
         await delay(200 * (4 - retries));
-        return fetchGraphQL(query, commerceApiKey, retries - 1);
+        // Pass `variables` on: without them a parameterised query silently
+        // retries as a different query (the catalogue loses its market and
+        // currency and comes back empty).
+        return fetchGraphQL(query, commerceApiKey, retries - 1, variables);
       }
 
       console.error('[GraphQL error]', {
-        message: err.message,
+        message: err.name === 'AbortError' ? `timed out after ${GRAPHQL_TIMEOUT_MS}ms` : err.message,
         code,
       });
+    } finally {
+      clearTimeout(timer);
     }
   }
 
