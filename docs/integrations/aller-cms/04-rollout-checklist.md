@@ -9,14 +9,39 @@ hand you something; everything else you can build immediately.
 
 | # | Task | Owner | Blocking? |
 |---|---|---|---|
-| 0.1 | Receive **Vio API base URL** + **surface API key** for *Mote & Livsstil* | ⏸ Vio | yes |
-| 0.2 | Put the key in Replit Secrets; make the base URL an env var | you | — |
-| 0.3 | Verify with one curl: `GET {base}/v2/web/brands` returns `fredrikoglouisa` | you | — |
+| 0.1 | Receive the **surface API key** for *Mote & Livsstil*, and the endpoint to start against | ⏸ Vio | yes |
+| 0.2 | Key + `VIO_ENVIRONMENT` in Replit Secrets | you | — |
+| 0.3 | Verify with one curl that `/v2/web/brands` returns `fredrikoglouisa` | you | — |
 
-> **The base URL will change.** The first integration runs against a temporary
-> endpoint while the Vio work is being deployed; you will then move to staging,
-> and later to production. Treat it as configuration from line one — never a
-> constant in the source.
+### Environments — pass a name, not URLs
+
+`Vio.init({ environment })` accepts `development`, `testing` or `production`,
+and resolves the REST API, the GraphQL endpoint **and** the analytics collector
+from it. Three values that must agree, derived from one. Switching environments
+is a single word, and a staging API can never end up paired with a production
+collector.
+
+```ts
+Vio.init({ apiKey, environment: 'testing' })   // ✅
+Vio.init({ apiKey, apiBase: 'https://…' })     // ⚠️ only for the case below
+```
+
+**The one exception — the first phase.** The Vio work backing this integration
+is not deployed yet, so you will start against a **temporary endpoint** that
+matches no environment name. For that phase only:
+
+```ts
+Vio.init({
+  apiKey,
+  environment: 'testing',
+  apiBase: process.env.VIO_API_BASE_OVERRIDE,   // set only while temporary
+})
+```
+
+Keep it behind an env var that is **empty everywhere else**, and delete the
+override once we tell you staging is live. From then on, only
+`VIO_ENVIRONMENT` changes — `testing` while integrating, `production` at
+launch.
 
 ---
 
@@ -54,7 +79,7 @@ persist a half-configured block.
 
 | # | Task | Ref |
 |---|---|---|
-| 3.1 | `pnpm add @vio-live/web-sdk`; init from seeded config | front §1–2 |
+| 3.1 | `pnpm add @vio-live/web-sdk`; init with `environment` from seeded config | front §1–2 |
 | 3.2 | Register the block renderer with the React wrappers | front §3 |
 | 3.3 | Degradation: hide dead products, `null` if all fail | front §3 |
 | 3.4 | Real cards in preview | front §3 |
@@ -101,7 +126,8 @@ The module was built in the copy on purpose. Porting is:
 
 1. The `vio_sponsor_id` column, via the same boot-time pattern.
 2. The block type, its editor panel, the modal, the renderer entry.
-3. The env vars — pointing at **production** Vio, with production brands.
+3. The env vars — `VIO_ENVIRONMENT=production`, with production brands, and no
+   base-URL override.
 
 Nothing in the module reads anything project-specific beyond your article model,
 so the port is a copy plus configuration.

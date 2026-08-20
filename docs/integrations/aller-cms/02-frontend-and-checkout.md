@@ -17,10 +17,15 @@ pnpm add @vio-live/web-sdk
 import { Vio } from '@vio-live/web-sdk'
 
 Vio.init({
-  apiKey,                 // surface key, seeded from the server — see §2
-  environment: 'testing', // or an explicit apiBase — never hardcode a URL
+  apiKey,                  // surface key, seeded from the server — see §2
+  environment: 'testing',  // development | testing | production
 })
 ```
+
+That single name resolves the REST API, the GraphQL endpoint **and** the
+analytics collector. Do not pass URLs: three values that must stay in step are
+better derived from one. (`apiBase` / `graphQLBase` / `eventsBase` exist as
+overrides for the temporary phase in `04-rollout-checklist.md` Phase 0.)
 
 `Vio.init` is safe in a module scope: the headless core touches no DOM on
 import. The **components** need a browser, so register them inside a
@@ -37,7 +42,10 @@ way:
 ```ts
 // server, while building the shell
 if (isVioEnabled() && article.vioSponsorId) {
-  seed.vio = { apiKey: process.env.VIO_API_KEY, apiBase: process.env.VIO_API_BASE }
+  seed.vio = {
+    apiKey: process.env.VIO_API_KEY,
+    environment: process.env.VIO_ENVIRONMENT,   // a name, not a URL
+  }
 }
 ```
 

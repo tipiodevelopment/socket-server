@@ -12,9 +12,15 @@ work happens.
 
 ```bash
 VIO_ENABLED=true
-VIO_API_KEY=<surface key>          # Replit Secrets, never in the repo
-VIO_API_BASE=https://…             # configurable — see 04-rollout-checklist.md
+VIO_API_KEY=<surface key>       # Replit Secrets, never in the repo
+VIO_ENVIRONMENT=testing         # development | testing | production
 ```
+
+**Pass the environment name, not URLs.** The SDK derives the REST API, the
+GraphQL endpoint and the analytics collector from it — three values that must
+agree, resolved from one. Moving between environments is then a single word.
+(There is a URL override for the temporary phase in
+`04-rollout-checklist.md` Phase 0; it is not the normal path.)
 
 One helper, e.g. `isVioEnabled()` = flag on **and** key present. Every later
 step hangs off it.

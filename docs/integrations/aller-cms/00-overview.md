@@ -96,8 +96,10 @@ stock real, and checkout possible.
 
 ## 6. Prerequisites before any code
 
-1. **Vio API base URL** — configurable from day one, never hardcoded. You will
-   start against one URL and move to another; see `04-rollout-checklist.md`.
+1. **Vio environment** — `development` | `testing` | `production`. You pass the
+   *name*, not URLs: the SDK resolves the REST API, the GraphQL endpoint and the
+   analytics collector from it, so they can never drift apart. See
+   `04-rollout-checklist.md` for which one to use when.
 2. **Surface API key** for *Mote & Livsstil*, in Replit Secrets.
 3. A brand with a connected commerce channel. *Fredrik & Louisa* is ready:
    9 products, Stripe (test) + Klarna + Vipps enabled.
