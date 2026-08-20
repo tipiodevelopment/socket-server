@@ -1525,6 +1525,37 @@
           }
         }
       ]
+    },
+    {
+      "name": "6. Web surface (/v2/web/*)",
+      "item": [
+        {
+          "name": "6.1 GET /v2/web/brands (brands available on this surface)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v2/web/brands",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v2",
+                "web",
+                "brands"
+              ]
+            },
+            "description": "Brands available on this surface: every sponsor in one of its ACTIVE campaigns (primary or secondary), deduplicated. Used by the web SDK and publisher CMS integrations so an editor can pick a brand for an article. `connected: false` means the brand has no commerce channel and cannot sell. An empty list means no active campaign — a valid answer, not an error."
+          },
+          "response": []
+        }
+      ]
     }
   ],
   "variable": [
