@@ -68,8 +68,9 @@ Cross-refs:
 
 **Rule of thumb per table**:
 - `users` = dashboard operator account (one human).
-- `client_apps` = a mobile/TV app instance (TV2, Viaplay, etc.) with its own `apiKey`.
-- `sponsors` = a brand with its own Commerce catalog.
+- `client_apps` = **a surface**: the publisher property where Vio runs (TV2, Viaplay, a website), with its own `apiKey`. It is NOT one native app — see `surface_platforms`.
+- `surface_platforms` = the platforms of a surface (web / ios / android / vev / *-tv), each with its own identifier.
+- `sponsors` = a brand **as sold through one Commerce channel** (`commerceApiKey`). One Commerce user may own several channels, so a sponsor maps to a channel, not to a user.
 - `campaigns` = time-bounded marketing activation under an app with 1 primary + N secondary sponsors.
 - `components` = platform-wide read-only library of canonical templates (`is_template = true`): countdown, offer_banner, product_banner, product_carousel, product_spotlight, product_store. Vio admin edits via SQL only.
 - `app_component_locations` = slot ids the SDK declared at boot (sync-semantic).
@@ -92,6 +93,7 @@ erDiagram
     users ||--o{ sponsors : owns
     users ||--o{ campaigns : owns
 
+    client_apps ||--o{ surface_platforms : "runs on"
     client_apps ||--o{ app_component_locations : "declares slots"
     client_apps ||--o{ app_placements : "operator binds"
     client_apps ||--o{ campaigns : hosts
@@ -124,15 +126,35 @@ erDiagram
 
 ### 2.1 Column summary (key columns only)
 
-#### `client_apps`
-`id, userId → users, name, bundleId, apiKey, webhookUrl, partnerDeviceRegisterUrl, tvEnabled, tvPlatforms (text[])`
+#### `client_apps` (= a **surface**)
+`id, userId → users, name, bundleId (LEGACY, nullable since 0010), apiKey, webhookUrl, partnerDeviceRegisterUrl, tvEnabled, tvPlatforms (text[], LEGACY)`
+
+- `bundleId` used to be NOT NULL, which forced every surface to look like one
+  native app — it was in practice holding slugs (`viaplay-demo`, `tv2demo`).
+  Real identifiers now live per platform.
+- `apiKey` stays **per surface** (not per platform), so SDK bootstrap is unchanged.
+
+#### `surface_platforms` (migration 0010)
+`id, surfaceId → client_apps (CASCADE), kind ('web' | 'ios' | 'android' | 'vev' | 'apple-tv' | 'android-tv' | 'fire-tv'), identifier (nullable), enabled, createdAt`
+
+- One surface spans many platforms: VG = web + iOS + Android. `identifier` is the
+  bundle id / package name / domain / Vev project id — different per platform,
+  which is why it cannot live on the surface.
+- Partial UNIQUE: one row per `(surface, kind)` while `identifier IS NULL`;
+  several identifiers of the same kind allowed (e.g. two web domains), never duplicated.
+- `tvEnabled`/`tvPlatforms[]` were the bolted-on precursor; 0010 backfilled them as rows.
 
 #### `sponsors`
 `id, userId → users, name, logoUrl, avatarUrl, primaryColor, secondaryColor, commerceApiKey, commerceChannelId, paymentMethods (json: ['card','klarna','vipps','apple_pay','google_pay'])`
 
 - `avatarUrl` = square brand mark (overlays / product cards).
 - `logoUrl` = wide horizontal logo (headers / full-screen).
-- `commerceApiKey` present → sponsor can drive shoppable flows. Null → visual-only.
+- `commerceApiKey` present → sponsor can drive shoppable flows. Null → inert: the
+  dashboard marks it *Not connected* and blocks it in the campaign picker, since a
+  campaign bound to it would render no products.
+- The key identifies a **channel**, not a brand: one Commerce user may own several
+  channels with different keys, so *which* key is pasted decides which catalog the
+  campaign sells from. Entered by hand — it cannot be derived from a Commerce user.
 
 #### `campaigns`
 `id, userId, clientAppId → client_apps, primarySponsorId → sponsors (NOT NULL, immutable once children exist), name, startDate, endDate, isPaused, targetCountries (text[]), webhookUrl`
@@ -247,11 +269,12 @@ Auth column: `apiKey` = `X-API-Key` header; `session` = dashboard cookie; `Beare
 |---|---|---|
 | GET | `/api/client-apps` | list apps |
 | GET | `/api/client-apps/with-stats` | list apps with placement / campaign counts |
-| POST | `/api/client-apps` | create app |
+| POST | `/api/client-apps` | create surface. Accepts `platforms[]` (`{kind, identifier}`); `bundleId` no longer required |
 | GET | `/api/client-apps/:id` | app detail |
 | PATCH | `/api/client-apps/:id` | update app |
 | POST | `/api/client-apps/:id/regenerate-key` | rotate apiKey |
 | DELETE | `/api/client-apps/:id` | delete app |
+| PUT | `/api/client-apps/:id/platforms` | replace the surface's platform set (`{platforms:[{kind,identifier}]}`) |
 | GET | `/api/client-apps/:id/channels` | reachu channels linked to this app |
 | GET | `/api/client-apps/:id/campaigns` | campaigns owned by this app (clientAppId-linked + channel-linked) |
 | GET | `/api/client-apps/:id/component-locations` | list slots declared by SDK manifest. Default filters out `deprecated_at IS NOT NULL`; pass `?includeDeprecated=true` to see all. Source for the dashboard's "Add from library" form's location picker. |
