@@ -6763,6 +6763,65 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   }
 
   // GET /v2/sdk/config — primary + secondary sponsors with commerce per sponsor
+  /**
+   * Brands available on this surface — every sponsor taking part in one of its
+   * ACTIVE campaigns (primary or secondary), deduplicated.
+   *
+   * Why this exists next to /v2/mobile/config: that endpoint answers "what is
+   * running right now?" and deliberately returns a single active campaign, a
+   * contract the iOS and TV SDKs depend on. A CMS asks a different question —
+   * "which brands may an editor choose for this article?" — and an editorial
+   * site runs several brands at once. Adding it here keeps the mobile contract
+   * untouched.
+   *
+   * Auth: the surface apiKey, so a site only ever sees its own brands.
+   */
+  app.get('/v2/web/brands', validateApiKey, async (req, res) => {
+    try {
+      const clientApp = (req as any).clientApp;
+      const campaigns = await storage.getClientAppCampaigns(clientApp.id);
+      const now = new Date();
+      const active = campaigns.filter(c =>
+        (!c.startDate || new Date(c.startDate) <= now) &&
+        (!c.endDate || new Date(c.endDate) >= now) &&
+        c.isPaused !== 'true'
+      );
+
+      // sponsorId → the campaigns it can be used with (an editor may need to
+      // know which activation a placement belongs to).
+      const usage = new Map<number, Array<{ id: number; name: string; role: 'primary' | 'secondary' }>>();
+      const note = (sponsorId: number, c: typeof campaigns[number], role: 'primary' | 'secondary') => {
+        const list = usage.get(sponsorId) ?? [];
+        list.push({ id: c.id, name: c.name, role });
+        usage.set(sponsorId, list);
+      };
+
+      for (const c of active) {
+        if (c.primarySponsorId) note(c.primarySponsorId, c, 'primary');
+        for (const s of await storage.getCampaignSponsors(c.id)) note(s.sponsorId, c, 'secondary');
+      }
+
+      const brands = (await Promise.all(
+        Array.from(usage.keys()).map(async (sponsorId) => {
+          const block = await buildSponsorBlock(sponsorId);
+          if (!block) return null;
+          return {
+            ...block,
+            // A brand with no commerce channel cannot sell: the CMS should show
+            // it as unavailable rather than let an editor pick it.
+            connected: block.commerce !== null,
+            campaigns: usage.get(sponsorId) ?? [],
+          };
+        }),
+      )).filter(Boolean);
+
+      res.json({ surface: { id: clientApp.id, name: clientApp.name }, brands });
+    } catch (error) {
+      console.error('[v2/web/brands] error', error);
+      res.status(500).json({ error: 'Error listing brands for this surface' });
+    }
+  });
+
   app.get('/v2/mobile/config', validateApiKey, async (req, res) => {
     try {
       const clientApp = (req as any).clientApp;
