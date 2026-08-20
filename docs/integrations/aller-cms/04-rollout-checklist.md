@@ -110,9 +110,15 @@ so the port is a copy plus configuration.
 
 ## Known unknowns — tell us if you hit these
 
-- **Commerce can be slow.** The catalogue call goes through to Vio Commerce; we
-  have seen sub-second responses and also 40s+ during an upstream outage. Put a
-  client timeout on the picker and never block saving on it.
+- **The dev Commerce environment shuts down automatically at 01:00.** Products
+  stop resolving and the catalogue call hangs, then returns `total: 0`. It is a
+  scheduled shutdown, not a failure — if you are testing late and everything
+  suddenly returns nothing, this is why. Ask us for the current environment
+  schedule before a night session.
+- **Commerce can be slow even when up.** The catalogue call goes through to Vio
+  Commerce; we have measured sub-second responses and also 40s+ while it was
+  unavailable. Put a client timeout on the picker, show a retry, and never block
+  saving the article on it.
 - **An empty brand list is valid** (no active campaign), not an error state.
 - **Expired campaigns**: if a brand's campaign ends, it stops appearing in
   `/v2/web/brands`. What should happen to already-published articles using that

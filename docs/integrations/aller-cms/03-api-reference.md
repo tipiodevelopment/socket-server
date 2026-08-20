@@ -92,7 +92,9 @@ channel server-side.
 | `5xx` / timeout | commerce upstream unavailable | see below |
 
 > ⚠️ **Treat this call as slow and fallible.** It reaches Vio Commerce, which is
-> an upstream we do not control. We have measured it answering in under a second
+> an upstream we do not control — and whose **dev environment shuts down
+> automatically at 01:00**, after which this call hangs and then returns
+> `total: 0`. We have measured it answering in under a second
 > normally, and hanging for **40+ seconds** while Commerce was degraded. In the
 > picker: show a spinner, set your own client timeout (10s is reasonable), and
 > render a retry rather than an endless spinner. Never block saving the article
