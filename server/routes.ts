@@ -59,6 +59,7 @@ import { createRateLimiter, rateLimitPresets } from "./middleware/rate-limiter";
 import { validateBroadcastId } from "./middleware/broadcast-validator";
 import { firebaseAuth } from "./middleware/firebase-auth";
 import { ensureFirebaseUser, deleteFirebaseUser, isFirebaseAdminEnabled, listPendingSignups } from "./services/firebase-admin";
+import { verifyCommerceApiKey } from "./services/commerce";
 import {
   createApiGate,
   createSessionToken,
@@ -1978,10 +1979,27 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
 
   app.post('/api/sponsors', async (req, res) => {
     try {
-      const { name, description, logoUrl, avatarUrl, primaryColor, secondaryColor } = req.body;
+      const {
+        name, description, logoUrl, avatarUrl, primaryColor, secondaryColor,
+        commerceApiKey, commerceChannelId,
+      } = req.body;
       if (!name) {
         return res.status(400).json({ message: 'name is required' });
       }
+
+      // The channel key is what makes a sponsor able to sell, so a wrong one is
+      // rejected here rather than silently producing an empty campaign. A key
+      // is optional: without it the sponsor stays "not connected".
+      if (commerceApiKey) {
+        const check = await verifyCommerceApiKey(commerceApiKey);
+        if (check.status === 'invalid') {
+          return res.status(400).json({ message: `Commerce rejected this API key: ${check.reason}` });
+        }
+        if (check.status === 'unknown') {
+          console.warn('[sponsors] could not verify commerce key:', check.reason);
+        }
+      }
+
       // Owner is the creator's tenant (super_admin may target via body.userId).
       const userId = createOwnerId(req.operator, req.body.userId);
       const sponsor = await storage.createSponsor({
@@ -1992,6 +2010,8 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
         avatarUrl: avatarUrl || null,
         primaryColor: primaryColor || null,
         secondaryColor: secondaryColor || null,
+        commerceApiKey: commerceApiKey || null,
+        commerceChannelId: commerceChannelId || null,
       });
       res.status(201).json(sponsor);
     } catch (error) {
@@ -2009,6 +2029,17 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       const existing = await storage.getSponsor(id);
       if (!existing) return res.status(404).json({ message: 'Sponsor not found' });
       if (existing.userId !== userId) return res.status(403).json({ message: 'Access denied' });
+
+      // Same check as on create, but only when the key actually changes.
+      if (updateData.commerceApiKey && updateData.commerceApiKey !== existing.commerceApiKey) {
+        const check = await verifyCommerceApiKey(updateData.commerceApiKey);
+        if (check.status === 'invalid') {
+          return res.status(400).json({ message: `Commerce rejected this API key: ${check.reason}` });
+        }
+        if (check.status === 'unknown') {
+          console.warn('[sponsors] could not verify commerce key:', check.reason);
+        }
+      }
 
       const sponsor = await storage.updateSponsor(id, updateData);
       res.json(sponsor);
