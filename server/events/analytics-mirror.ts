@@ -187,4 +187,17 @@ export async function dispatchAnalyticsMirror(payload: Record<string, unknown>):
     const body = await res.text().catch(() => "");
     throw new Error(`[analytics-mirror] collector returned ${res.status}: ${body.slice(0, 300)}`);
   }
+  // 202 alone isn't success: the collector validates per-event and can
+  // reject ours while still returning 202. Treat rejection as failure so
+  // the outbox retries and (after MAX_ATTEMPTS) dead-letters with the
+  // reason — silent loss is the one unacceptable outcome.
+  const result = (await res.json().catch(() => null)) as {
+    accepted?: number;
+    rejected?: number;
+    errors?: Array<{ index: number; reason: string }>;
+  } | null;
+  if (!result || result.accepted !== 1) {
+    const reason = result?.errors?.[0]?.reason ?? "no acceptance reported";
+    throw new Error(`[analytics-mirror] event rejected by collector: ${reason}`);
+  }
 }
