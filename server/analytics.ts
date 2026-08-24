@@ -12,7 +12,6 @@ import {
   contestParticipations,
   campaignComponents,
   components,
-  appComponents,
   scheduledComponents,
   sponsors,
   campaignFeatureFlags,
@@ -173,7 +172,10 @@ export function registerAnalyticsRoutes(app: Express) {
           co.name,
           count(cc.id) as campaign_count
         FROM components co
-        JOIN campaign_components cc ON co.id = cc.component_id
+        -- Since migration 0004 a campaign binds an app_placement, not a
+        -- component directly; the template is reached through it.
+        JOIN app_placements ap ON ap.component_id = co.id
+        JOIN campaign_components cc ON cc.app_placement_id = ap.id
         GROUP BY co.id, co.type, co.name
         ORDER BY campaign_count DESC
         LIMIT 10
@@ -365,11 +367,12 @@ export function registerAnalyticsRoutes(app: Express) {
 
       const componentsRaw = await db.execute(sql`
         SELECT
-          cc.id, cc.component_id, cc.instance_name, cc.status, cc.activated_at,
+          cc.id, ap.component_id, cc.instance_name, cc.status, cc.activated_at,
           cc.scheduled_time, cc.end_time, cc.match_id,
           co.type, co.name as component_name
         FROM campaign_components cc
-        JOIN components co ON cc.component_id = co.id
+        JOIN app_placements ap ON cc.app_placement_id = ap.id
+        JOIN components co ON ap.component_id = co.id
         WHERE cc.campaign_id = ${campaignId}
         ORDER BY cc.updated_at DESC
       `);
@@ -600,13 +603,20 @@ export function registerAnalyticsRoutes(app: Express) {
 
   app.get('/api/analytics/sponsors', async (_req, res) => {
     try {
+      // "this campaign involves this sponsor" — primary or secondary.
+      const belongs = sql`(c.primary_sponsor_id = s.id OR EXISTS (
+        SELECT 1 FROM campaign_sponsors cs WHERE cs.campaign_id = c.id AND cs.sponsor_id = s.id))`;
       const sponsorsRaw = await db.execute(sql`
         SELECT
           s.id, s.name, s.logo_url,
-          (SELECT count(*) FROM campaigns c WHERE c.sponsor_id = s.id) as campaign_count,
-          (SELECT coalesce(sum(p.total_votes), 0) FROM polls p JOIN broadcasts b ON p.broadcast_id = b.broadcast_id JOIN campaigns c ON b.campaign_id = c.id WHERE c.sponsor_id = s.id) as total_votes,
-          (SELECT count(*) FROM contest_participations cp JOIN contests ct ON cp.contest_id = ct.id JOIN broadcasts b ON ct.broadcast_id = b.broadcast_id JOIN campaigns c ON b.campaign_id = c.id WHERE c.sponsor_id = s.id) as total_participations,
-          (SELECT count(*) FROM broadcasts b JOIN campaigns c ON b.campaign_id = c.id WHERE c.sponsor_id = s.id) as broadcast_count
+          -- campaigns.sponsor_id became primary_sponsor_id in the multi-sponsor
+          -- redesign, and a sponsor also takes part as a secondary via
+          -- campaign_sponsors — counting only the primary would undercount
+          -- every brand that shares a campaign.
+          (SELECT count(*) FROM campaigns c WHERE ${belongs}) as campaign_count,
+          (SELECT coalesce(sum(p.total_votes), 0) FROM polls p JOIN broadcasts b ON p.broadcast_id = b.broadcast_id JOIN campaigns c ON b.campaign_id = c.id WHERE ${belongs}) as total_votes,
+          (SELECT count(*) FROM contest_participations cp JOIN contests ct ON cp.contest_id = ct.id JOIN broadcasts b ON ct.broadcast_id = b.broadcast_id JOIN campaigns c ON b.campaign_id = c.id WHERE ${belongs}) as total_participations,
+          (SELECT count(*) FROM broadcasts b JOIN campaigns c ON b.campaign_id = c.id WHERE ${belongs}) as broadcast_count
         FROM sponsors s
         ORDER BY campaign_count DESC
       `);
