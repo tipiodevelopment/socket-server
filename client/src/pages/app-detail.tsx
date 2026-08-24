@@ -14,6 +14,14 @@ import { queryClient, apiRequest } from '@/lib/queryClient';
 import { useUser } from '@/contexts/UserContext';
 import { AppLayout } from '@/components/AppLayout';
 import type { ClientApp, Campaign, Component as ComponentType } from '@shared/schema';
+import { PlatformPicker } from '@/components/PlatformPicker';
+import {
+  PLATFORM_LABELS, PLATFORM_ICONS, platformsToMap, platformsToPayload,
+  type SurfacePlatform,
+} from '@/lib/platforms';
+
+/** A surface spans platforms (web/iOS/Android/Vev/TV) — served with the app. */
+type ClientAppWithPlatforms = ClientApp & { platforms?: SurfacePlatform[] };
 import { ImageUploadWithPreview } from '@/components/ImageUploadWithPreview';
 import { ArrowLeft, Plus, Key, Copy, RefreshCw, Eye, EyeOff, Settings, ChevronRight, Megaphone, Puzzle, BarChart3, Users, Radio, Palette, Shield, Bell, Plug, X, Calendar, Tv } from 'lucide-react';
 
@@ -53,6 +61,9 @@ export default function AppDetailPage() {
   const [settingsTab, setSettingsTab] = useState('general');
   const [addComponentOpen, setAddComponentOpen] = useState(false);
   const [regenerateDialogOpen, setRegenerateDialogOpen] = useState(false);
+  const [platformsOpen, setPlatformsOpen] = useState(false);
+  // kind → identifier ('' = selected without one). Presence in the map = selected.
+  const [platformDraft, setPlatformDraft] = useState<Record<string, string>>({});
 
   const [editName, setEditName] = useState('');
   const [editDescription, setEditDescription] = useState('');
@@ -64,7 +75,7 @@ export default function AppDetailPage() {
   const [editTvEnabled, setEditTvEnabled] = useState(false);
   const [editTvPlatforms, setEditTvPlatforms] = useState<string[]>([]);
 
-  const { data: app, isLoading: appLoading } = useQuery<ClientApp>({
+  const { data: app, isLoading: appLoading } = useQuery<ClientAppWithPlatforms>({
     queryKey: ['/api/client-apps', appIdNum, userId],
     queryFn: async () => {
       const res = await fetch(`/api/client-apps/${appIdNum}?userId=${userId}`);
@@ -159,12 +170,35 @@ export default function AppDetailPage() {
       queryClient.invalidateQueries({ queryKey: ['/api/client-apps', appIdNum] });
       queryClient.invalidateQueries({ queryKey: ['/api/client-apps/with-stats'] });
       setEditModalOpen(false);
-      toast({ title: 'App Updated', description: 'Changes saved successfully.' });
+      toast({ title: 'Surface updated', description: 'Changes saved successfully.' });
     },
     onError: () => {
-      toast({ title: 'Error', description: 'Failed to update app', variant: 'destructive' });
+      toast({ title: 'Error', description: 'Failed to update surface', variant: 'destructive' });
     }
   });
+
+  // Replace the whole platform set of this surface (PUT is a full replace,
+  // mirroring the picker below).
+  const platformsMutation = useMutation({
+    mutationFn: async (platforms: { kind: string; identifier: string | null }[]) => {
+      const response = await apiRequest('PUT', `/api/client-apps/${appIdNum}/platforms`, { platforms });
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/client-apps', appIdNum] });
+      queryClient.invalidateQueries({ queryKey: ['/api/client-apps/with-stats'] });
+      setPlatformsOpen(false);
+      toast({ title: 'Platforms updated', description: 'This surface now reflects where it runs.' });
+    },
+    onError: () => {
+      toast({ title: 'Error', description: 'Failed to update platforms', variant: 'destructive' });
+    }
+  });
+
+  const openPlatforms = () => {
+    setPlatformDraft(platformsToMap(app?.platforms));
+    setPlatformsOpen(true);
+  };
 
   const regenerateKeyMutation = useMutation({
     mutationFn: async () => {
@@ -222,7 +256,7 @@ export default function AppDetailPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/client-apps', appIdNum, 'components'] });
-      toast({ title: 'Component Added', description: 'Component has been added to the app.' });
+      toast({ title: 'Component Added', description: 'Component has been added to the surface.' });
     },
     onError: () => {
       toast({ title: 'Error', description: 'Failed to add component', variant: 'destructive' });
@@ -235,7 +269,7 @@ export default function AppDetailPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/client-apps', appIdNum, 'components'] });
-      toast({ title: 'Component Removed', description: 'Component has been removed from the app.' });
+      toast({ title: 'Component Removed', description: 'Component has been removed from the surface.' });
     },
     onError: () => {
       toast({ title: 'Error', description: 'Failed to remove component', variant: 'destructive' });
@@ -288,7 +322,7 @@ export default function AppDetailPage() {
 
   if (appLoading || userLoading || (!app && !userId)) {
     return (
-      <AppLayout breadcrumbs={[{ label: 'Apps', href: '/apps' }, { label: 'Loading...' }]}>
+      <AppLayout breadcrumbs={[{ label: 'Surfaces', href: '/apps' }, { label: 'Loading...' }]}>
         <div className="text-center py-12">
           <p className="text-gray-500 dark:text-gray-400">Loading app...</p>
         </div>
@@ -298,7 +332,7 @@ export default function AppDetailPage() {
 
   if (!app) {
     return (
-      <AppLayout breadcrumbs={[{ label: 'Apps', href: '/apps' }, { label: 'Not Found' }]}>
+      <AppLayout breadcrumbs={[{ label: 'Surfaces', href: '/apps' }, { label: 'Not Found' }]}>
         <div className="text-center py-12">
           <p className="text-gray-900 dark:text-gray-100">App not found</p>
         </div>
@@ -309,7 +343,7 @@ export default function AppDetailPage() {
   const statusBadge = getStatusBadge(app.status || 'active');
 
   return (
-    <AppLayout breadcrumbs={[{ label: 'Apps', href: '/apps' }, { label: app.name }]}>
+    <AppLayout breadcrumbs={[{ label: 'Surfaces', href: '/apps' }, { label: app.name }]}>
       <div className="space-y-6">
         {app.bannerUrl && (
           <div className="relative h-32 rounded-xl overflow-hidden -mt-2 mb-2">
@@ -363,7 +397,7 @@ export default function AppDetailPage() {
           <div className="lg:col-span-2 space-y-6">
             <div className="border border-white/10 rounded-lg p-6">
               <div className="flex items-center justify-between mb-6">
-                <h2 className="text-sm font-semibold text-gray-400 uppercase">App Details</h2>
+                <h2 className="text-sm font-semibold text-gray-400 uppercase">Surface details</h2>
                 <button
                   data-testid="button-edit-details"
                   onClick={openEditModal}
@@ -376,13 +410,50 @@ export default function AppDetailPage() {
 
               <div className="space-y-4">
                 <div className="flex items-start">
-                  <div className="w-36 text-xs text-gray-500 uppercase font-medium pt-0.5">App Name</div>
+                  <div className="w-36 text-xs text-gray-500 uppercase font-medium pt-0.5">Name</div>
                   <div className="flex-1 text-sm text-gray-200">{app.name}</div>
                 </div>
                 <div className="flex items-start">
-                  <div className="w-36 text-xs text-gray-500 uppercase font-medium pt-2">Bundle ID</div>
-                  <div className="flex-1 text-sm font-mono bg-white/5 border border-white/10 px-3 py-2 rounded inline-block text-gray-200">{app.bundleId}</div>
+                  <div className="w-36 text-xs text-gray-500 uppercase font-medium pt-1">Platforms</div>
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      {app.platforms && app.platforms.length > 0 ? (
+                        app.platforms.map((p) => {
+                          const Icon = PLATFORM_ICONS[p.kind];
+                          return (
+                            <span
+                              key={p.id}
+                              className="inline-flex items-center gap-1.5 px-2 py-1 rounded text-xs bg-white/5 border border-white/10 text-gray-200"
+                              data-testid={`platform-${p.kind}`}
+                            >
+                              {Icon && <Icon className="w-3.5 h-3.5 text-[#5fb3a0]" />}
+                              {PLATFORM_LABELS[p.kind] ?? p.kind}
+                              {p.identifier && <span className="ml-0.5 font-mono text-gray-400">{p.identifier}</span>}
+                            </span>
+                          );
+                        })
+                      ) : (
+                        <span className="text-sm text-gray-500">No platforms yet</span>
+                      )}
+                      <button
+                        onClick={openPlatforms}
+                        data-testid="button-edit-platforms"
+                        className="px-2 py-1 rounded text-xs bg-white/5 hover:bg-white/10 border border-white/10 text-gray-400 hover:text-white transition"
+                      >
+                        Edit
+                      </button>
+                    </div>
+                  </div>
                 </div>
+                {app.bundleId && (
+                  <div className="flex items-start">
+                    <div className="w-36 text-xs text-gray-500 uppercase font-medium pt-2">Bundle ID</div>
+                    <div className="flex-1">
+                      <span className="text-sm font-mono bg-white/5 border border-white/10 px-3 py-2 rounded inline-block text-gray-200">{app.bundleId}</span>
+                      <p className="text-[11px] text-gray-500 mt-1">Legacy — identifiers now live per platform.</p>
+                    </div>
+                  </div>
+                )}
                 <div className="flex items-start">
                   <div className="w-36 text-xs text-gray-500 uppercase font-medium pt-2">API Key</div>
                   <div className="flex-1 text-sm">
@@ -668,17 +739,48 @@ export default function AppDetailPage() {
         </div>
       </div>
 
+      <Dialog open={platformsOpen} onOpenChange={setPlatformsOpen}>
+        <DialogContent className="bg-[#141824] border border-white/10 max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="text-white">Platforms</DialogTitle>
+            <DialogDescription>
+              Where this surface runs. One surface can span web, mobile and TV — each platform keeps its
+              own identifier.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-2">
+            <PlatformPicker value={platformDraft} onChange={setPlatformDraft} variant="dark" />
+          </div>
+          <DialogFooter>
+            <button
+              onClick={() => setPlatformsOpen(false)}
+              className="px-4 py-2 rounded text-sm text-gray-400 hover:text-white transition"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={() => platformsMutation.mutate(platformsToPayload(platformDraft))}
+              disabled={platformsMutation.isPending}
+              data-testid="button-save-platforms"
+              className="px-4 py-2 bg-white hover:bg-gray-200 text-black rounded text-sm font-medium transition disabled:opacity-50"
+            >
+              {platformsMutation.isPending ? 'Saving…' : 'Save platforms'}
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={editModalOpen} onOpenChange={setEditModalOpen}>
         <DialogContent className="bg-[#141824] border border-white/10 max-h-[85vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle className="text-white">Edit App Details</DialogTitle>
+            <DialogTitle className="text-white">Edit surface</DialogTitle>
             <DialogDescription className="text-gray-500">
               Update your app information
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div>
-              <Label className="text-gray-400 text-xs uppercase">App Name</Label>
+              <Label className="text-gray-400 text-xs uppercase">Name</Label>
               <Input
                 value={editName}
                 onChange={(e) => setEditName(e.target.value)}
@@ -686,15 +788,15 @@ export default function AppDetailPage() {
                 data-testid="input-edit-name"
               />
             </div>
-            <div>
+            <div className={app.bundleId ? undefined : 'hidden'}>
               <Label className="text-gray-400 text-xs uppercase">Bundle ID</Label>
               <Input
-                value={app.bundleId}
+                value={app.bundleId ?? ''}
                 readOnly
                 className="bg-white/5 border-white/10 text-gray-500 font-mono cursor-not-allowed mt-1"
                 data-testid="input-edit-bundle-id"
               />
-              <p className="text-xs text-gray-600 mt-1">Cannot be changed after creation</p>
+              <p className="text-xs text-gray-600 mt-1">Legacy — edit Platforms instead.</p>
             </div>
             <div>
               <Label className="text-gray-400 text-xs uppercase">Description</Label>
@@ -896,7 +998,7 @@ ReachuSDK.configure(
                   <div className={editTvEnabled ? '' : 'opacity-40 pointer-events-none'}>
                     <Label className="text-gray-400 text-xs uppercase">Supported platforms</Label>
                     <p className="text-xs text-gray-500 mt-1 mb-3">
-                      Pick which TV platforms this app supports. Subscribe rejects any TV client whose <code className="text-gray-400">platform</code> isn't in this list.
+                      Pick which TV platforms this surface supports. Subscribe rejects any TV client whose <code className="text-gray-400">platform</code> isn't in this list.
                     </p>
                     <div className="grid grid-cols-2 gap-2">
                       {[
@@ -1096,7 +1198,7 @@ function AddPlacementFromLibraryDialog({
           <DialogTitle className="text-white">Add placement from library</DialogTitle>
           <DialogDescription className="text-gray-500">
             Pick a template, a slot the SDK declared, and give it a human name.
-            The result is available to all campaigns of this app.
+            The result is available to all campaigns of this surface.
           </DialogDescription>
         </DialogHeader>
 
@@ -1143,7 +1245,7 @@ function AddPlacementFromLibraryDialog({
               className="w-full bg-[#0d1018] border border-white/10 rounded px-3 py-2 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-white/30"
             />
             {nameTaken && (
-              <p className="text-xs text-red-400 mt-1">Name already used by another placement in this app.</p>
+              <p className="text-xs text-red-400 mt-1">Name already used by another placement in this surface.</p>
             )}
           </div>
         </div>

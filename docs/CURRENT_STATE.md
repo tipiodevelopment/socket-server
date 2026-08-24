@@ -3,7 +3,11 @@
 > **Purpose**: one file to regain context after a compaction, a break, or a
 > new session. If you read only one doc, read this.
 >
-> **Last updated**: 2026-04-28 — Placement model **pivoted to dashboard-driven** (sprint 2026-04-27 PM + 2026-04-28 morning). The morning's "self-service named placements via SDK manifest" was retired; SDK now declares only slot **locations**, operator creates **named placements** in the dashboard against those slots, campaigns bind to placements. Migration `0004_named_placements_consolidation.sql` applied to `local/angelo-…` Neon branch. iOS carousel renders operator-controlled header (title + sponsor logo) with SVG-capable image renderer. Two open feature branches awaiting review.
+> **Last updated**: 2026-05-07 — VG advertorial demo (PR #14, commit `e463c51`) **landed in develop**. Live news feed (RSS) + Maxbo article + 3 product carousels + product store + end-to-end Apple Pay all working. Plus SDK polish: theme-driven Apple Pay confirmation sheet, frosted-glass bottom action bar, image margins, `PaymentRuntimeGuard` skip-if-bootstrapped (avoids iOS 26 deadlock). See §26.
+>
+> Q4 L4 multi-sponsor unified checkout sprint stays **STUCK** (paused 2026-05-06, last commit `3319396` untested). Branch `feat/multi-sponsor-checkout-flow` on VioSwiftSDK is local-only, never pushed. Resume sequence: merge `origin/develop` first (low/medium-risk manual merges in `ApplePayManager.swift`, `VApplePayButton.swift`, `PaymentRuntimeGuard.swift`), then run the smoke test matrix in §25. Full diff table in `VioSwiftSDK/Q4-L4-HANDOFF.md`.
+>
+> _Previous (2026-04-28)_: Placement model pivoted to dashboard-driven (sprint 2026-04-27 PM + 2026-04-28 morning). Migration `0004_named_placements_consolidation.sql` applied. iOS carousel renders operator-controlled header.
 
 This doc is the single source of truth for:
 - Which branch + commit of each repo is the working tip
@@ -1030,9 +1034,282 @@ purge to align with the v2 rule "no hardcoded apiKeys" everywhere.)
 - Drift script: still green (no contract / openapi / Postman changes,
   pure internal logic).
 
-### Follow-up (separate PR)
+### Follow-up — landed same-day (commit pending)
 
-- Remove the `'KCXF10Y-...'` hardcoded fallback from lines 5342 + 5644
-  (apply the same per-sponsor pattern + graceful degrade).
-- Drop the `COMMERCE_API_KEY` env var from `.env.example` and
-  documentation — every sponsor carries its own key in the DB now.
+- ✅ Removed `'KCXF10Y-...'` hardcoded fallback from `routes.ts:5342`
+  (`/v2/admin/broadcasts/:id/shoppable-ad`) and `routes.ts:5644`
+  (`/v2/commerce/products`). Both now resolve commerce key strictly
+  per-sponsor (`sponsors.commerce_api_key`); when no sponsor in scope
+  has a key, the dispatch keeps the `Product #${productId}` placeholder
+  and `/v2/commerce/products` returns `[]` rather than authenticating
+  against an unrelated channel.
+- ✅ Postman doc string `commerce_api_key = KCXF10Y-...` masked — the
+  key is no longer in source-controlled artifacts. (Commit history
+  still has it; XXL should rotate the key on their channel side as a
+  hygiene step, separate from this fix.)
+- ⚠️ The host-machine `.env` may still carry `COMMERCE_API_KEY=...`
+  for backwards compatibility — safe to delete locally, no longer
+  read by any code path. No `.env.example` in repo to update.
+
+### What "no hardcoded apiKeys" means now (locked 2026-04-29)
+
+Every commerce GraphQL call in `server/routes.ts` resolves the API key
+from `sponsors.commerce_api_key` for the sponsor that owns the
+operation:
+
+| Endpoint | Key source |
+|---|---|
+| `POST /v2/admin/broadcasts/:id/shoppable-ad` | `sponsorId` param → `sponsors.commerce_api_key` |
+| `GET /v2/commerce/products` | `sponsorId` query, else first sponsor in `campaign_sponsors` |
+| `GET /v2/commerce/sponsors/:sponsorId/catalog` | path `:sponsorId` → 422 if no key |
+| `POST /v2/tv/cart-intent` | body `sponsorId` (or activationId-derived) |
+| `POST /v2/mobile/campaigns/:id/cart-intent` | body `sponsorId` |
+
+If no sponsor in scope has a key, the endpoint **degrades gracefully**:
+either skips enrichment (placeholders) or returns empty/422.
+
+The `process.env.COMMERCE_API_KEY` env var is no longer read anywhere
+in code. It can be deleted from any `.env` without effect.
+
+## 24. Q4 multi-sponsor cart + Apple Pay (landed 2026-05-04)
+
+iOS SDK gained per-sponsor cart routing across the 4 layers of Q4.
+Lives in `feature/q4-product-sponsor-id` (PR #10) and
+`feature/q4-l3-cart-per-sponsor` (PR #11), both merged to develop on
+2026-05-04. Backend was not touched — Q4 is iOS-side only; the
+sponsor-aware backend pieces (per-sponsor `commerce_api_key` resolver
+and the `/v2/{tv,mobile}/cart-intent` fixes) shipped earlier in §23.
+
+### Q4 L1 — sponsorId propagation through the UI chain (PR #10)
+
+Threads `sponsorId: Int?` through `VProductCard` → `VProductDetailOverlay`
+→ `VApplePayButton` → `VApplePayConfirmationSheet`. The sheet's
+post-purchase logo now reflects the sponsor that owned the item, not
+the global `CommerceSdkClientProvider.activeSponsorId` which was a
+mutable side-effect of the last sponsor SDK lookup.
+
+Out of scope: cart routing (that's L3). L1 only fixes the visible
+sponsor logo in the confirmation sheet so `home_store` items from XXL
+no longer show "Elkjøp" as the merchant after Apple Pay completes.
+
+### Q4 L2 — per-sponsor product detail fetch (already shipped pre-Q4)
+
+`ProductService.loadProduct(sponsorId:)` was wired during the multi-
+sponsor polish sprint (2026-04-28). No new code in this Q4 phase —
+just verified that the carousel/spotlight/store paths exercise it.
+
+### Q4 L3 — per-sponsor cart end-to-end (PR #11)
+
+Storage:
+
+  - New `CartManager.SponsorCart` nested struct (cartId, checkoutId,
+    items, subtotal, currency, country, shippingTotal, shippingCurrency,
+    lastDiscountCode, lastDiscountId, sponsorId).
+  - New `@Published cartsBySponsor: [Int: SponsorCart]` source of
+    truth for multi-sponsor stores. The legacy `@Published items /
+    cartTotal / cartId / checkoutId` properties remain for back-compat
+    with single-sponsor placements.
+
+Lifecycle (`CartModule+SponsorCart.swift`):
+
+  - `addProduct(_:variant:quantity:sponsorId:)` overload — resolves
+    sponsor's SDK via `CommerceSdkClientProvider.client(forSponsorId:)`,
+    creates a Reachu cart in that channel on first item, syncs
+    SponsorCart from CartDto.
+  - `removeItem(_:fromSponsor:)`, `updateQuantity(for:to:fromSponsor:)`,
+    `clearCart(forSponsor:)`, `clearAllCarts()`.
+  - `createCheckout(forSponsor:)` — analogous to legacy createCheckout
+    but uses sponsor's SDK + sponsor's cartId; stores `checkoutId` on
+    the SponsorCart so it persists across multiple Apple Pay attempts.
+  - Aggregate readers: `itemCountAcrossSponsors`, `totalAcrossSponsors`,
+    `shippingTotalAcrossSponsors`, `sponsorCart(forSponsorId:)`.
+  - Strict per-sponsor key resolution in `resolveSponsorSdk` — if the
+    sponsor has no `commerce_api_key`, returns nil (no silent primary
+    fallback). Per the v2 rule "no hardcoded apiKeys".
+
+Apple Pay (`ApplePayManager.swift`):
+
+  - `pay(... sponsorId: Int? = nil)` overload + `pendingSponsorId`
+    state + `sdkForActivePayment(_:)` helper that returns the
+    sponsor's SDK when `pendingSponsorId` is set, else
+    `cartManager.sdk` (legacy).
+  - All downstream SDK calls go through `sdkForActivePayment`:
+    `cart.getById`, `payment.applePayInit`, `payment.stripeIntent`,
+    `payment.applePayConfirm`. Result: charge routes to the sponsor's
+    Stripe Connect account, not the primary's.
+  - `didSelectShippingContact` and `didSelectShippingMethod` PKPayment
+    delegates branch on sponsor mode: cart country update, shipping
+    methods list, and per-item `cart.updateItem(shipping_id:)` all go
+    through the sponsor's SDK + sponsor cart. Replicates the legacy
+    UX (Apple Pay sheet shows shipping picker) but for the right cart.
+  - `buildSummaryItems` reads from `cartsBySponsor[pendingSponsorId]`
+    in sponsor mode, falls back to `cartManager.items` legacy. Total
+    `merchantName` (the "Pay X" label in the Apple Pay sheet) resolves
+    from the sponsor's display name in the subscribe response when
+    sponsor mode is active.
+  - Hardcoded `BrandConfiguration.default.name = "Elkjøp"` was changed
+    to `"Vio"` (the aggregator brand) so hosts that don't override
+    `brand` no longer see "Pay Elkjøp" by accident.
+
+UI (`VCheckoutOverlay.swift` + `SponsorCheckoutSection.swift`):
+
+  - `VCheckoutOverlay.body` is dual-mode: when `cartsBySponsor.isEmpty`,
+    renders the legacy `mainContent` (single-cart flow with
+    Klarna/Vipps/Stripe options); otherwise renders
+    `multiSponsorContent` which iterates `cartsBySponsor` ordered by
+    subtotal desc.
+  - `SponsorCheckoutSection` is the per-sponsor card: header (logo +
+    name + subtotal), items list with quantity buttons, totals
+    (subtotal + shipping + total), and a single Apple Pay button
+    scoped to that sponsor's `sponsorId`. Multi-sponsor mode is
+    Apple-Pay-only this sprint; Klarna/Vipps/Stripe stay in the
+    legacy single-cart path.
+
+### Stripe Connect setup requirement per sponsor channel
+
+For multi-sponsor Apple Pay to charge the correct Stripe account, each
+sponsor's channel in Commerce must have:
+
+  1. `commerce_api_key` configured on `sponsors.commerce_api_key`
+     (verified by drift invariant 6 — already enforced).
+  2. **Stripe Connect account linked** to that channel — separate from
+     the "Apple Pay enabled" flag in Commerce dashboard. Without it,
+     `applePayConfirm` returns the generic `[object Object]` 500 error.
+  3. `merchant.live.vio` whitelisted on that Stripe Connect account
+     (Apple Pay merchant ID).
+  4. The product being purchased must exist in the channel's catalog.
+
+This is **Commerce ops responsibility**, not SDK code. The SDK now
+sends the correct apiKey, checkoutId, and shipping_id per item — if
+Commerce rejects, the error is per-channel config.
+
+### What's deliberately not in Q4 L3
+
+  - Cross-session cart persistence — `cartsBySponsor` lives in memory
+    only.
+  - Klarna / Vipps / Stripe per-sponsor handlers — multi-sponsor is
+    Apple-Pay-only this sprint.
+  - Per-sponsor Apple Pay merchant identifier — `merchant.live.vio`
+    stays the same across all sponsors (Vio aggregator pattern).
+    Different sponsors get distinguished by the "Pay X" label
+    (B8 fix) and by Stripe Connect routing (B4 fix), not by
+    different merchant IDs.
+
+### Apple TV SDK status (independent)
+
+`InteractiveAds-vio` repo on `main` @ `873ec19` (since 2026-04-29).
+PRs #4 (docstrings) and #5 (minimal config) merged. The empty
+`InteractiveAds-vio.xcodeproj/` directory at the repo root is a
+leftover from before the Swift Package split — has no `project.pbxproj`,
+0 tracked files, can be deleted from disk. The real demo lives at
+`Demo/tv2demo-appletv/` and depends on the SDK as a local Swift
+Package. Its `vio-config.json` is 2 fields (apiKey, environment) per
+the post-PR #5 minimal pattern.
+
+
+## 25. Q4 L4 — Multi-sponsor unified checkout — **STUCK** (paused 2026-05-06)
+
+**Status: paused mid-implementation. Last commit untested.**
+
+The unified multi-sponsor checkout sprint (per-sponsor method picker → legacy step flow scoped to that sponsor) is 90% wired up but a critical fix in the latest commit hasn't been validated end-to-end. Resume from the branch's handoff doc.
+
+### Where the work lives
+
+- **VioSwiftSDK branch**: `feat/multi-sponsor-checkout-flow` (off `chore/q4-l3-cart-diagnostics`)
+- **Status**: local-only, never pushed
+- **Last commit**: `3319396 fix(q4-l4): cartManager.sdk routes to sponsor SDK when scoped + mirror currentCartId`
+- **Handoff doc**: `Q4-L4-HANDOFF.md` at the SDK repo root — read this first when resuming, has the full architectural breakdown, what works, what's stuck, and the smoke test matrix to validate.
+
+### Why it's stuck (high-level)
+
+The user's directive on this sprint was:
+1. Reuse legacy step flow components in `VCheckoutOverlay.mainContent` — do NOT create parallel new components.
+2. Modify in-place to be sponsor-aware via a "mirror" strategy: `enterSponsorCheckoutScope(sid)` copies `cartsBySponsor[sid]` into the legacy flat fields (items, cartTotal, cartId, checkoutId, etc.) so the existing step views render against sponsor data without per-step modification.
+
+Two bugs in the mirror strategy were caught only at end-to-end test:
+- `cartManager.sdk` was a stored field (always primary's apiKey). Every legacy `sdk.cart.*` call still went through the wrong channel.
+- `currentCartId` (internal twin of `cartId`) wasn't being mirrored. Legacy `ensureCartIDForCheckout` saw nil and called `createCart()` which spawned a new global cart on the wrong SDK.
+
+Both fixed in `3319396`:
+- `sdk` is now a computed property routing to sponsor SDK when scoped, falling back to `_legacySdk` (renamed stored field) otherwise.
+- `currentCartId` is mirrored alongside `cartId` in `enterScope`/`exitScope`.
+
+**Untested.** When resuming, smoke test the matrix in the handoff doc before any further code.
+
+### What works (validated pre-3319396)
+
+- Per-sponsor method picker chips in cart sections (`SponsorCheckoutSection.methodPickerRow`)
+- Klarna / Vipps / Stripe handlers accept optional `sponsorId` (backward compatible)
+- Apple Pay PDP "Pay Now" express path: `clearCart(forSponsor:)` works, server `cart.delete` returns 200, validated with curl
+- Defensive `refreshSponsorCartsFromServer` on cart open eliminates phantom items
+- `isPaid` reset when re-adding to a previously-paid sponsor cart
+
+### What MUST be tested next
+
+| Method | 1 sponsor | 2 sponsors |
+|--------|-----------|-----------|
+| Apple Pay (cart Checkout) | ✓ pre-3319396 | needs test |
+| Apple Pay (PDP Pay Now)   | ✓ pre-3319396 | n/a |
+| Klarna  | **needs test post-3319396** | needs test |
+| Vipps   | **needs test post-3319396** | needs test |
+| Stripe  | **needs test post-3319396** | needs test |
+| Mixed methods per sponsor | needs test | |
+| Cancel mid-flow | needs test | |
+| isPaid → re-add same sponsor | needs test | |
+
+### Lessons from this sprint (re-read before resuming)
+
+The user pushed back multiple times on these patterns:
+
+1. **Don't create new components when legacy can be modified.** First attempt (later reverted in `c9b5687`) created `SponsorCheckoutFlow.swift` + `VAllDoneSheet.swift`. User wanted in-place legacy mods.
+2. **Don't blame Commerce for 500s reflexively.** Two iOS bugs in this sprint surfaced as 500s from Commerce (`Cart item not remove`, `Cart item not update: Invalid Cart item`). Both confirmed iOS-side via direct curl — Commerce was responding correctly. Investigate iOS state first.
+3. **Trust Commerce — use existing methods as designed.** Don't build local-only workarounds (e.g. `cleanupSponsorCartLocally`). Use `clearCart(forSponsor:)` which calls `cart.delete` — Commerce supports it.
+
+### Out of scope this sprint (deferred)
+
+- Phase 8: Pay Now express in PDP true ephemeral cart (currently it adds to multi-sponsor cart then drains via clearCart — works but conceptually impure)
+- Phase 9: VAddedToCartSheet post-add confirmation sheet
+- Phase 10: cart_id persistence between app sessions, cleanup inline bypass paths (`VProductSpotlight:485`, `VCastingVideoPlayer:205`), full smoke test matrix doc updates
+- Discount sync gap (`discount.apply` returns only `{executed, message}`, SDK doesn't refresh cart post-discount)
+
+### How to resume
+
+1. `cd /Users/angelo/VioSwiftSDK && git checkout feat/multi-sponsor-checkout-flow`
+2. Read `Q4-L4-HANDOFF.md` at the repo root (full context — refreshed 2026-05-07 with develop drift table)
+3. **Merge `origin/develop` into the branch first** — VG demo (e463c51) added theme refactor + SDK polish that overlap `ApplePayManager.swift` / `VApplePayButton.swift` / `PaymentRuntimeGuard.swift`. Manual merges expected, low/medium risk; the table in the handoff doc lists each conflict spot.
+4. `File → Packages → Reset Package Caches`, `Cmd+Shift+K`, rebuild against the merged `3319396 + e463c51`.
+5. Run the smoke test matrix above.
+6. If any test goes red: filter Xcode console by `Q4-DIAG`, identify whether iOS-side or Commerce-side. Curl repro against Commerce GraphQL with the failing cart_id + sponsor's apiKey to triage.
+7. After all green: cleanup phases 8-10, push branch, open PR to develop.
+
+## 26. VG advertorial demo — landed 2026-05-07 (#14)
+
+`feat(vg-demo): VG advertorial flow with end-to-end Apple Pay (#14)` merged to develop as `e463c51`. Built around the Maxbo advertorial sponsored by Weber (campaign 38 / sponsor 8 in develop Neon branch).
+
+### What landed
+
+| Layer | What |
+|---|---|
+| **Vg demo** (`Demo/Vg/Vg/*`) | Live VG news feed with RSS (`NewsView` + `VGNewsFeedViewModel` + `VGRSSService` parsing `https://www.vg.no/rss/feed/?format=rss`). Maxbo advertorial sheet (`MaxboArticleView`) with hero, body sections, 3× `VProductCarousel` (componentId `product-carousel-template`), `VProductStore(locationId: "home_store")` + Schibsted Partnerstudio footer. Two-tone burgundy palette (`pageBackground #1C0000` + `burgundy #320000`). VG SVG wordmark in Assets. Mirrors TV2 setup: `userId = "demo_user_001"` + `VgPlacementRegistration.registerAll()` (3 locations: `home_top`, `product_spotlight`, `home_store`). |
+| **Vg config** | API key flipped to `vg_api_key_05e51473f1704187` (campaign 38 / sponsor Maxbo). `theme.mode = "light"`. `lightColors.priceColor = "#E61A22"` (VG red). `campaigns` block targets `api-dev.vio.live` (deployed dev backend already serves develop's Neon branch). `Vg.entitlements` Apple Pay capability with `merchant.live.vio` + `merchant.vio.development`. `Vg.xcodeproj` `CODE_SIGN_ALLOW_ENTITLEMENTS_MODIFICATION = YES` (was missing — TV2 has it). |
+| **SDK polish** (`Sources/VioUI/*`) | `VProductDetailOverlay`: `.regularMaterial` frosted-glass on bottom action bar; image gallery `.fill → .fit + VioSpacing.lg` inset; `.preferredColorScheme + .presentationBackground` pinned from `theme.mode` (iOS 17+/26 sheets don't reliably inherit). `VProductCard` + `VProductSpotlight`: image `.fit + .sm` inset (square products show whole). `VApplePayButton`: bg purple → `Color.black`. `VApplePayConfirmationSheet`: full refactor from hardcoded TV2 colors to `VioColors.adaptive(for:)` tokens — every host now sees its own brand on the Apple Pay confirmation sheet (Vg = white + red, TV2 = dark + purple). Both `VApplePayButton` chrome `.presentationBackground(...)` and the confirmation sheet body now read theme tokens. `VProductCarousel`: defensive sponsor fallback when `Component.sponsorId` is nil → `VioConfiguration.shared.primarySponsor?.id`. `PaymentRuntimeGuard.ensurePaymentRuntimeReady`: skip the defensive `ensureCommerceBootstrapApplied()` when `sdkBootstrapCommerceApiKey` is already set (re-firing on every payment tap was triggering a deadlock at `await MainActor.run` inside the bootstrap success path on iOS 26). |
+
+### Why the article view is **not** a `.fullScreenCover`
+
+Originally `MaxboArticleView` was presented as `.fullScreenCover` from `VGHomeView`. On iOS 26 this stalled `pay()` mid-flow: when `await sdk.cart.addItem(...)` resolved and `sync(from:)` updated `@Published` cart state, SwiftUI re-rendered the modal stack (`fullScreenCover` → article → `VProductCarousel` → `.sheet(VProductDetailOverlay)` → `VApplePayButton`). The re-render orphaned the awaiting Task — `addProduct` never returned, payment never advanced past AddItem 200.
+
+The fix: the article takes over the news tab content in-place (still occupies the whole tab area, no nav bar push), keeping the modal stack flat (only `.sheet` for product detail). Matches TV2's known-working pattern.
+
+### Carry-over for Q4 L4
+
+The VG SDK polish touched files Q4 L4 also modifies — see the **"Develop drift since this branch was paused"** table in `VioSwiftSDK/Q4-L4-HANDOFF.md`. Resume Q4 L4 by merging develop into `feat/multi-sponsor-checkout-flow` first; expected manual merges are low/medium-risk.
+
+### Known issue (post-merge, not blocking)
+
+User flagged: cart overlay doesn't show when adding multiple/different products in VG. Diagnostic still pending. Likely either (a) `VFloatingCartIndicator` reads `cartManager.itemCount` (legacy `items` array) which is empty when products go to `cartsBySponsor[8]`, or (b) the floating indicator wiring on the article view-swap isn't propagating the cart binding. Not blocking the demo — workaround is to enter via product detail's "Legg til i handlekurv" → its sheet handles checkout.
+
+### Out of scope this PR (tracked separately)
+
+- Backend support for placement-level styling (`backgroundColor`, padding) on `app_placements.custom_config`. White wrapper around `VProductStore` in NewsView is a host-level workaround. Tracked in a spawned task.
+- "Se liveshoppingen her" CTAs in the article currently no-op (no live-shopping flow wired).
+- Per-section unique product carousels in the article (currently 3 sections share the same 4 Weber products). Needs additional `campaign_components` rows in develop.

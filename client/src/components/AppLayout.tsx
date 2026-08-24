@@ -14,7 +14,7 @@ import { Input } from '@/components/ui/input';
 import { VioLogo } from '@/components/VioLogo';
 import {
   LayoutDashboard,
-  Smartphone,
+  Layers,
   Megaphone,
   Radio,
   ShoppingBag,
@@ -29,6 +29,7 @@ import {
   Sun,
   Moon,
   Award,
+  Users,
 } from 'lucide-react';
 import { useState } from 'react';
 
@@ -77,7 +78,9 @@ function HeaderBreadcrumbs({ breadcrumbs }: { breadcrumbs: BreadcrumbItem[] }) {
 
 const NAV_ITEMS = [
   { href: '/', label: 'Dashboard', icon: LayoutDashboard, exact: true },
-  { href: '/apps', label: 'Apps', icon: Smartphone },
+  // A "surface" is the publisher property where Vio runs — a site, an app, a TV
+  // channel. The route stays /apps (the SDK contract still says clientApp).
+  { href: '/apps', label: 'Surfaces', icon: Layers },
   { href: '/campaigns', label: 'Campaigns', icon: Megaphone },
   { href: '/sponsors', label: 'Sponsors', icon: Award },
   { href: '/broadcasts', label: 'Broadcasts', icon: Radio },
@@ -86,18 +89,23 @@ const NAV_ITEMS = [
   { href: '/docs', label: 'Docs', icon: FileText },
 ];
 
+// Users management is super_admin-only (ADR-0007). Appended to the nav
+// only for that role; the route and API are guarded independently.
+const SUPER_ADMIN_NAV = { href: '/users', label: 'Users', icon: Users };
+
 function isActiveRoute(itemHref: string, location: string, exact?: boolean) {
   if (exact) return location === itemHref;
   return location.startsWith(itemHref);
 }
 
 export function AppLayout({ children, breadcrumbs = [], title, subtitle, actions, headerBreadcrumb, headerBreadcrumbHref, hideSearch = false }: AppLayoutProps) {
-  const { reachuUserId, logout } = useUser();
+  const { email, role, logout } = useUser();
   const { theme, toggleTheme } = useTheme();
   const [location] = useLocation();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
-  const currentPage = NAV_ITEMS.find(item => isActiveRoute(item.href, location, item.exact));
+  const navItems = role === 'super_admin' ? [...NAV_ITEMS, SUPER_ADMIN_NAV] : NAV_ITEMS;
+  const currentPage = navItems.find(item => isActiveRoute(item.href, location, (item as { exact?: boolean }).exact));
   const pageTitle = title || currentPage?.label || 'Dashboard';
 
   const effectiveBreadcrumbs: BreadcrumbItem[] = breadcrumbs.length > 0
@@ -118,8 +126,8 @@ export function AppLayout({ children, breadcrumbs = [], title, subtitle, actions
         </div>
 
         <nav className="flex-1 flex flex-col items-center gap-1 py-4">
-          {NAV_ITEMS.map((item) => {
-            const active = isActiveRoute(item.href, location, item.exact);
+          {navItems.map((item) => {
+            const active = isActiveRoute(item.href, location, (item as { exact?: boolean }).exact);
             return (
               <Link key={item.href} href={item.href}>
                 <div
@@ -162,7 +170,7 @@ export function AppLayout({ children, breadcrumbs = [], title, subtitle, actions
             </div>
           </button>
           <div className="w-8 h-8 rounded-full bg-[#3d8b7a] dark:bg-white flex items-center justify-center text-white dark:text-[#0a0e1a] text-xs font-bold">
-            {(reachuUserId || 'U').charAt(0).toUpperCase()}
+            {(email || 'U').charAt(0).toUpperCase()}
           </div>
         </div>
       </aside>
@@ -217,10 +225,10 @@ export function AppLayout({ children, breadcrumbs = [], title, subtitle, actions
 
           {mobileMenuOpen && (
             <div className="md:hidden border-t border-gray-200 dark:border-[#2a3142] bg-white dark:bg-[#141824] px-3 py-2">
-              {NAV_ITEMS.map((item) => (
+              {navItems.map((item) => (
                 <Link key={item.href} href={item.href}>
                   <Button
-                    variant={isActiveRoute(item.href, location, item.exact) ? 'secondary' : 'ghost'}
+                    variant={isActiveRoute(item.href, location, (item as { exact?: boolean }).exact) ? 'secondary' : 'ghost'}
                     className="w-full justify-start gap-2 mb-1 text-gray-700 dark:text-white/70"
                     onClick={() => setMobileMenuOpen(false)}
                     data-testid={`mobile-nav-${item.label.toLowerCase()}`}

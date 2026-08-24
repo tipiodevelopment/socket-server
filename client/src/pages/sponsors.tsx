@@ -104,7 +104,10 @@ export default function SponsorsPage() {
 
   const updateMutation = useMutation({
     mutationFn: async ({ id, data }: { id: number; data: Partial<SponsorFormData> }) => {
-      const response = await apiRequest('PATCH', `/api/sponsors/${id}`, data);
+      // Backend requires `userId` in the body for ownership check (same
+      // pattern as DELETE which already includes it). Without it the
+      // handler short-circuits with 400 "userId is required".
+      const response = await apiRequest('PATCH', `/api/sponsors/${id}`, { ...data, userId });
       return response.json();
     },
     onSuccess: () => {
@@ -372,6 +375,18 @@ export default function SponsorsPage() {
                     >
                       {sponsor.name}
                     </h3>
+                    {/* A sponsor sells through its commerce channel: without that
+                        key Vio cannot fetch a single product, so the brand is
+                        inert. Surfacing it here stops silent, empty campaigns. */}
+                    {!(sponsor as any).commerceApiKey && (
+                      <span
+                        className="inline-flex items-center gap-1 mt-0.5 px-1.5 py-0.5 rounded text-[10px] bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20"
+                        title="Paste the commerce channel API key to activate this sponsor"
+                        data-testid={`badge-not-connected-${sponsor.id}`}
+                      >
+                        Not connected
+                      </span>
+                    )}
                     {sponsor.description && (
                       <div>
                         <p
