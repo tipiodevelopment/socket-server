@@ -13,5 +13,7 @@ COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/package.json ./
 COPY --from=builder /app/drizzle.config.ts ./
 COPY --from=builder /app/shared ./shared
+COPY --from=builder /app/migrations ./migrations
+COPY --from=builder /app/scripts/migrate.mjs ./scripts/migrate.mjs
 EXPOSE 3000
-CMD ["sh", "-c", "npx drizzle-kit push && node dist/preserver.js"]
+CMD ["sh", "-c", "node scripts/migrate.mjs && node dist/preserver.js"]

@@ -25,17 +25,32 @@
 -- re-reads the row per request, so role changes and de-provisioning take
 -- effect immediately.
 
-CREATE TYPE "user_role" AS ENUM ('super_admin', 'admin', 'operator', 'viewer');
+-- Statements below are written idempotently (IF NOT EXISTS / duplicate_object
+-- guards) because this migration was previously "applied" ad-hoc, piecemeal,
+-- via `drizzle-kit push` against live environments before this repo had a
+-- real migration runner — some environments may already have some of these
+-- objects and not others. Safe to re-run regardless of partial state.
+
+DO $$ BEGIN
+  CREATE TYPE "user_role" AS ENUM ('super_admin', 'admin', 'operator', 'viewer');
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
 --> statement-breakpoint
 
-ALTER TABLE "users" ADD COLUMN "firebase_uid" varchar(128);
+ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "firebase_uid" varchar(128);
 --> statement-breakpoint
-ALTER TABLE "users" ADD COLUMN "role" "user_role" NOT NULL DEFAULT 'viewer';
+ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "role" "user_role" NOT NULL DEFAULT 'viewer';
 --> statement-breakpoint
-ALTER TABLE "users" ADD COLUMN "sponsor_id" integer;
+ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "sponsor_id" integer;
 --> statement-breakpoint
 
-ALTER TABLE "users" ADD CONSTRAINT "users_firebase_uid_unique" UNIQUE ("firebase_uid");
+DO $$ BEGIN
+  ALTER TABLE "users" ADD CONSTRAINT "users_firebase_uid_unique" UNIQUE ("firebase_uid");
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
 --> statement-breakpoint
-ALTER TABLE "users" ADD CONSTRAINT "users_sponsor_id_sponsors_id_fk"
-  FOREIGN KEY ("sponsor_id") REFERENCES "sponsors"("id");
+DO $$ BEGIN
+  ALTER TABLE "users" ADD CONSTRAINT "users_sponsor_id_sponsors_id_fk"
+    FOREIGN KEY ("sponsor_id") REFERENCES "sponsors"("id");
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;

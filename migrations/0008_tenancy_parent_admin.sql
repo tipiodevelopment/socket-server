@@ -5,7 +5,12 @@
 -- viewer belongs to, so the API can scope their reads/writes to that admin's
 -- apps and sponsors. NULL for super_admin (global) and for admin itself.
 
-ALTER TABLE "users" ADD COLUMN "parent_admin_id" integer;
+-- Idempotent for the same reason as 0007 — see its header comment.
+
+ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "parent_admin_id" integer;
 --> statement-breakpoint
-ALTER TABLE "users" ADD CONSTRAINT "users_parent_admin_id_users_id_fk"
-  FOREIGN KEY ("parent_admin_id") REFERENCES "users"("id");
+DO $$ BEGIN
+  ALTER TABLE "users" ADD CONSTRAINT "users_parent_admin_id_users_id_fk"
+    FOREIGN KEY ("parent_admin_id") REFERENCES "users"("id");
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
