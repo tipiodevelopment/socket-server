@@ -144,7 +144,7 @@ export default function DashboardPage() {
 
   return (
     <AppLayout
-      headerBreadcrumb="All Client Apps"
+      headerBreadcrumb="All surfaces"
       headerBreadcrumbHref="/apps"
       actions={
         <Link href="/campaigns/new">
@@ -199,8 +199,8 @@ export default function DashboardPage() {
       <div className="mb-8">
         <div className="flex items-center justify-between mb-4">
           <div>
-            <h2 className="text-lg font-semibold text-gray-900 dark:text-white" data-testid="text-client-apps-title">Client Apps</h2>
-            <p className="text-sm text-gray-400 dark:text-white/40">Manage your client applications and their campaigns</p>
+            <h2 className="text-lg font-semibold text-gray-900 dark:text-white" data-testid="text-client-apps-title">Surfaces</h2>
+            <p className="text-sm text-gray-400 dark:text-white/40">Where Vio runs — your sites, apps and TV channels</p>
           </div>
           <Link href="/apps">
             <Button variant="outline" size="sm" className="gap-1.5 border-gray-200 dark:border-white/10 text-gray-600 dark:text-white/70 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/5" data-testid="button-new-client-app">
@@ -429,7 +429,7 @@ export default function DashboardPage() {
                         </div>
                         <div>
                           <h3 className="text-sm font-semibold text-gray-900 dark:text-white">{campaign.name}</h3>
-                          <p className="text-xs text-gray-400 dark:text-white/40">{app?.name || 'No app'}</p>
+                          <p className="text-xs text-gray-400 dark:text-white/40">{app?.name || 'No surface'}</p>
                         </div>
                       </div>
                       {campaign.startDate && (

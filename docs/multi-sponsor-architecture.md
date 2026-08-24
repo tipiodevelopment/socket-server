@@ -121,6 +121,49 @@ A commerce-coupled component (e.g. `product_carousel`) is scheduled to appear in
 
 ## 3. Data Model Changes
 
+### 3.0 Storage convention — primary vs secondary sponsors (locked 2026-04-30)
+
+**Single source of truth per role.** A campaign's sponsors are split across
+two storage locations *intentionally*:
+
+| Location | Holds | Cardinality |
+|---|---|---|
+| `campaigns.primary_sponsor_id` | the **primary** sponsor | exactly 1 (or NULL pre-creation) |
+| `campaign_sponsors` (junction) | **only secondaries** | 0..N |
+
+**Rules enforced in code:**
+
+- `addSecondarySponsor(campaignId, sponsorId)` always inserts with
+  `role: 'secondary'`. Adding the primary into the junction is a bug — it
+  would duplicate the source of truth.
+- `listSecondarySponsors(campaignId)` returns rows from the junction only
+  (which by the previous rule means it returns secondaries only).
+- `getCampaignSponsors(campaignId)` is a low-level read of the junction
+  (joined to `sponsors`). Treat it as "secondaries with row metadata"; do
+  not assume it includes the primary.
+- `getAllCampaignSponsors(campaignId)` is the **convenience reader** that
+  composes `[primary, ...secondaries]` (primary first). Use this when you
+  need to iterate every sponsor of a campaign — e.g. commerce-key
+  resolution by campaign-only fallback. Never iterate the junction
+  directly for this purpose.
+
+**Why not put the primary in the junction too?** Two reasons:
+
+1. *Idempotency on primary changes.* Updating `campaigns.primary_sponsor_id`
+   is a single-row write. If the primary also lived in the junction we'd
+   need a multi-row transaction (delete old primary row, insert new) plus
+   a trigger to keep them in sync — extra surface for drift.
+2. *`canChangePrimarySponsor()` is cheap.* The rule "primary cannot change
+   once a broadcast or activation references this campaign" is a `WHERE`
+   on `campaigns.primary_sponsor_id`. With the column we keep that check
+   trivial; in a junction-only model we'd have to special-case which junction
+   row is "the primary".
+
+**What the drift script checks (invariant 2, post-2026-04-30):** that
+`campaigns.primary_sponsor_id` is not dangling — i.e. the FK pointer
+resolves to a real `sponsors` row. It does **not** require the primary to
+also appear in the junction; that's the convention, not a bug.
+
 ### 3.1 New tables
 
 ```sql
@@ -1140,6 +1183,106 @@ Script: `scripts/seed-multi-sponsor-demo.ts`.
 - Kotlin SDK: new repo TBD
 - Dashboard: same repo as backend (client/ folder)
 - API contract: `openapi.yaml` in backend repo is the source of truth
+
+---
+
+## 14. Cart per-sponsor — iOS SDK Q4 L3 (locked 2026-05-04)
+
+The iOS SDK supports **multiple concurrent carts**, one per sponsor in
+a multi-sponsor store. Lives entirely client-side; no backend wire
+change. Shipped via PRs #10 (Q4 L1) + #11 (Q4 L3) on `VioSwiftSDK`
+develop, 2026-05-04. See `CURRENT_STATE.md §24` for the full sprint
+log and commit list.
+
+### Why multiple carts
+
+Reachu Commerce has one Reachu cart per `(channel, customer)`. Each
+sponsor in Vio has its own Reachu channel, so a multi-sponsor cart
+inevitably means N concurrent Reachu carts — one per sponsor. Cross-
+channel carts are not supported by Reachu.
+
+### Storage shape (`CartManager`)
+
+```swift
+@Published public var cartsBySponsor: [Int: SponsorCart] = [:]
+
+public struct SponsorCart {
+    let sponsorId: Int
+    var cartId: String?       // Reachu cart row id in this sponsor's channel
+    var checkoutId: String?   // Reachu checkout id, also channel-scoped
+    var items: [CartItem]
+    var subtotal: Double
+    var currency: String      // matches the sponsor's market — usually NOK for TV2
+    var country: String
+    var shippingTotal: Double
+    var shippingCurrency: String
+    var lastDiscountCode: String?
+    var lastDiscountId: Int?
+}
+```
+
+Aggregates exposed for cart-badge UIs that don't need to be sponsor-aware:
+`itemCountAcrossSponsors`, `totalAcrossSponsors`,
+`shippingTotalAcrossSponsors`. Legacy `@Published items / cartTotal /
+cartId / checkoutId` properties remain untouched for back-compat with
+single-sponsor placements.
+
+### SDK routing per sponsor
+
+`CommerceSdkClientProvider.client(forSponsorId:)` returns an
+`SdkClient` authenticated with that sponsor's `commerce_api_key`
+(from the subscribe response). Each `cart.create / cart.addItem /
+checkout.create / payment.applePayInit / payment.stripeIntent /
+payment.applePayConfirm` for a sponsor cart goes through that
+sponsor's client. The legacy `cartManager.sdk` (primary's apiKey) is
+still used for single-cart and back-compat paths.
+
+### Apple Pay — aggregator pattern
+
+The Apple Pay merchant identifier `merchant.live.vio` is the **same
+across all sponsors**. Vio acts as the Apple Pay aggregator. Each
+charge routes to the correct per-sponsor Stripe Connect account
+because the SDK uses the sponsor's apiKey for `applePayConfirm`, not
+because of different merchant IDs.
+
+The "Pay X" label in the Apple Pay sheet (the last summary item with
+`type: .final`) is set per active sponsor: `VioConfiguration.shared
+.sponsor(withId: pendingSponsorId)?.name` → `Pay XXL`, `Pay Elkjøp`,
+`Pay Torshov Sport`. Falls back to `BrandConfiguration.default.name
+= "Vio"` for the legacy single-cart path.
+
+### Commerce setup requirement per sponsor channel
+
+For Apple Pay confirmations to succeed against the sponsor's Stripe
+Connect, each sponsor channel in Commerce must have:
+
+  1. `commerce_api_key` configured on `sponsors.commerce_api_key`
+     (verified by drift invariant 6).
+  2. **Stripe Connect account linked** to that channel in Commerce.
+     This is **separate** from the "Apple Pay enabled" flag — only the
+     Connect linking gates the actual charge processing.
+  3. `merchant.live.vio` whitelisted on that Stripe Connect account
+     (Stripe dashboard → Apple Pay setup).
+  4. The productIds being purchased must exist in the channel's
+     catalog (cross-listing across channels is allowed but each
+     channel needs its own listing).
+
+Without (2), `applePayConfirm` returns a generic
+`Payment Apple Pay not confirmed: [object Object]` 500 error from
+Commerce — Stripe Connect rejected the charge but Commerce did not
+serialize the underlying error. This is **Commerce ops
+responsibility**, not SDK code.
+
+### Out of scope (deferred)
+
+- Cross-session cart persistence (cartsBySponsor lives in memory only)
+- Klarna / Vipps / Stripe per-sponsor handlers (multi-sponsor is
+  Apple-Pay-only; the legacy non-Apple-Pay paths only operate on the
+  primary's cart)
+- Cart-icon badge UI in host TV2 / Viaplay demos — host-app
+  responsibility (read `cartManager.itemCountAcrossSponsors`)
+- Per-sponsor Apple Pay merchant identifiers — Vio stays as
+  aggregator
 
 **Versioning rules**:
 - `/v1/sdk/config` and `/v1/sdk/*` are versioned by URL prefix. Any breaking change → `/v2/sdk/...`

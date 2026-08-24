@@ -5,8 +5,9 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { UserProvider } from "@/contexts/UserContext";
 import { ThemeProvider } from "@/contexts/ThemeContext";
-import { RequireAuth } from "@/components/RequireAuth";
+import { RequireAuth, RequireSponsor } from "@/components/RequireAuth";
 import AdminPage from "@/pages/admin";
+import MyBrandPage from "@/pages/my-brand";
 import ViewerPage from "@/pages/viewer";
 import DocsPage from "@/pages/docs";
 import CampaignViewerPage from "@/pages/campaign-viewer";
@@ -14,7 +15,8 @@ import AdvancedCampaignPage from "@/pages/advanced-campaign";
 import ComponentsPage from "@/pages/components";
 import ComponentDetailPage from "@/pages/component-detail";
 import CampaignDashboard from "@/pages/campaign-dashboard";
-import UserSessionPage from "@/pages/user-session";
+import LoginPage from "@/pages/login";
+import UsersPage from "@/pages/users";
 import BroadcastDetailPage from "@/pages/broadcast-detail";
 import AppsPage from "@/pages/apps";
 import AppDetailPage from "@/pages/app-detail";
@@ -30,7 +32,7 @@ import NotFound from "@/pages/not-found";
 function Router() {
   return (
     <Switch>
-      <Route path="/user-session" component={UserSessionPage} />
+      <Route path="/login" component={LoginPage} />
 
       <Route path="/">
         <RequireAuth><DashboardPage /></RequireAuth>
@@ -76,16 +78,28 @@ function Router() {
       <Route path="/analytics">
         <RequireAuth><AnalyticsPage /></RequireAuth>
       </Route>
+      <Route path="/users">
+        <RequireAuth><UsersPage /></RequireAuth>
+      </Route>
       <Route path="/docs" component={DocsPage} />
 
       <Route path="/campaign/:id/dashboard">
         <RequireAuth><CampaignDashboard /></RequireAuth>
       </Route>
-      <Route path="/campaign/:id/advanced" component={AdvancedCampaignPage} />
-      <Route path="/campaign/:id/admin" component={AdminPage} />
+      <Route path="/campaign/:id/advanced">
+        <RequireAuth><AdvancedCampaignPage /></RequireAuth>
+      </Route>
+      <Route path="/campaign/:id/admin">
+        <RequireAuth><AdminPage /></RequireAuth>
+      </Route>
       <Route path="/campaign/:name/:id" component={CampaignViewerPage} />
 
-      <Route path="/admin" component={AdminPage} />
+      <Route path="/admin">
+        <RequireAuth><AdminPage /></RequireAuth>
+      </Route>
+      <Route path="/my-brand">
+        <RequireSponsor><MyBrandPage /></RequireSponsor>
+      </Route>
       <Route path="/viewer" component={ViewerPage} />
 
       <Route component={NotFound} />

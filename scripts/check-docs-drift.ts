@@ -170,15 +170,25 @@ async function dbInvariants(): Promise<{ ok: boolean; report: string[] }> {
     if (orphan.rows.length > 0) report.push(`❌ campaign_components rows with orphan sponsor: ${JSON.stringify(orphan.rows)}`);
     else report.push(`✅ no campaign_components with orphan sponsor`);
 
-    // Invariant 2: every campaign with primary_sponsor_id should have that sponsor in campaign_sponsors
-    const gap = await c.query(`
+    // Invariant 2: primary_sponsor_id must point at an existing sponsor row.
+    //
+    // Storage convention (locked 2026-04-30): `campaign_sponsors` (junction)
+    // holds **only secondaries**; the primary lives on
+    // `campaigns.primary_sponsor_id`. So we deliberately do NOT require the
+    // primary to also appear in the junction — that would be a duplicate
+    // source of truth. Code that needs to iterate every sponsor of a
+    // campaign (e.g. commerce-key fallback) calls `getAllCampaignSponsors`,
+    // which composes `[primary, ...secondaries]`.
+    //
+    // What we DO check: the FK pointer is dangling-free.
+    const dangling = await c.query(`
       SELECT ca.id, ca.name, ca.primary_sponsor_id
       FROM campaigns ca
-      JOIN sponsors s ON s.id = ca.primary_sponsor_id
-      WHERE NOT EXISTS (SELECT 1 FROM campaign_sponsors cs WHERE cs.campaign_id = ca.id AND cs.sponsor_id = ca.primary_sponsor_id)
+      WHERE ca.primary_sponsor_id IS NOT NULL
+        AND NOT EXISTS (SELECT 1 FROM sponsors s WHERE s.id = ca.primary_sponsor_id)
     `);
-    if (gap.rows.length > 0) report.push(`⚠️  campaigns with primary_sponsor_id missing from campaign_sponsors junction (${gap.rows.length} rows): ${JSON.stringify(gap.rows.map((r: any) => r.id))}`);
-    else report.push(`✅ all primaries also in campaign_sponsors junction`);
+    if (dangling.rows.length > 0) report.push(`❌ campaigns with primary_sponsor_id pointing at deleted sponsor: ${JSON.stringify(dangling.rows)}`);
+    else report.push(`✅ all primary_sponsor_id pointers resolve to a real sponsor`);
 
     // Invariant 3: no cc points at a deprecated app_placement
     const dep = await c.query(`

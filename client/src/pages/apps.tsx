@@ -5,6 +5,8 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { PlatformPicker } from '@/components/PlatformPicker';
+import { PLATFORM_LABELS, PLATFORM_ICONS, platformsToPayload, type SurfacePlatform } from '@/lib/platforms';
 import {
   Form,
   FormControl,
@@ -48,6 +50,7 @@ import { Plus, Smartphone, Pencil, MoreVertical, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 
 interface ClientAppWithStats extends ClientApp {
+  platforms?: SurfacePlatform[];
   stats: {
     campaignCount: number;
     activeBroadcasts: number;
@@ -58,13 +61,16 @@ interface ClientAppWithStats extends ClientApp {
 }
 
 const createClientAppSchema = z.object({
-  name: z.string().min(1, 'App name is required').max(255, 'App name too long'),
-  bundleId: z.string().min(1, 'Bundle ID is required').max(255, 'Bundle ID too long'),
+  name: z.string().min(1, 'Name is required').max(255, 'Name too long'),
   iconUrl: z.string().optional(),
   bannerUrl: z.string().optional(),
 });
 
 type CreateClientAppForm = z.infer<typeof createClientAppSchema>;
+
+// A surface spans platforms — it is not one native app. Identifiers are
+// per-platform (an iOS bundle id differs from an Android package name), which
+// is why they are collected here instead of a single "Bundle ID" field.
 
 function formatViewers(num: number): string {
   if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M';
@@ -140,9 +146,12 @@ export default function AppsPage() {
   const [logoUrl, setLogoUrl] = useState('');
   const [bannerUrl, setBannerUrl] = useState('');
 
+  // kind → identifier ('' = selected, no identifier yet). Presence = selected.
+  const [platforms, setPlatforms] = useState<Record<string, string>>({});
+
   const form = useForm<CreateClientAppForm>({
     resolver: zodResolver(createClientAppSchema),
-    defaultValues: { name: '', bundleId: '', iconUrl: '', bannerUrl: '' },
+    defaultValues: { name: '', iconUrl: '', bannerUrl: '' },
   });
 
   const { data: clientApps = [], isLoading } = useQuery<ClientAppWithStats[]>({
@@ -156,7 +165,10 @@ export default function AppsPage() {
   });
 
   const createMutation = useMutation({
-    mutationFn: async (data: { name: string; bundleId: string; userId: number; iconUrl?: string; bannerUrl?: string }) => {
+    mutationFn: async (data: {
+      name: string; userId: number; iconUrl?: string; bannerUrl?: string;
+      platforms: { kind: string; identifier: string | null }[];
+    }) => {
       const response = await apiRequest('POST', '/api/client-apps', data);
       return response.json();
     },
@@ -167,10 +179,11 @@ export default function AppsPage() {
       form.reset();
       setLogoUrl('');
       setBannerUrl('');
-      toast({ title: 'App Created', description: 'Your new app is ready to use' });
+      setPlatforms({});
+      toast({ title: 'Surface created', description: 'Your new surface is ready to use' });
     },
     onError: () => {
-      toast({ title: 'Error', description: 'Failed to create app', variant: 'destructive' });
+      toast({ title: 'Error', description: 'Failed to create surface', variant: 'destructive' });
     }
   });
 
@@ -183,10 +196,10 @@ export default function AppsPage() {
       queryClient.invalidateQueries({ queryKey: ['/api/client-apps', userId] });
       setDeleteDialogOpen(false);
       setAppToDelete(null);
-      toast({ title: 'App Deleted', description: 'The app has been deleted.' });
+      toast({ title: 'Surface deleted', description: 'The surface has been deleted.' });
     },
     onError: () => {
-      toast({ title: 'Error', description: 'Failed to delete app', variant: 'destructive' });
+      toast({ title: 'Error', description: 'Failed to delete surface', variant: 'destructive' });
     }
   });
 
@@ -194,24 +207,24 @@ export default function AppsPage() {
     if (!userId) return;
     createMutation.mutate({
       name: data.name,
-      bundleId: data.bundleId,
       userId,
       iconUrl: logoUrl || undefined,
       bannerUrl: bannerUrl || undefined,
+      platforms: platformsToPayload(platforms),
     });
   };
 
   return (
     <AppLayout
-      breadcrumbs={[{ label: 'Apps' }]}
-      title="Client Apps"
+      breadcrumbs={[{ label: 'Surfaces' }]}
+      title="Surfaces"
     >
       <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
         <DialogContent className="max-h-[85vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Create New App</DialogTitle>
+            <DialogTitle>Create surface</DialogTitle>
             <DialogDescription>
-              Add a new mobile or web application to manage campaigns.
+              A surface is where Vio runs — a site, an app, a TV channel. Campaigns are placed on it.
             </DialogDescription>
           </DialogHeader>
           <Form {...form}>
@@ -221,30 +234,24 @@ export default function AppsPage() {
                 name="name"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>App Name</FormLabel>
+                    <FormLabel>Name</FormLabel>
                     <FormControl>
-                      <Input placeholder="e.g. LaLiga Fan App" data-testid="input-app-name" {...field} />
+                      <Input placeholder="e.g. Møte & Livsstil" data-testid="input-app-name" {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
                 )}
               />
-              <FormField
-                control={form.control}
-                name="bundleId"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Bundle ID</FormLabel>
-                    <FormControl>
-                      <Input placeholder="e.g. com.laliga.fanapp" data-testid="input-bundle-id" {...field} />
-                    </FormControl>
-                    <FormDescription>
-                      The unique identifier for your app (iOS Bundle ID or Android Package Name)
-                    </FormDescription>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+              <div className="space-y-2">
+                <FormLabel>Platforms</FormLabel>
+                <FormDescription>
+                  Where this surface runs. One surface can span web, mobile and TV — pick every platform it
+                  has, and give each its own identifier.
+                </FormDescription>
+                <div className="pt-1">
+                  <PlatformPicker value={platforms} onChange={setPlatforms} />
+                </div>
+              </div>
               <ImageUploadWithPreview
                 label="Logo"
                 value={logoUrl}
@@ -270,8 +277,8 @@ export default function AppsPage() {
       </Dialog>
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h2 className="text-lg font-semibold text-gray-900 dark:text-white">All Client Apps</h2>
-          <p className="text-sm text-gray-500 dark:text-white/40">{clientApps.length} app{clientApps.length !== 1 ? 's' : ''} registered</p>
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-white">All surfaces</h2>
+          <p className="text-sm text-gray-500 dark:text-white/40">{clientApps.length} surface{clientApps.length !== 1 ? 's' : ''} registered</p>
         </div>
         <Button
           data-testid="button-create-app"
@@ -279,7 +286,7 @@ export default function AppsPage() {
           className="gap-2 bg-[#3d8b7a] hover:bg-[#2f7365] dark:bg-white dark:hover:bg-gray-200 text-white dark:text-[#0a0e1a]"
         >
           <Plus className="w-4 h-4" />
-          New App
+          New surface
         </Button>
       </div>
       {isLoading ? (
@@ -298,7 +305,7 @@ export default function AppsPage() {
       ) : clientApps.length === 0 ? (
         <div className="bg-white dark:bg-white/[0.03] border border-gray-200 dark:border-white/10 rounded-2xl p-12 text-center">
           <Smartphone className="w-12 h-12 text-gray-300 dark:text-white/20 mx-auto mb-4" />
-          <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">No apps yet</h3>
+          <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">No surfaces yet</h3>
           <p className="text-gray-500 dark:text-white/40 mb-4 max-w-md mx-auto">
             Create your first app to start managing campaigns and broadcasts
           </p>
@@ -352,6 +359,23 @@ export default function AppsPage() {
                     <p className="text-[10px] text-gray-400 dark:text-white/30 font-mono truncate mt-0.5" data-testid={`text-api-key-${app.id}`}>
                       {app.apiKey ? `${app.apiKey.slice(0, 10)}••••` : '—'}
                     </p>
+                    {app.platforms && app.platforms.length > 0 && (
+                      <div className="flex flex-wrap gap-1 mt-2" data-testid={`platforms-${app.id}`}>
+                        {app.platforms.map((p) => {
+                          const Icon = PLATFORM_ICONS[p.kind];
+                          return (
+                            <span
+                              key={p.id}
+                              title={p.identifier ?? undefined}
+                              className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] bg-gray-100 dark:bg-[#1e2433] text-gray-600 dark:text-gray-300"
+                            >
+                              {Icon && <Icon className="w-2.5 h-2.5" />}
+                              {PLATFORM_LABELS[p.kind] ?? p.kind}
+                            </span>
+                          );
+                        })}
+                      </div>
+                    )}
                   </div>
 
                   <div className="grid grid-cols-2 gap-4 mb-4">
@@ -399,7 +423,7 @@ export default function AppsPage() {
                             data-testid={`button-delete-app-${app.id}`}
                           >
                             <Trash2 className="w-4 h-4 mr-2" />
-                            Delete App
+                            Delete surface
                           </DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>
@@ -415,9 +439,9 @@ export default function AppsPage() {
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete App?</AlertDialogTitle>
+            <AlertDialogTitle>Delete surface?</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to delete "{appToDelete?.name}"? This will remove all channels, campaigns, and broadcasts associated with this app.
+              Are you sure you want to delete "{appToDelete?.name}"? This will remove all channels, campaigns, and broadcasts associated with this surface.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

@@ -5546,6 +5546,22 @@ paths:
           description: Success
         '401':
           description: Auth missing/invalid
+  '/v2/web/brands':
+    get:
+      tags:
+        - web-sdk
+      summary: Brands available on this surface (active campaigns, deduplicated).
+      description: >-
+        Every sponsor taking part in one of the surface's active campaigns,
+        primary or secondary. Used by web SDK hosts and publisher CMS
+        integrations to let an editor pick a brand. An empty list means no
+        campaign is currently active — a valid answer, not an error.
+        Unlike /v2/mobile/config this is not limited to a single campaign.
+      responses:
+        '200':
+          description: Success
+        '401':
+          description: Auth missing/invalid
   '/v2/mobile/broadcasts/{broadcastId}/capabilities':
     get:
       tags:

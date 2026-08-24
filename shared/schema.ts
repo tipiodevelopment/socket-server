@@ -1,16 +1,29 @@
 import { z } from "zod";
-import { pgTable, serial, varchar, text, timestamp, json, jsonb, integer, bigint, boolean, uniqueIndex, index, uuid } from "drizzle-orm/pg-core";
+import { pgTable, pgEnum, serial, varchar, text, timestamp, json, jsonb, integer, bigint, boolean, uniqueIndex, index, uuid } from "drizzle-orm/pg-core";
 import { relations, sql } from "drizzle-orm";
 import type { AnyPgColumn } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 
 // Database Tables
 
+// Operator roles (ADR-0007). Hierarchical: super_admin > admin > operator > viewer.
+// viewer is the sponsor-facing read-only role; sponsor_id links it to its sponsor.
+export const userRoleEnum = pgEnum("user_role", ["super_admin", "admin", "operator", "viewer", "sponsor"]);
+
 // Operators (dashboard users). Distinct from end_users (viewers of broadcasts).
 // Legacy reachu_user_id kept nullable during Phase 2 transition; dropped in Phase 4.
+// firebase_uid links the row to the shared Commerce Firebase identity (ADR-0007);
+// rows are pre-provisioned (strict allowlist) and the uid attaches on first login.
 export const users = pgTable("users", {
   id: serial("id").primaryKey(),
   reachuUserId: varchar("reachu_user_id", { length: 255 }).unique(),
+  firebaseUid: varchar("firebase_uid", { length: 128 }).unique(),
+  role: userRoleEnum("role").notNull().default("viewer"),
+  sponsorId: integer("sponsor_id").references((): AnyPgColumn => sponsors.id),
+  // Tenancy (ADR-0007): admin = tenant root (owns client_apps + sponsors via
+  // their user_id). operator/viewer belong to an admin's tenant via this FK.
+  // null for super_admin (global) and for admin (they ARE the tenant root).
+  parentAdminId: integer("parent_admin_id").references((): AnyPgColumn => users.id),
   email: text("email"),
   name: text("name"),
   firebaseToken: text("firebase_token"),
@@ -36,7 +49,12 @@ export const clientApps = pgTable("client_apps", {
   id: serial("id").primaryKey(),
   userId: integer("user_id").notNull().references(() => users.id, { onDelete: 'cascade' }),
   name: varchar("name", { length: 255 }).notNull(),
-  bundleId: varchar("bundle_id", { length: 255 }).notNull().unique(),
+  /**
+   * Legacy single-app identifier. A surface is NOT one native app (VG = web +
+   * iOS + Android), so real identifiers live per platform in `surfacePlatforms`.
+   * Nullable since migration 0010 — a web/Vev surface has none.
+   */
+  bundleId: varchar("bundle_id", { length: 255 }).unique(),
   apiKey: text("api_key").notNull().unique(),
   reachuApiKey: text("reachu_api_key"),
   description: text("description"),
@@ -50,6 +68,29 @@ export const clientApps = pgTable("client_apps", {
   tvEnabled: boolean("tv_enabled").notNull().default(false),
   /** Array of TV platforms supported: ['apple-tv', 'android-tv', 'fire-tv', ...] */
   tvPlatforms: text("tv_platforms").array().default(sql`'{}'`).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull()
+});
+
+/**
+ * Platforms of a surface (migration 0010).
+ *
+ * Vocabulary: **Surface** = the publisher property where Vio runs (VG, TV2) —
+ * that's `clientApps` above, whose table rename is a separate project because
+ * the SDK contract exposes `clientAppId`. **Platform** = web/iOS/Android/Vev/TV
+ * within it. **Placement** = the slot inside (`appPlacements`). **Channel** is a
+ * COMMERCE concept (the brand's product outlet) and is never used for surfaces.
+ *
+ * `surfaceId` already uses the target vocabulary, so the future table rename
+ * needs no change here.
+ */
+export const surfacePlatforms = pgTable("surface_platforms", {
+  id: serial("id").primaryKey(),
+  surfaceId: integer("surface_id").notNull().references(() => clientApps.id, { onDelete: 'cascade' }),
+  /** 'web' | 'ios' | 'android' | 'vev' | 'apple-tv' | 'android-tv' | 'fire-tv' */
+  kind: varchar("kind", { length: 32 }).notNull(),
+  /** bundle id / package name / web domain / Vev project id — null when not needed yet. */
+  identifier: varchar("identifier", { length: 255 }),
+  enabled: boolean("enabled").notNull().default(true),
   createdAt: timestamp("created_at").defaultNow().notNull()
 });
 
@@ -1069,9 +1110,14 @@ export const insertClientAppSchema = createInsertSchema(clientApps).omit({
   createdAt: true 
 });
 
-export const insertChannelSchema = createInsertSchema(channels).omit({ 
+export const insertSurfacePlatformSchema = createInsertSchema(surfacePlatforms).omit({
   id: true,
-  createdAt: true 
+  createdAt: true
+});
+
+export const insertChannelSchema = createInsertSchema(channels).omit({
+  id: true,
+  createdAt: true
 });
 
 export const insertCampaignSchema = createInsertSchema(campaigns).omit({ 
@@ -1246,6 +1292,11 @@ export type InsertUser = z.infer<typeof insertUserSchema>;
 export type Sponsor = typeof sponsors.$inferSelect;
 export type InsertSponsor = z.infer<typeof insertSponsorSchema>;
 export type ClientApp = typeof clientApps.$inferSelect;
+export type SurfacePlatform = typeof surfacePlatforms.$inferSelect;
+export type InsertSurfacePlatform = z.infer<typeof insertSurfacePlatformSchema>;
+/** Platform kinds a surface can have. Order drives the dashboard picker. */
+export const SURFACE_PLATFORM_KINDS = ['web', 'ios', 'android', 'vev', 'apple-tv', 'android-tv', 'fire-tv'] as const;
+export type SurfacePlatformKind = typeof SURFACE_PLATFORM_KINDS[number];
 export type InsertClientApp = z.infer<typeof insertClientAppSchema>;
 export type Channel = typeof channels.$inferSelect;
 export type InsertChannel = z.infer<typeof insertChannelSchema>;
