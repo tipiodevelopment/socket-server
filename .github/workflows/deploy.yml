@@ -57,6 +57,10 @@ jobs:
           tags: |
             ${{ env.ACR_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.env.outputs.tag }}
             ${{ env.ACR_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.env.outputs.name }}-latest
+          build-args: |
+            VITE_FIREBASE_API_KEY=${{ steps.env.outputs.name == 'production' && secrets.FIREBASE_WEB_API_KEY_PROD || secrets.FIREBASE_WEB_API_KEY_QA }}
+            VITE_FIREBASE_AUTH_DOMAIN=${{ steps.env.outputs.name == 'production' && secrets.FIREBASE_WEB_AUTH_DOMAIN_PROD || secrets.FIREBASE_WEB_AUTH_DOMAIN_QA }}
+            VITE_FIREBASE_PROJECT_ID=${{ steps.env.outputs.name == 'production' && 'reachu-prod' || 'reachu-qa' }}
 
       - name: Deploy new revision
         run: |
