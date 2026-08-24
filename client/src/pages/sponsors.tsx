@@ -104,10 +104,8 @@ export default function SponsorsPage() {
 
   const updateMutation = useMutation({
     mutationFn: async ({ id, data }: { id: number; data: Partial<SponsorFormData> }) => {
-      // Backend requires `userId` in the body for ownership check (same
-      // pattern as DELETE which already includes it). Without it the
-      // handler short-circuits with 400 "userId is required".
-      const response = await apiRequest('PATCH', `/api/sponsors/${id}`, { ...data, userId });
+      // No userId: the server scopes the write from the session (ADR-0007 D6).
+      const response = await apiRequest('PATCH', `/api/sponsors/${id}`, data);
       return response.json();
     },
     onSuccess: () => {
@@ -124,7 +122,7 @@ export default function SponsorsPage() {
 
   const deleteMutation = useMutation({
     mutationFn: async (id: number) => {
-      return await apiRequest('DELETE', `/api/sponsors/${id}?userId=${userId}`);
+      return await apiRequest('DELETE', `/api/sponsors/${id}`);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/sponsors', userId] });
