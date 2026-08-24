@@ -2041,12 +2041,18 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   app.patch('/api/sponsors/:id', async (req, res) => {
     try {
       const id = parseInt(req.params.id);
-      const { userId, ...updateData } = req.body;
-      if (!userId) return res.status(400).json({ message: 'userId is required' });
+      const { userId: _ignored, ...updateData } = req.body;
 
       const existing = await storage.getSponsor(id);
       if (!existing) return res.status(404).json({ message: 'Sponsor not found' });
-      if (existing.userId !== userId) return res.status(403).json({ message: 'Access denied' });
+
+      // Scope from the session, never from the body (ADR-0007 D6): a client
+      // used to be able to name any owner. super_admin (null scope) edits any
+      // brand; everyone else only their own tenant's.
+      const owner = readScopeOwnerId(req.operator);
+      if (owner !== null && existing.userId !== owner) {
+        return res.status(403).json({ message: 'Access denied' });
+      }
 
       // Same check as on create, but only when the key actually changes.
       if (updateData.commerceApiKey && updateData.commerceApiKey !== existing.commerceApiKey) {
@@ -2070,12 +2076,15 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   app.delete('/api/sponsors/:id', async (req, res) => {
     try {
       const id = parseInt(req.params.id);
-      const userId = parseInt(req.query.userId as string);
-      if (!userId) return res.status(400).json({ message: 'userId is required' });
 
       const existing = await storage.getSponsor(id);
       if (!existing) return res.status(404).json({ message: 'Sponsor not found' });
-      if (existing.userId !== userId) return res.status(403).json({ message: 'Access denied' });
+
+      // Same session-derived scope as the PATCH above.
+      const owner = readScopeOwnerId(req.operator);
+      if (owner !== null && existing.userId !== owner) {
+        return res.status(403).json({ message: 'Access denied' });
+      }
 
       await storage.deleteSponsor(id);
       res.json({ message: 'Sponsor deleted' });
