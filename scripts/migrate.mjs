@@ -5,28 +5,30 @@
 // it fails to apply anything, or hang forever on a confirmation prompt with
 // no TTY to answer it. See docs/lessons in vio-handbook, 2026-08-24.
 //
-// One-time baseline: environments that ran on `drizzle-kit push` before this
-// script existed have no `drizzle.__drizzle_migrations` tracking table, but
-// already have migrations 0000-0006 reflected in their live schema (that's
-// been the app's baseline for a long time). If the tracking table is empty
-// AND the schema clearly predates tracking (public.users exists), we mark
-// migrations up to 0006 as already applied — by inserting one row whose
-// created_at matches 0006's journal timestamp — before calling the real
-// migrator. drizzle-orm's migrate() only compares the *latest* applied
-// timestamp against each migration's folder timestamp, so this one row is
-// enough to make it skip 0000-0006 and apply 0007+ correctly.
+// Does NOT use drizzle-orm's built-in migrate()/readMigrationFiles(): those
+// read migrations/meta/_journal.json, which is stale here (only has entries
+// for 0000/0001 even though migration files go up to 0010) — trusting it
+// would silently skip every later migration. This reads *.sql files from the
+// migrations/ directory directly, sorted by filename (the zero-padded
+// numeric prefix keeps them in order), and tracks applied ones by filename
+// in its own table.
 //
-// Migrations 0007/0008 were themselves written idempotently (IF NOT EXISTS /
-// duplicate_object guards) because some environments may have partial state
-// from prior broken `push` runs — see their file headers.
+// One-time baseline: environments that ran on `push` before this script
+// existed have no tracking table, but already have migrations 0000-0006
+// reflected in their live schema (that's been the app's baseline for a long
+// time). If the tracking table is empty AND the schema clearly predates
+// tracking (public.users exists), we mark files up to and including 0006 as
+// already applied without re-running them.
+//
+// Migrations 0007/0008 were themselves rewritten to be idempotent (IF NOT
+// EXISTS / duplicate_object guards) because some environments may have
+// partial state from prior broken `push` runs — see their file headers.
 
 import { Client } from 'pg';
-import { migrate } from 'drizzle-orm/node-postgres/migrator';
-import { drizzle } from 'drizzle-orm/node-postgres';
-import { readFileSync } from 'fs';
+import { readFileSync, readdirSync } from 'fs';
 
-const MIGRATIONS_FOLDER = './migrations';
-const BASELINE_UP_TO_TAG = '0006_canonicalize_component_ids';
+const MIGRATIONS_DIR = './migrations';
+const BASELINE_UP_TO = '0006_canonicalize_component_ids.sql';
 
 if (!process.env.DATABASE_URL) {
   console.error('[migrate] DATABASE_URL is not set — refusing to start');
@@ -38,53 +40,86 @@ const client = new Client({
   ssl: { rejectUnauthorized: false },
 });
 
+function listMigrationFiles() {
+  return readdirSync(MIGRATIONS_DIR)
+    .filter((f) => f.endsWith('.sql'))
+    .sort();
+}
+
 async function main() {
   await client.connect();
 
-  await client.query('CREATE SCHEMA IF NOT EXISTS "drizzle"');
   await client.query(`
-    CREATE TABLE IF NOT EXISTS "drizzle"."__drizzle_migrations" (
+    CREATE TABLE IF NOT EXISTS "public"."_migrations_applied" (
       id SERIAL PRIMARY KEY,
-      hash text NOT NULL,
-      created_at bigint
+      name text NOT NULL UNIQUE,
+      applied_at timestamptz NOT NULL DEFAULT now()
     )
   `);
 
-  const { rows: existing } = await client.query(
-    'SELECT count(*)::int AS n FROM "drizzle"."__drizzle_migrations"',
+  const { rows: appliedRows } = await client.query(
+    'SELECT name FROM "public"."_migrations_applied"',
   );
+  const applied = new Set(appliedRows.map((r) => r.name));
 
-  if (existing[0].n === 0) {
+  const files = listMigrationFiles();
+
+  if (applied.size === 0) {
     const { rows: usersExists } = await client.query(
       "SELECT to_regclass('public.users') IS NOT NULL AS ok",
     );
     if (usersExists[0].ok) {
-      const journal = JSON.parse(
-        readFileSync(`${MIGRATIONS_FOLDER}/meta/_journal.json`, 'utf8'),
-      );
-      const baseline = journal.entries.find((e) => e.tag === BASELINE_UP_TO_TAG);
-      if (!baseline) {
-        throw new Error(`Baseline migration tag ${BASELINE_UP_TO_TAG} not found in journal`);
-      }
+      const baselineFiles = files.filter((f) => f <= BASELINE_UP_TO);
       console.log(
-        `[migrate] Empty tracking table but schema already exists — baselining as of ${BASELINE_UP_TO_TAG} (created_at=${baseline.when})`,
+        `[migrate] Empty tracking table but schema already exists — baselining ${baselineFiles.length} pre-tracking migration(s) up to ${BASELINE_UP_TO}`,
       );
-      await client.query(
-        'INSERT INTO "drizzle"."__drizzle_migrations" (hash, created_at) VALUES ($1, $2)',
-        ['baseline-pre-tracking-2026-08-24', baseline.when],
-      );
+      for (const f of baselineFiles) {
+        await client.query(
+          'INSERT INTO "public"."_migrations_applied" (name) VALUES ($1) ON CONFLICT DO NOTHING',
+          [f],
+        );
+        applied.add(f);
+      }
     }
   }
 
-  const db = drizzle(client);
-  await migrate(db, { migrationsFolder: MIGRATIONS_FOLDER });
-  console.log('[migrate] Done.');
+  const pending = files.filter((f) => !applied.has(f));
+  if (pending.length === 0) {
+    console.log('[migrate] Nothing to apply — up to date.');
+    return;
+  }
+
+  for (const file of pending) {
+    console.log(`[migrate] Applying ${file}...`);
+    const sql = readFileSync(`${MIGRATIONS_DIR}/${file}`, 'utf8');
+    const statements = sql
+      .split('--> statement-breakpoint')
+      .map((s) => s.trim())
+      .filter(Boolean);
+
+    await client.query('BEGIN');
+    try {
+      for (const stmt of statements) {
+        await client.query(stmt);
+      }
+      await client.query(
+        'INSERT INTO "public"."_migrations_applied" (name) VALUES ($1)',
+        [file],
+      );
+      await client.query('COMMIT');
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw new Error(`Failed applying ${file}: ${err.message}`);
+    }
+  }
+
+  console.log(`[migrate] Done. ${pending.length} migration(s) applied.`);
 }
 
 main()
   .then(() => client.end())
   .catch(async (err) => {
-    console.error('[migrate] FAILED:', err);
+    console.error('[migrate] FAILED:', err.message);
     await client.end().catch(() => {});
     process.exit(1);
   });
