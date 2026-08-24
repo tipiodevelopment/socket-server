@@ -22,15 +22,22 @@ jobs:
 
       - name: Run database migrations
         env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
-        run: npx drizzle-kit push
+          DATABASE_URL: ${{ secrets.DATABASE_URL_STAGING }}
+        run: |
+          set -o pipefail
+          npx drizzle-kit push 2>&1 | tee drizzle-push.log
+          if grep -qiE "error|failed" drizzle-push.log; then
+            echo "::error::drizzle-kit push reported an error in its output (this tool exits 0 even on connection/auth failures, so we check the log explicitly)"
+            exit 1
+          fi
+
+      - name: Login to Azure
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
 
       - name: Login to Azure Container Registry
-        uses: docker/login-action@v3
-        with:
-          registry: reachuqa2.azurecr.io
-          username: ${{ secrets.AZURE_REGISTRY_USERNAME }}
-          password: ${{ secrets.AZURE_REGISTRY_PASSWORD }}
+        run: az acr login --name reachuqa2
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
@@ -43,11 +50,6 @@ jobs:
             SV_PASSWORD=${{ secrets.SV_PASSWORD }}
             SV_TENANT_ID=${{ secrets.SV_TENANT_ID }}
             AZ_STORAGE=${{ secrets.AZ_STORAGE }}
-
-      - name: Login to Azure
-        uses: azure/login@v1
-        with:
-          creds: ${{ secrets.AZURE_CREDENTIALS }}
 
       - name: Set up kubectl
         uses: azure/setup-kubectl@v3
