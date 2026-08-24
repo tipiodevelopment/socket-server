@@ -9,8 +9,9 @@
 > layer, see [`API_V2_CONTRACT.md`](./API_V2_CONTRACT.md). The two never mix
 > (see §7).
 >
-> **Status**: F1–F3 implemented on branch `feature/firebase-auth-users-roles`
-> (PR #41 on socket-server) + ADR PR #4 on vio-handbook. Last updated 2026-06-10.
+> **Status**: F1–F3 implemented (PR #41) + per-resource guard (PR #42) + the
+> **`sponsor` brand role** (this branch — see §3, §11 D10/D11, §12).
+> Last updated 2026-08-18.
 
 ---
 
@@ -45,17 +46,18 @@ is **in the operator's owner scope**.
 
 Source of truth: `ROLE_CAPABILITIES` in `capabilities.ts`.
 
-| Capability | Covers | super_admin | admin | operator | viewer |
-|---|---|:--:|:--:|:--:|:--:|
-| `apps:read` | `GET /api/client-apps*` | ✓ | ✓ | ✓ | |
-| `apps:create` | `POST /api/client-apps` | ✓ | ✓ | | |
-| `apps:write` | edit/delete apps, channels, placements | ✓ | ✓ | | |
-| `sponsors:read` | `GET /api/sponsors*` | ✓ | ✓ | | ✓ |
-| `sponsors:write` | create/edit sponsors | ✓ | ✓ | | |
-| `campaigns:read` | `GET /api/campaigns*` | ✓ | ✓ | ✓ | |
-| `campaigns:create` | `POST /api/campaigns` | ✓ | ✓ | ✓ | |
-| `campaigns:write` | edit campaigns / broadcasts / components / events | ✓ | ✓ | | |
-| `users:manage` | `/api/auth/users*` (operator allowlist) | ✓ | | | |
+| Capability | Covers | super_admin | admin | operator | viewer | sponsor |
+|---|---|:--:|:--:|:--:|:--:|:--:|
+| `apps:read` | `GET /api/client-apps*` | ✓ | ✓ | ✓ | | |
+| `apps:create` | `POST /api/client-apps` | ✓ | ✓ | | | |
+| `apps:write` | edit/delete apps, channels, placements | ✓ | ✓ | | | |
+| `sponsors:read` | `GET /api/sponsors*` | ✓ | ✓ | | ✓ | |
+| `sponsors:write` | create/edit sponsors | ✓ | ✓ | | | |
+| `campaigns:read` | `GET /api/campaigns*` | ✓ | ✓ | ✓ | | |
+| `campaigns:create` | `POST /api/campaigns` | ✓ | ✓ | ✓ | | |
+| `campaigns:write` | edit campaigns / broadcasts / components / events | ✓ | ✓ | | | |
+| `users:manage` | `/api/auth/users*` (operator allowlist) | ✓ | | | | |
+| `sponsor:read-own` | `GET /api/sponsor/me*` (self-scoped brand view) | ✓ | | | | ✓ |
 
 In words:
 - **super_admin** — everything, global. (Vio team. Today: `angelo@tipio.no`.)
@@ -65,6 +67,10 @@ In words:
   what it needs (its admin's apps + campaigns). Cannot create apps/sponsors, and
   cannot yet edit existing campaign content.
 - **viewer** — read-only, sponsor-facing. v1: `sponsors:read` only.
+- **sponsor** — *brand-facing*, not an internal operator. Linked to ONE sponsor
+  via `users.sponsor_id`, **no** `parent_admin_id`. Sees only its own brand's
+  footprint through the self-scoped `/api/sponsor/me/*` surface; deliberately no
+  operator/admin capabilities. Interim toward the Brand-tenant model (§11 D10).
 
 ### Route → capability mapping
 
@@ -73,6 +79,7 @@ In words:
 | Path prefix | GET | POST (exact collection) | other mutations |
 |---|---|---|---|
 | `/api/auth/users*`, `/api/users*` | `users:manage` | `users:manage` | `users:manage` |
+| `/api/sponsor/me*` | `sponsor:read-own` | — | — |
 | `/api/client-apps*` | `apps:read` | `apps:create` (`POST /api/client-apps`) | `apps:write` |
 | `/api/sponsors*` | `sponsors:read` | `sponsors:write` | `sponsors:write` |
 | `/api/campaigns*` | `campaigns:read` | `campaigns:create` (`POST /api/campaigns`) | `campaigns:write` |
@@ -110,6 +117,13 @@ Ownership already lived on the data (`client_apps.user_id`, `sponsors.user_id`,
 is owned by the creator's tenant. `super_admin` may target a specific admin by
 passing `userId` in the body (that's how it assigns); everyone else is forced to
 their own tenant owner — a client cannot create rows on another tenant's behalf.
+
+**The `sponsor` role sits outside this owner-scope axis.** It is not tenant-scoped
+by `user_id`/`parent_admin_id`; instead the `/api/sponsor/me/*` handlers
+**self-scope** to `req.operator.sponsorId` (never a route param), so a sponsor can
+only ever read its own brand — no cross-sponsor leakage by construction. Sponsors
+share the read-only sponsor catalog (interim, §11 D11) until brands become their
+own tenants.
 
 ---
 
@@ -235,6 +249,8 @@ added.
 | D7 | apiKey-authed `/api` endpoints (`confirm-apple-pay`, `payments/apikey`) **exempt** from the operator gate. | They authenticate by apiKey; the gate must not shadow them. | 2026-06-10 |
 | D8 | Session = **httpOnly cookie**, role re-read per request. | Instant role change / de-provision; no client call-site changes. | 2026-06-10 |
 | D9 | **Per-environment** Firebase projects; prod is separate. | Never touch prod users from staging work. | 2026-06-10 |
+| D10 | Add a **`sponsor`** brand-facing role: read-only, linked to one sponsor via `users.sponsor_id`, served by **self-scoped** `/api/sponsor/me/*` (never a sponsor-id param). Interim toward the **Brand-tenant** model (handbook `platform-definition`). | Brands need to see their own footprint (which surfaces/campaigns use them + data) without any operator access; self-scoping makes cross-brand leakage structurally impossible. | 2026-08-18 |
+| D11 | Sponsors are a **shared read-only catalog** for now (global `GET /api/sponsors`, no owner check on campaign-create, guard exempts `/api/sponsors/:id` like the global component library). | Interim until brands are real tenants; avoids splitting the sponsor catalog prematurely. Documented so it isn't mistaken for a hole. | 2026-08-18 |
 
 ADR PR/merge discipline (no auto-merge, owner merges) applies — see handbook
 ADR-0001.
@@ -248,18 +264,57 @@ ADR-0001.
 - `capabilities.ts` (matrix + `can` + `requiredCapabilityFor` + `ownerScope`).
 - `/api` gate (capability-based) + session endpoints + strict allowlist.
 - Owner-scoped **list** endpoints: `client-apps`, `client-apps/with-stats`,
-  `sponsors`, `campaigns`. Ownership check on `GET /api/client-apps/:id`.
-  Owner-on-create for apps/sponsors/campaigns.
+  `sponsors`, `campaigns`. Owner-on-create for apps/sponsors/campaigns.
 - `/users` management UI (super_admin) + `/login` page + per-env Firebase config.
 - Tests: `capabilities.test.ts`, `authz.test.ts`, `firebase-auth.test.ts`.
 
+**Implemented (PR #42) — per-resource ownership guard**
+- `server/middleware/resource-ownership.ts`: `createOwnershipGuard` mounted on
+  `app.use('/api', …)` after the capability gate. Resolves the owning `user_id`
+  for `client-apps/:id`, `campaigns/:id`, `sponsors/:id`, `events/:id` (direct)
+  and `broadcasts/:broadcastId`, `polls/:id`, `contests/:id`,
+  `scheduled-components/:id` (via parent chain), and 403s cross-tenant access.
+  super_admin bypasses; public paths skip; missing/unknown resources fall
+  through (handler 404s) so it never blocks a valid request. Tests:
+  `resource-ownership.test.ts`.
+- Also scoped `GET /api/broadcasts` by tenant (it was returning **all**
+  broadcasts to every operator) — a broadcast belongs to a tenant via its
+  campaign's owner; super_admin sees all.
+- **Residual (still not ownership-checked):** `broadcasts/ads|products/:id` (no
+  storage getter for the leaf) and `components/:id` (the components table is a
+  **global library**, intentionally not tenant-scoped).
+
+**Implemented (this branch) — `sponsor` brand role**
+- Migration `0009_sponsor_role.sql` (`sponsor` added to the `user_role` enum).
+- `capabilities.ts`: `sponsor:read-own` + `ROLE_CAPABILITIES.sponsor` +
+  `/api/sponsor/me*` → `sponsor:read-own` mapping.
+- Self-scoped `GET /api/sponsor/me` · `/usage` · `/stats` (`routes.ts`) +
+  `getSponsorUsage`/`getSponsorStats` (`storage.ts`), scoped to
+  `req.operator.sponsorId` — never a param.
+- `sponsorId` required for a sponsor user on **both** POST and PATCH
+  `/api/auth/users`.
+- Frontend: read-only **My Brand** page (`client/src/pages/my-brand.tsx`) +
+  `RequireSponsor` guard + role-aware login redirect + "Sponsor" role in the
+  user-management UI. Verified end-to-end (Firebase login → gate → dashboard;
+  sponsor 403s on `/api/sponsors|client-apps|auth/users|campaigns`).
+
+**Implemented (this branch) — Commerce-signup → Vio triage inbox**
+- Commerce marks a signup with top-level Firebase custom claims
+  `{ business|channel: true, brand_name|channel_name }` (an identity marker, NOT
+  a role). Vio reads them via `listPendingSignups()` (`firebase-admin.ts`,
+  `listUsers()` + claim filter) — not from the session token.
+- `GET /api/pending-brands` (gated `users:manage`) lists claim-marked Firebase
+  identities that have no Vio user yet; a "Pending signups" section in `/users`
+  (Type badge business/channel) lets the super_admin **Assign** → opens the
+  sponsor-create dialog prefilled. **No auto-provision** — the super_admin is the
+  gate; roles live in the Vio DB (per D3/D10).
+- Join key across products = the shared **email** (`resolveAllowlistedOperator`
+  links the uid on first login). Google/login-only identities carry no claim and
+  never appear here → they go through manual "Add user".
+- Scope decision (2026-08-19): light triage (markers + super_admin assigns);
+  the Brand-tenant model (channel = org with multi-role members) is deferred.
+
 **Pending (next steps — paso a paso)**
-- ⚠️ **Per-resource ownership on direct `:id` access is NOT complete.** Only
-  `GET /api/client-apps/:id` checks it. An admin with `campaigns:read` could read
-  another tenant's campaign by id (the *list* is scoped, but direct-by-id and
-  campaign sub-routes are not yet ownership-checked). Closing this (an ownership
-  middleware over `/api/campaigns/:id*`, `/api/sponsors/:id`, etc.) is the next
-  security task.
 - Expand **operator** capabilities (e.g. `campaigns:write` for campaigns it owns).
 - **viewer** scoping to its single sponsor (`users.sponsor_id`) — today
   `sponsors:read` is tenant-level, not sponsor-level.
@@ -292,6 +347,9 @@ ADR-0001.
 | Firebase ID-token verification (JWKS) | `server/middleware/firebase-auth.ts` |
 | `users` table (`role`, `firebase_uid`, `sponsor_id`, `parent_admin_id`) | `shared/schema.ts` + migrations `0007`,`0008` |
 | Session + user-management endpoints, owner-scoped lists | `server/routes.ts` (`/api/auth/*`, list handlers) |
+| Self-scoped sponsor surface (`/api/sponsor/me/*`) + brand-footprint queries | `server/routes.ts`, `server/storage.ts` (`getSponsorUsage`/`getSponsorStats`) |
+| Brand-facing **My Brand** page + sponsor route guard | `client/src/pages/my-brand.tsx`, `client/src/components/RequireAuth.tsx` (`RequireSponsor`) |
+| Commerce-signup triage inbox (`/api/pending-brands`, `listPendingSignups`) | `server/services/firebase-admin.ts`, `server/routes.ts`, `client/src/pages/users.tsx` |
 | Login page, operator-management UI | `client/src/pages/login.tsx`, `client/src/pages/users.tsx` |
 | Client session context, Firebase client config | `client/src/contexts/UserContext.tsx`, `client/src/lib/firebase.ts` |
 

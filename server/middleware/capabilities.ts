@@ -19,13 +19,15 @@ export type Capability =
   | "campaigns:read"
   | "campaigns:create"
   | "campaigns:write"
-  | "users:manage";
+  | "users:manage"
+  | "sponsor:read-own";
 
 export const ALL_CAPABILITIES: Capability[] = [
   "apps:read", "apps:create", "apps:write",
   "sponsors:read", "sponsors:write",
   "campaigns:read", "campaigns:create", "campaigns:write",
   "users:manage",
+  "sponsor:read-own",
 ];
 
 // v1 starting point (owner decision 2026-06-10):
@@ -42,6 +44,9 @@ export const ROLE_CAPABILITIES: Record<Role, Capability[]> = {
   ],
   operator: ["apps:read", "campaigns:read", "campaigns:create"],
   viewer: ["sponsors:read"],
+  // Brand-facing user: sees ONLY its own footprint via /api/sponsor/me/*
+  // (self-scoped to users.sponsor_id). Deliberately no operator capabilities.
+  sponsor: ["sponsor:read-own"],
 };
 
 export function can(role: Role, cap: Capability): boolean {
@@ -60,6 +65,12 @@ export function requiredCapabilityFor(method: string, path: string): Capability 
   const clean = path.replace(/\/+$/, "");
 
   if (/^\/api\/(auth\/users|users)(\/|$)/.test(clean)) return "users:manage";
+
+  // Pending brand-signup inbox — provisioning surface, super_admin only.
+  if (/^\/api\/pending-brands(\/|$)/.test(clean)) return "users:manage";
+
+  // Sponsor-facing surface — the handler always self-scopes to req.operator.sponsorId.
+  if (/^\/api\/sponsor\/me(\/|$)/.test(clean)) return "sponsor:read-own";
 
   if (/^\/api\/client-apps(\/|$)/.test(clean)) {
     if (m === "POST" && clean === "/api/client-apps") return "apps:create";
@@ -92,4 +103,24 @@ export function ownerScope(
   if (operator.role === "super_admin") return { all: true };
   if (operator.role === "admin") return { ownerId: operator.id };
   return { ownerId: operator.parentAdminId ?? operator.id };
+}
+
+type ScopeOperator = Pick<User, "id" | "role" | "parentAdminId">;
+
+// Reads: which owner's rows the operator may see in a LIST — null = all
+// (super_admin); otherwise the tenant owner id.
+export function readScopeOwnerId(operator: ScopeOperator | undefined): number | null {
+  if (!operator) return null;
+  const scope = ownerScope(operator);
+  return "all" in scope ? null : scope.ownerId;
+}
+
+// Creates: the user_id a newly-created row belongs to. super_admin may target a
+// specific admin via body.userId (that's how it assigns); everyone else is
+// forced to their own tenant owner — a client cannot create on another's behalf.
+export function createOwnerId(operator: ScopeOperator | undefined, bodyUserId?: unknown): number {
+  if (operator && operator.role === "super_admin" && typeof bodyUserId === "number") return bodyUserId;
+  if (!operator) return typeof bodyUserId === "number" ? bodyUserId : 0;
+  const scope = ownerScope(operator);
+  return "all" in scope ? operator.id : scope.ownerId;
 }

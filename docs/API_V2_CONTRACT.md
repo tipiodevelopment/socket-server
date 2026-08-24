@@ -48,6 +48,7 @@ contract is published.
 | Mobile SDK runtime | `/v2/mobile/*` | `X-API-Key` | iOS SDK, Kotlin mobile SDK | — |
 | TV SDK runtime | `/v2/tv/*` | `X-API-Key` | VioTVSDK (Apple TV), Kotlin Android TV SDK | — |
 | Commerce proxy | `/v2/commerce/*` | `X-API-Key` | both SDKs, dashboard | — |
+| Web surface | `/v2/web/*` | `X-API-Key` | web SDK, publisher CMS integrations | — |
 | Platform admin | `/v2/admin/*` | `Authorization: Bearer <JWT>` | internal ops, platform integrations | — |
 | Partner outbound (contract) | `/v2/partner/*` | HMAC-signed | **Vio → partner** (defined here, hosted by partner) | ✔ |
 | Dashboard UI | `/api/*` | session cookie | operator UI only | — |
@@ -129,6 +130,24 @@ Consumed by both mobile and TV SDKs.
 |---|---|---|
 | GET | `/v2/commerce/products` | Raw Commerce GraphQL proxy (debug, power users). **Replaces `/api/commerce/products`.** |
 | GET | `/v2/commerce/sponsors/:sponsorId/catalog` | Sponsor-scoped product catalog — the primary runtime call. **Replaces `/api/commerce/sponsors/:id/catalog`.** |
+
+## 6bis. `/v2/web/*` — Web surface
+
+Consumed by the web SDK and by publisher CMS integrations (Vev, Replit-built
+newsrooms). Authenticated with the **surface** API key, so a site only ever
+sees its own data.
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/v2/web/brands` | Brands available on this surface — every sponsor in one of its **active** campaigns (primary or secondary), deduplicated, with `connected` (has a commerce channel) and the campaigns each belongs to. |
+
+**Why this is not `/v2/mobile/config`.** That endpoint answers *"what is running
+right now?"* and deliberately returns a **single** active campaign — a contract
+iOS and TV depend on. A CMS asks a different question — *"which brands may an
+editor pick for this article?"* — and an editorial site runs several brands at
+once. Additive rather than a change to the mobile contract.
+
+An empty `brands` array is a valid answer (no active campaign), not an error.
 
 ## 7. `/v2/admin/*` — Platform admin
 

@@ -41,6 +41,8 @@ import {
   Broadcast,
   Sponsor,
   userRoleEnum,
+  SURFACE_PLATFORM_KINDS,
+  type SurfacePlatformKind,
   type User
 } from "@shared/schema";
 import { db } from "./db";
@@ -56,6 +58,8 @@ import { voteQueue, contestParticipationQueue, isQueueEnabled } from "./queue/qu
 import { createRateLimiter, rateLimitPresets } from "./middleware/rate-limiter";
 import { validateBroadcastId } from "./middleware/broadcast-validator";
 import { firebaseAuth } from "./middleware/firebase-auth";
+import { ensureFirebaseUser, deleteFirebaseUser, isFirebaseAdminEnabled, listPendingSignups } from "./services/firebase-admin";
+import { verifyCommerceApiKey } from "./services/commerce";
 import {
   createApiGate,
   createSessionToken,
@@ -64,24 +68,8 @@ import {
   readSessionOperatorId,
   resolveAllowlistedOperator,
 } from "./middleware/authz";
-import { ownerScope } from "./middleware/capabilities";
-
-// ── Tenant scoping helpers (ADR-0007) ────────────────────────────────────
-// Reads: which owner's rows the operator may see — null = all (super_admin).
-function readScopeOwnerId(operator: User | undefined): number | null {
-  if (!operator) return null;
-  const scope = ownerScope(operator);
-  return "all" in scope ? null : scope.ownerId;
-}
-// Creates: the user_id a newly-created row belongs to. super_admin may target
-// a specific admin via body.userId (that's how it assigns); everyone else is
-// forced to their own tenant owner so they can't create on someone else's behalf.
-function createOwnerId(operator: User | undefined, bodyUserId?: unknown): number {
-  if (operator && operator.role === "super_admin" && typeof bodyUserId === "number") return bodyUserId;
-  if (!operator) return typeof bodyUserId === "number" ? bodyUserId : 0;
-  const scope = ownerScope(operator);
-  return "all" in scope ? operator.id : scope.ownerId;
-}
+import { ownerScope, readScopeOwnerId, createOwnerId } from "./middleware/capabilities";
+import { createOwnershipGuard } from "./middleware/resource-ownership";
 import { setVoteBroadcastFunction } from "./services/vote-processor";
 import { sendAPNs } from "./services/ios-flow";
 import { enqueueEvent } from "./events/outbox";
@@ -1011,6 +999,15 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   setInterval(checkAndNotifyStartedCampaigns, 30000);
 
   const delay = (ms: number) => new Promise(res => setTimeout(res, ms));
+  /**
+   * Commerce is an upstream we don't control, and its dev environment shuts
+   * down on a schedule — so every attempt is bounded. Without a timeout a
+   * single call could hang for as long as the socket stayed open, and with
+   * retries on top an editor-facing request (the product picker) sat for 40s+
+   * before answering with nothing.
+   */
+  const GRAPHQL_TIMEOUT_MS = Number(process.env.COMMERCE_GRAPHQL_TIMEOUT_MS) || 8000;
+
   async function fetchGraphQL(
     query: string,
     commerceApiKey: string,
@@ -1018,6 +1015,8 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
     variables?: Record<string, unknown>,
   ): Promise<any> {
     console.log('[GraphQL] Fetching data...');
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), GRAPHQL_TIMEOUT_MS);
     try {
       const res = await fetch(process.env.COMMERCE_GRAPHQL_URL || 'http://graph-ql', {
         method: 'POST',
@@ -1026,6 +1025,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
           'Authorization': commerceApiKey,
         },
         body: JSON.stringify(variables ? { query, variables } : { query }),
+        signal: controller.signal,
       });
 
       if (!res.ok) {
@@ -1047,17 +1047,23 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       const isRetryable =
         code === 'ECONNRESET' ||
         code === 'ETIMEDOUT' ||
+        err.name === 'AbortError' ||          // our own timeout fired
         err.message?.includes('fetch failed');
 
       if (retries > 0 && isRetryable) {
         await delay(200 * (4 - retries));
-        return fetchGraphQL(query, commerceApiKey, retries - 1);
+        // Pass `variables` on: without them a parameterised query silently
+        // retries as a different query (the catalogue loses its market and
+        // currency and comes back empty).
+        return fetchGraphQL(query, commerceApiKey, retries - 1, variables);
       }
 
       console.error('[GraphQL error]', {
-        message: err.message,
+        message: err.name === 'AbortError' ? `timed out after ${GRAPHQL_TIMEOUT_MS}ms` : err.message,
         code,
       });
+    } finally {
+      clearTimeout(timer);
     }
   }
 
@@ -1112,6 +1118,9 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   });
 
   app.use('/api', createApiGate({ loadOperator: (id) => storage.getUser(id) }));
+  // Per-resource tenant ownership (ADR-0008): after the capability gate, block
+  // cross-tenant access to a specific resource by id. super_admin bypasses.
+  app.use('/api', createOwnershipGuard(storage));
 
   // Allowlist management. The gate maps /api/auth/users* to super_admin.
   app.get('/api/auth/users', async (_req, res) => {
@@ -1124,6 +1133,32 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
     }
   });
 
+  // Pending signups — Firebase identities the Commerce signup marked as a
+  // business/brand (`business`) or a channel (`channel`) that don't have a Vio
+  // user yet. The super_admin triages each into a Vio role. Contract with
+  // Commerce: top-level claims `{ business|channel: true, brand_name }`.
+  // Google/login-only identities have no claim → manual "Add user" instead.
+  app.get('/api/pending-brands', async (_req, res) => {
+    try {
+      if (!isFirebaseAdminEnabled()) return res.json([]);
+      const [signups, existing] = await Promise.all([
+        listPendingSignups(),
+        storage.getAllUsers(),
+      ]);
+      const takenUids = new Set(existing.map((u) => u.firebaseUid).filter(Boolean));
+      const takenEmails = new Set(
+        existing.map((u) => u.email?.toLowerCase()).filter(Boolean),
+      );
+      const pending = signups.filter(
+        (s) => !takenUids.has(s.uid) && !(s.email && takenEmails.has(s.email.toLowerCase())),
+      );
+      res.json(pending);
+    } catch (error) {
+      console.error('[pending-brands] error', error);
+      res.status(500).json({ message: 'Error listing pending brand signups' });
+    }
+  });
+
   app.post('/api/auth/users', async (req, res) => {
     try {
       const { email, role, name, sponsorId, parentAdminId } = req.body ?? {};
@@ -1133,10 +1168,16 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       if (!userRoleEnum.enumValues.includes(role)) {
         return res.status(400).json({ message: `role must be one of: ${userRoleEnum.enumValues.join(', ')}` });
       }
-      if (role === 'viewer' && sponsorId != null && !(await storage.getSponsor(Number(sponsorId)))) {
+      // sponsorId is REQUIRED for a `sponsor` user (the brand they represent);
+      // optional for a viewer. Validate it exists whenever provided.
+      if (role === 'sponsor' && sponsorId == null) {
+        return res.status(400).json({ message: 'sponsorId is required for a sponsor user' });
+      }
+      if ((role === 'viewer' || role === 'sponsor') && sponsorId != null && !(await storage.getSponsor(Number(sponsorId)))) {
         return res.status(400).json({ message: 'sponsorId does not exist' });
       }
-      // operator/viewer belong to an admin's tenant (ADR-0007).
+      // operator/viewer belong to an admin's tenant (ADR-0007). A sponsor does
+      // not (it's brand-scoped, not inside a publisher tenant) — no parentAdminId.
       if ((role === 'operator' || role === 'viewer')) {
         if (parentAdminId == null) {
           return res.status(400).json({ message: 'parentAdminId is required for operator/viewer (the admin tenant they belong to)' });
@@ -1150,14 +1191,47 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       if (existing) {
         return res.status(409).json({ message: 'A user with this email already exists' });
       }
-      const created = await storage.createUser({
-        email: email.toLowerCase(),
-        name: name ?? null,
-        role,
-        sponsorId: sponsorId ?? null,
-        parentAdminId: (role === 'operator' || role === 'viewer') ? Number(parentAdminId) : null,
+
+      // Create (or link) the Firebase identity so the user can actually log in.
+      // Without this the dashboard only writes an authorization row. If the
+      // Admin SDK isn't configured, degrade to DB-row-only (no login yet).
+      let firebaseUid: string | null = null;
+      let tempPassword: string | null = null;
+      let firebaseExisted = false;
+      if (isFirebaseAdminEnabled()) {
+        try {
+          const fb = await ensureFirebaseUser(email.toLowerCase(), name ?? null);
+          firebaseUid = fb.uid;
+          tempPassword = fb.tempPassword;
+          firebaseExisted = fb.existed;
+        } catch (e) {
+          console.error('Error creating Firebase user:', e);
+          return res.status(502).json({ message: `Could not create the Firebase account: ${(e as Error).message}` });
+        }
+      }
+
+      let created;
+      try {
+        created = await storage.createUser({
+          email: email.toLowerCase(),
+          name: name ?? null,
+          role,
+          sponsorId: sponsorId ?? null,
+          parentAdminId: (role === 'operator' || role === 'viewer') ? Number(parentAdminId) : null,
+          firebaseUid,
+        });
+      } catch (e) {
+        // Roll back the Firebase account we just created so we don't orphan it.
+        if (firebaseUid && !firebaseExisted) await deleteFirebaseUser(firebaseUid).catch(() => {});
+        throw e;
+      }
+
+      res.status(201).json({
+        ...operatorProfile(created),
+        firebaseEnabled: isFirebaseAdminEnabled(),
+        firebaseExisted,
+        tempPassword, // present only when a NEW Firebase account was created
       });
-      res.status(201).json(operatorProfile(created));
     } catch (error) {
       console.error('Error creating operator:', error);
       res.status(500).json({ message: 'Error creating operator' });
@@ -1173,6 +1247,14 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       }
       if (id === req.operator!.id && role !== undefined && role !== 'super_admin') {
         return res.status(400).json({ message: 'You cannot demote your own account' });
+      }
+      // A sponsor must always be linked to a brand (mirrors POST). Check the
+      // effective value: the incoming sponsorId if provided, else the current one.
+      if (role === 'sponsor') {
+        const effectiveSponsor = sponsorId !== undefined ? sponsorId : (await storage.getUser(id))?.sponsorId;
+        if (effectiveSponsor == null) {
+          return res.status(400).json({ message: 'sponsorId is required for a sponsor user' });
+        }
       }
       const updated = await storage.updateUser(id, {
         ...(role !== undefined ? { role } : {}),
@@ -1193,8 +1275,26 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       if (id === req.operator!.id) {
         return res.status(400).json({ message: 'You cannot delete your own account' });
       }
+      // Opt-in (?firebase=true): also delete the shared Firebase identity. Off by
+      // default — that identity is Commerce's, so deleting it revokes their
+      // Commerce login too, not just the Vio dashboard.
+      const alsoFirebase = req.query.firebase === 'true';
+      const target = await storage.getUser(id);
       await storage.deleteUser(id);
-      res.status(204).end();
+      let firebaseDeleted = false;
+      if (alsoFirebase && target?.firebaseUid && isFirebaseAdminEnabled()) {
+        try {
+          await deleteFirebaseUser(target.firebaseUid);
+          firebaseDeleted = true;
+        } catch (e) {
+          console.error('Deleted the DB row but Firebase delete failed:', e);
+          return res.status(207).json({
+            message: 'Removed from the dashboard, but the Firebase account could not be deleted.',
+            firebaseDeleted: false,
+          });
+        }
+      }
+      res.status(200).json({ firebaseDeleted });
     } catch (error) {
       console.error('Error deleting operator:', error);
       res.status(500).json({ message: 'Error deleting operator' });
@@ -1775,7 +1875,10 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       const apps = owner === null
         ? await storage.getAllClientApps()
         : await storage.getUserClientApps(owner);
-      res.json(apps);
+      // A surface spans platforms (web/iOS/Android/Vev/TV) — send them along so
+      // the dashboard can show what each surface actually runs on.
+      const byId = await storage.getPlatformsForSurfaces(apps.map((a) => a.id));
+      res.json(apps.map((a) => ({ ...a, platforms: byId.get(a.id) ?? [] })));
     } catch (error) {
       console.error('Error fetching client apps:', error);
       res.status(500).json({ message: 'Error fetching client apps' });
@@ -1790,6 +1893,8 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       const allChannels = owner === null ? await storage.getAllChannels() : await storage.getUserChannels(owner);
       const allCampaigns = owner === null ? await storage.getAllCampaigns() : await storage.getUserCampaigns(owner);
       const allBroadcasts = await storage.getAllBroadcasts();
+      // Platforms of each surface (web/iOS/Android/Vev/TV) — one query for all.
+      const platformsBySurface = await storage.getPlatformsForSurfaces(apps.map((a) => a.id));
 
       const result = await Promise.all(apps.map(async (app) => {
         const appChannels = allChannels.filter(ch => ch.clientAppId === app.id);
@@ -1825,6 +1930,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
 
         return {
           ...app,
+          platforms: platformsBySurface.get(app.id) ?? [],
           stats: {
             campaignCount: appCampaigns.length,
             activeBroadcasts,
@@ -1856,7 +1962,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
         return res.status(403).json({ message: 'Access denied' });
       }
 
-      res.json(app);
+      res.json({ ...app, platforms: await storage.getSurfacePlatforms(app.id) });
     } catch (error) {
       console.error('Error fetching client app:', error);
       res.status(500).json({ message: 'Error fetching client app' });
@@ -1865,12 +1971,11 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
 
   // Sponsor CRUD endpoints
 
-  app.get('/api/sponsors', async (req, res) => {
+  app.get('/api/sponsors', async (_req, res) => {
     try {
-      const owner = readScopeOwnerId(req.operator);
-      const result = owner === null
-        ? await storage.getAllSponsors()
-        : await storage.getUserSponsors(owner);
+      // Sponsors are a SHARED catalog (interim toward the Brand-tenant model):
+      // every tenant sees the full pool, not just its own.
+      const result = await storage.getAllSponsors();
       res.json(result);
     } catch (error) {
       console.error('Error fetching sponsors:', error);
@@ -1892,10 +1997,27 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
 
   app.post('/api/sponsors', async (req, res) => {
     try {
-      const { name, description, logoUrl, avatarUrl, primaryColor, secondaryColor } = req.body;
+      const {
+        name, description, logoUrl, avatarUrl, primaryColor, secondaryColor,
+        commerceApiKey, commerceChannelId,
+      } = req.body;
       if (!name) {
         return res.status(400).json({ message: 'name is required' });
       }
+
+      // The channel key is what makes a sponsor able to sell, so a wrong one is
+      // rejected here rather than silently producing an empty campaign. A key
+      // is optional: without it the sponsor stays "not connected".
+      if (commerceApiKey) {
+        const check = await verifyCommerceApiKey(commerceApiKey);
+        if (check.status === 'invalid') {
+          return res.status(400).json({ message: `Commerce rejected this API key: ${check.reason}` });
+        }
+        if (check.status === 'unknown') {
+          console.warn('[sponsors] could not verify commerce key:', check.reason);
+        }
+      }
+
       // Owner is the creator's tenant (super_admin may target via body.userId).
       const userId = createOwnerId(req.operator, req.body.userId);
       const sponsor = await storage.createSponsor({
@@ -1906,6 +2028,8 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
         avatarUrl: avatarUrl || null,
         primaryColor: primaryColor || null,
         secondaryColor: secondaryColor || null,
+        commerceApiKey: commerceApiKey || null,
+        commerceChannelId: commerceChannelId || null,
       });
       res.status(201).json(sponsor);
     } catch (error) {
@@ -1923,6 +2047,17 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       const existing = await storage.getSponsor(id);
       if (!existing) return res.status(404).json({ message: 'Sponsor not found' });
       if (existing.userId !== userId) return res.status(403).json({ message: 'Access denied' });
+
+      // Same check as on create, but only when the key actually changes.
+      if (updateData.commerceApiKey && updateData.commerceApiKey !== existing.commerceApiKey) {
+        const check = await verifyCommerceApiKey(updateData.commerceApiKey);
+        if (check.status === 'invalid') {
+          return res.status(400).json({ message: `Commerce rejected this API key: ${check.reason}` });
+        }
+        if (check.status === 'unknown') {
+          console.warn('[sponsors] could not verify commerce key:', check.reason);
+        }
+      }
 
       const sponsor = await storage.updateSponsor(id, updateData);
       res.json(sponsor);
@@ -1950,38 +2085,145 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
     }
   });
 
-  // Create client app
+  // ───────────────────────────────────────────────────────────────────────
+  // Sponsor-facing surface (role `sponsor`). Every route is SELF-SCOPED to the
+  // logged-in sponsor's users.sponsor_id — the sponsor never passes a sponsor
+  // id, so there is no cross-sponsor leakage by construction. Gated by the
+  // `sponsor:read-own` capability. Interim toward the Brand-tenant model.
+  // ───────────────────────────────────────────────────────────────────────
+  app.get('/api/sponsor/me', async (req, res) => {
+    const sid = req.operator?.sponsorId ?? null;
+    if (sid == null) return res.status(403).json({ message: 'This account is not linked to a sponsor' });
+    try {
+      const s = await storage.getSponsor(sid);
+      if (!s) return res.status(404).json({ message: 'Sponsor not found' });
+      res.json({
+        id: s.id,
+        name: s.name,
+        logoUrl: s.logoUrl,
+        avatarUrl: s.avatarUrl,
+        primaryColor: s.primaryColor,
+        secondaryColor: s.secondaryColor,
+        hasCommerce: Boolean(s.commerceApiKey),
+      });
+    } catch (error) {
+      console.error('[sponsor/me] error', error);
+      res.status(500).json({ message: 'Error loading sponsor' });
+    }
+  });
+
+  app.get('/api/sponsor/me/usage', async (req, res) => {
+    const sid = req.operator?.sponsorId ?? null;
+    if (sid == null) return res.status(403).json({ message: 'This account is not linked to a sponsor' });
+    try {
+      res.json(await storage.getSponsorUsage(sid));
+    } catch (error) {
+      console.error('[sponsor/me/usage] error', error);
+      res.status(500).json({ message: 'Error loading usage' });
+    }
+  });
+
+  app.get('/api/sponsor/me/stats', async (req, res) => {
+    const sid = req.operator?.sponsorId ?? null;
+    if (sid == null) return res.status(403).json({ message: 'This account is not linked to a sponsor' });
+    try {
+      res.json(await storage.getSponsorStats(sid));
+    } catch (error) {
+      console.error('[sponsor/me/stats] error', error);
+      res.status(500).json({ message: 'Error loading stats' });
+    }
+  });
+
+  // Create a surface (client app). A surface spans platforms — web, iOS,
+  // Android, Vev, TV — so `bundleId` is no longer required: per-platform
+  // identifiers go in `platforms` (migration 0010). Legacy callers that still
+  // send bundleId keep working.
   app.post('/api/client-apps', async (req, res) => {
     try {
-      const { name, bundleId, iconUrl, bannerUrl, description } = req.body;
+      const { name, bundleId, iconUrl, bannerUrl, description, platforms } = req.body;
 
-      if (!name || !bundleId) {
+      if (!name) {
+        return res.status(400).json({ message: 'name is required' });
+      }
+      if (platforms !== undefined && !Array.isArray(platforms)) {
+        return res.status(400).json({ message: 'platforms must be an array' });
+      }
+      const badKind = (platforms ?? []).find(
+        (p: { kind?: string }) => !p?.kind || !SURFACE_PLATFORM_KINDS.includes(p.kind as SurfacePlatformKind),
+      );
+      if (badKind) {
         return res.status(400).json({
-          message: 'name and bundleId are required'
+          message: `platform kind must be one of: ${SURFACE_PLATFORM_KINDS.join(', ')}`,
         });
       }
 
       // The new app belongs to the creator's tenant (ADR-0007).
       const userId = createOwnerId(req.operator, req.body.userId);
 
-      const apiKey = `${name.toLowerCase().replace(/\s+/g, '_')}_api_key_${randomUUID().replace(/-/g, '').substring(0, 16)}`;
+      // Slugify to URL-safe ASCII: the key is passed as `?apiKey=` by the SDKs,
+      // so a raw name would break the query string (e.g. "Møte & Livsstil" → an
+      // unescaped `&` truncates the value) and non-ASCII invites encoding bugs.
+      // ø/æ don't decompose via NFKD (they're distinct letters, not accents), so
+      // transliterate them explicitly — otherwise "Møte" becomes "m_te".
+      const slug = name.normalize('NFKD').replace(/[̀-ͯ]/g, '')
+        .toLowerCase()
+        .replace(/ø/g, 'o').replace(/æ/g, 'ae').replace(/ß/g, 'ss')
+        .replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '') || 'surface';
+      const apiKey = `${slug}_api_key_${randomUUID().replace(/-/g, '').substring(0, 16)}`;
 
       const app = await storage.createClientApp({
         userId,
         name,
-        bundleId,
+        bundleId: bundleId || null,
         apiKey,
         ...(iconUrl && { iconUrl }),
         ...(bannerUrl && { bannerUrl }),
         ...(description && { description }),
       });
-      res.status(201).json(app);
+      const created = platforms?.length
+        ? await storage.setSurfacePlatforms(app.id, platforms)
+        : [];
+      res.status(201).json({ ...app, platforms: created });
     } catch (error) {
       console.error('Error creating client app:', error);
       res.status(400).json({
         message: 'Error creating client app',
         error: error instanceof Error ? error.message : String(error)
       });
+    }
+  });
+
+  // Replace the platform set of a surface (web/iOS/Android/Vev/TV). Ownership is
+  // enforced by the per-resource guard on /api/client-apps/:id plus the check
+  // below; the body is the full desired set, mirroring the dashboard form.
+  app.put('/api/client-apps/:id/platforms', async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const surface = await storage.getClientApp(id);
+      if (!surface) return res.status(404).json({ message: 'Surface not found' });
+
+      const owner = readScopeOwnerId(req.operator);
+      if (owner !== null && surface.userId !== owner) {
+        return res.status(403).json({ message: 'Access denied' });
+      }
+
+      const platforms = req.body?.platforms;
+      if (!Array.isArray(platforms)) {
+        return res.status(400).json({ message: 'platforms must be an array' });
+      }
+      const bad = platforms.find(
+        (p: { kind?: string }) => !p?.kind || !SURFACE_PLATFORM_KINDS.includes(p.kind as SurfacePlatformKind),
+      );
+      if (bad) {
+        return res.status(400).json({
+          message: `platform kind must be one of: ${SURFACE_PLATFORM_KINDS.join(', ')}`,
+        });
+      }
+
+      res.json(await storage.setSurfacePlatforms(id, platforms));
+    } catch (error) {
+      console.error('Error setting surface platforms:', error);
+      res.status(500).json({ message: 'Error setting surface platforms' });
     }
   });
 
@@ -2297,14 +2539,18 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       // Campaign belongs to the creator's tenant; the app + sponsor below must
       // belong to that same tenant (ADR-0007). An operator can only build
       // campaigns on its admin's apps/sponsors.
-      const userId = createOwnerId(req.operator, req.body.userId);
+      let userId = createOwnerId(req.operator, req.body.userId);
 
       if (clientAppId) {
         const app = await storage.getClientApp(clientAppId);
         if (!app) {
           return res.status(404).json({ message: 'Client app not found' });
         }
-        if (app.userId !== userId) {
+        if (readScopeOwnerId(req.operator) === null) {
+          // super_admin builds on any tenant's surface; the campaign joins that
+          // surface's tenant so it stays visible to the admin who owns it.
+          userId = app.userId;
+        } else if (app.userId !== userId) {
           return res.status(403).json({ message: 'Access denied - app does not belong to this user' });
         }
       }
@@ -2319,9 +2565,9 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       if (!sponsor) {
         return res.status(404).json({ message: 'Primary sponsor not found' });
       }
-      if (sponsor.userId !== userId) {
-        return res.status(403).json({ message: 'Access denied - sponsor does not belong to this user' });
-      }
+      // Sponsors are a SHARED catalog (interim toward the Brand-tenant model in
+      // the handbook platform-definition): any publisher can use any sponsor, so
+      // there is no tenant-ownership check on the primary sponsor.
 
       const campaignData = { ...req.body, userId, primarySponsorId: Number(primarySponsorId) };
       if (campaignData.startDate) {
@@ -4255,7 +4501,15 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       const filters: { status?: string; campaignId?: number } = {};
       if (status) filters.status = status as string;
       if (campaignId) filters.campaignId = parseInt(campaignId as string);
-      const broadcastsList = await storage.getAllBroadcasts(filters);
+      let broadcastsList = await storage.getAllBroadcasts(filters);
+
+      // Tenant-scope the list (ADR-0008): a broadcast belongs to a tenant via
+      // its campaign's owner. super_admin (owner === null) sees all.
+      const owner = readScopeOwnerId(req.operator);
+      if (owner !== null) {
+        const myCampaignIds = new Set((await storage.getUserCampaigns(owner)).map(c => c.id));
+        broadcastsList = broadcastsList.filter(b => b.campaignId !== null && myCampaignIds.has(b.campaignId));
+      }
 
       const broadcastIds = broadcastsList.map(b => b.broadcastId);
       const engagementCounts = await storage.getBroadcastEngagementCounts(broadcastIds);
@@ -6527,6 +6781,65 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   }
 
   // GET /v2/sdk/config — primary + secondary sponsors with commerce per sponsor
+  /**
+   * Brands available on this surface — every sponsor taking part in one of its
+   * ACTIVE campaigns (primary or secondary), deduplicated.
+   *
+   * Why this exists next to /v2/mobile/config: that endpoint answers "what is
+   * running right now?" and deliberately returns a single active campaign, a
+   * contract the iOS and TV SDKs depend on. A CMS asks a different question —
+   * "which brands may an editor choose for this article?" — and an editorial
+   * site runs several brands at once. Adding it here keeps the mobile contract
+   * untouched.
+   *
+   * Auth: the surface apiKey, so a site only ever sees its own brands.
+   */
+  app.get('/v2/web/brands', validateApiKey, async (req, res) => {
+    try {
+      const clientApp = (req as any).clientApp;
+      const campaigns = await storage.getClientAppCampaigns(clientApp.id);
+      const now = new Date();
+      const active = campaigns.filter(c =>
+        (!c.startDate || new Date(c.startDate) <= now) &&
+        (!c.endDate || new Date(c.endDate) >= now) &&
+        c.isPaused !== 'true'
+      );
+
+      // sponsorId → the campaigns it can be used with (an editor may need to
+      // know which activation a placement belongs to).
+      const usage = new Map<number, Array<{ id: number; name: string; role: 'primary' | 'secondary' }>>();
+      const note = (sponsorId: number, c: typeof campaigns[number], role: 'primary' | 'secondary') => {
+        const list = usage.get(sponsorId) ?? [];
+        list.push({ id: c.id, name: c.name, role });
+        usage.set(sponsorId, list);
+      };
+
+      for (const c of active) {
+        if (c.primarySponsorId) note(c.primarySponsorId, c, 'primary');
+        for (const s of await storage.getCampaignSponsors(c.id)) note(s.sponsorId, c, 'secondary');
+      }
+
+      const brands = (await Promise.all(
+        Array.from(usage.keys()).map(async (sponsorId) => {
+          const block = await buildSponsorBlock(sponsorId);
+          if (!block) return null;
+          return {
+            ...block,
+            // A brand with no commerce channel cannot sell: the CMS should show
+            // it as unavailable rather than let an editor pick it.
+            connected: block.commerce !== null,
+            campaigns: usage.get(sponsorId) ?? [],
+          };
+        }),
+      )).filter(Boolean);
+
+      res.json({ surface: { id: clientApp.id, name: clientApp.name }, brands });
+    } catch (error) {
+      console.error('[v2/web/brands] error', error);
+      res.status(500).json({ error: 'Error listing brands for this surface' });
+    }
+  });
+
   app.get('/v2/mobile/config', validateApiKey, async (req, res) => {
     try {
       const clientApp = (req as any).clientApp;

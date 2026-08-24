@@ -33,14 +33,30 @@ Everything orchestrated via:
 
 ## 2. Hierarchy — how the domain is organized
 
+> **Vocabulary (decided 2026-08-20).** A **Surface** is the publisher property
+> where Vio runs — VG, TV2, Møte & Livsstil. It spans **Platforms** (web, iOS,
+> Android, Vev, TV): one surface, many platforms, each with its own identifier.
+> A **Placement** is a slot inside a surface where a component renders.
+> **Channel** is a *Commerce* word — the brand's product outlet — and is never
+> used for the publisher side (`sponsors.commerce_channel_id` keeps that sense).
+>
+> `client_apps` **is** the surface. The table keeps its old name because the SDK
+> contract exposes `clientAppId` (see `GET /api/auth/token`); renaming it needs a
+> coordinated iOS/Kotlin release and is tracked separately. The dashboard already
+> says "Surface", and `surface_platforms` already uses the target vocabulary.
+
 ```
 Platform
 └── User (operator — logs into dashboard, owns their Vio tenant)
-    ├── ClientApp (host app instance — "TV2", "Viaplay", …)
-    │   ├── apiKey                         ← SDK auth header X-API-Key
+    ├── ClientApp = SURFACE (publisher property — "TV2", "Viaplay", "Møte & Livsstil")
+    │   ├── apiKey                         ← SDK auth header X-API-Key (per surface)
+    │   ├── surface_platforms[]            ← web / ios / android / vev / *-tv,
+    │   │                                     each with its own identifier
+    │   │                                     (bundle id, package name, domain…)
+    │   ├── bundleId                       ← LEGACY single-app id, nullable
     │   ├── webhookUrl                     ← partner receives offline cart_intent
     │   ├── partnerDeviceRegisterUrl       ← partner receives APNs/FCM tokens
-    │   ├── tvEnabled, tvPlatforms         ← TV SDK subscribe gate
+    │   ├── tvEnabled, tvPlatforms         ← LEGACY TV gate (superseded by platforms)
     │   │
     │   └── Campaign (time-bounded marketing activation)
     │       ├── primarySponsor     (1, NOT NULL, immutable after children exist)
@@ -68,8 +84,9 @@ Platform
 | Entity | What it is |
 |---|---|
 | `users` | Dashboard operator account — one human. |
-| `client_apps` | A host-app instance (TV2, Viaplay). Has its own `apiKey`. SDK consumers authenticate with this. |
-| `sponsors` | A brand with its own Commerce catalog. Belongs to the user but is shared across campaigns. |
+| `client_apps` | **A surface** — the publisher property where Vio runs (TV2, Viaplay, a website). Has its own `apiKey`; SDK consumers authenticate with it. NOT one native app: see `surface_platforms`. |
+| `surface_platforms` | The platforms a surface runs on (`web`, `ios`, `android`, `vev`, `apple-tv`, `android-tv`, `fire-tv`) with the per-platform `identifier` (bundle id / package name / domain / Vev project). Migration 0010; `surface_id` → `client_apps.id`. |
+| `sponsors` | A brand **as sold through one Commerce channel**. `commerce_api_key` is what makes it real: Vio sends it as the Authorization header to fetch products, so a sponsor without it is inert (the dashboard marks it *Not connected* and blocks it in campaigns). One Commerce user may own several channels with different keys, so a sponsor row maps to a CHANNEL, not to a Commerce user — which is why the key is pasted by hand rather than imported. Shared across campaigns (interim; see AUTH_AND_PERMISSIONS D11). |
 | `campaigns` | Time-bounded marketing activation under an app, with 1 primary + N secondary sponsors. |
 | `campaign_sponsors` | M:N link. `role` = `full \| shoppable \| engagement` (dashboard UI taxonomy). |
 | `broadcasts` | Single live event under a campaign (a match, a show). |

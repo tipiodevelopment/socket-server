@@ -11,7 +11,7 @@ export interface OperatorProfile {
   id: number;
   email: string | null;
   name: string | null;
-  role: 'super_admin' | 'admin' | 'operator' | 'viewer';
+  role: 'super_admin' | 'admin' | 'operator' | 'viewer' | 'sponsor';
   sponsorId: number | null;
   linked: boolean;
 }

@@ -9,3 +9,8 @@ vite.config.ts.*
 .mcp.json
 .claude/
 CLAUDE.md
+
+# Firebase service account (SECRET — never commit)
+serviceAccount.json
+*firebase-adminsdk*.json
+.secrets/

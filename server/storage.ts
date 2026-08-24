@@ -1,6 +1,6 @@
-import { WebSocketEvent, Campaign, InsertCampaign, Event, InsertEvent, CampaignFormState, InsertFormState, ScheduledComponent, InsertScheduledComponent, Component, InsertComponent, CampaignComponent, InsertCampaignComponent, AppComponentLocation, InsertAppComponentLocation, AppPlacement, InsertAppPlacement, User, InsertUser, ClientApp, InsertClientApp, Channel, InsertChannel, CampaignTranslation, InsertCampaignTranslation, CampaignEngagementConfig, InsertCampaignEngagementConfig, CampaignUiConfig, InsertCampaignUiConfig, CampaignFeatureFlags, InsertCampaignFeatureFlags, SdkTranslation, InsertSdkTranslation, Broadcast, InsertBroadcast, Poll, InsertPoll, PollOptionRecord, InsertPollOption, PollVote, InsertPollVote, Contest, InsertContest, ContestParticipation, InsertContestParticipation, Sponsor, InsertSponsor, BroadcastAd, InsertBroadcastAd, BroadcastProduct, InsertBroadcastProduct, ChatMessage, InsertChatMessage, DeviceToken, InsertDeviceToken, SportmonksCache, type InsertCampaignSponsor, type InsertBroadcastSponsorSlot, type InsertShoppableAdActivation, type ShoppableAdActivation, type EndUser, type TvSession, type CartIntent, type InsertCartIntent, type TvPlatform } from "@shared/schema";
+import { WebSocketEvent, Campaign, InsertCampaign, Event, InsertEvent, CampaignFormState, InsertFormState, ScheduledComponent, InsertScheduledComponent, Component, InsertComponent, CampaignComponent, InsertCampaignComponent, AppComponentLocation, InsertAppComponentLocation, AppPlacement, InsertAppPlacement, User, InsertUser, ClientApp, InsertClientApp, Channel, InsertChannel, CampaignTranslation, InsertCampaignTranslation, CampaignEngagementConfig, InsertCampaignEngagementConfig, CampaignUiConfig, InsertCampaignUiConfig, CampaignFeatureFlags, InsertCampaignFeatureFlags, SdkTranslation, InsertSdkTranslation, Broadcast, InsertBroadcast, Poll, InsertPoll, PollOptionRecord, InsertPollOption, PollVote, InsertPollVote, Contest, InsertContest, ContestParticipation, InsertContestParticipation, Sponsor, InsertSponsor, BroadcastAd, InsertBroadcastAd, BroadcastProduct, InsertBroadcastProduct, ChatMessage, InsertChatMessage, DeviceToken, InsertDeviceToken, SportmonksCache, type InsertCampaignSponsor, type InsertBroadcastSponsorSlot, type InsertShoppableAdActivation, type ShoppableAdActivation, type EndUser, type TvSession, type CartIntent, type InsertCartIntent, type TvPlatform, type SurfacePlatform } from "@shared/schema";
 import { db } from "./db";
-import { campaigns, events, campaignFormState, scheduledComponents, components, campaignComponents, appComponentLocations, appPlacements, users, clientApps, channels, campaignTranslations, campaignEngagementConfig, campaignUiConfig, campaignFeatureFlags, sdkTranslations, broadcasts, polls, pollOptions, pollVotes, contests, contestParticipations, sponsors, broadcastAds, broadcastProducts, chatMessages, deviceTokens, sportmonksCache, campaignSponsors, broadcastSponsorSlots, shoppableAdActivations, endUsers, tvSessions, cartIntents } from "@shared/schema";
+import { campaigns, events, campaignFormState, scheduledComponents, components, campaignComponents, appComponentLocations, appPlacements, users, clientApps, channels, campaignTranslations, campaignEngagementConfig, campaignUiConfig, campaignFeatureFlags, sdkTranslations, broadcasts, polls, pollOptions, pollVotes, contests, contestParticipations, sponsors, broadcastAds, broadcastProducts, chatMessages, deviceTokens, sportmonksCache, campaignSponsors, broadcastSponsorSlots, shoppableAdActivations, endUsers, tvSessions, cartIntents, surfacePlatforms } from "@shared/schema";
 import { eq, desc, and, or, gte, ne, isNull, isNotNull, sql, lte, inArray, notInArray } from "drizzle-orm";
 
 export interface IStorage {
@@ -24,6 +24,12 @@ export interface IStorage {
   getClientAppByBundleId(bundleId: string): Promise<ClientApp | undefined>;
   getUserClientApps(userId: number): Promise<ClientApp[]>;
   getAllClientApps(): Promise<ClientApp[]>;
+  getSurfacePlatforms(surfaceId: number): Promise<SurfacePlatform[]>;
+  getPlatformsForSurfaces(surfaceIds: number[]): Promise<Map<number, SurfacePlatform[]>>;
+  setSurfacePlatforms(
+    surfaceId: number,
+    platforms: Array<{ kind: string; identifier?: string | null; enabled?: boolean }>,
+  ): Promise<SurfacePlatform[]>;
   updateClientApp(id: number, clientApp: Partial<InsertClientApp>): Promise<ClientApp | undefined>;
   deleteClientApp(id: number): Promise<void>;
   
@@ -32,6 +38,12 @@ export interface IStorage {
   getSponsor(id: number): Promise<Sponsor | undefined>;
   getUserSponsors(userId: number): Promise<Sponsor[]>;
   getAllSponsors(): Promise<Sponsor[]>;
+  getSponsorUsage(sponsorId: number): Promise<{
+    campaigns: Array<{ id: number; name: string; role: 'primary' | 'secondary'; surface: { id: number; name: string } | null }>;
+    surfaces: Array<{ id: number; name: string }>;
+    placements: number;
+  }>;
+  getSponsorStats(sponsorId: number): Promise<{ dispatches: number; cartIntents: number; sponsorSlots: number }>;
   updateSponsor(id: number, sponsor: Partial<InsertSponsor>): Promise<Sponsor | undefined>;
   deleteSponsor(id: number): Promise<void>;
 
@@ -380,6 +392,46 @@ export class MemStorage implements IStorage {
       .orderBy(desc(clientApps.createdAt));
   }
 
+  // ── Surface platforms (migration 0010) ─────────────────────────────────
+  // A surface (client_apps row) spans web/iOS/Android/Vev/TV; identifiers are
+  // per platform, so they live here rather than on the surface.
+
+  async getSurfacePlatforms(surfaceId: number): Promise<SurfacePlatform[]> {
+    return await db.select().from(surfacePlatforms)
+      .where(eq(surfacePlatforms.surfaceId, surfaceId))
+      .orderBy(surfacePlatforms.id);
+  }
+
+  /** Platforms for many surfaces at once — avoids N+1 when listing surfaces. */
+  async getPlatformsForSurfaces(surfaceIds: number[]): Promise<Map<number, SurfacePlatform[]>> {
+    const out = new Map<number, SurfacePlatform[]>();
+    if (surfaceIds.length === 0) return out;
+    const rows = await db.select().from(surfacePlatforms)
+      .where(inArray(surfacePlatforms.surfaceId, surfaceIds))
+      .orderBy(surfacePlatforms.id);
+    for (const r of rows) {
+      const list = out.get(r.surfaceId);
+      if (list) list.push(r); else out.set(r.surfaceId, [r]);
+    }
+    return out;
+  }
+
+  /** Replace the whole platform set of a surface (what the dashboard form posts). */
+  async setSurfacePlatforms(
+    surfaceId: number,
+    platforms: Array<{ kind: string; identifier?: string | null; enabled?: boolean }>,
+  ): Promise<SurfacePlatform[]> {
+    await db.delete(surfacePlatforms).where(eq(surfacePlatforms.surfaceId, surfaceId));
+    if (platforms.length === 0) return [];
+    await db.insert(surfacePlatforms).values(platforms.map((p) => ({
+      surfaceId,
+      kind: p.kind,
+      identifier: p.identifier?.trim() ? p.identifier.trim() : null,
+      enabled: p.enabled ?? true,
+    })));
+    return this.getSurfacePlatforms(surfaceId);
+  }
+
   async getAllClientApps(): Promise<ClientApp[]> {
     return await db.select().from(clientApps).orderBy(desc(clientApps.createdAt));
   }
@@ -415,6 +467,54 @@ export class MemStorage implements IStorage {
 
   async getAllSponsors(): Promise<Sponsor[]> {
     return await db.select().from(sponsors).orderBy(desc(sponsors.createdAt));
+  }
+
+  // Sponsor "footprint" — where this brand is used (campaigns + surfaces +
+  // placements). Powers the self-scoped /api/sponsor/me/usage view.
+  async getSponsorUsage(sponsorId: number): Promise<{
+    campaigns: Array<{ id: number; name: string; role: 'primary' | 'secondary'; surface: { id: number; name: string } | null }>;
+    surfaces: Array<{ id: number; name: string }>;
+    placements: number;
+  }> {
+    const rows = await db.select({
+      id: campaigns.id,
+      name: campaigns.name,
+      primarySponsorId: campaigns.primarySponsorId,
+      appId: campaigns.clientAppId,
+      appName: clientApps.name,
+    }).from(campaigns)
+      .leftJoin(clientApps, eq(clientApps.id, campaigns.clientAppId))
+      .where(or(
+        eq(campaigns.primarySponsorId, sponsorId),
+        inArray(campaigns.id,
+          db.select({ id: campaignSponsors.campaignId }).from(campaignSponsors).where(eq(campaignSponsors.sponsorId, sponsorId))),
+      ))
+      .orderBy(campaigns.id);
+
+    const campaignsOut = rows.map((r) => ({
+      id: r.id,
+      name: r.name,
+      role: (r.primarySponsorId === sponsorId ? 'primary' : 'secondary') as 'primary' | 'secondary',
+      surface: r.appId != null ? { id: r.appId, name: r.appName ?? `#${r.appId}` } : null,
+    }));
+
+    const surfacesMap = new Map<number, string>();
+    for (const c of campaignsOut) if (c.surface) surfacesMap.set(c.surface.id, c.surface.name);
+    const surfaces = Array.from(surfacesMap.entries(), ([id, name]) => ({ id, name }));
+
+    const [pc] = await db.select({ n: sql<number>`count(*)::int` })
+      .from(campaignComponents).where(eq(campaignComponents.sponsorId, sponsorId));
+
+    return { campaigns: campaignsOut, surfaces, placements: pc?.n ?? 0 };
+  }
+
+  // Sponsor "data" — DB-side metrics for this brand (impressions/clicks live in
+  // Mixpanel, not here). Powers /api/sponsor/me/stats.
+  async getSponsorStats(sponsorId: number): Promise<{ dispatches: number; cartIntents: number; sponsorSlots: number }> {
+    const [d] = await db.select({ n: sql<number>`count(*)::int` }).from(shoppableAdActivations).where(eq(shoppableAdActivations.sponsorId, sponsorId));
+    const [c] = await db.select({ n: sql<number>`count(*)::int` }).from(cartIntents).where(eq(cartIntents.sponsorId, sponsorId));
+    const [s] = await db.select({ n: sql<number>`count(*)::int` }).from(broadcastSponsorSlots).where(eq(broadcastSponsorSlots.sponsorId, sponsorId));
+    return { dispatches: d?.n ?? 0, cartIntents: c?.n ?? 0, sponsorSlots: s?.n ?? 0 };
   }
 
   async updateSponsor(id: number, data: Partial<InsertSponsor>): Promise<Sponsor | undefined> {
