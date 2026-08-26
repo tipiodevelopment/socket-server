@@ -26,6 +26,7 @@
  *   GET /api/analytics/vio/overview?userId&clientAppId&days
  *   GET /api/analytics/vio/components?userId&clientAppId&days[&campaignId]
  *   GET /api/analytics/vio/campaigns/:campaignId/funnel?userId&clientAppId&days
+ *   GET /api/analytics/vio/bundle?userId&clientAppId&range=24h|7d|14d|30d
  */
 
 import type { Express, Request, Response } from "express";
@@ -134,6 +135,22 @@ export function registerVioAnalyticsProxy(app: Express, deps: ProxyDeps): void {
     } catch (err) {
       console.error("[analytics-proxy] components failed:", err);
       res.status(500).json({ error: "failed to fetch component stats" });
+    }
+  });
+
+  app.get("/api/analytics/vio/bundle", async (req, res) => {
+    try {
+      const auth = await authorize(req, res, deps.storage);
+      if (!auth) return;
+      const params: Record<string, string> = {
+        client_app_id: String(auth.clientAppId),
+      };
+      // The collector validates/clamps range itself — stay thin.
+      if (typeof req.query.range === "string") params.range = req.query.range;
+      await forward(res, "/v1/stats/operator/bundle", params);
+    } catch (err) {
+      console.error("[analytics-proxy] bundle failed:", err);
+      res.status(500).json({ error: "failed to fetch analytics bundle" });
     }
   });
 

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { AppLayout } from '@/components/AppLayout';
+import { useUser } from '@/contexts/UserContext';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Link } from 'wouter';
 import {
@@ -9,7 +10,7 @@ import {
 import {
   BarChart3, Smartphone, Megaphone, Radio, Users, TrendingUp, Vote,
   Trophy, Globe, Award, ChevronRight, ArrowLeft, Layers, Activity,
-  Eye, MessageSquare, Package, Clock, Target, Zap,
+  Eye, MessageSquare, Package, Clock, Target, Zap, MousePointerClick, ShoppingCart,
 } from 'lucide-react';
 
 type DrillView = 
@@ -303,6 +304,114 @@ function GlobalDashboard({ onDrill }: { onDrill: (view: DrillView) => void }) {
   );
 }
 
+function fmtDelta(delta: number | null | undefined): string | undefined {
+  if (delta === null || delta === undefined) return undefined;
+  const pct = (delta * 100).toFixed(0);
+  return `${delta >= 0 ? '+' : ''}${pct}% vs prev`;
+}
+
+const BUNDLE_RANGES = ['24h', '7d', '14d', '30d'] as const;
+
+/**
+ * Real commerce + impressions from the Vio Analytics collector, through the
+ * thin backend proxy (/api/analytics/vio/bundle). Renders nothing when the
+ * collector is not configured for this environment — the section is
+ * additive, never noise.
+ */
+function VioCommerceSection({ appId }: { appId: number }) {
+  const { userId } = useUser();
+  const [range, setRange] = useState<(typeof BUNDLE_RANGES)[number]>('14d');
+  const { data, isError } = useQuery<any>({
+    queryKey: ['/api/analytics/vio/bundle', appId, userId, range],
+    queryFn: async () => {
+      const res = await fetch(`/api/analytics/vio/bundle?userId=${userId}&clientAppId=${appId}&range=${range}`);
+      if (!res.ok) throw new Error('bundle unavailable');
+      return res.json();
+    },
+    enabled: !!userId,
+  });
+
+  if (isError || !data) return null;
+  const k = data.kpis ?? {};
+  const funnel: Array<{ name: string; events: number; sessions: number }> = data.funnel ?? [];
+  const maxFunnel = Math.max(1, ...funnel.map((f) => f.events));
+  const currency = k.gmv?.currency ?? '';
+
+  return (
+    <div className="bg-white dark:bg-[#141824] border border-gray-200 dark:border-white/10 rounded-lg p-5" data-testid="section-vio-commerce">
+      <div className="flex items-center justify-between mb-4">
+        <SectionHeader title="Commerce & Impressions" />
+        <div className="flex items-center gap-1">
+          {BUNDLE_RANGES.map((r) => (
+            <button
+              key={r}
+              onClick={() => setRange(r)}
+              className={`px-2 py-1 text-xs rounded transition ${range === r ? 'bg-[#3d8b7a] text-white' : 'text-gray-400 hover:text-gray-900 dark:hover:text-white'}`}
+              data-testid={`button-bundle-range-${r}`}
+            >
+              {r}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
+        <StatCard label="Impressions" value={formatNum(k.impressions?.value ?? 0)} icon={Eye} sub={fmtDelta(k.impressions?.delta)} testId="stat-vio-impressions" />
+        <StatCard label="CTR" value={`${((k.ctr?.value ?? 0) * 100).toFixed(1)}%`} icon={MousePointerClick} sub={`${formatNum(k.clicks?.value ?? 0)} clicks`} testId="stat-vio-ctr" />
+        <StatCard label="Sessions" value={formatNum(k.sessions?.value ?? 0)} icon={Users} sub={fmtDelta(k.sessions?.delta)} testId="stat-vio-sessions" />
+        <StatCard label="Purchases" value={formatNum(k.purchases?.value ?? 0)} icon={ShoppingCart} sub={fmtDelta(k.purchases?.delta)} testId="stat-vio-purchases" />
+        <StatCard label="GMV" value={`${formatNum(k.gmv?.value ?? 0)}${currency ? ` ${currency}` : ''}`} icon={TrendingUp} sub={fmtDelta(k.gmv?.delta)} testId="stat-vio-gmv" />
+      </div>
+
+      <div className="grid md:grid-cols-2 gap-6">
+        <div>
+          <h4 className="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase mb-3">Commerce funnel</h4>
+          <div className="space-y-2">
+            {funnel.map((stage, i) => {
+              const prevEvents = i > 0 ? funnel[i - 1].events : 0;
+              const rate = i > 0 && prevEvents > 0 ? ` · ${((stage.events / prevEvents) * 100).toFixed(0)}%` : '';
+              return (
+                <div key={stage.name} data-testid={`funnel-stage-${stage.name}`}>
+                  <div className="flex justify-between text-xs mb-1">
+                    <span className="text-gray-600 dark:text-gray-300">{stage.name}</span>
+                    <span className="text-gray-400">{formatNum(stage.events)}{rate}</span>
+                  </div>
+                  <div className="h-2 bg-gray-100 dark:bg-white/5 rounded">
+                    <div className="h-2 bg-[#3d8b7a] rounded" style={{ width: `${(stage.events / maxFunnel) * 100}%` }} />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+        <div>
+          <h4 className="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase mb-3">Top components (by real impressions)</h4>
+          <div className="space-y-1.5">
+            {(data.components ?? []).slice(0, 6).map((c: any) => (
+              <div key={c.campaign_component_id} className="flex items-center justify-between text-xs py-1 border-b border-gray-100 dark:border-white/5" data-testid={`component-perf-${c.campaign_component_id}`}>
+                <span className="text-gray-600 dark:text-gray-300 truncate">{c.component_template_id || `component #${c.campaign_component_id}`}</span>
+                <span className="text-gray-400 whitespace-nowrap ml-2">{formatNum(c.impressions)} imp · {(c.ctr * 100).toFixed(1)}% ctr{Number(c.gmv) > 0 ? ` · ${formatNum(c.gmv)}` : ''}</span>
+              </div>
+            ))}
+            {(data.components ?? []).length === 0 && <div className="text-xs text-gray-400 py-2">No component impressions in this range</div>}
+          </div>
+          {(data.top_content ?? []).length > 0 && (
+            <div className="mt-4">
+              <h4 className="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase mb-2">Top content</h4>
+              {(data.top_content ?? []).slice(0, 4).map((tc: any) => (
+                <div key={tc.content_url} className="flex items-center justify-between text-xs py-1" data-testid="content-row">
+                  <span className="text-gray-600 dark:text-gray-300 truncate" title={tc.content_url}>{tc.content_title || tc.content_url}</span>
+                  <span className="text-gray-400 whitespace-nowrap ml-2">{formatNum(tc.impressions)} imp{Number(tc.gmv) > 0 ? ` · ${formatNum(tc.gmv)} gmv` : ''}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function AppAnalytics({ appId, onDrill, onBack }: { appId: number; onDrill: (view: DrillView) => void; onBack: () => void }) {
   const { data, isLoading, isError } = useQuery<any>({ queryKey: ['/api/analytics/apps', appId] });
 
@@ -328,6 +437,8 @@ function AppAnalytics({ appId, onDrill, onBack }: { appId: number; onDrill: (vie
         <StatCard label="Broadcasts" value={data.kpis.broadcastCount} icon={Radio} testId="stat-app-broadcasts" />
         <StatCard label="Total Engagement" value={data.kpis.totalVotes + data.kpis.totalParticipations} icon={Activity} sub={`${formatNum(data.kpis.totalVotes)} votes · ${formatNum(data.kpis.totalParticipations)} participations`} testId="stat-app-engagement" />
       </div>
+
+      <VioCommerceSection appId={appId} />
 
       <div className="bg-white dark:bg-[#141824] border border-gray-200 dark:border-white/10 rounded-lg p-5">
         <SectionHeader title="Campaigns" />
