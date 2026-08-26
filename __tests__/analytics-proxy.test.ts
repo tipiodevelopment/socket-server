@@ -122,3 +122,26 @@ describe("collector not configured", () => {
     expect(res.body.hint).toContain("ANALYTICS_EVENTS_URL");
   });
 });
+
+describe("GET /api/analytics/vio/bundle", () => {
+  it("forwards to the operator bundle with the resolved tenant and range", async () => {
+    const { app, calls } = buildApp();
+    const res = await request(app).get(
+      `/api/analytics/vio/bundle?userId=${USER}&clientAppId=${APP}&range=7d`,
+    );
+    expect(res.status).toBe(200);
+    expect(calls[0]!.url).toContain("/v1/stats/operator/bundle?");
+    expect(calls[0]!.url).toContain(`client_app_id=${APP}`);
+    expect(calls[0]!.url).toContain("range=7d");
+    expect(calls[0]!.token).toBe("internal-test-token");
+  });
+
+  it("rejects an app the user does not own", async () => {
+    const { app } = buildApp();
+    const res = await request(app).get(
+      `/api/analytics/vio/bundle?userId=${USER}&clientAppId=99999&range=7d`,
+    );
+    expect(res.status).toBe(403);
+  });
+});
+
