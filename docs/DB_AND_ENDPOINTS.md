@@ -398,7 +398,6 @@ Used by external tooling / partner automation that doesn't go through the dashbo
 |---|---|---|
 | GET | `/v2/commerce/products` | raw Commerce GraphQL proxy (debug) |
 | GET | `/v2/commerce/sponsors/:sponsorId/catalog` | sponsor-scoped product catalog (used by the dashboard product picker via `useSponsorCatalog`) |
-| POST | `/api/checkout/confirm-apple-pay` (apiKey) | Apple Pay token finalize on the backend (server-side Stripe leg) |
 
 ### 3.6 Legacy v1 SDK surface (apiKey, deferred retirement)
 

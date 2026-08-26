@@ -176,6 +176,17 @@ GET /v2/commerce/products                            raw proxy (debug)
 GET /v2/commerce/sponsors/:sponsorId/catalog         per-sponsor catalog — primary runtime call
 ```
 
+**Payments are NOT here — and must never be.** Every payment leg (Stripe,
+Klarna, Vipps, Apple Pay) goes from the SDK straight to **Vio Commerce**
+GraphQL (`Payment { CreatePayment* }`), authed with the sponsor's commerce API
+key. The Vio backend holds **no payment routes and no payment credentials** —
+it never sees card data, payment tokens, or PSP secrets, and no order can be
+created that Commerce doesn't know about.
+
+Read-only catalog proxying is the only Commerce concern that lives here. If a
+payment endpoint ever looks necessary in this backend, the answer is to add the
+mutation in Commerce instead (owner rule, 2026-08-25).
+
 ### /v2/admin/*
 
 ```

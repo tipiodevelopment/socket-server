@@ -157,11 +157,10 @@ Defined in `authz.ts`. Two groups:
 
 **apiKey-authenticated SDK/external endpoints that happen to live under `/api`**
 - `POST /api/auth/token` — apiKey → JWT (SDK bootstrap).
-- `POST /api/checkout/confirm-apple-pay` — iOS SDK Apple Pay confirm (`validateApiKey`).
 - `POST /api/campaign/payments/apikey/:apiKey` — sponsor payment-method sync (apiKey in path).
 
 These carry their **own apiKey auth**; they bypass the *operator* gate, not all
-auth. (Regression history: the gate originally shadowed the last two → 401 before
+auth. (Regression history: the gate originally shadowed these → 401 before
 their apiKey check could run; fixed by listing them here. See §7.)
 
 ---
@@ -246,7 +245,7 @@ added.
 | D4 | **Capability matrix**, not a linear role level. | "Define each role's abilities step by step" — extensible without re-plumbing. | 2026-06-10 |
 | D5 | Tenancy via **`parent_admin_id`**; ownership of apps/sponsors on `user_id`. | Divide real apps (Viaplay/TV2/VG) among per-brand admins. | 2026-06-10 |
 | D6 | Scope reads/writes by the **session operator**, not a client-supplied `?userId=`. | The old param let any client read any tenant's data. | 2026-06-10 |
-| D7 | apiKey-authed `/api` endpoints (`confirm-apple-pay`, `payments/apikey`) **exempt** from the operator gate. | They authenticate by apiKey; the gate must not shadow them. | 2026-06-10 |
+| D7 | apiKey-authed `/api` endpoints (`payments/apikey`) **exempt** from the operator gate. | They authenticate by apiKey; the gate must not shadow them. | 2026-06-10 |
 | D8 | Session = **httpOnly cookie**, role re-read per request. | Instant role change / de-provision; no client call-site changes. | 2026-06-10 |
 | D9 | **Per-environment** Firebase projects; prod is separate. | Never touch prod users from staging work. | 2026-06-10 |
 | D10 | Add a **`sponsor`** brand-facing role: read-only, linked to one sponsor via `users.sponsor_id`, served by **self-scoped** `/api/sponsor/me/*` (never a sponsor-id param). Interim toward the **Brand-tenant** model (handbook `platform-definition`). | Brands need to see their own footprint (which surfaces/campaigns use them + data) without any operator access; self-scoping makes cross-brand leakage structurally impossible. | 2026-08-18 |
