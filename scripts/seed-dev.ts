@@ -20,6 +20,7 @@
  *   - campaign engagement config, ui config, feature flags
  */
 
+import "../server/env.js";
 import pg from "pg";
 import { drizzle } from "drizzle-orm/node-postgres";
 import * as schema from "../shared/schema";
@@ -36,6 +37,8 @@ const db = drizzle({ client: pool, schema });
 // ─── Predictable test identifiers (safe to share) ─────────────────────────
 const TEST_API_KEY = "test_kotlin_sdk_dev_key_abc123";
 const TEST_BROADCAST_ID = "broadcast-kotlin-sdk-test-001";
+/** What the SDK sends as `contentId` — /v1/sdk/broadcast resolves by externalId. */
+const TEST_EXTERNAL_ID = "external-match-sdk-test-001";
 const TEST_BUNDLE_ID = "io.vio.kotlinsdk.test";
 const TEST_REACHU_USER_ID = "dev-seed-user-001";
 
@@ -50,10 +53,13 @@ async function main() {
       reachuUserId: TEST_REACHU_USER_ID,
       email: "dev-seed@vio.live",
       name: "Dev Seed Admin",
+      // Without an explicit role the column defaults to "viewer", which can't
+      // create apps/sponsors/campaigns — useless for a dev seed.
+      role: "admin",
     })
     .onConflictDoUpdate({
       target: schema.users.reachuUserId,
-      set: { email: "dev-seed@vio.live" },
+      set: { email: "dev-seed@vio.live", role: "admin" },
     })
     .returning();
   console.log(`   ✅ user id=${user.id} reachuUserId=${user.reachuUserId}`);
@@ -115,7 +121,7 @@ async function main() {
       userId: user.id,
       clientAppId: clientApp.id,
       channelId: channel.id,
-      sponsorId: sponsor.id,
+      primarySponsorId: sponsor.id,
       name: "Kotlin SDK Test Campaign",
       description: "Full-featured campaign for SDK integration testing",
       startDate: now,
@@ -179,7 +185,7 @@ async function main() {
       broadcastId: TEST_BROADCAST_ID,
       broadcastName: "Kotlin SDK Test Match",
       description: "Live match for SDK integration testing",
-      externalId: "external-match-sdk-test-001",
+      externalId: TEST_EXTERNAL_ID,
       campaignId: campaign.id,
       channelId: channel.id,
       startTime: broadcastStart,
@@ -195,9 +201,10 @@ async function main() {
     .insert(schema.polls)
     .values({
       broadcastId: TEST_BROADCAST_ID,
+      sponsorId: sponsor.id,
       question: "Who will score the next goal?",
       startTime: now,
-      endTime: new Date(now.getTime() + 60 * 1000),
+      endTime: new Date(now.getTime() + 60 * 60 * 1000),
       isActive: true,
       totalVotes: 0,
     })
@@ -216,6 +223,7 @@ async function main() {
     .insert(schema.contests)
     .values({
       broadcastId: TEST_BROADCAST_ID,
+      sponsorId: sponsor.id,
       title: "Predict the Final Score",
       description: "Enter the correct final score to win",
       prize: "Acme Sports Jersey",
@@ -233,10 +241,12 @@ async function main() {
 ✅ Seed complete!
 
 SDK entry point:
-  GET /v1/sdk/config?apiKey=${TEST_API_KEY}
+  GET /v1/sdk/broadcast?contentId=${TEST_EXTERNAL_ID}&country=NO
+  Header: X-Api-Key: ${TEST_API_KEY}
 
 Test broadcast:
   broadcastId: ${TEST_BROADCAST_ID}
+  externalId: ${TEST_EXTERNAL_ID}   ← this is the SDK's contentId
   WS: /ws/${campaign.id}
 
 Campaign ID: ${campaign.id}
