@@ -1745,9 +1745,19 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
     if (!req.body.type) {
       return res.status(400).json({ error: "type is required" });
     }
-    const objectStorageService = new ObjectStorageService();
-    const uploadURL = await objectStorageService.getObjectEntityUploadURL(req.body.type);
-    res.json({ uploadURL });
+    try {
+      const objectStorageService = new ObjectStorageService();
+      const uploadURL = await objectStorageService.getObjectEntityUploadURL(req.body.type);
+      res.json({ uploadURL });
+    } catch (error) {
+      // Without this catch the rejected promise never reaches Express 4's error
+      // handler and the request hangs — the client just spins forever. The most
+      // common cause is a deploy missing AZURE_CONTAINER / storage credentials.
+      console.error("Error creating upload URL:", error);
+      res.status(500).json({
+        error: error instanceof Error ? error.message : "Failed to create upload URL",
+      });
+    }
   });
 
   // Normalize uploaded campaign logo URL
